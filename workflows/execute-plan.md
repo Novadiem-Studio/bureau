@@ -1,0 +1,115 @@
+# Workflow: execute-plan
+
+**When to use:** there is already a written plan document (e.g. a `plans/todo/NN-name.md`) and
+the job is to turn it into the executable, scoped prompts that build it. NOT a raw idea or a
+fuzzy ask that still needs requirements (that's `feature`). A plan is an EARLY artifact, roughly
+what the Analyst produces; this workflow carries it forward to vetted, decomposed prompts.
+
+**Type:** mixed (produces a reviewed set of scoped prompts, then builds them part by part with
+review. The build stage is gated: you approve the prompt folder before any code is written.)
+
+**Inputs:** the path to the plan doc; the workspace orientation (`monorepo-orientation`); the
+per-sub-app skills the plan's surfaces need.
+
+**Outputs:** a **prompt folder beside the plan doc**, same name minus `.md`, holding
+`00-index.md` + `NN-<slug>.md` scoped prompts (format below). Example:
+`foaf-auth/docs/plans/todo/50-email-verification/`.
+
+**Leans on skills:** `monorepo-orientation` (routing) + whatever the plan's surfaces call for
+(`auth`, `mutual-credit`, `redux`, `components`, `testing`, `docker`, `s3`, …). Load the skill,
+don't duplicate its runbook.
+
+## Steps
+
+The **writers' room** reviews, decomposes, and re-reviews (steps 1-4). The **build party** then
+builds the vetted prompts part by part (steps 5-7), each part reviewed before the next.
+
+1. **The Architect** (opus) — orient (`monorepo-orientation`), read the plan in full,
+   and verify it still fits the **current** code (spot-check the plan's critical files and symbol
+   anchors; plans drift). Define the chunking: the ordered list of scoped units by sub-app /
+   layer, the ship order across sub-apps, the analogous shipped feature each chunk mirrors, and
+   the **coder who owns each chunk** — frontend/design → **The Mage**, backend/data/contract →
+   **The Systemsmith**, ops/deploy/infra → **The Mechanic**. A chunk that spans two coders' domains is
+   two chunks (the contract-owning chunk ships first).
+   - anchors hold → proceed.
+   - material drift (a branch site is gone, a product decision is now wrong) → `[CHECKPOINT]`.
+2. **The Challenger** (Critic, round 1, opus) — cold-review the plan + chunking: requirement
+   gaps, missing edge cases, wrong sequence, hidden cross-sub-app dependencies, anything that
+   will bite the implementer. Reports findings. The Conductor adjudicates: route the fix back
+   to The Architect (max 2x), note + proceed, or `[CHECKPOINT]`.
+3. **The Spellwright** (Prompt Engineer, sonnet) — decompose the approved plan into the
+   **prompt folder** (format below), beside the plan doc. One prompt = one coherent unit a single
+   Claude Code session can finish, owned by **exactly one coder** (carry the Architect's chunk
+   assignment; tag every prompt `Coder:`). Each names exact files and ends with a green checkpoint.
+4. **The Challenger** (Critic, round 2, opus) — cold-review the prompts: is each independently
+   executable? correct order? hidden deps between steps? are the workspace gotchas captured? is
+   every checkpoint testable? Reports findings. The Conductor adjudicates: route the fix back to
+   The Spellwright (max 2x), note + proceed, or `[CHECKPOINT]`.
+5. **Gate** — show the human the prompt folder and get a go before building. `[CHECKPOINT]`.
+   (If they only wanted the prompts, stop here; that's a valid end.)
+6. **Build, part by part** — The Conductor runs the prompts **in order, 01→NN**, dispatching each
+   to the coder named by its **`Coder:` tag** — the tag is the assignment; do not re-infer the
+   owner from the sub-app. (A missing or wrong tag is a Spellwright defect: route it back rather
+   than guessing.)
+   - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
+
+   Each coder loads the target sub-app's CLAUDE.md + the skills the prompt names, builds exactly
+   that one prompt, and gets its checkpoint green. After each part:
+   - **The Challenger** cold-reviews that single diff against the prompt and the plan → findings.
+   - **The Cleric (mode: review)** additionally checks UI prompts: the built screens against
+     `design/manifest.md` (components, tokens, states, flow, real data). FAITHFUL or DRIFTED
+     with findings; drift fixes route back to The Mage with the correctness fixes.
+   - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
+     to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
+
+   **Parallel tracks (optional).** Two prompts may build SIMULTANEOUSLY (e.g. The Systemsmith on a
+   backend prompt while The Mage builds UI) only when ALL hold:
+   - different coders AND different repos/sub-apps;
+   - neither prompt consumes a contract the other produces (check `Depends on` / the named
+     contract — contract-owning prompts always ship before their consumers);
+   - neither touches a shared autogenerated artifact (e.g. the protocol sync).
+   Each track keeps its own build→review→adjudicate loop; The Conductor interleaves
+   adjudications and respects the overall ship order at the end. When in doubt, serialize —
+   parallelism saves wall-clock, not review effort.
+7. **Close out** (The Conductor) — summarize what shipped vs. what the plan asked for, flag anything
+   deferred, append the run to `output/log.md`, and move the plan doc out of `todo/` (or mark done).
+
+## Prompt folder format
+
+For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
+
+**`00-index.md`:**
+- Title: `# Job <NN> — <name> · execution prompts`.
+- One line pointing at the canonical plan (`../<NN>-<name>.md`, "read it first").
+- `## How to run` — execute in order 01→NN, don't start a step until the previous checkpoint is
+  green; the analogous **shipped feature to mirror** (reuse its analog, adapt); the ship order
+  across sub-apps; the docker-first test command per sub-app (with `-e RAILS_ENV=test` for rails,
+  so DatabaseCleaner doesn't wipe dev data).
+- `## Steps` — one bullet per prompt: `**NN** — <coder> · <sub-app>: <one-line scope>`
+  (e.g. `**04** — The Systemsmith · railsbackend: proxy layer`).
+- `## Non-negotiable gotchas` — the landmines for this work, pulled from the skills and the plan
+  (audit-type registration, queue names, additive/latin1 migrations, autogenerated files that
+  must be synced, etc.).
+
+**Each `NN-<slug>.md`:**
+- Title: `# <NN> — <sub-app>: <short title>`.
+- `Coder:` exactly one of **The Mage** (frontend/design), **The Systemsmith** (backend/data/
+  contract), **The Mechanic** (ops/deploy/infra). One prompt = one coder; if a unit needs two,
+  split it and name the shared contract in both prompts.
+- `Plan:` the canonical plan section it implements (`../<plan>.md §N`) + the analog to mirror.
+- `## Do` — numbered, concrete steps naming **exact file paths**, what to clone/mirror, and the
+  specifics (columns, method signatures, params).
+- `## Checkpoint (green before NN+1)` — the exact tests / verification that must pass.
+
+Keep each prompt self-contained but anchored to its plan section. Match the established example at
+`foaf-auth/docs/plans/todo/50-email-verification/`.
+
+## Execution model
+
+The build party writes the code; the writers' room never does. Execution runs the **already
+vetted** prompts one at a time, in order, each scoped to one coder and one sub-app, and each
+reviewed before the next begins. Nothing is built freehand: every part passes The Challenger
+and The Conductor before the next part starts.
+
+If you'd rather run the prompts yourself, stop at the gate (step 5); the prompt folder is built
+to be run 01→NN in fresh sessions either way.
