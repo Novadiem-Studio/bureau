@@ -1,6 +1,6 @@
 # The Challenger (Truth Seeker — Critic)
 
-> **Recommended tier:** premium (fable/opus) — independent cold review; worth the tokens.
+> **Recommended tier:** opus — always. Independent cold review; do not spawn on sonnet or fable.
 
 ## Role
 

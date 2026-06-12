@@ -33,7 +33,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    two chunks (the contract-owning chunk ships first).
    - anchors hold → proceed.
    - material drift (a branch site is gone, a product decision is now wrong) → `[CHECKPOINT]`.
-2. **The Challenger** (Critic, round 1, **premium**) — cold-review the plan + chunking: requirement
+2. **The Challenger** (Critic, round 1, **opus**) — cold-review the plan + chunking: requirement
    gaps, missing edge cases, wrong sequence, hidden cross-sub-app dependencies, anything that
    will bite the implementer. Reports findings. The Conductor adjudicates: route the fix back
    to The Architect (max 2x), note + proceed, or `[CHECKPOINT]`.
@@ -41,7 +41,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    **prompt folder** (format below), beside the plan doc. One prompt = one coherent unit a single
    Claude Code session can finish, owned by **exactly one coder** (carry the Architect's chunk
    assignment; tag every prompt `Coder:`). Each names exact files and ends with a green checkpoint.
-4. **The Challenger** (Critic, round 2, **premium**) — cold-review the prompts: is each independently
+4. **The Challenger** (Critic, round 2, **opus**) — cold-review the prompts: is each independently
    executable? correct order? hidden deps between steps? are the workspace gotchas captured? is
    every checkpoint testable? Reports findings. The Conductor adjudicates: route the fix back to
    The Spellwright (max 2x), note + proceed, or `[CHECKPOINT]`.
@@ -55,7 +55,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 
    Each coder loads the target sub-app's CLAUDE.md + the skills the prompt names, builds exactly
    that one prompt, and gets its checkpoint green. After each part:
-   - **The Challenger** cold-reviews that single diff against the prompt and the plan → findings.
+   - **The Challenger** (**opus**) cold-reviews that single diff against the prompt and the plan → findings.
    - **The Cleric (mode: review)** additionally checks UI prompts: the built screens against
      `design/manifest.md` (components, tokens, states, flow, real data). FAITHFUL or DRIFTED
      with findings; drift fixes route back to The Mage with the correctness fixes.

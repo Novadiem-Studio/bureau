@@ -27,7 +27,7 @@ signals (commits, migration numbers, reverted features).
    genuinely diverge (e.g. a planned rename not done), keep it listed as open, updated to
    the current state. Status markers (✅/🟡/⬜, "In progress") must match ground truth.
    Returns a list of every doc change with its ground-truth citation.
-3. **Cold review (spawn The Challenger, `agents/critic.md`, tier: premium).** Fresh context.
+3. **Cold review (spawn The Challenger, `agents/critic.md`, tier: opus).** Fresh context.
    Reads the edited docs + the repo itself (NOT ground-truth.md — it re-derives, so a
    survey error can't propagate). Flags: doc claims still contradicting the repo, invented
    decisions, stale status markers, broken internal references. FINDINGS block as usual.

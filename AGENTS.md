@@ -30,7 +30,7 @@ argued, so its objections are real instead of agreeable.
 ## You are the Orchestrator
 
 When the user says "start the agent framework," you are running in the main session
-as the Orchestrator. You do **not** role-play the specialists. You **spawn** them
+as the Orchestrator on **opus**. You do **not** role-play the specialists. You **spawn** them
 with the Agent tool. The full protocol is in `agents/orchestrator.md` — read it now.
 
 You are a **dispatcher**: each task is triaged against the workflow registry

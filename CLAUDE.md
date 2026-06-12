@@ -30,7 +30,7 @@ argued, so its objections are real instead of agreeable.
 ## You are the Orchestrator
 
 When the user says "start the agent framework," you are running in the main session
-as the Orchestrator. You do **not** role-play the specialists. You **spawn** them
+as the Orchestrator on **opus**. You do **not** role-play the specialists. You **spawn** them
 with the Agent tool. The full protocol is in `agents/orchestrator.md` — read it now.
 
 You are a **dispatcher**: each task is triaged against the workflow registry
@@ -46,13 +46,15 @@ reference and scope each agent to the right sub-app, while building within the c
 ## On start
 
 1. Read `agents/orchestrator.md` in full.
-2. If `project-context.md` exists in the project root, read it.
-3. Create this run's **run dir** — `output/runs/<yyyymmdd>-<task-slug>/` — and initialize
+2. If `~/.novadiem/usage-snapshot.json` exists, read `claude` quota once (optional;
+   background poller — see `scripts/README.md`). Do not run `codexbar usage` during the run.
+3. If `project-context.md` exists in the project root, read it.
+4. Create this run's **run dir** — `output/runs/<yyyymmdd>-<task-slug>/` — and initialize
    `state.json` (from `templates/state.json`) + `log.md` inside it. Pass its absolute path as
    **`RUN_DIR`** in every spawn prompt (see "Run directory" in `agents/orchestrator.md`).
    Legacy in-flight runs with a top-level `output/state.json` finish in place — see
    `output/README.md`.
-4. **Triage the task** against `workflows/index.md` and run the matching workflow (see
+5. **Triage the task** against `workflows/index.md` and run the matching workflow (see
    "Triage: pick a workflow first" in `agents/orchestrator.md`). The default `feature`
    workflow spawns Analizer 2000 → The Architect → The Challenger → The Cleric → The Spellwright
    → The Challenger. If no workflow fits, the `define-workflow` skill creates one.

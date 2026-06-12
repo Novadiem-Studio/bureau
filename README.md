@@ -18,10 +18,14 @@ conventions, model tiers, and handoff blocks. External skills are documented in
 
 ## Model policy
 
-**Budget-aware tiers** — sonnet where the role can get away with it; **premium** (fable/opus)
-for architecture, cold critique, and subtle code. Don't burn premium tokens on translation
-and rubrics; don't cheap out on design lock-in or independent review. Details:
+**Budget-aware tiers** — sonnet where the role can get away with it; **opus** for The Conductor
+(main session) and The Challenger (always); **premium** (fable/opus) for Architect and
+build-party coders. Don't burn premium tokens on translation and rubrics. Details:
 `agents/orchestrator.md` § Model tiers.
+
+**Usage snapshot** — optional CodexBar poller writes `~/.novadiem/usage-snapshot.json` every
+5 minutes so the Conductor does not run `codexbar usage` on every spawn. Install:
+`./scripts/install-usage-poller.sh`. Docs: `scripts/README.md`, `DEPENDENCIES.md`.
 
 ## First time setup
 

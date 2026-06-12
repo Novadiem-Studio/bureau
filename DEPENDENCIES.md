@@ -27,6 +27,25 @@ The framework is self-contained in `agents/`, `workflows/`, and `templates/`. A 
 |------|---------|-------|
 | **Agent** (subagent spawn) | Conductor | Map model **tiers** from `agents/orchestrator.md` to the runtime's model ids |
 | **Claude Design** (human step) | Visionary + The Cleric | No API — `[DESIGN HANDOFF]` checkpoint; export lands in `RUN_DIR/design/handoff/` |
+| **CodexBar** + usage poller | Conductor (budget hints) | Optional. Install: `scripts/install-usage-poller.sh`. Reads `~/.novadiem/usage-snapshot.json` — do not call `codexbar usage` per spawn |
+
+## Usage poller (optional)
+
+Keeps Claude quota fresh without blocking the Conductor on OAuth fetches (~15–30s each).
+
+```bash
+# One-time install (macOS launchd, every 5 min)
+./scripts/install-usage-poller.sh
+
+# Or manual refresh
+./scripts/poll-usage-snapshot.sh
+cat ~/.novadiem/usage-snapshot.json | jq '.claude'
+```
+
+Requires **CodexBar** (`brew` or upstream) and **jq**. Snapshot path: `NOVADIEM_USAGE_SNAPSHOT_PATH`.
+Do not use `~/Library/Caches/CodexBar/cost-usage/*.json` for quotas — that is historical cost, not live limits.
+
+Full install, schema, and ops: **`scripts/README.md`**.
 
 ## Adding a dependency
 
