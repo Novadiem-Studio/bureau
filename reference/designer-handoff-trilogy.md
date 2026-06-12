@@ -188,7 +188,7 @@ museum exhibit explaining institutional routing. NOT a fantasy party, NOT charac
 Center: abstract CONDUCTOR glyph — split-spiral diamond routing mark in circuit cyan,
 glowing on brass hub.
 
-Middle ring: ten specialist stations as small brass sigils with gold mono labels only
+Middle ring: nine specialist stations as small brass sigils with gold mono labels only
 (ANALIZER 2000, THE ARCHITECT, THE CHALLENGER, THE CLERIC, THE SPELLWRIGHT,
 THE COUNSELOR, THE MAGE, THE SYSTEMSMITH, THE MECHANIC). Spokes connect each
 to center only — no cross-links between specialists.
@@ -198,7 +198,10 @@ SPEC PLAN BRIEF MANIFEST PROMPTS LOG STATE.
 
 Below the apparatus: THE VISIONARY as an intent entry marker (abstract, not a portrait).
 
-Perimeter engraved rules in DM Mono gold. Novadiem emblem as brass institutional seal.
+Perimeter engraved rules in DM Mono gold. Novadiem emblem as brass institutional seal,
+once, near the Archive ring — the emblem belongs to the institution, not the Conductor.
+Any omega/alpha shapes stay small, discovered inside the routing traces — never a giant
+Omega as the centerpiece or seal.
 
 Circuit cyan traces on brass. World's Fair futurism. Clean, legible, hopeful.
 
@@ -215,7 +218,7 @@ NO elf faces, NO dwarves, NO imp characters, NO workshop interior scene, NO taro
 
 ## Composition checklist
 
-- [ ] **Tier 1 (top):** The Visionary — human male, straw trilby, outside the machine, intent entering downward
+- [ ] **Tier 1 (top):** The Visionary — human male, straw trilby, outside the machine, intent entering downward; holographic projection before his face as gaze anchor (inspired, not scheming)
 - [ ] **Tier 2:** Massive Conductor rotunda — split-spiral field, α right / Ω left, 360° holo interface, warm expression, crown circuitry
 - [ ] **Tier 3:** Specialists as forces in concentric rings (not workers at a table) — species per VISUAL-CANON
 - [ ] **Base:** Archive foundation — seven collection pillars / cabinet
@@ -229,7 +232,7 @@ NO elf faces, NO dwarves, NO imp characters, NO workshop interior scene, NO taro
 | Member | Render as |
 |--------|-----------|
 | Visionary | Robin likeness — `visionary-reference.png` |
-| Conductor | Living current, shaved head + crown circuitry, semi-translucent, mudra in holo bubble |
+| Conductor | Living current, shaved head + crown circuitry, circuit pattern over the face (energy, not plain skin), goatee + moustache with curled forked tips (split-spiral echo), **ornate open vest** over energy torso — never shirtless, semi-translucent, mudra in holo bubble |
 | Analizer 2000 | Warm-gold vintage robot |
 | Architect | Hairless silver-grey stellar being — NOT blue elf |
 | Challenger | Small male imp at paper desk |

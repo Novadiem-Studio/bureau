@@ -24,7 +24,7 @@ don't duplicate its runbook.
 The **writers' room** reviews, decomposes, and re-reviews (steps 1-4). The **build party** then
 builds the vetted prompts part by part (steps 5-7), each part reviewed before the next.
 
-1. **The Architect** (**premium**) — orient (`monorepo-orientation`), read the plan in full,
+1. **The Architect** (**opus**) — orient (`monorepo-orientation`), read the plan in full,
    and verify it still fits the **current** code (spot-check the plan's critical files and symbol
    anchors; plans drift). Define the chunking: the ordered list of scoped units by sub-app /
    layer, the ship order across sub-apps, the analogous shipped feature each chunk mirrors, and

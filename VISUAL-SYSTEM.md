@@ -469,6 +469,26 @@ Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 | THE FRONTIER *(proposed)* | `reference/the-frontier-outcomes-v1.png` |
 | Build Party companion | `reference/the-build-party-execute-plan-v1.png` |
 
+## Theme variants — day / night (canon)
+
+The site flips between day and night mode, and the hero art flips with it. So every
+locked poster-family piece ships as a **pair**:
+
+- **Night (master).** The default Sacred Instrument palette — Deep Instrument ground,
+  Filament Gold, Circuit Cyan glow. This is the version that gets locked first and
+  carries the `-v1.png` name.
+- **Day (variant).** The *same composition relit*, saved beside the master as
+  `…-v1-light.png`. Bright atrium light, ivory/parchment grounds, brass and gold
+  holding their warmth, cyan surviving as accent rather than glow. Navy panels become
+  ink linework on light surfaces.
+
+**Same composition, different lighting — never two different pieces.** A theme toggle
+that reflows the scene reads as a glitch, not a mode. Produce the day variant by
+*relighting* the locked night master (image-edit: "same image, daylight version"),
+not by commissioning fresh — relights preserve layout; regenerations don't.
+
+Lock the night master before commissioning its day variant.
+
 ## Designer handoff
 
 Full brief, composition checklists, exact copy, and image-gen prompts:

@@ -1,0 +1,19 @@
+{
+  "id": "sonnet-burn",
+  "description": "Drain the Sonnet pool (target ~25% left). Spawn don't inline; never touches locked roles.",
+  "activate_when": {
+    "sonnetBurnMode": true
+  },
+  "overrides": {
+    "analyst": "sonnet",
+    "cleric": "sonnet",
+    "spellwright": "sonnet",
+    "counselor": "sonnet",
+    "mechanic": "sonnet"
+  },
+  "conductor_notes": [
+    "Sonnet burn active — spawn specialists instead of drafting in the Conductor session.",
+    "Split delegatable work into more sonnet passes.",
+    "Architect and Mage stay opus (locked). Challenger stays opus."
+  ]
+}

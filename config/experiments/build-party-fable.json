@@ -1,0 +1,15 @@
+{
+  "id": "build-party-fable",
+  "description": "Architect + Mage both on premium (fable) — manual experiment.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "architect": "premium",
+    "mage": "premium"
+  },
+  "conductor_notes": [
+    "Build party on fable: Architect + Mage are premium, not opus.",
+    "Challenger stays opus. Escalate either role to opus on thin handoff."
+  ]
+}

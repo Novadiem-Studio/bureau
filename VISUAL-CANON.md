@@ -63,6 +63,8 @@ These remain valid for **character locks** and reference. Combining them in one 
 
 A variant that labels the center figure "Visionary / Conductor" or "Rheo" is **wrong** — reject and regenerate.
 
+**Family resemblance is canon (echo, never twin).** The Society manifests through the Visionary, so members who take human-adjacent shape may carry a subtle echo of his features — the **Conductor** foremost (goatee, brow), the **Mage** faintly. This is intentional: the beings exist through him. Resemblance yes; same person, never. Two distinct figures, two distinct stations, two distinct labels — always.
+
 ### Ω symbol usage (Conductor + studio)
 
 The Ω is part of The Conductor's visual language — a **manifestation of flow**, not an identity badge.
@@ -80,6 +82,15 @@ The Ω is part of The Conductor's visual language — a **manifestation of flow*
 **Solo tarot (Card I — The Magician):** luminous Ω overhead is permitted.
 
 The Ω should feel **discovered**, not worn.
+
+**Symbol hierarchy (emblem vs Ω — when both share a composition):**
+
+```
+NOVADIEM contains THE SOCIETY contains THE CONDUCTOR,
+who regulates THE CURRENT, which manifests α and Ω
+```
+
+The **emblem** identifies the institution; **α/Ω** describe the current's behavior. Separate symbolic domains — never merged. The emblem always occupies a **higher architectural layer** (wall seal, plaque, insignia) than Ω (routing field, circuitry, flow geometry). A giant Ω standing in as the institutional seal, or the emblem worn as the Conductor's personal mark, is wrong — reject and regenerate.
 
 ### Forbidden subtitle inventions
 Never substitute these or similar:
@@ -128,7 +139,7 @@ The official Novadiem emblem replaces generic sunbursts or mystery sigils as the
 
 Render as: brass-and-enamel seal, architectural relief, illuminated wall plaque, stained-glass interpretation, or institutional insignia — like a NASA patch, Starfleet delta, or civic seal.
 
-**Not** a mystical focal object. **Not** larger than the Society itself.
+**Not** a mystical focal object. **Not** larger than the Society itself. **Once per composition** — embedded in the building, never repeated as branding or wallpaper. Never the Conductor's personal symbol (see *Symbol hierarchy* under Ω usage).
 
 **Preferred placement:** above or near The Archive, on the back wall, integrated into architecture (relief, plaque, or window).
 
@@ -228,7 +239,7 @@ One continuous institutional hall. Busy but purposeful — every specialist **ac
 - Archive as physical prop with readable labels
 - Challenger small at desk with papers
 - Systemsmith dwarf at forge
-- Conductor: **split-spiral cosmic circuitry**, wardrobe **flexible** (energetic cloth or circuitry-as-garment), **in motion**
+- Conductor: **split-spiral cosmic circuitry**, **ornate open vest** (canon — see THE CONDUCTOR § Appearance), **in motion**
 - Counselor: distinguished elder **of African descent**, Guinan-like presence, **relationally active**
 - Cleric: fae healer with **iridescent fairy wings**, geometric manifest (not forest druid)
 - Mage: tools of light (not armored knight)
@@ -406,6 +417,8 @@ Do **not** put roman numerals on the ensemble grid or process poster.
 
 **Workshop behavior:** Usually **looking at his own workstation** — reviewing plans, monitoring flow, engaged with the mission. Directing attention toward the work, not posing for the room. Avoid gazing at other specialists unless story context requires it.
 
+**Gaze anchor (required when his face is visible):** a **holographic screen or inspiring projection floats before him** — a rising future city, luminous blueprint, concept render — and he is looking *at it*. The visible object of his attention makes the downward gaze read as inspiration and engagement, never scheming or surveillance.
+
 **Feeling:** Explorer · Inventor · Founder · Builder of futures
 
 **NOT:** A different actor or generic stock founder. Wizard-king imagery. Staff/scepter props. Duplicate figures in ensemble layouts. Idle portrait pose scanning the ensemble.
@@ -426,12 +439,14 @@ Do **not** put roman numerals on the ensemble grid or process poster.
 **Nature:** A living current of organized flow. Appears human because human minds find the shape comfortable. Not fully human — not a ghost, not a hologram. A coherent intelligence manifested as a person.
 
 **Appearance:**
-- Shaved head, strong facial features — **80% recognizable person, 20% visible energy**
+- Shaved head, strong facial features — a **recognizable person made of visible energy**. Warmth comes from expression and feature, never from flesh tones
+- **Face is energy, not plain skin (canon):** the living circuit pattern on his body continues **right over the face** — brow, cheekbones, jaw, scalp one unbroken field. Features stay readable and warm, but the surface is organized light, never untextured human skin
+- **Facial hair (canon):** goatee and moustache sculpted with **curled, forked tips** — moustache ends sweep up into small spirals, the goatee tapers to a curled point: the swashbuckler cut (Robin Hood, Green Arrow). The curls deliberately **echo the split-spiral motif** — his own face carries the fork. Not bushy, not a wizard beard. A quiet echo of the Visionary's own (see *Family resemblance* under the two-figures rule)
 - **Expression:** calm, warm, attentive — wise and compassionate, never stern, angry, or judging (see personality in `LORE.md`)
 - **Head markings (required):** split-spiral cosmic circuitry on **scalp and crown** — band, diamond, or chained pattern; the shaved head is **not** bare. Crown mark may mirror sternum or carry its own fork
 - Semi-translucent skin: currents, stars, and geometry visible beneath the surface; edges dissolve subtly into light and information pathways
 - **Cosmic circuitry on and through the body** — luminous lines integrated with skin the way tattoos read, but they are **living circuit paths**, not ink. Energy runs through them; they glow, pulse, and reroute when he conducts. In some motif directions the same lines **read as his clothes** — collar, jacket silhouette, flowing coat-shapes woven from the body-field (circuit-garment), not printed fabric. Optional secondary cues: flowing body-linework (Aang-like trails) and sharp joint traces (Nightcrawler-like angles) — but the **split-spiral motif** (below) is primary
-- **Wardrobe (flexible — not locked to dark):** depends on commission and motif direction. May wear **energetic** fitted garments (colour, pattern, motion) *under or beside* the circuitry; or circuitry alone may carry the silhouette. Dark charcoal/indigo was one valid exploration, not the default. **Circuitry stays primary** when both appear. Never priestly all-white robes, never golden saint vestments
+- **Wardrobe (canon): an ornate open vest.** Richly worked — deep brocade-style etching, brass/gold edging, split-spiral circuitry woven through the garment so vest and body-field read as **one system**. Worn open over the energy torso: the chest mark and body circuitry stay visible, arms bare so the current shows. Colorway may shift with the motif direction, but the vest itself is constant. **Never shirtless / bare-torso-only**, never priestly all-white robes, never golden saint vestments. Circuitry stays primary; the vest frames it
 
 **The split-spiral motif (signature — required):**
 
@@ -486,11 +501,14 @@ Preferred vocabulary: **mudras** — precise finger positions, tap and slide on 
 |---|---|
 | Mudra hands tap/slide on 360° holo interface; α/Ω streams at hands; arms to ~¾ extension inside the bubble | Hands above head; reaching outside the interface volume |
 | Warm calm expression; split-spiral on crown/scalp | Stern, angry, or judging face; bare shaved head |
+| Goatee + moustache with curled, forked tips — split-spiral echo (Robin Hood / Green Arrow cut) | Clean-shaven face; bushy wizard beard |
+| Circuit pattern continues over the face — energy being with readable features | Plain unmarked human skin on the face |
+| Ornate open vest over the energy torso (chest mark visible, arms bare) | Shirtless / bare torso with no garment |
 | Ω emerging inside flow and cosmic circuitry | Floating Ω halo behind head |
 | Electrical alpha-current in **right** hand | Giant chest emblem / worn badge |
 | Watery omega-flow in **left** hand | All-gold light-statue with no face |
 | Split-spiral cosmic circuitry on skin + field | White priest robes; fabric-patch motifs |
-| Energetic wardrobe or circuitry-as-garment (motif-dependent) | Locked dark-only outfit every image |
+| Vest ornamentation woven with split-spiral circuitry (colorway motif-dependent) | Locked dark-only outfit every image |
 
 **Energy language:**
 - Right hand: alpha-current — filament-thin, electrical, initiation
@@ -671,6 +689,7 @@ His controls exist in the air around him — always within the bubble he can ope
 - Subtle neural augmentations, luminous circuitry, elegant technological enhancements
 - Slender and quick; eyes reflect whatever interface he is conjuring
 - **Tools made of light** — surfaces of light take shape under his hands
+- May carry a **faint echo** of the Visionary's features (see *Family resemblance* — optional, subtle)
 - Own framed panel in all ensemble layouts
 
 **NOT:** Female. Heavily armored. Fantasy wizard robes. Hacker at a workstation. Designer at a conventional desk.
