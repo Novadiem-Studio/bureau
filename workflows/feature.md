@@ -22,7 +22,7 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model tiers" in
 `RUN_DIR` as an absolute path in every spawn prompt.
 
 1. **Analizer 2000** (Analyst, **sonnet**) — requirements, scope, edge cases → `spec.md` (Requirements)
-2. **The Architect** (**premium**) — system design + plan → `spec.md` (Architecture), `plan.md`
+2. **The Architect** (**opus**) — system design + plan → `spec.md` (Architecture), `plan.md`
 3. **[DESIGN-MODEL CHECKPOINT]** (mandatory) — The Conductor shows the human the Architect's
    design-model summary + over-baseline mechanism list, waits for go or a model correction
    (see "Design-model checkpoint" in `agents/orchestrator.md`)

@@ -1,0 +1,14 @@
+{
+  "id": "architect-fable",
+  "description": "Architect on premium (fable) instead of opus — manual experiment.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "architect": "premium"
+  },
+  "conductor_notes": [
+    "Architect on premium (fable) — spawn with model mapped from premium tier.",
+    "Escalate to opus if design pass is thin or contradicts requirements after one fix."
+  ]
+}

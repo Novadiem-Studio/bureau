@@ -31,8 +31,11 @@ done < <(rg -n 'output/(spec|plan|prompts|log|design|state)\.' agents workflows 
   || true)
 
 echo "== model tiers in feature workflow"
-if ! grep -q 'premium' workflows/feature.md; then
-  err "workflows/feature.md should reference premium tier for Architect"
+if ! grep -q 'Architect.*opus' workflows/feature.md; then
+  err "workflows/feature.md should reference opus tier for Architect"
+fi
+if [[ ! -f config/model-policy.json ]]; then
+  err "missing config/model-policy.json"
 fi
 if ! grep -q 'Challenger.*opus' workflows/feature.md; then
   err "workflows/feature.md should reference opus tier for Challenger"

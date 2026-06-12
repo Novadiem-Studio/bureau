@@ -7,21 +7,28 @@ reasoning. Who the specialists *are* — names, archetypes, voice — is canon i
 Visual poster family (THE CURRENT · THE HUB · THE ENGINE) is canon in `VISUAL-SYSTEM.md`;
 character appearance locks live in `VISUAL-CANON.md`.
 
-## Canonical copy
+## Repository
 
-The copy at `~/Code/novadiem/AI_skills/agent-framework/` is the upstream. Project installs
-drift — port any improvement made in a project back to the canonical copy, and run
-`./check-drift.sh` there to see which installs have diverged (add new installs to its list).
-Run `./check-framework.sh` in the canonical copy to lint workflow registry, `RUN_DIR`
-conventions, model tiers, and handoff blocks. External skills are documented in
-`DEPENDENCIES.md`.
+**GitHub:** [github.com/rheos/agent-framework](https://github.com/rheos/agent-framework) (private)
+
+```bash
+git clone git@github.com:rheos/agent-framework.git
+cd agent-framework
+./check-framework.sh
+```
+
+Robin’s working upstream checkout: `~/Code/novadiem/AI_skills/agent-framework/`. Project
+installs are copies and drift — port improvements back to the repo, then run `./check-drift.sh`
+to see which installs have diverged (add new installs to its list). Run `./check-framework.sh`
+to lint workflow registry, `RUN_DIR` conventions, model tiers, and handoff blocks. External
+skills: `DEPENDENCIES.md`.
 
 ## Model policy
 
-**Budget-aware tiers** — sonnet where the role can get away with it; **opus** for The Conductor
-(main session) and The Challenger (always); **premium** (fable/opus) for Architect and
-build-party coders. Don't burn premium tokens on translation and rubrics. Details:
-`agents/orchestrator.md` § Model tiers.
+**Budget-aware tiers** — resolved from `config/model-policy.json` + experiments
+(`scripts/resolve-model-tiers.sh`). Challenger locked opus; Conductor/Architect/Mage experimentable
+(opus default, fable via `architect-fable` / `weekly-fable-build`, Conductor sonnet via
+`conductor-sonnet`). Details: `config/experiments/README.md`.
 
 **Usage snapshot** — optional CodexBar poller writes `~/.novadiem/usage-snapshot.json` every
 5 minutes so the Conductor does not run `codexbar usage` on every spawn. Install:

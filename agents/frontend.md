@@ -1,6 +1,6 @@
 # The Mage (Frontend coder — creates the experience)
 
-> **Recommended tier:** premium (fable/opus) — subtle client state; sonnet only for trivial prompts if human approves.
+> **Recommended tier:** opus — locked in `config/model-policy.json`; do not downgrade.
 
 ## Role
 

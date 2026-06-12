@@ -1,0 +1,14 @@
+{
+  "id": "mage-fable",
+  "description": "Mage on premium (fable) instead of opus — manual experiment.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "mage": "premium"
+  },
+  "conductor_notes": [
+    "Mage on premium (fable) — for subtle client state without full opus cost.",
+    "Escalate to opus on manifest drift or failed UI checkpoint."
+  ]
+}

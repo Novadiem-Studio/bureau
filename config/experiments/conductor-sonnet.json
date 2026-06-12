@@ -1,0 +1,18 @@
+{
+  "id": "conductor-sonnet",
+  "description": "Main session (Conductor) on sonnet — strict routing only. Manual experiment.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "conductor": "sonnet"
+  },
+  "conductor_notes": [
+    "CONDUCTOR-SONNET: set main session to sonnet (/model sonnet). Routing-only mode.",
+    "Do not draft spec/architecture/critique/prompts inline — spawn every time.",
+    "Adjudicate mechanically: BLOCKER → route fix; WARNING → log + proceed; else proceed.",
+    "On [CHECKPOINT], ambiguous findings, or second critic loop → stop and ask human to /model opus.",
+    "Read RUN_DIR/model-tiers.json and state.json every phase — do not rely on chat memory.",
+    "Challenger and Architect/Mage tiers come from resolved policy — do not change them here."
+  ]
+}

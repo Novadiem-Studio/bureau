@@ -9,8 +9,9 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 
 ## Canonical copy and drift
 
-`~/Code/novadiem/AI_skills/agent-framework/` is the **canonical upstream**. Project installs
-are copies, and they drift. Two rules:
+**Canonical upstream:** [github.com/rheos/agent-framework](https://github.com/rheos/agent-framework).
+Robin’s working checkout: `~/Code/novadiem/AI_skills/agent-framework/`. Project installs are
+copies, and they drift. Two rules:
 
 1. **Improvements flow upstream.** Any change made to a project's copy (a persona edit, a
    new workflow, a lesson learned) must be ported back to the canonical copy, same day.
@@ -54,7 +55,9 @@ reference and scope each agent to the right sub-app, while building within the c
    **`RUN_DIR`** in every spawn prompt (see "Run directory" in `agents/orchestrator.md`).
    Legacy in-flight runs with a top-level `output/state.json` finish in place — see
    `output/README.md`.
-5. **Triage the task** against `workflows/index.md` and run the matching workflow (see
+5. Run `scripts/resolve-model-tiers.sh`; copy `~/.novadiem/resolved-model-tiers.json` to
+   `RUN_DIR/model-tiers.json`. Spawn using resolved tiers — see `config/experiments/README.md`.
+6. **Triage the task** against `workflows/index.md` and run the matching workflow (see
    "Triage: pick a workflow first" in `agents/orchestrator.md`). The default `feature`
    workflow spawns Analizer 2000 → The Architect → The Challenger → The Cleric → The Spellwright
    → The Challenger. If no workflow fits, the `define-workflow` skill creates one.

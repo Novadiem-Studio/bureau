@@ -1,0 +1,15 @@
+{
+  "id": "weekly-fable-build",
+  "description": "When weekly quota is hot, try Architect+Mage on fable instead of opus.",
+  "activate_when": {
+    "weeklyUsedPercent_gte": 70
+  },
+  "overrides": {
+    "architect": "premium",
+    "mage": "premium"
+  },
+  "conductor_notes": [
+    "Weekly >= 70% used — Architect and Mage on premium (fable) to spare opus.",
+    "Escalate either to opus if handoff fails one routed fix."
+  ]
+}

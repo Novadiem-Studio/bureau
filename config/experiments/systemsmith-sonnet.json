@@ -1,0 +1,13 @@
+{
+  "id": "systemsmith-sonnet",
+  "description": "Try backend build prompts on sonnet — manual experiment only.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "systemsmith": "sonnet"
+  },
+  "conductor_notes": [
+    "Systemsmith on sonnet — escalate to premium/opus if handoff is thin after one fix."
+  ]
+}

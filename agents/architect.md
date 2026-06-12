@@ -1,6 +1,6 @@
 # The Architect (Systems Visionary)
 
-> **Recommended tier:** premium (fable/opus) — highest-leverage design; do not downgrade by default.
+> **Recommended tier:** opus — locked in `config/model-policy.json`; do not downgrade.
 
 ## Role
 
