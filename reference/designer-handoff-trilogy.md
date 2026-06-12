@@ -1,10 +1,10 @@
-# Designer handoff — Visual System v2 trilogy
+# Designer handoff — Visual System v2 poster family
 
 **For:** designer / image-gen commissions  
 **Canon:** `VISUAL-SYSTEM.md` · `VISUAL-CANON.md` · `LORE.md`  
 **Public site:** material language only — `novadiem.com/docs/brand-brief-sacred-instrument.md`
 
-**Commission order:** THE CURRENT → THE HUB → THE ENGINE → Build Party companion (optional fourth sheet).
+**Commission order:** THE CURRENT → THE HUB → THE ENGINE → Build Party companion. **THE FRONTIER** (proposed IV) — after trilogy ships.
 
 **Do not merge** pieces in one prompt.
 
@@ -42,7 +42,7 @@
 - [ ] Left: **IDEA** entry node (lightbulb or intent glyph — abstract, not character)
 - [ ] Full-width brass rail labeled **THE CURRENT OF INTENT** (cyan energy flowing continuously L→R)
 - [ ] Stations drop from rail (not inline boxes on the rail): Analizer 2000 → Architect → DESIGN-MODEL CHECKPOINT → Challenger (round 1) → Cleric fork → Spellwright → Challenger (round 2)
-- [ ] Exit right: **`prompts.md` — vetted & scoped** + subline *execute-plan builds from here*
+- [ ] Exit right: **`prompts.md` — vetted & scoped** + subline *execute-plan builds from here* + faint ghost arrow *→ shipped work* (toward THE FRONTIER)
 - [ ] Beneath rail: continuous **Conductor side-channel** pulsing to `log.md` · `state.json` — not a station box
 - [ ] Cleric fork: NOT NEEDED bypass to Spellwright; DESIGN REQUIRED path through brief → HUMAN HANDOFF → manifest
 - [ ] Dashed red/gold return loops: Challenger findings → Conductor routes (max 2×) — no specialist-to-specialist arrows
@@ -342,14 +342,80 @@ Title: NOVADIEM STUDIO · THE BUILD PARTY · EXECUTE-PLAN WORKFLOW
 
 ---
 
+# V. THE FRONTIER *(proposed — do not commission yet)*
+
+**Subtitle:** OUTCOMES OF THE SOCIETY  
+**Format:** Horizontal wide landscape ~2:1  
+**Character art:** None — strongest public-site candidate
+
+## Composition checklist
+
+- [ ] **Small** intent entry (upper left) — abstract glyph, not Visionary portrait
+- [ ] **Small** instrument silhouette (Engine/Hub abstract, ≤15% frame) — brass schematic only
+- [ ] Subtle Archive → Build Party trace (cyan path: collections → manifestation → ship)
+- [ ] **Dominant** frontier field: outcomes at civic scale (see categories below)
+- [ ] Title THE FRONTIER / OUTCOMES OF THE SOCIETY
+- [ ] Optional caption: mission line from `LORE.md`
+- [ ] Minimal footer — *Better Outcomes.* or structure line only
+- [ ] No logos, no product screenshots unless later case-study inset commission
+
+## Outcome categories (abstract civic scale)
+
+- Web applications / SaaS as streamlined instrument panels
+- Community platforms / exchange networks
+- Compliance and operational systems as public infrastructure
+- Data and deployment arcs
+- Art Deco future city / World's Fair skyline / hopeful frontier settlement
+
+## Copy to render
+
+```
+NOVADIEM STUDIO
+THE FRONTIER
+OUTCOMES OF THE SOCIETY
+
+We turn ideas into finished work through coordinated specialists and a shared project record.
+
+Better Outcomes.
+```
+
+## Image-gen prompt
+
+```
+Sacred Instrument wide landscape poster, horizontal 2:1. Deep navy #0B1020.
+
+THE FRONTIER — outcomes dominate, institution is small. TVA Art Deco World's Fair
+optimism. NOT a team poster, NOT character art, NOT product marketing grid.
+
+Upper left: small abstract INTENT marker. Below it: tiny brass instrument silhouette
+(the Society as distant schematic — orrery hint, not characters) feeding cyan traces
+from Archive collections through Build Party into a vast luminous frontier.
+
+Dominant lower two-thirds: THE FRONTIER OF CREATION — civic-scale emergence:
+streamlined application interfaces as instrument panels, community network flows,
+infrastructure arcs, Art Deco future city skyline, designed artifacts made real.
+Circuit cyan #3ECFCF and filament gold #C9A227 on brass geometry. Hopeful daylight.
+
+Society/instrument occupies no more than 15% of frame. This is what the machine
+built for the world — not the machine itself.
+
+DM Mono gold labels. Museum exhibit after the machine room. No fantasy races,
+no tarot, no cyberpunk dystopia.
+
+Title: NOVADIEM STUDIO · THE FRONTIER · OUTCOMES OF THE SOCIETY
+```
+
+---
+
 ## Delivery spec
 
-| Deliverable | Format | Min resolution |
-|-------------|--------|----------------|
-| THE CURRENT | PNG + source | 4000×2000 |
-| THE HUB | PNG + source | 3000×3000 |
-| THE ENGINE | PNG + source | 3000×4500 |
-| Build Party | PNG + source | 4000×2000 |
+| Deliverable | Format | Min resolution | Status |
+|-------------|--------|----------------|--------|
+| THE CURRENT | PNG + source | 4000×2000 | Commission |
+| THE HUB | PNG + source | 3000×3000 | Commission |
+| THE ENGINE | PNG + source | 3000×4500 | Commission |
+| Build Party | PNG + source | 4000×2000 | Companion |
+| THE FRONTIER | PNG + source | 4000×2000 | **Proposed** |
 
 Save finished files to `reference/` using names in `reference/README.md`.
 

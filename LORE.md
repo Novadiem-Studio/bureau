@@ -24,8 +24,8 @@ knowledge repository that serves as the studio's collective memory.
 
 This file is the canon: names, archetypes, and voice. The mechanics — spawn protocol,
 workflows, handoff formats — live in `CLAUDE.md`, `agents/`, and `workflows/`. Poster
-composition (THE CURRENT · THE HUB · THE ENGINE) lives in `VISUAL-SYSTEM.md`; character
-appearance locks live in `VISUAL-CANON.md`. When lore and mechanics disagree, the
+composition (THE CURRENT · THE HUB · THE ENGINE · proposed THE FRONTIER) lives in
+`VISUAL-SYSTEM.md`; character appearance locks live in `VISUAL-CANON.md`. When lore and mechanics disagree, the
 mechanics win and this file gets fixed.
 
 ## The cast, mapped to the machinery

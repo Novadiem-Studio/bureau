@@ -1,7 +1,7 @@
 # Novadiem Studio AI Framework — Visual Character Canon
 
 **Version:** 2.1  
-**Purpose:** Character, appearance, and composition spec. Defines *who* each member is and *what they look like*. Poster **composition** and the primary three-piece family live in **`VISUAL-SYSTEM.md`** (THE CURRENT · THE HUB · THE ENGINE).
+**Purpose:** Character, appearance, and composition spec. Defines *who* each member is and *what they look like*. Poster **composition** and the primary poster family live in **`VISUAL-SYSTEM.md`** (THE CURRENT · THE HUB · THE ENGINE · proposed THE FRONTIER).
 
 **How to use:** Apply a visual style in a separate prompt (Sacred Instrument HUD, illuminated poster, watercolor, etc.). This document is the invariant **character** layer beneath any style pass.
 
@@ -18,8 +18,9 @@ New commissions use the **v2 trilogy** — do not merge in one prompt:
 | **THE CURRENT** | Feature Workflow | **No** — routing rail + stations |
 | **THE HUB** | The Society of Specialists | Sigils / labels only |
 | **THE ENGINE** | The Great Engine of Creation | **Yes** — flagship; species locks below apply |
+| **THE FRONTIER** *(proposed)* | Outcomes of the Society | **No** — outcomes dominate; public-site candidate |
 
-Supersedes: Assembly Line · character grid as architecture diagram · workshop scene as flagship.
+Supersedes: Assembly Line · character grid as architecture diagram · workshop scene as flagship. Commission FRONTIER after trilogy ships.
 
 ---
 

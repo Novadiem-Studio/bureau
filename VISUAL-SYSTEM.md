@@ -1,24 +1,27 @@
 # Novadiem Studio Framework — Visual System v2
 
-**Version:** 2.0  
-**Purpose:** Primary poster family for the framework — process, structure, and philosophy as three coherent artifacts.  
+**Version:** 2.1  
+**Purpose:** Primary poster family for the framework — process, structure, philosophy, and (proposed) outcomes.  
 **Authority:** Poster composition and material language live here. Character species and appearance live in `VISUAL-CANON.md`. Mechanics live in `workflows/` and `agents/`. Lore lives in `LORE.md`.
 
-**Supersedes as primary family:** Assembly Line poster · character grid as architecture diagram · workshop scene / annotated roster as flagship poster. Those explorations remain valid **reference** for tone and character locks; new commissions follow this trilogy.
+**Supersedes as primary family:** Assembly Line poster · character grid as architecture diagram · workshop scene / annotated roster as flagship poster. Those explorations remain valid **reference** for tone and character locks; new commissions follow the trilogy first.
 
 ---
 
-## The trilogy
+## The poster family
 
-| # | Title | Subtitle | Answers |
-|---|---|---|---|
-| I | **THE CURRENT** | FEATURE WORKFLOW | How does a feature move through the Society? |
-| II | **THE HUB** | THE SOCIETY OF SPECIALISTS | How is the Society structured and routed? |
-| III | **THE ENGINE** | THE GREAT ENGINE OF CREATION | What is the Society, philosophically? |
+| # | Title | Subtitle | Answers | Status |
+|---|---|---|---|---|
+| I | **THE CURRENT** | FEATURE WORKFLOW | How does a feature move through the Society? | **Commission** |
+| II | **THE HUB** | THE SOCIETY OF SPECIALISTS | How is the Society structured and routed? | **Commission** |
+| III | **THE ENGINE** | THE GREAT ENGINE OF CREATION | What is the Society, philosophically? | **Commission** |
+| IV | **THE FRONTIER** | OUTCOMES OF THE SOCIETY | What does the Society produce? | **Proposed** |
 
-Together they explain **process**, **structure**, and **philosophy**.
+The trilogy explains **process**, **structure**, and **philosophy**. THE FRONTIER completes the set with **emergence** — what leaves the system.
 
-**Do not merge** these three in one prompt — same rule as character deliverables in `VISUAL-CANON.md`.
+**Commission order:** I → II → III first. IV after trilogy ships. Build Party sheet is a workflow companion, not a poster-family member.
+
+**Do not merge** pieces in one prompt — same rule as character deliverables in `VISUAL-CANON.md`.
 
 ---
 
@@ -89,7 +92,7 @@ PROMPTS READY
 
 Conductor artifacts flow **beneath the rail** — continuous orchestration, not a box in the sequence.
 
-Exit label: **`prompts.md` — vetted & scoped** (not `EXPORTS.MD`). Optional subline: *execute-plan builds from here.*
+Exit label: **`prompts.md` — vetted & scoped** (not `EXPORTS.MD`). Optional sublines: *execute-plan builds from here* · faint ghost arrow *→ shipped work* (points toward THE FRONTIER without duplicating it).
 
 ---
 
@@ -296,9 +299,130 @@ Same Sacred Instrument material language as I and II, at **monumental scale** �
 
 Character depiction **allowed** on THE ENGINE only (flagship). Species locks still apply. Solo portraits remain the lock source for drift-prone members.
 
+**Note:** THE ENGINE centers the **machine**. THE FRONTIER (below) inverts the hierarchy — outcomes dominate, Society is small.
+
 ---
 
-# Design rules across all three
+# IV. THE FRONTIER *(proposed)*
+
+**Subtitle:** OUTCOMES OF THE SOCIETY
+
+**Purpose:** Show what emerges from the Society — the creation, not the institution.
+
+**Status:** Proposed fourth poster. **Do not commission before the trilogy ships.**
+
+**Workflow source:** Not one workflow — the **output** of `feature` → `execute-plan` → shipped artifact. Visually: intent enters a small instrument; finished work dominates the frame.
+
+**Replaces:** legacy process-poster step 5 (OUTCOMES / luminous city) as a standalone piece.
+
+**Public-site fit:** Strongest candidate for **material-language-only** credential art on novadiem.com — no Society characters required (`brand-brief-sacred-instrument.md`).
+
+---
+
+## Core concept
+
+The framework is not about the specialists. It is about **what gets built**.
+
+The Society appears **small** — a distant instrument silhouette, brass schematic, or compact hub glyph. The **frontier of creation** dominates: applications, products, communities, businesses, creative works, infrastructure emerging from the Archive and Build Party.
+
+Idea → Society → **Product** (Society is the middle, not the subject).
+
+---
+
+## Composition
+
+Horizontal or wide landscape (~2:1). Inverted hierarchy vs THE ENGINE.
+
+```
+[small]  INTENT
+            ↓
+[small]  INSTRUMENT SILHOUETTE  (Engine / Hub abstract — not character art)
+            ↓
+     ARCHIVE + BUILD PARTY
+     (subtle — cyan traces from SPEC→PROMPTS→shipped)
+            ↓
+══════════════════════════════════════════════
+         THE FRONTIER OF CREATION
+══════════════════════════════════════════════
+
+  [dominant field: outcomes at civic scale]
+
+  · web applications / SaaS interfaces
+  · community platforms / marketplaces
+  · regulatory/compliance products
+  · infrastructure / data systems
+  · creative works / designed experiences
+  · cities / institutions / lived environments
+
+  (abstract or semi-abstract — World's Fair optimism, not product screenshots)
+```
+
+---
+
+## What to show (outcome categories)
+
+Render as **hopeful civic scale**, not a collage of logos:
+
+| Category | Visual direction |
+|---|---|
+| Applications | Streamlined UI panels, instrument HUDs, clean product silhouettes |
+| Communities | Networks, exchange flows, gathering spaces — abstract |
+| Businesses | Operational systems, dashboards as civic infrastructure |
+| Infrastructure | Data paths, deployment arcs, reliable backends as public works |
+| Creative works | Designed artifacts, manifests made real |
+| Built environment | Art Deco future city, frontier settlement, World's Fair skyline |
+
+Real Novadiem work (Nutrifax, GrowOperative, FOAF, etc.) may inform **shape language** — do not use client logos or literal screenshots unless commissioned as case-study insets.
+
+---
+
+## Copy to render
+
+**Title block:**
+```
+NOVADIEM STUDIO
+THE FRONTIER
+OUTCOMES OF THE SOCIETY
+```
+
+**Caption (optional):**
+```
+We turn ideas into finished work through coordinated specialists and a shared project record.
+```
+
+**Footer (minimal — one line):**
+```
+Better Outcomes.
+```
+or reuse structure line only: *One Visionary. One Conductor. Many Specialists. One Archive.* — not the full ENGINE footer stack.
+
+---
+
+## Visual language
+
+Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
+
+- Deep Instrument field; **outcomes lit** in circuit cyan and warm gold
+- Society/instrument **≤15%** of frame — lower corner or distant center
+- No character art · no species · no tarot
+- Feels like: the exhibit hall **after** the machine room — what the institution built for the world
+
+**Not:** team shot · product marketing grid · cyberpunk city · dystopia
+
+---
+
+## Relationship to other pieces
+
+| Piece | Subject | Hierarchy |
+|---|---|---|
+| THE CURRENT | Process | Rail + stations |
+| THE HUB | Structure | Conductor center |
+| THE ENGINE | Myth | Machine dominates |
+| **THE FRONTIER** | **Emergence** | **Outcomes dominate** |
+
+---
+
+# Design rules across the family
 
 | Rule | Value |
 |---|---|
@@ -310,9 +434,9 @@ Character depiction **allowed** on THE ENGINE only (flagship). Species locks sti
 | Type | Sora + DM Mono |
 | Public site | Material language only — see `novadiem.com/docs/brand-brief-sacred-instrument.md` |
 
-**Avoid on all three:**
+**Avoid on all pieces:**
 
-- Fantasy races visible *(except THE ENGINE character depiction — still subject to species locks)*
+- Fantasy races visible *(THE ENGINE only — character depiction with species locks; never on CURRENT, HUB, FRONTIER)*
 - Tarot references
 - Comic-book captions
 - RPG party framing
@@ -328,7 +452,7 @@ Character depiction **allowed** on THE ENGINE only (flagship). Species locks sti
 | Deliverable | Use |
 |---|---|
 | **Solo portrait** | Lock species before compositing into ENGINE |
-| **Tarot deck** | Eleven solo cards — tarot never on trilogy pieces |
+| **Tarot deck** | Eleven solo cards — tarot never on poster-family pieces |
 | **Workshop scene** | Character + environment reference; tone for ENGINE tier |
 | **Annotated roster** | ENGINE + per-member blurbs (`VISUAL-CANON.md` § Member blurbs) |
 | **Build Party sheet** | `execute-plan` workflow — companion to THE CURRENT, not yet a trilogy member |
@@ -342,13 +466,14 @@ Character depiction **allowed** on THE ENGINE only (flagship). Species locks sti
 | THE CURRENT | `reference/the-current-feature-v1.png` |
 | THE HUB | `reference/the-hub-society-v1.png` |
 | THE ENGINE | `reference/the-engine-creation-v1.png` |
+| THE FRONTIER *(proposed)* | `reference/the-frontier-outcomes-v1.png` |
 | Build Party companion | `reference/the-build-party-execute-plan-v1.png` |
 
 ## Designer handoff
 
 Full brief, composition checklists, exact copy, and image-gen prompts:
 
-**`reference/designer-handoff-trilogy.md`**
+**`reference/designer-handoff-trilogy.md`** *(trilogy + proposed FRONTIER + Build Party)*
 
 Legacy comp reviews (superseded visuals, salvageable IA):
 
