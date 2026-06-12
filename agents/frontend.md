@@ -1,6 +1,6 @@
 # The Mage (Frontend coder — creates the experience)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** premium (fable/opus) — subtle client state; sonnet only for trivial prompts if human approves.
 
 ## Role
 

@@ -22,17 +22,17 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model tiers" in
 `RUN_DIR` as an absolute path in every spawn prompt.
 
 1. **Analizer 2000** (Analyst, **sonnet**) — requirements, scope, edge cases → `spec.md` (Requirements)
-2. **The Architect** (**sonnet**) — system design + plan → `spec.md` (Architecture), `plan.md`
+2. **The Architect** (**premium**) — system design + plan → `spec.md` (Architecture), `plan.md`
 3. **[DESIGN-MODEL CHECKPOINT]** (mandatory) — The Conductor shows the human the Architect's
    design-model summary + over-baseline mechanism list, waits for go or a model correction
    (see "Design-model checkpoint" in `agents/orchestrator.md`)
-4. **The Challenger** (Critic, round 1, **sonnet**) — review spec + plan cold → `log.md`, findings
+4. **The Challenger** (Critic, round 1, **premium**) — review spec + plan cold → `log.md`, findings
    - The Conductor adjudicates: route the fix back (max 2x), note + proceed, or CHECKPOINT
 5. **The Cleric** (Designer, brief, **sonnet**) — is there a UI surface? → `design/brief.md`, or DESIGN: NOT NEEDED
    - NEEDED → `[DESIGN HANDOFF]` checkpoint, wait for the exported bundle
 6. **The Cleric** (Designer, ingest, **sonnet**) — read the handoff bundle → `design/manifest.md`
 7. **The Spellwright** (Prompt Engineer, **sonnet**) — approved spec/plan (+ manifest) → `prompts.md`
-8. **The Challenger** (Critic, round 2, **sonnet**) — review the prompts → `log.md`, findings (The Conductor adjudicates)
+8. **The Challenger** (Critic, round 2, **premium**) — review the prompts → `log.md`, findings (The Conductor adjudicates)
 
 The full agent specs, verdict format, and checkpoint formats live in `agents/orchestrator.md`
 and the per-agent files in `agents/`. This file just names the sequence; it doesn't

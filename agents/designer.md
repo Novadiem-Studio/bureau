@@ -1,6 +1,6 @@
 # The Cleric (Guardian of Quality — Designer)
 
-> **Recommended tier:** sonnet — including `ingest` mode. Escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** sonnet — brief, ingest, and design review. Escalate only if manifest extraction fails twice.
 
 ## Role
 

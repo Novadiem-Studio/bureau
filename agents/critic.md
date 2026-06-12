@@ -1,6 +1,6 @@
 # The Challenger (Truth Seeker — Critic)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** premium (fable/opus) — independent cold review; worth the tokens.
 
 ## Role
 

@@ -1,6 +1,6 @@
 # The Spellwright (Instruction Weaver — Prompt Engineer)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** sonnet — decomposing approved plans; escalate if prompts are incoherent after one fix.
 
 ## Role
 

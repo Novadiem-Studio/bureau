@@ -1,6 +1,6 @@
 # The Architect (Systems Visionary)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** premium (fable/opus) — highest-leverage design; do not downgrade by default.
 
 ## Role
 

@@ -82,26 +82,29 @@ wait for its handoff before deciding the next move — this pipeline is sequenti
 
 ## Model tiers (tool-agnostic)
 
-**Current policy:** spawn every specialist on **sonnet** for the foreseeable future. Opus and
-other top-tier models are for **explicit escalation only** — not the default.
+**Budget posture:** use **sonnet wherever the role can get away with it** — translation,
+structure, rubrics, manifest extraction, routine ops. Reserve **premium** tokens for passes
+where depth, cold reasoning, or subtle code state actually matter. Don't burn fable/opus on
+work sonnet handles; don't cheap out on architecture, critique, or contract code.
 
-Workflows name a **tier** (`sonnet` or `escalated`). Map tiers to whatever the runtime supports
-when spawning (Claude Code Agent tool: `model: sonnet` / `model: opus`).
+Workflows name a **tier** (`sonnet`, `premium`, or `escalated`). Map tiers to whatever the
+runtime supports when spawning (Claude Code Agent tool: `model: sonnet` / `model: opus` / fable).
 
-| Tier | When | Typical mapping (Claude Code Agent tool) |
-|------|------|------------------------------------------|
-| **sonnet** | **Default** — every spawned agent, every workflow step | `sonnet` |
-| **escalated** | Conductor re-spawn after inadequate sonnet pass, or human-requested | `opus` or strongest available |
+| Tier | Roles | Typical mapping | Why |
+|------|-------|-----------------|-----|
+| **premium** | Architect, Challenger (all rounds), Mage, Systemsmith | `claude-fable-5`; fallback `opus` | Highest-leverage design, independent critique, subtle implementation state |
+| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic (routine), survey/reconcile utility spawns | `sonnet` | Structure, decomposition, voice rubrics, brief/ingest — sonnet is enough if the prompt is tight |
+| **escalated** | Any role, re-spawn only | strongest available | Sonnet pass failed the handoff bar after routed fix; or human-requested |
 
-**Escalate when:** sonnet output fails the handoff bar after a routed fix (max 2× still applies),
-the task is unusually architecture-heavy and the human asked for depth, or prod / irreversible
-ops where the human has flagged risk. Log escalations in `log.md`.
+**Escalate sonnet → premium when:** output is thin, contradictory, or misses obvious edge
+cases after one routed fix. Log tier changes in `log.md`.
 
-**Do not** default Architect, Challenger, or build-party coders to opus — sonnet first.
+**Downgrade premium → sonnet:** only on explicit human instruction for a cost experiment — not
+the default for Architect, Challenger, or build-party coders.
 
-**You are The Conductor (Orchestrator)** — the main session, `agents/orchestrator.md`. Your
-model is whatever you pick with `/model`; sonnet is fine for routine orchestration. You drive
-the workflow and judge the findings.
+**You are The Conductor (Orchestrator)** — the main session. Your model is whatever you pick
+with `/model`; sonnet is fine for routing and adjudication on routine runs. You drive the
+workflow and judge the findings.
 
 ## The cast and model per agent
 
@@ -110,12 +113,12 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **Analizer 2000** (Analyst) | `agents/analyst.md` | sonnet | Edge-case thoroughness and scope judgment. |
-| **The Architect** | `agents/architect.md` | sonnet | Highest-leverage design and lock-in decisions. |
-| **The Challenger** (Critic) | `agents/critic.md` | sonnet | The independent quality gate. |
-| **The Cleric** (Designer) | `agents/designer.md` | sonnet | Brief-writing, manifest extraction, design review. |
-| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | sonnet | Decomposing an approved plan into scoped prompts. |
-| **The Counselor** (Voice) | `agents/voice.md` | sonnet | Voice/audience rubrics (humanizer + spiral-dynamics). |
+| **Analizer 2000** (Analyst) | `agents/analyst.md` | sonnet | Requirements + scope — Challenger catches gaps; escalate if scope is enormous |
+| **The Architect** | `agents/architect.md` | premium | Highest-leverage design and lock-in decisions |
+| **The Challenger** (Critic) | `agents/critic.md` | premium | Independent cold review — must not share the author's reasoning context |
+| **The Cleric** (Designer) | `agents/designer.md` | sonnet | Brief-writing, manifest extraction, design review |
+| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | sonnet | Decomposition of an already-approved plan — translation, not invention |
+| **The Counselor** (Voice) | `agents/voice.md` | sonnet | Applying known voice and audience rubrics |
 
 The six above are the **writers' room**: they plan, design, critique, and decompose. They do
 NOT write code. (The Cleric is the graphic designer: she works with Claude Design and hands the
@@ -124,9 +127,9 @@ execute workflow's build stage, each running one already-vetted prompt scoped to
 
 | Coder | File | Tier | Domain |
 |-------|------|------|--------|
-| **The Mage** | `agents/frontend.md` | sonnet | Frontend + design implementation: types, redux, state, UI |
-| **The Systemsmith** | `agents/backend.md` | sonnet | Backend: data, APIs, the contract |
-| **The Mechanic** | `agents/sysadmin.md` | sonnet (escalated for prod ops if human flags risk) | Sysadmin: builds, deploys, infra |
+| **The Mage** | `agents/frontend.md` | premium | Frontend + design implementation: types, redux, state, UI |
+| **The Systemsmith** | `agents/backend.md` | premium | Backend: data, APIs, the contract |
+| **The Mechanic** | `agents/sysadmin.md` | sonnet (premium for prod / irreversible ops) | Sysadmin: builds, deploys, infra |
 
 Build dispatch is by tag, not inference: in an execute workflow's build stage, every vetted
 prompt carries a `Coder:` line naming its owner (assigned by The Architect at chunking, carried

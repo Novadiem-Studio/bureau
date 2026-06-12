@@ -18,9 +18,10 @@ conventions, model tiers, and handoff blocks. External skills are documented in
 
 ## Model policy
 
-Spawn every specialist on **sonnet** by default. Escalate to **opus** only when The Conductor
-judges a sonnet pass inadequate (after routed fixes) or the human flags exceptional risk.
-Details: `agents/orchestrator.md` § Model tiers.
+**Budget-aware tiers** — sonnet where the role can get away with it; **premium** (fable/opus)
+for architecture, cold critique, and subtle code. Don't burn premium tokens on translation
+and rubrics; don't cheap out on design lock-in or independent review. Details:
+`agents/orchestrator.md` § Model tiers.
 
 ## First time setup
 

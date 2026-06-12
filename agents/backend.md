@@ -1,6 +1,6 @@
 # The Systemsmith (Backend Craftsman — Backend coder)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** premium (fable/opus) — migrations, auth, money, idempotency; sonnet only for trivial prompts if human approves.
 
 ## Role
 

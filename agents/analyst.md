@@ -1,6 +1,6 @@
 # Analizer 2000 (Requirements Sage — Analyst)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** sonnet — escalate to premium if scope is huge or the pass is thin after one fix.
 
 ## Role
 

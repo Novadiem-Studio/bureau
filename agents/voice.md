@@ -1,6 +1,6 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
+> **Recommended tier:** sonnet — rubric application; escalate rarely.
 
 ## Role
 
