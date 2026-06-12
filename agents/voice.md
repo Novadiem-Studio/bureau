@@ -1,6 +1,6 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** structured — applying known voice and audience rubrics (humanizer + spiral-dynamics skills).
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

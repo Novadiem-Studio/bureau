@@ -15,7 +15,7 @@ returned to you. Nothing is written to spec/plan files.
 
 ## Steps
 
-1. **The Counselor** (Voice, **structured**, mode: review) — load the humanizer and spiral-dynamics
+1. **The Counselor** (Voice, **sonnet**, mode: review) — load the humanizer and spiral-dynamics
    skills, review the copy through the four lenses (voice / AI-tells, audience fit,
    overwhelm / clarity, honesty), and return findings + revised copy + verdict.
 

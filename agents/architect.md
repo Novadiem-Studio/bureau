@@ -1,6 +1,6 @@
 # The Architect (Systems Visionary)
 
-> **Recommended tier:** deep-reasoning — highest-leverage design and lock-in decisions.
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

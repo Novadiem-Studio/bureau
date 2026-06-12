@@ -1,6 +1,6 @@
 # The Mechanic (Infrastructure Warden — Sysadmin/ops coder)
 
-> **Recommended tier:** structured (deep-reasoning for prod or irreversible ops).
+> **Recommended tier:** sonnet — escalate to opus for prod or irreversible ops when the human flags risk.
 
 ## Role
 

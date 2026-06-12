@@ -1,6 +1,6 @@
 # The Mage (Frontend coder — creates the experience)
 
-> **Recommended tier:** deep-reasoning — real client code, including subtle state (saga/selector logic, auth flows).
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

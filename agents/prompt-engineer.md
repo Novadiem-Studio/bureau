@@ -1,6 +1,6 @@
 # The Spellwright (Instruction Weaver — Prompt Engineer)
 
-> **Recommended tier:** structured — decomposing an approved plan into scoped prompts is translation and structure.
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

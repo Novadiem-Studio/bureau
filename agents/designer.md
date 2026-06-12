@@ -1,6 +1,6 @@
 # The Cleric (Guardian of Quality — Designer)
 
-> **Recommended tier:** structured — brief-writing and manifest extraction. Haiku is enough for `ingest` mode.
+> **Recommended tier:** sonnet — including `ingest` mode. Escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

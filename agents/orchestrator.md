@@ -82,18 +82,26 @@ wait for its handoff before deciding the next move — this pipeline is sequenti
 
 ## Model tiers (tool-agnostic)
 
-Workflows and spawn prompts name a **tier**, not a vendor model id. Map tiers to whatever
-the runtime supports when spawning.
+**Current policy:** spawn every specialist on **sonnet** for the foreseeable future. Opus and
+other top-tier models are for **explicit escalation only** — not the default.
 
-| Tier | Roles | Typical mapping (Claude Code Agent tool) |
-|------|-------|------------------------------------------|
-| **deep-reasoning** | Architect, Challenger (all rounds), Mage, Systemsmith | `claude-fable-5`; fallback `opus` |
-| **standard** | Analyst | `opus` (sonnet acceptable if cost-sensitive) |
-| **structured** | Designer, Spellwright, Counselor, Mechanic | `sonnet` (haiku ok for Designer `ingest`) |
+Workflows name a **tier** (`sonnet` or `escalated`). Map tiers to whatever the runtime supports
+when spawning (Claude Code Agent tool: `model: sonnet` / `model: opus`).
+
+| Tier | When | Typical mapping (Claude Code Agent tool) |
+|------|------|------------------------------------------|
+| **sonnet** | **Default** — every spawned agent, every workflow step | `sonnet` |
+| **escalated** | Conductor re-spawn after inadequate sonnet pass, or human-requested | `opus` or strongest available |
+
+**Escalate when:** sonnet output fails the handoff bar after a routed fix (max 2× still applies),
+the task is unusually architecture-heavy and the human asked for depth, or prod / irreversible
+ops where the human has flagged risk. Log escalations in `log.md`.
+
+**Do not** default Architect, Challenger, or build-party coders to opus — sonnet first.
 
 **You are The Conductor (Orchestrator)** — the main session, `agents/orchestrator.md`. Your
-model is whatever you pick with `/model`; run on the strongest available tier — you drive the
-workflow and judge the findings.
+model is whatever you pick with `/model`; sonnet is fine for routine orchestration. You drive
+the workflow and judge the findings.
 
 ## The cast and model per agent
 
@@ -102,12 +110,12 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Edge-case thoroughness and scope judgment. |
-| **The Architect** | `agents/architect.md` | deep-reasoning | Highest-leverage design and lock-in decisions. |
-| **The Challenger** (Critic) | `agents/critic.md` | deep-reasoning | The independent quality gate. |
-| **The Cleric** (Designer) | `agents/designer.md` | structured | Brief-writing, manifest extraction, design review. |
-| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | structured | Decomposing an approved plan into scoped prompts. |
-| **The Counselor** (Voice) | `agents/voice.md` | structured | Voice/audience rubrics (humanizer + spiral-dynamics). |
+| **Analizer 2000** (Analyst) | `agents/analyst.md` | sonnet | Edge-case thoroughness and scope judgment. |
+| **The Architect** | `agents/architect.md` | sonnet | Highest-leverage design and lock-in decisions. |
+| **The Challenger** (Critic) | `agents/critic.md` | sonnet | The independent quality gate. |
+| **The Cleric** (Designer) | `agents/designer.md` | sonnet | Brief-writing, manifest extraction, design review. |
+| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | sonnet | Decomposing an approved plan into scoped prompts. |
+| **The Counselor** (Voice) | `agents/voice.md` | sonnet | Voice/audience rubrics (humanizer + spiral-dynamics). |
 
 The six above are the **writers' room**: they plan, design, critique, and decompose. They do
 NOT write code. (The Cleric is the graphic designer: she works with Claude Design and hands the
@@ -116,9 +124,9 @@ execute workflow's build stage, each running one already-vetted prompt scoped to
 
 | Coder | File | Tier | Domain |
 |-------|------|------|--------|
-| **The Mage** | `agents/frontend.md` | deep-reasoning | Frontend + design implementation: types, redux, state, UI |
-| **The Systemsmith** | `agents/backend.md` | deep-reasoning | Backend: data, APIs, the contract |
-| **The Mechanic** | `agents/sysadmin.md` | structured (deep-reasoning for prod ops) | Sysadmin: builds, deploys, infra |
+| **The Mage** | `agents/frontend.md` | sonnet | Frontend + design implementation: types, redux, state, UI |
+| **The Systemsmith** | `agents/backend.md` | sonnet | Backend: data, APIs, the contract |
+| **The Mechanic** | `agents/sysadmin.md` | sonnet (escalated for prod ops if human flags risk) | Sysadmin: builds, deploys, infra |
 
 Build dispatch is by tag, not inference: in an execute workflow's build stage, every vetted
 prompt carries a `Coder:` line naming its owner (assigned by The Architect at chunking, carried

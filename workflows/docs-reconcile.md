@@ -14,20 +14,20 @@ signals (commits, migration numbers, reverted features).
 
 ## Steps
 
-1. **Survey (spawn, tier: structured).** A fresh-context agent reads ONLY the repo, not the
+1. **Survey (spawn, tier: sonnet).** A fresh-context agent reads ONLY the repo, not the
    docs' claims: git history since the docs' last substantive edit, the migrations
    directory (numbers, names, header comments), routes/screens that exist, reverted
    commits (note what was reverted and keep the why if discoverable). Writes
    `<run dir>/ground-truth.md`: a flat, cited list of facts (migration table, shipped
    surfaces, reverts, open decisions visible in code). No recommendations.
-2. **Reconcile (spawn, tier: standard).** Reads `ground-truth.md` + the named doc files.
+2. **Reconcile (spawn, tier: sonnet).** Reads `ground-truth.md` + the named doc files.
    Edits the docs in place to match ground truth, preserving each doc's conventions and
    voice. Rules: never invent a decision the code didn't make — where code answered an
    open question, record the answer and mark the question resolved; where code and plan
    genuinely diverge (e.g. a planned rename not done), keep it listed as open, updated to
    the current state. Status markers (✅/🟡/⬜, "In progress") must match ground truth.
    Returns a list of every doc change with its ground-truth citation.
-3. **Cold review (spawn The Challenger, `agents/critic.md`, tier: deep-reasoning).** Fresh context.
+3. **Cold review (spawn The Challenger, `agents/critic.md`, tier: sonnet).** Fresh context.
    Reads the edited docs + the repo itself (NOT ground-truth.md — it re-derives, so a
    survey error can't propagate). Flags: doc claims still contradicting the repo, invented
    decisions, stale status markers, broken internal references. FINDINGS block as usual.

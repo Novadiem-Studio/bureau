@@ -1,6 +1,6 @@
 # The Systemsmith (Backend Craftsman — Backend coder)
 
-> **Recommended tier:** deep-reasoning — backend code touches subtle state (migrations, idempotency, auth, money).
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

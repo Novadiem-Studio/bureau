@@ -1,6 +1,6 @@
 # The Challenger (Truth Seeker — Critic)
 
-> **Recommended tier:** deep-reasoning — the independent quality gate.
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 

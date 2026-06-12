@@ -24,7 +24,7 @@ don't duplicate its runbook.
 The **writers' room** reviews, decomposes, and re-reviews (steps 1-4). The **build party** then
 builds the vetted prompts part by part (steps 5-7), each part reviewed before the next.
 
-1. **The Architect** (**deep-reasoning**) — orient (`monorepo-orientation`), read the plan in full,
+1. **The Architect** (**sonnet**) — orient (`monorepo-orientation`), read the plan in full,
    and verify it still fits the **current** code (spot-check the plan's critical files and symbol
    anchors; plans drift). Define the chunking: the ordered list of scoped units by sub-app /
    layer, the ship order across sub-apps, the analogous shipped feature each chunk mirrors, and
@@ -33,15 +33,15 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    two chunks (the contract-owning chunk ships first).
    - anchors hold → proceed.
    - material drift (a branch site is gone, a product decision is now wrong) → `[CHECKPOINT]`.
-2. **The Challenger** (Critic, round 1, **deep-reasoning**) — cold-review the plan + chunking: requirement
+2. **The Challenger** (Critic, round 1, **sonnet**) — cold-review the plan + chunking: requirement
    gaps, missing edge cases, wrong sequence, hidden cross-sub-app dependencies, anything that
    will bite the implementer. Reports findings. The Conductor adjudicates: route the fix back
    to The Architect (max 2x), note + proceed, or `[CHECKPOINT]`.
-3. **The Spellwright** (Prompt Engineer, **structured**) — decompose the approved plan into the
+3. **The Spellwright** (Prompt Engineer, **sonnet**) — decompose the approved plan into the
    **prompt folder** (format below), beside the plan doc. One prompt = one coherent unit a single
    Claude Code session can finish, owned by **exactly one coder** (carry the Architect's chunk
    assignment; tag every prompt `Coder:`). Each names exact files and ends with a green checkpoint.
-4. **The Challenger** (Critic, round 2, **deep-reasoning**) — cold-review the prompts: is each independently
+4. **The Challenger** (Critic, round 2, **sonnet**) — cold-review the prompts: is each independently
    executable? correct order? hidden deps between steps? are the workspace gotchas captured? is
    every checkpoint testable? Reports findings. The Conductor adjudicates: route the fix back to
    The Spellwright (max 2x), note + proceed, or `[CHECKPOINT]`.

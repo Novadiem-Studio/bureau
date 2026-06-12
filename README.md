@@ -16,6 +16,12 @@ Run `./check-framework.sh` in the canonical copy to lint workflow registry, `RUN
 conventions, model tiers, and handoff blocks. External skills are documented in
 `DEPENDENCIES.md`.
 
+## Model policy
+
+Spawn every specialist on **sonnet** by default. Escalate to **opus** only when The Conductor
+judges a sonnet pass inadequate (after routed fixes) or the human flags exceptional risk.
+Details: `agents/orchestrator.md` § Model tiers.
+
 ## First time setup
 
 ```bash

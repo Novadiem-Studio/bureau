@@ -31,11 +31,11 @@ done < <(rg -n 'output/(spec|plan|prompts|log|design|state)\.' agents workflows 
   || true)
 
 echo "== model tiers in feature workflow"
-if ! grep -q 'deep-reasoning' workflows/feature.md; then
-  err "workflows/feature.md should reference deep-reasoning tier for Architect/Challenger"
+if ! grep -q 'sonnet' workflows/feature.md; then
+  err "workflows/feature.md should reference sonnet tier for spawned agents"
 fi
-if grep -qE 'Architect.*\bopus\b' workflows/feature.md; then
-  err "workflows/feature.md still assigns opus to Architect — use deep-reasoning tier"
+if grep -qE 'deep-reasoning|Architect.*\bopus\b' workflows/feature.md; then
+  err "workflows/feature.md still uses deep-reasoning or opus — default is sonnet (see orchestrator.md)"
 fi
 
 echo "== agent handoff blocks"

@@ -1,6 +1,6 @@
 # Analizer 2000 (Requirements Sage — Analyst)
 
-> **Recommended tier:** standard — edge-case thoroughness and honest scope-cutting need reasoning depth.
+> **Recommended tier:** sonnet — escalate to opus only if The Conductor judges the pass inadequate.
 
 ## Role
 
