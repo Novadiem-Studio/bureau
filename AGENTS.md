@@ -1,6 +1,6 @@
 # Novadiem Studio AI Framework — The Society of Specialists
 
-A reusable multi-agent development framework for Claude Code. Drop this entire
+A reusable multi-agent development framework for Codex. Drop this entire
 `agent-framework/` folder into any project root and run it.
 
 The cast's identities, archetypes, and voice are canon in `LORE.md` (one Visionary, one
@@ -21,7 +21,7 @@ are copies, and they drift. Two rules:
 
 The **main session acts as the Orchestrator (The Conductor)** and **spawns specialist subagents**
 — the cast below — each in its own fresh context. They take a raw project idea through to a
-complete spec, a phased plan, and a set of scoped prompts ready to execute in Claude Code.
+complete spec, a phased plan, and a set of scoped prompts ready to execute in Codex.
 
 The subagents are real, isolated contexts. That isolation is the point: the Critic
 (The Challenger) reviews the written artifacts cold, having never seen the design get
@@ -65,8 +65,8 @@ reference and scope each agent to the right sub-app, while building within the c
 | Analizer 2000 (Analyst) | `agents/analyst.md` | Requirements, scope, edge cases. |
 | The Architect | `agents/architect.md` | System design, data models, tech choices, plan. |
 | The Challenger (Critic) | `agents/critic.md` | Reviews artifacts cold. Runs twice. |
-| The Cleric (Designer) | `agents/designer.md` | Decides if a UI design is needed, briefs Claude Design, ingests the handoff. |
-| The Spellwright (Prompt Engineer) | `agents/prompt-engineer.md` | Approved plan → scoped Claude Code prompts. |
+| The Cleric (Designer) | `agents/designer.md` | Decides if a UI design is needed, briefs Codex Design, ingests the handoff. |
+| The Spellwright (Prompt Engineer) | `agents/prompt-engineer.md` | Approved plan → scoped Codex prompts. |
 | The Counselor (Voice) | `agents/voice.md` | Frames messages for the audience up front, and reviews user-facing copy before it ships (spiral-dynamics + humanizer). |
 | **Build party** (code, in an execute workflow's build stage) | | |
 | The Mage (Frontend) | `agents/frontend.md` | Builds one vetted prompt on the client: types, redux, UI. |
@@ -89,7 +89,7 @@ repo, not in the run dir.)
 
 In a new session:
 ```
-Read agent-framework/CLAUDE.md and resume the agent framework.
+Read agent-framework/AGENTS.md and resume the agent framework.
 Run dir: agent-framework/output/runs/<task>/ — read its state.json and log.md for context.
 ```
 

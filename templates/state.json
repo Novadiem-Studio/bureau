@@ -1,0 +1,14 @@
+{
+  "project": "",
+  "phase": "not_started",
+  "phase_status": "pending",
+  "phases_complete": [],
+  "critic_loops": { "analyst": 0, "architect": 0, "prompts": 0 },
+  "max_critic_loops": 2,
+  "design": { "needed": null, "status": "pending" },
+  "open_questions": [],
+  "carried_items": [],
+  "checkpoints": [],
+  "decisions": {},
+  "last_updated": null
+}

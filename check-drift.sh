@@ -22,7 +22,7 @@ else
   )
 fi
 
-EXCLUDES=(-x output -x project-context.md -x .claude -x .DS_Store -x check-drift.sh)
+EXCLUDES=(-x output -x project-context.md -x .claude -x .git -x .DS_Store -x check-drift.sh -x check-framework.sh)
 
 status=0
 for install in "${INSTALLS[@]}"; do

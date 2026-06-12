@@ -16,7 +16,7 @@ on the value system targeted. Returned to you.
 
 ## Steps
 
-1. **The Counselor** (Voice, sonnet, mode: frame) — classify the audience's value system, choose
+1. **The Counselor** (Voice, **structured**, mode: frame) — classify the audience's value system, choose
    the framing, and draft in the house voice. For multiple audiences, produce a variant each.
 
 The counterpart on the other end is `copy-review` (The Counselor in review mode), for checking

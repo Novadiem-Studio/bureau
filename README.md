@@ -4,12 +4,17 @@
 orchestrates and spawns real subagents**. Each specialist runs in its own fresh context,
 so reviews are genuinely independent instead of one Claude critiquing its own earlier
 reasoning. Who the specialists *are* — names, archetypes, voice — is canon in `LORE.md`.
+Visual poster family (THE CURRENT · THE HUB · THE ENGINE) is canon in `VISUAL-SYSTEM.md`;
+character appearance locks live in `VISUAL-CANON.md`.
 
 ## Canonical copy
 
 The copy at `~/Code/novadiem/AI_skills/agent-framework/` is the upstream. Project installs
 drift — port any improvement made in a project back to the canonical copy, and run
 `./check-drift.sh` there to see which installs have diverged (add new installs to its list).
+Run `./check-framework.sh` in the canonical copy to lint workflow registry, `RUN_DIR`
+conventions, model tiers, and handoff blocks. External skills are documented in
+`DEPENDENCIES.md`.
 
 ## First time setup
 

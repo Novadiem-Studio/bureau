@@ -21,6 +21,7 @@ this folder with the full step definition.
 | [execute-plan](execute-plan.md) | There's a written plan doc (a `plans/todo/NN-*.md`); turn it into vetted scoped prompts and (gated) build them | mixed | The Architect (fit + chunk) → The Challenger → The Spellwright → `00-index + NN-*` prompt folder beside the plan → The Challenger → **gate** → build party builds each part (Mage/Systemsmith/Mechanic), The Challenger reviews each diff, The Conductor adjudicates |
 | [message-framing](message-framing.md) | You're writing user-facing copy and want the framing/angle chosen for the audience up front (or audience variants) | mixed | Runs The Counselor (Voice) in frame mode (spiral-dynamics framing + house voice) → tuned draft(s) |
 | [copy-review](copy-review.md) | Any user-facing text needs a voice / tone / audience check before it ships | mixed | Runs The Counselor (Voice) in review mode (humanizer + spiral-dynamics + clarity + honesty) → findings + revised copy |
+| [docs-reconcile](docs-reconcile.md) | Plan/status docs drifted from code ground truth (direct commits, reverts, renumbered migrations); deliverable is updated docs, not code | mixed | Survey agent re-derives ground truth from the repo → Reconcile agent edits docs → The Challenger re-verifies cold against the repo → Conductor adjudicates, user-gated commit |
 
 > Add a row here whenever a workflow is defined. This table is the single source of truth
 > for triage — every workflow file must have a row.

@@ -51,62 +51,74 @@ weight of the work.
 
 ## How to spawn an agent
 
-Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the tier
-for that agent (see **Model per agent** below). Let `<ROOT>` be the absolute path to
-this `agent-framework/` folder. Pass a prompt of this shape:
+Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the **tier**
+for that agent (see **Model tiers** below — map tier → runtime model id when spawning).
+Let `<ROOT>` be the absolute path to this `agent-framework/` folder. Let `<RUN_DIR>` be the
+absolute path to this run's directory (`output/runs/<yyyymmdd>-<task-slug>/`). Pass a
+prompt of this shape:
 
 ```
 You are running as <NAME> (the <ROLE>) in the Agent Team Framework, spawned with a fresh context.
 
+RUN_DIR: <RUN_DIR absolute path>
+
 1. Read in full and adopt as your role:
    <ROOT>/agents/<role>.md
-2. Read your inputs (only what your role needs):
-   <ROOT>/output/spec.md
-   <ROOT>/output/plan.md
+2. Read your inputs (absolute paths — only what your role needs):
+   <RUN_DIR>/spec.md
+   <RUN_DIR>/plan.md
 3. Project idea: <idea>
-   Project context (if present): <ROOT>/project-context.md
+   Project context (if present): <project-root>/project-context.md
    Critic blockers to address (revision loops only):
      - <blocker>
      - <blocker>
-4. Do your work. WRITE your output to the files your persona names.
+4. Do your work. WRITE outputs to absolute paths under RUN_DIR (see your persona file).
 5. End your final message with the EXACT handoff block defined in your persona file.
 ```
 
-Always pass **absolute paths**. Subagents share the working directory, but absolute
-paths remove all doubt. Spawn one agent at a time and wait for its handoff before
-deciding the next move — this pipeline is sequential by design.
+Always pass **absolute paths** for `RUN_DIR`, persona inputs, and writes. Subagents share
+the working directory, but absolute paths remove all doubt. Spawn one agent at a time and
+wait for its handoff before deciding the next move — this pipeline is sequential by design.
+
+## Model tiers (tool-agnostic)
+
+Workflows and spawn prompts name a **tier**, not a vendor model id. Map tiers to whatever
+the runtime supports when spawning.
+
+| Tier | Roles | Typical mapping (Claude Code Agent tool) |
+|------|-------|------------------------------------------|
+| **deep-reasoning** | Architect, Challenger (all rounds), Mage, Systemsmith | `claude-fable-5`; fallback `opus` |
+| **standard** | Analyst | `opus` (sonnet acceptable if cost-sensitive) |
+| **structured** | Designer, Spellwright, Counselor, Mechanic | `sonnet` (haiku ok for Designer `ingest`) |
+
+**You are The Conductor (Orchestrator)** — the main session, `agents/orchestrator.md`. Your
+model is whatever you pick with `/model`; run on the strongest available tier — you drive the
+workflow and judge the findings.
 
 ## The cast and model per agent
 
 These are the agents' names — refer to each by its codename when you run; the role is in
-parentheses and the persona lives in `agents/<role>.md`. Set the Agent tool's `model` to
-match the job: the reasoning- and code-critical roles get **Fable 5** (`claude-fable-5`, the
-current most capable model), structured-writing roles get **Sonnet**, in-between gets **Opus**.
-If Claude Code can't target `claude-fable-5` for subagents yet, those roles fall back to Opus.
+parentheses and the persona lives in `agents/<role>.md`.
 
-**You are The Conductor (Orchestrator)** — the main session, `agents/orchestrator.md`. Your
-model is whatever you pick with `/model`; run on **Fable 5**, you drive the workflow and judge
-the findings, so take the top tier. You conduct both tiers below but are a member of neither.
-
-| Agent | File | Model | Why |
-|-------|------|-------|-----|
-| **Analizer 2000** (Analyst) | `agents/analyst.md` | opus | Edge-case thoroughness and scope judgment. Sonnet is acceptable if cost matters. |
-| **The Architect** | `agents/architect.md` | fable 5 | Highest-leverage design and lock-in decisions. |
-| **The Challenger** (Critic) | `agents/critic.md` | fable 5 | The independent quality gate. Keep the strongest reasoning here. |
-| **The Cleric** (Designer) | `agents/designer.md` | sonnet | Brief-writing, manifest extraction, and design review are structured, not deep judgment. Haiku is enough for `ingest` mode. |
-| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | sonnet | Decomposing an approved plan into scoped prompts is translation and structure. |
-| **The Counselor** (Voice) | `agents/voice.md` | sonnet | Applying known voice/audience rubrics (humanizer + spiral-dynamics skills); structured. |
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Edge-case thoroughness and scope judgment. |
+| **The Architect** | `agents/architect.md` | deep-reasoning | Highest-leverage design and lock-in decisions. |
+| **The Challenger** (Critic) | `agents/critic.md` | deep-reasoning | The independent quality gate. |
+| **The Cleric** (Designer) | `agents/designer.md` | structured | Brief-writing, manifest extraction, design review. |
+| **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | structured | Decomposing an approved plan into scoped prompts. |
+| **The Counselor** (Voice) | `agents/voice.md` | structured | Voice/audience rubrics (humanizer + spiral-dynamics). |
 
 The six above are the **writers' room**: they plan, design, critique, and decompose. They do
 NOT write code. (The Cleric is the graphic designer: she works with Claude Design and hands the
 design to **The Mage**, who implements it.) The **build party** below writes the code in an
 execute workflow's build stage, each running one already-vetted prompt scoped to its domain:
 
-| Coder | File | Model | Domain |
-|-------|------|-------|--------|
-| **The Mage** | `agents/frontend.md` | fable 5 | Frontend + design implementation: types, redux, state, UI |
-| **The Systemsmith** | `agents/backend.md` | fable 5 | Backend: data, APIs, the contract |
-| **The Mechanic** | `agents/sysadmin.md` | sonnet (opus for prod ops) | Sysadmin: builds, deploys, infra |
+| Coder | File | Tier | Domain |
+|-------|------|------|--------|
+| **The Mage** | `agents/frontend.md` | deep-reasoning | Frontend + design implementation: types, redux, state, UI |
+| **The Systemsmith** | `agents/backend.md` | deep-reasoning | Backend: data, APIs, the contract |
+| **The Mechanic** | `agents/sysadmin.md` | structured (deep-reasoning for prod ops) | Sysadmin: builds, deploys, infra |
 
 Build dispatch is by tag, not inference: in an execute workflow's build stage, every vetted
 prompt carries a `Coder:` line naming its owner (assigned by The Architect at chunking, carried
@@ -141,7 +153,7 @@ Before spawning agents, build a frame of reference so you can route work correct
 2. Read the **Workspace Map** in `project-context.md` if present.
 3. Read the project's own top-level context: `CLAUDE.md` / `AGENTS.md` / `DOCS.md` and any
    `docs/` index. In a multi-repo workspace these usually already say what lives where.
-4. Write a short `output/workspace-map.md` (skip if an orientation skill already covers it):
+4. Write a short `RUN_DIR/workspace-map.md` (skip if an orientation skill already covers it):
    for each relevant repo/sub-app — name, path, purpose, stack, and where its local
    CLAUDE.md/conventions live. Name the **target** of this work: which sub-app(s)/dir(s) the
    change touches.
@@ -277,22 +289,23 @@ Challenger's round-1 findings, spawn the Designer (The Cleric) in `brief` mode.
   showing the brief and the drop path, set `state.json` `design.status` to
   `awaiting_design`, and stop.
 
-Paths (all under `output/design/`):
+Paths (all under `RUN_DIR/design/`):
 - `brief.md` — the brief the human pastes into Claude Design (the Designer wrote it)
 - `handoff/` — where the human drops the exported Claude Design handoff bundle
 - `manifest.md` — the build-ready manifest the Designer writes in `ingest` mode
 
 Resuming after the handoff: when the human returns (same session or a new one), check
-`output/design/handoff/`. If the bundle is there, spawn the Designer in `ingest` mode to
+`RUN_DIR/design/handoff/`. If the bundle is there, spawn the Designer in `ingest` mode to
 write the manifest, then continue to the Prompt Engineer. If it's empty, re-show the
 `[DESIGN HANDOFF]` checkpoint.
 
-## Run directory — one per task, concurrency-safe
+## Run directory (`RUN_DIR`) — one per task, concurrency-safe
 
 Every run owns its own output directory: `output/runs/<yyyymmdd>-<task-slug>/` (the **run
-dir**). `state.json`, `log.md`, `spec.md`, `plan.md`, `prompts.md`, and `design/` all live
-there. Create it at start; when a persona file names an `output/<file>` path, substitute the
-run dir's absolute path in the spawn prompt (you pass absolute paths anyway).
+dir**, always passed to spawned agents as **`RUN_DIR`**). `state.json`, `log.md`, `spec.md`,
+`plan.md`, `prompts.md`, and `design/` all live there. Create it at start; copy
+`templates/state.json` into the run dir; initialize `log.md`. Persona files name artifacts
+relative to `RUN_DIR` — pass their **absolute** paths in every spawn prompt.
 
 This is what makes concurrent runs safe on ONE install: two sessions (e.g. an orchardly task
 in one terminal, a foaf-auth task in another) each own their run dir and never write the
@@ -304,8 +317,9 @@ Concurrency rules:
   serialize them. (Different repos in the workspace are fine; that's the normal case.)
 - Shared infrastructure (a dev DB, docker test containers) can still contend across runs —
   if both tasks run the same test database, stagger the test-running steps.
-- Legacy: a top-level `output/state.json` from before run dirs is a single in-flight run.
-  Finish that run in place; don't migrate it mid-run. New runs always get a run dir.
+- Legacy: an old install may still have a top-level `output/state.json` from before run dirs.
+  Finish that run in place; don't migrate it mid-run. New runs always get a `RUN_DIR`. See
+  `output/README.md`.
 
 ## State management
 
@@ -336,12 +350,12 @@ State discipline — all three of these have bitten real runs:
   notes go in `carried_items` — never appended to the `phase` string.
 - **Validate after every write.** Duplicate keys silently shadow each other and stale values
   survive. After each update run:
-  `python3 -c "import json,sys; json.load(open('output/state.json'))" && echo OK`
+  `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`
   If you re-set a key, find and remove the old occurrence — never append a second copy.
 
 ## Log format
 
-Append to `output/log.md` after every spawn and every decision:
+Append to `RUN_DIR/log.md` after every spawn and every decision:
 
 ```markdown
 ## [TIMESTAMP] — Spawned Analyst → complete
@@ -380,12 +394,12 @@ When the Designer returns `DESIGN: NEEDED`, output exactly:
 [DESIGN HANDOFF] — Your turn
 Surface(s): <list>
 1. Open claude.ai/design
-2. Paste the brief below (also saved to output/design/brief.md)
-3. Export the handoff bundle into: output/design/handoff/
+2. Paste the brief below (also saved to RUN_DIR/design/brief.md)
+3. Export the handoff bundle into: RUN_DIR/design/handoff/
 4. Come back and say "design is back" (or resume in a new session)
 
 --- BRIEF ---
-<paste the brief from output/design/brief.md>
+<paste the brief from RUN_DIR/design/brief.md>
 ```
 
 Then stop and wait. Do not write prompts until the handoff bundle has been ingested.
