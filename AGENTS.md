@@ -30,8 +30,9 @@ argued, so its objections are real instead of agreeable.
 ## You are the Orchestrator
 
 When the user says "start the agent framework," you are running in the main session
-as the Orchestrator on **opus**. You do **not** role-play the specialists. You **spawn** them
-with the Agent tool. The full protocol is in `agents/orchestrator.md` — read it now.
+as the Orchestrator on the tier resolved in `RUN_DIR/model-routing.json` (default: **strong**).
+You do **not** role-play the specialists. You **spawn** them with the Agent tool. The full
+protocol is in `agents/orchestrator.md` — read it now.
 
 You are a **dispatcher**: each task is triaged against the workflow registry
 (`workflows/index.md`) and routed to the right-sized workflow, not always the full team. A
@@ -52,7 +53,10 @@ reference and scope each agent to the right sub-app, while building within the c
    **`RUN_DIR`** in every spawn prompt (see "Run directory" in `agents/orchestrator.md`).
    Legacy in-flight runs with a top-level `output/state.json` finish in place — see
    `output/README.md`.
-4. **Triage the task** against `workflows/index.md` and run the matching workflow (see
+4. Run `scripts/resolve-model-routing.sh`; copy `~/.novadiem/resolved-model-routing.json` to
+   `RUN_DIR/model-routing.json`. Spawn using resolved role routing. Legacy Claude-only installs
+   may finish in place with `scripts/resolve-model-tiers.sh` and `RUN_DIR/model-tiers.json`.
+5. **Triage the task** against `workflows/index.md` and run the matching workflow (see
    "Triage: pick a workflow first" in `agents/orchestrator.md`). The default `feature`
    workflow spawns Analizer 2000 → The Architect → The Challenger → The Cleric → The Spellwright
    → The Challenger. If no workflow fits, the `define-workflow` skill creates one.

@@ -1,0 +1,18 @@
+{
+  "runtime": "hermes",
+  "description": "Placeholder adapter for Novadiem Hermes/Mission Control. Hermes may route these aliases to OpenRouter or direct providers.",
+  "capabilities": {
+    "supports_fresh_context_subagents": "runtime-dependent",
+    "supports_parallel_subagents": "runtime-dependent",
+    "supports_filesystem_tools": "host-dependent",
+    "supports_browser_tools": "host-dependent",
+    "supports_reasoning_effort": "provider-dependent"
+  },
+  "tiers": {
+    "cheap": { "model": "hermes:cheap", "notes": "Mission Control alias." },
+    "standard": { "model": "hermes:standard", "notes": "Mission Control alias." },
+    "strong": { "model": "hermes:strong", "notes": "Mission Control alias." },
+    "frontier": { "model": "hermes:frontier", "notes": "Mission Control alias." },
+    "escalated": { "model": "hermes:escalated", "notes": "Mission Control alias." }
+  }
+}

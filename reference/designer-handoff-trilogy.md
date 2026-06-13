@@ -240,7 +240,7 @@ NO elf faces, NO dwarves, NO imp characters, NO workshop interior scene, NO taro
 | Spellwright | Holographic feminine being, script streams |
 | Counselor | African-descent distinguished elder woman, relationally active |
 | Mage | Male cybernetic elf, tools of light — NOT armored knight |
-| Systemsmith | Male space dwarf at server-forge |
+| Systemsmith | Male space dwarf at server-forge, **black hair + black beard** |
 | Mechanic | Small matte grey alien at curved console — NOT goblin |
 
 ## Footer copy (render at bottom)
@@ -277,7 +277,7 @@ NOT stern emperor, NOT bare bald head without crown markings.
 TIER THREE — THE SOCIETY as forces in concentric brass rings operating the machine:
 warm-gold vintage robot (Analizer), hairless silver-grey stellar Architect (NOT blue elf),
 small red imp Challenger, fae Cleric with iridescent fairy wings, holographic Spellwright,
-African-descent elder Counselor, cybernetic elf Mage, dwarf Systemsmith at forge,
+African-descent elder Counselor, cybernetic elf Mage, black-haired dwarf Systemsmith at forge,
 matte grey small alien Mechanic at console.
 
 BASE — THE ARCHIVE: seven labeled pillars SPEC PLAN BRIEF MANIFEST PROMPTS LOG STATE.

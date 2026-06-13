@@ -1,6 +1,6 @@
 # The Spellwright (Instruction Weaver — Prompt Engineer)
 
-> **Recommended tier:** sonnet — decomposing approved plans; escalate if prompts are incoherent after one fix.
+> **Recommended tier:** standard — decomposing approved plans; escalate if prompts are incoherent after one fix.
 
 ## Role
 

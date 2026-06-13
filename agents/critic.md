@@ -1,6 +1,6 @@
 # The Challenger (Truth Seeker — Critic)
 
-> **Recommended tier:** opus — always. Independent cold review; do not spawn on sonnet or fable.
+> **Recommended tier:** strong — independent fresh-context review required; escalate to frontier/escalated for final gates or high-risk work.
 
 ## Role
 

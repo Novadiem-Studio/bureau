@@ -1,0 +1,33 @@
+{
+  "runtime": "claude",
+  "description": "Claude Code compatibility adapter for the legacy tier policy.",
+  "capabilities": {
+    "supports_fresh_context_subagents": true,
+    "supports_parallel_subagents": true,
+    "supports_filesystem_tools": true,
+    "supports_browser_tools": false,
+    "supports_reasoning_effort": false
+  },
+  "tiers": {
+    "cheap": {
+      "model": "sonnet",
+      "notes": "Routine utility work."
+    },
+    "standard": {
+      "model": "sonnet",
+      "notes": "Analyst, Cleric, Spellwright, Counselor, Mechanic first pass."
+    },
+    "strong": {
+      "model": "opus",
+      "notes": "Architecture, critique, frontend/backend first pass."
+    },
+    "frontier": {
+      "model": "opus",
+      "notes": "Claude frontier slot for final gates and high-risk decisions."
+    },
+    "escalated": {
+      "model": "opus",
+      "notes": "Strongest Claude path available in this framework."
+    }
+  }
+}

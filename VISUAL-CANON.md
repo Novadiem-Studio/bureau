@@ -115,7 +115,7 @@ Never substitute these or similar:
 | The Counselor | Distinguished human woman **of African descent** | Young woman, idle background figure, generic white elder |
 | The Cleric | Fae healer **with fairy wings** | Armored elf ranger, leaf crown, forest druid |
 | The Mage | **Male** cybernetic elf | Female, armored knight, fantasy wizard |
-| The Systemsmith | **Male space dwarf** | Human woman, young engineer, orc |
+| The Systemsmith | **Male space dwarf**, black hair + black beard | Human woman, young engineer, orc, auburn/ginger hair |
 | The Mechanic | **Small matte-grey alien technician** | Human, orc, goblin, reptile, dragon, green skin, bulbous cartoon eyes |
 | The Archive | **Object / shelf** — seven collections | Robed librarian, humanoid character |
 
@@ -444,7 +444,7 @@ Do **not** put roman numerals on the ensemble grid or process poster.
 - **Facial hair (canon):** goatee and moustache sculpted with **curled, forked tips** — moustache ends sweep up into small spirals, the goatee tapers to a curled point: the swashbuckler cut (Robin Hood, Green Arrow). The curls deliberately **echo the split-spiral motif** — his own face carries the fork. Not bushy, not a wizard beard. A quiet echo of the Visionary's own (see *Family resemblance* under the two-figures rule)
 - **Expression:** calm, warm, attentive — wise and compassionate, never stern, angry, or judging (see personality in `LORE.md`)
 - **Head markings (required):** split-spiral cosmic circuitry on **scalp and crown** — band, diamond, or chained pattern; the shaved head is **not** bare. Crown mark may mirror sternum or carry its own fork
-- Semi-translucent skin: currents, stars, and geometry visible beneath the surface; edges dissolve subtly into light and information pathways
+- Semi-translucent skin **like polished copper and liquid light**: currents, stars, and geometry visible beneath the surface, moving continuously; edges dissolve subtly into light and information pathways
 - **Cosmic circuitry on and through the body** — luminous lines integrated with skin the way tattoos read, but they are **living circuit paths**, not ink. Energy runs through them; they glow, pulse, and reroute when he conducts. In some motif directions the same lines **read as his clothes** — collar, jacket silhouette, flowing coat-shapes woven from the body-field (circuit-garment), not printed fabric. Optional secondary cues: flowing body-linework (Aang-like trails) and sharp joint traces (Nightcrawler-like angles) — but the **split-spiral motif** (below) is primary
 - **Wardrobe (canon): an ornate open vest.** Richly worked — deep brocade-style etching, brass/gold edging, split-spiral circuitry woven through the garment so vest and body-field read as **one system**. Worn open over the energy torso: the chest mark and body circuitry stay visible, arms bare so the current shows. Colorway may shift with the motif direction, but the vest itself is constant. **Never shirtless / bare-torso-only**, never priestly all-white robes, never golden saint vestments. Circuitry stays primary; the vest frames it
 
@@ -465,7 +465,12 @@ Two **parallel lines** run together as a paired trunk (dual rail, one current). 
 
 This is the default Conductor mark on chest, crown, or platform field. The diamond and band reference images are the best matches for this form.
 
+**Locked portrait (attach to every Conductor prompt):** `reference/conductor-reference.png` — vest, energy face, forked-spiral goatee, α/Ω hands (approved 2026-06-12)
+
+**Locked model sheet (attach when he appears at an angle or from behind):** `reference/conductor-model-sheet.png` — back view + side profile + close-up (approved 2026-06-12)
+
 **Reference images (attach to Conductor prompts):** `reference/conductor-motif/`
+- `chest-mark.png` — **locked chest rendering**: sternum trunk forking at the heart into opposed spirals, canopy arcs (approved 2026-06-12)
 - `split-spiral-diamond.png` — vertical axis; paired spirals break outward from center (**primary form**)
 - `split-spiral-band.png` — chained units: parallel run → opposite spirals → link to next (**primary form**, repeated)
 - `split-spiral-quadrant.png` — twin spirals from one base; stepped borders; nodal crosses (variant)
@@ -475,8 +480,10 @@ This is the default Conductor mark on chest, crown, or platform field. The diamo
 
 **On the body:**
 - **Primary mark** at sternum, solar plexus, or crown — parallel trunk, then opposite spirals; spirals may continue down arms (alpha electrical → right; omega fluid → left)
+- **Chest mark (locked rendering):** `reference/conductor-motif/chest-mark.png` — a luminous trunk rises up the sternum and **forks at the heart into two opposite-curling spirals**, finer arcs branching outward across the chest like a canopy. Reads as tree, circuit, and ribcage at once. Attach alongside the portrait whenever the chest is visible; the vest frames this mark, never covers it
 - **Crown/scalp** always carries visible circuitry — primary or secondary split-spiral (see band reference)
 - Secondary split-spirals may run along arms, collarbone, throat, or scalp as **chained** or **band** patterns
+- **Spine (back views):** the split-spiral flows down the spine — the current **enters and exits through him**; he is a junction in the circuit, not its source (see `conductor-model-sheet.png` back view)
 - Fourfold variants suit the **platform field** around him or radiating into the routing hologram — not necessarily duplicated four times on his face
 
 **In the field:** Split-spiral paths continue into flow maps, routing diagrams, and connections to specialist stations. The workshop routes **visibly follow** the same fork logic.
@@ -710,6 +717,7 @@ His controls exist in the air around him — always within the bubble he can ope
 
 **Appearance:** **Male space dwarf** — always.
 
+- **Black hair (canon)** — hair and beard both black, never auburn/ginger/brown
 - Broad, armored, beard braided with fiber-optic strands pulsing with data
 - Old guild energy in a powered exo-rig
 - Station: anvil-turned-server-forge — heaviest in the workshop, everything bolted down, everything tested

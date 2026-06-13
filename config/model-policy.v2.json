@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "description": "Provider-neutral role policy. Resolve with scripts/resolve-model-routing.sh, then copy the result to RUN_DIR/model-routing.json.",
+  "default_runtime": "openai",
+  "manual_experiments": [],
+  "tiers": ["cheap", "standard", "strong", "frontier", "escalated"],
+  "roles": {
+    "conductor": {
+      "agent": "The Conductor",
+      "default_tier": "strong",
+      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": false,
+      "lock": false,
+      "escalate_when": ["hard_adjudication", "conflicting_specialists", "second_critic_loop", "checkpoint_decision"],
+      "deescalate_when": ["routing_only", "budget_pressure"]
+    },
+    "challenger": {
+      "agent": "The Challenger",
+      "default_tier": "strong",
+      "allowed": ["strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["final_gate", "second_critic_loop", "high_stakes_backend_or_security", "prior_review_missed_issue"],
+      "deescalate_when": ["low_risk_docs_review_with_frontier_followup"]
+    },
+    "architect": {
+      "agent": "The Architect",
+      "default_tier": "strong",
+      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["novel_architecture", "irreversible_data_model", "critic_finds_design_gap"],
+      "deescalate_when": ["small_plan_revision", "budget_pressure"]
+    },
+    "mage": {
+      "agent": "The Mage",
+      "default_tier": "strong",
+      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["complex_state", "design_fidelity_failure", "mobile_web_split", "animation_or_layout_bug"],
+      "deescalate_when": ["small_component_patch", "budget_pressure"]
+    },
+    "analyst": {
+      "agent": "Analizer 2000",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["huge_scope", "fuzzy_product_boundary", "regulated_domain"],
+      "deescalate_when": ["narrow_existing_plan", "budget_pressure"]
+    },
+    "cleric": {
+      "agent": "The Cleric",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["ambiguous_design_handoff", "manifest_extraction_failed", "subtle_visual_drift"],
+      "deescalate_when": ["straightforward_manifest_ingest", "budget_pressure"]
+    },
+    "spellwright": {
+      "agent": "The Spellwright",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["incoherent_after_one_fix", "many_cross_repo_dependencies"],
+      "deescalate_when": ["approved_single_repo_plan", "budget_pressure"]
+    },
+    "counselor": {
+      "agent": "The Counselor",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["sensitive_audience", "legal_medical_political_copy"],
+      "deescalate_when": ["routine_copy_review", "budget_pressure"]
+    },
+    "systemsmith": {
+      "agent": "The Systemsmith",
+      "default_tier": "strong",
+      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["auth", "migrations", "idempotency", "money_or_credit", "permissions", "data_integrity"],
+      "deescalate_when": ["read_only_contract_audit", "small_controller_patch", "budget_pressure"]
+    },
+    "mechanic": {
+      "agent": "The Mechanic",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["prod_deploy", "irreversible_infra", "secret_handling", "database_restore_or_migration"],
+      "deescalate_when": ["local_build_or_smoke_test", "budget_pressure"]
+    }
+  }
+}

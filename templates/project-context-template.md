@@ -44,6 +44,11 @@ For each relevant repo / sub-app:
 
 **Target of this work:** which sub-app(s) / directory(ies) this change touches.
 
+## Git integration (execute / build runs)
+- **Integration branch:** `devel` (branch that receives Society merges — adjust per project)
+- **Target repo path:** absolute path to the git root that build prompts edit
+- **Worktrees:** `.society-worktrees/<run-slug>/` under the target repo (optional `.gitignore` entry)
+
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who
 are not technical" is better than "users".]

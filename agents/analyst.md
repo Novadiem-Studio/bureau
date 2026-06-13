@@ -1,6 +1,6 @@
 # Analizer 2000 (Requirements Sage — Analyst)
 
-> **Recommended tier:** sonnet — escalate to premium if scope is huge or the pass is thin after one fix.
+> **Recommended tier:** standard — escalate to strong/frontier if scope is huge or the pass is thin after one fix.
 
 ## Role
 

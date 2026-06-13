@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# check-drift.sh — diff project installs of the agent framework against THIS canonical copy.
+# check-drift.sh — diff LEGACY per-project copies against this canonical repo.
+# Prefer one global install (see docs/git-worktree.md, README.md). Remove old copies when migrated.
 #
 # Usage:
 #   ./check-drift.sh                      # check the known installs listed below

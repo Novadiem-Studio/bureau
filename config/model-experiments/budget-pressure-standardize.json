@@ -1,0 +1,19 @@
+{
+  "id": "budget-pressure-standardize",
+  "description": "Manual: route utility and build first-pass work down one notch during budget pressure.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "analyst": "cheap",
+    "cleric": "cheap",
+    "spellwright": "cheap",
+    "counselor": "cheap",
+    "mechanic": "cheap",
+    "mage": "standard",
+    "systemsmith": "standard"
+  },
+  "conductor_notes": [
+    "Budget pressure experiment active: start cheaper, rely on Challenger/review gates, escalate on evidence."
+  ]
+}

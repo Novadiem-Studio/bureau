@@ -1,6 +1,6 @@
 # The Systemsmith (Backend Craftsman — Backend coder)
 
-> **Recommended tier:** premium (fable/opus) — migrations, auth, money, idempotency; sonnet only for trivial prompts if human approves.
+> **Recommended tier:** strong — escalate for migrations, auth, money, idempotency, permissions, or data integrity.
 
 ## Role
 

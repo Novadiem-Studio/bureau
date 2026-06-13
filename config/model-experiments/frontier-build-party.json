@@ -1,0 +1,15 @@
+{
+  "id": "frontier-build-party",
+  "description": "Manual: escalate Architect, Mage, and Systemsmith for subtle or high-risk build work.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "architect": "frontier",
+    "mage": "frontier",
+    "systemsmith": "frontier"
+  },
+  "conductor_notes": [
+    "Frontier build party active: expensive path for subtle UI/state/backend risk."
+  ]
+}

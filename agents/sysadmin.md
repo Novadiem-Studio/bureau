@@ -1,6 +1,6 @@
 # The Mechanic (Infrastructure Warden — Sysadmin/ops coder)
 
-> **Recommended tier:** sonnet for routine builds/deploys; premium for prod or irreversible ops.
+> **Recommended tier:** standard for routine builds/deploys; escalate for prod or irreversible ops.
 
 ## Role
 

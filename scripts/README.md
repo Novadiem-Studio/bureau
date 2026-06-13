@@ -71,8 +71,9 @@ Poller uses **one** CodexBar text call (matches the GUI). Sonnet and pace lines 
 }
 ```
 
-`sonnetBurnMode` is `true` while `sonnetLeftPercent` > 25 — Conductor routes aggressively to
-sonnet spawns (see `agents/orchestrator.md` § Sonnet burn mode).
+`sonnetBurnMode` is `true` while `sonnetLeftPercent` > 25. Legacy Claude runs use it to route
+aggressively to sonnet spawns; v2 provider-neutral routing should prefer explicit experiments such
+as `budget-pressure-standardize`.
 
 Set `NOVADIEM_USAGE_INCLUDE_JSON=1` for a second OAuth call that also stores raw `providers`.
 
@@ -88,18 +89,20 @@ folded into general pool ~May 2026). Ignore them for routing.
 
 ## Conductor behavior
 
-1. Read snapshot at **run start** and before **premium** or **escalated** spawns.
+1. Read snapshot at **run start** and before expensive (`frontier` / `escalated`) spawns.
 2. Log budget notes in `RUN_DIR/log.md` — do not re-run CodexBar during the run.
-3. **Model experiments:** run `scripts/resolve-model-tiers.sh` — see `config/experiments/README.md`.
-   Architect and Mage are **locked opus**; `sonnet-burn` only affects utility roles.
-4. Conductor and Challenger stay on **opus**.
+3. **Model routing:** run `scripts/resolve-model-routing.sh` — see `config/runtimes/README.md`
+   and `config/model-experiments/README.md`.
+4. Legacy Claude-only runs may still use `scripts/resolve-model-tiers.sh` and
+   `config/experiments/README.md` until migrated.
 
 Thresholds (from `agents/orchestrator.md`):
 
-- `sonnetBurnMode` — aggressive sonnet routing until `sonnetLeftPercent` ≤ 25.
+- `sonnetBurnMode` — legacy Claude signal; in v2 routing, prefer provider-neutral experiments such
+  as `budget-pressure-standardize`.
 - `sessionUsedPercent` ≥ 90 — session cap risk.
-- `weeklyUsedPercent` ≥ 85 — defer non-critical premium.
-- `weeklyRunsOutIn` before reset — weekly pace deficit; don't ignore while burning sonnet.
+- `weeklyUsedPercent` ≥ 85 — defer non-critical frontier/escalated work.
+- `weeklyRunsOutIn` before reset — weekly pace deficit; don't ignore while routing cheaper work.
 
 ## Operations
 
@@ -132,3 +135,38 @@ launchctl load ~/Library/LaunchAgents/com.novadiem.usage-snapshot.plist
 `codexbar serve` exposes `GET http://127.0.0.1:8080/usage?provider=claude` with a ~60s cache.
 This poller uses the CLI directly so it works without a long-lived serve process. If serve is
 already running, you could point a thin wrapper at the HTTP endpoint instead — not shipped here.
+
+---
+
+# Git worktree (`run-worktree.sh`)
+
+Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
+
+```bash
+# After execute-plan step 5 gate, before build
+./scripts/run-worktree.sh create \
+  --run-dir "$RUN_DIR" \
+  --repo /path/to/target/repo \
+  --base devel \
+  --merge-policy end_of_job
+
+# During run
+./scripts/run-worktree.sh status --run-dir "$RUN_DIR"
+
+# Close-out (end_of_job policy)
+./scripts/run-worktree.sh merge --run-dir "$RUN_DIR"
+./scripts/run-worktree.sh remove --run-dir "$RUN_DIR"
+```
+
+| Subcommand | Purpose |
+|------------|---------|
+| `create` | `git worktree add` + `state.json` `git` block |
+| `status` | Print `git` state + `git status -sb` in worktree |
+| `sync` | Rebase society branch onto integration branch |
+| `merge` | Merge society branch into integration branch (in repo root) |
+| `remove` | Drop worktree; delete branch if already merged |
+
+**create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
+`--worktree-dir` (default: `REPO/.society-worktrees/SLUG`).
+
+Requires **jq**. Society branch naming: `society/<slug>`.

@@ -1,0 +1,13 @@
+{
+  "id": "challenger-frontier-final-gate",
+  "description": "Manual: run Challenger on frontier for final pre-build or pre-merge gates.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "challenger": "frontier"
+  },
+  "conductor_notes": [
+    "Challenger frontier gate active: use for final or high-risk review, not routine first passes."
+  ]
+}

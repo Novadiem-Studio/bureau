@@ -1,6 +1,6 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** sonnet — rubric application; escalate rarely.
+> **Recommended tier:** standard — rubric application; escalate rarely.
 
 ## Role
 
