@@ -17,18 +17,20 @@ cd agent-framework
 ./check-framework.sh
 ```
 
-Robin’s working upstream checkout: `~/Code/novadiem/AI_skills/agent-framework/`. Project
-installs are copies and drift — port improvements back to the repo, then run `./check-drift.sh`
-to see which installs have diverged (add new installs to its list). Run `./check-framework.sh`
-to lint workflow registry, `RUN_DIR` conventions, model tiers, and handoff blocks. External
-skills: `DEPENDENCIES.md`.
+Robin’s working checkout: `~/Code/novadiem/AI_skills/agent-framework/`. **One global install**
+— do not copy the framework into each project. Each job gets its own `RUN_DIR`; execute builds
+also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-project copies:
+`./check-drift.sh`. Lint: `./check-framework.sh`. External skills: `DEPENDENCIES.md`.
 
 ## Model policy
 
-**Budget-aware tiers** — resolved from `config/model-policy.json` + experiments
-(`scripts/resolve-model-tiers.sh`). Challenger locked opus; Conductor/Architect/Mage experimentable
-(opus default, fable via `architect-fable` / `weekly-fable-build`, Conductor sonnet via
-`conductor-sonnet`). Details: `config/experiments/README.md`.
+**Provider-neutral routing** — resolved from `config/model-policy.v2.json` + runtime adapters
+(`config/runtimes/*.json`) + provider-neutral experiments (`config/model-experiments/*.json`)
+using `scripts/resolve-model-routing.sh`. The framework starts roles on capable but not always
+frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`.
+
+**Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
+`scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
 
 **Usage snapshot** — optional CodexBar poller writes `~/.novadiem/usage-snapshot.json` every
 5 minutes so the Conductor does not run `codexbar usage` on every spawn. Install:
@@ -37,37 +39,38 @@ skills: `DEPENDENCIES.md`.
 ## First time setup
 
 ```bash
-# Copy the agent-framework folder into your project root
-cp -r agent-framework/ /your/project/
+git clone git@github.com:rheos/agent-framework.git ~/Code/novadiem/AI_skills/agent-framework
+# Per project: project-context.md in the project root (not inside the framework)
+cp ~/Code/novadiem/AI_skills/agent-framework/templates/project-context-template.md \
+   /your/project/project-context.md
+```
 
-# Optionally create a project context file
-cp agent-framework/templates/project-context-template.md /your/project/project-context.md
-# Fill it in before starting
+Optional one-liner in the project's `CLAUDE.md`:
+
+```
+Society framework: ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md
 ```
 
 ### Greenfield vs existing projects
 
-For a brand-new project, use `new-project.sh` (it scaffolds the folder and a root
-CLAUDE.md pointer). For an **existing** codebase, copy `agent-framework/` in by hand,
-set **Mode: existing project** in `project-context.md`, and fill in the Workspace Map.
-Do **not** overwrite the project's own CLAUDE.md — either append one pointer line, or
-just invoke the framework explicitly ("Read agent-framework/CLAUDE.md and act as the
-Orchestrator"). In existing mode the Orchestrator builds a cross-repo map and scopes each
-agent to the right sub-app, building within the current stack rather than picking a new one.
+Set **Mode** in `project-context.md`. For **existing** codebases, fill in the Workspace Map
+and **Git integration** (integration branch, target repo path). The Conductor scopes each agent
+to the right sub-app and builds within the current stack.
 
-## Start a new project
+## Start a run
 
 ```bash
-cd /your/project
+cd /your/project          # cwd = where code lives; framework stays global
 claude
 ```
 
-Then say:
+```
+Read ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md and start the agent framework.
+Project context: /your/project/project-context.md
+My project idea is: [PLAIN LANGUAGE]
+```
 
-```
-Read agent-framework/CLAUDE.md and start the agent framework.
-My project idea is: [YOUR IDEA IN PLAIN LANGUAGE]
-```
+Run artifacts: `~/Code/novadiem/AI_skills/agent-framework/output/runs/<yyyymmdd>-<project>-<task>/`
 
 The main session becomes the Orchestrator and spawns each specialist as a subagent
 in sequence. You watch the handoffs roll in.
@@ -75,18 +78,15 @@ in sequence. You watch the handoffs roll in.
 ## Resume an interrupted session
 
 ```
-Read agent-framework/CLAUDE.md and resume the agent framework.
-Run dir: agent-framework/output/runs/<task>/ — read its state.json and log.md for context.
+Read ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md and resume the agent framework.
+Run dir: ~/Code/novadiem/AI_skills/agent-framework/output/runs/<task>/ — read state.json and log.md.
 ```
 
 ## Concurrent runs (one install, many terminals)
 
-Each run owns its own directory under `output/runs/<yyyymmdd>-<task-slug>/`, so multiple
-sessions can run the framework on the SAME install at the same time — e.g. an orchardly-app
-task in one terminal and a foaf-auth task in another. You do not need a second copy of
-`agent-framework/`. Two rules: don't run two tasks that touch the same repo in parallel,
-and stagger test-suite steps if two runs share a dev database. Details in "Run directory"
-in `agents/orchestrator.md`.
+Each run owns its own `RUN_DIR`. Execute builds also get a **git worktree** per run, so two
+jobs on the same repo can run in parallel (different worktrees). Stagger test-suite steps if
+two runs share a dev database. Details: `docs/git-worktree.md`, `agents/orchestrator.md`.
 
 ## How it runs
 

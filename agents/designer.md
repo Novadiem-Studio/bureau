@@ -1,6 +1,6 @@
 # The Cleric (Guardian of Quality — Designer)
 
-> **Recommended tier:** sonnet — brief, ingest, and design review. Escalate only if manifest extraction fails twice.
+> **Recommended tier:** standard — brief, ingest, and design review. Escalate only if manifest extraction fails twice or visual drift is subtle.
 
 ## Role
 

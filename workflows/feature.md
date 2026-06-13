@@ -17,22 +17,22 @@ agents load the relevant per-sub-app skills when they work in that area. See `DE
 
 ## Steps
 
-Run these as spawned subagents (see "How to spawn an agent" and "Model tiers" in
+Run these as spawned subagents (see "How to spawn an agent" and "Model routing" in
 `agents/orchestrator.md`). Sequential — wait for each handoff before the next. Pass
 `RUN_DIR` as an absolute path in every spawn prompt.
 
-1. **Analizer 2000** (Analyst, **sonnet**) — requirements, scope, edge cases → `spec.md` (Requirements)
-2. **The Architect** (**opus**) — system design + plan → `spec.md` (Architecture), `plan.md`
+1. **Analizer 2000** (Analyst, **standard**) — requirements, scope, edge cases → `spec.md` (Requirements)
+2. **The Architect** (**strong**) — system design + plan → `spec.md` (Architecture), `plan.md`
 3. **[DESIGN-MODEL CHECKPOINT]** (mandatory) — The Conductor shows the human the Architect's
    design-model summary + over-baseline mechanism list, waits for go or a model correction
    (see "Design-model checkpoint" in `agents/orchestrator.md`)
-4. **The Challenger** (Critic, round 1, **opus**) — review spec + plan cold → `log.md`, findings
+4. **The Challenger** (Critic, round 1, **strong**, fresh context required) — review spec + plan cold → `log.md`, findings
    - The Conductor adjudicates: route the fix back (max 2x), note + proceed, or CHECKPOINT
-5. **The Cleric** (Designer, brief, **sonnet**) — is there a UI surface? → `design/brief.md`, or DESIGN: NOT NEEDED
+5. **The Cleric** (Designer, brief, **standard**) — is there a UI surface? → `design/brief.md`, or DESIGN: NOT NEEDED
    - NEEDED → `[DESIGN HANDOFF]` checkpoint, wait for the exported bundle
-6. **The Cleric** (Designer, ingest, **sonnet**) — read the handoff bundle → `design/manifest.md`
-7. **The Spellwright** (Prompt Engineer, **sonnet**) — approved spec/plan (+ manifest) → `prompts.md`
-8. **The Challenger** (Critic, round 2, **opus**) — review the prompts → `log.md`, findings (The Conductor adjudicates)
+6. **The Cleric** (Designer, ingest, **standard**) — read the handoff bundle → `design/manifest.md`
+7. **The Spellwright** (Prompt Engineer, **standard**) — approved spec/plan (+ manifest) → `prompts.md`
+8. **The Challenger** (Critic, round 2, **strong**, fresh context required) — review the prompts → `log.md`, findings (The Conductor adjudicates)
 
 The full agent specs, verdict format, and checkpoint formats live in `agents/orchestrator.md`
 and the per-agent files in `agents/`. This file just names the sequence; it doesn't

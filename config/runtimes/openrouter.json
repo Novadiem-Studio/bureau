@@ -1,0 +1,18 @@
+{
+  "runtime": "openrouter",
+  "description": "Placeholder adapter for OpenRouter-backed dispatch. Replace aliases in Mission Control or a local overlay.",
+  "capabilities": {
+    "supports_fresh_context_subagents": "runtime-dependent",
+    "supports_parallel_subagents": "runtime-dependent",
+    "supports_filesystem_tools": "host-dependent",
+    "supports_browser_tools": "host-dependent",
+    "supports_reasoning_effort": "provider-dependent"
+  },
+  "tiers": {
+    "cheap": { "model": "openrouter:cheap", "notes": "Local/Mission Control alias." },
+    "standard": { "model": "openrouter:standard", "notes": "Local/Mission Control alias." },
+    "strong": { "model": "openrouter:strong", "notes": "Local/Mission Control alias." },
+    "frontier": { "model": "openrouter:frontier", "notes": "Local/Mission Control alias." },
+    "escalated": { "model": "openrouter:escalated", "notes": "Local/Mission Control alias." }
+  }
+}

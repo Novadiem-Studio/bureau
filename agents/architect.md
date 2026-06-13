@@ -1,6 +1,6 @@
 # The Architect (Systems Visionary)
 
-> **Recommended tier:** opus — locked in `config/model-policy.json`; do not downgrade.
+> **Recommended tier:** strong — escalate to frontier/escalated for novel architecture, irreversible data choices, or repeated critic findings.
 
 ## Role
 

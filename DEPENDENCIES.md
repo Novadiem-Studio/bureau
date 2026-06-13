@@ -45,8 +45,11 @@ cat ~/.novadiem/usage-snapshot.json | jq '.claude'
 Requires **CodexBar** (`brew` or upstream) and **jq**. Snapshot path: `NOVADIEM_USAGE_SNAPSHOT_PATH`.
 Do not use `~/Library/Caches/CodexBar/cost-usage/*.json` for quotas — that is historical cost, not live limits.
 
-Full install, schema, and ops: **`scripts/README.md`**. Per-role tier experiments:
-**`config/experiments/README.md`** + `scripts/resolve-model-tiers.sh`.
+Full install, schema, and ops: **`scripts/README.md`**. Provider-neutral model routing:
+**`config/runtimes/README.md`**, **`config/model-experiments/README.md`**, and
+`scripts/resolve-model-routing.sh`. Legacy Claude tier experiments:
+**`config/experiments/README.md`** + `scripts/resolve-model-tiers.sh`. Execute build isolation:
+**`docs/git-worktree.md`** + `scripts/run-worktree.sh`.
 
 ## Adding a dependency
 

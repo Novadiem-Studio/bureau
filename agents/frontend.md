@@ -1,6 +1,6 @@
 # The Mage (Frontend coder — creates the experience)
 
-> **Recommended tier:** opus — locked in `config/model-policy.json`; do not downgrade.
+> **Recommended tier:** strong — escalate for complex state, visual fidelity failures, or mobile/web layout risk.
 
 ## Role
 

@@ -10,5 +10,19 @@
   "carried_items": [],
   "checkpoints": [],
   "decisions": {},
+  "git": {
+    "enabled": false,
+    "repo": null,
+    "base_branch": "devel",
+    "branch": null,
+    "worktree_path": null,
+    "merge_policy": "end_of_job",
+    "run_slug": null,
+    "prompts_merged": [],
+    "status": null,
+    "created_at": null,
+    "merged_at": null,
+    "last_sync_at": null
+  },
   "last_updated": null
 }

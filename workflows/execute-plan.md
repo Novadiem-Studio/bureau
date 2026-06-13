@@ -24,7 +24,7 @@ don't duplicate its runbook.
 The **writers' room** reviews, decomposes, and re-reviews (steps 1-4). The **build party** then
 builds the vetted prompts part by part (steps 5-7), each part reviewed before the next.
 
-1. **The Architect** (**opus**) — orient (`monorepo-orientation`), read the plan in full,
+1. **The Architect** (**strong**) — orient (`monorepo-orientation`), read the plan in full,
    and verify it still fits the **current** code (spot-check the plan's critical files and symbol
    anchors; plans drift). Define the chunking: the ordered list of scoped units by sub-app /
    layer, the ship order across sub-apps, the analogous shipped feature each chunk mirrors, and
@@ -33,34 +33,57 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    two chunks (the contract-owning chunk ships first).
    - anchors hold → proceed.
    - material drift (a branch site is gone, a product decision is now wrong) → `[CHECKPOINT]`.
-2. **The Challenger** (Critic, round 1, **opus**) — cold-review the plan + chunking: requirement
+2. **The Challenger** (Critic, round 1, **strong**, fresh context required) — cold-review the plan + chunking: requirement
    gaps, missing edge cases, wrong sequence, hidden cross-sub-app dependencies, anything that
    will bite the implementer. Reports findings. The Conductor adjudicates: route the fix back
    to The Architect (max 2x), note + proceed, or `[CHECKPOINT]`.
-3. **The Spellwright** (Prompt Engineer, **sonnet**) — decompose the approved plan into the
+3. **The Spellwright** (Prompt Engineer, **standard**) — decompose the approved plan into the
    **prompt folder** (format below), beside the plan doc. One prompt = one coherent unit a single
    Claude Code session can finish, owned by **exactly one coder** (carry the Architect's chunk
    assignment; tag every prompt `Coder:`). Each names exact files and ends with a green checkpoint.
-4. **The Challenger** (Critic, round 2, **opus**) — cold-review the prompts: is each independently
+4. **The Challenger** (Critic, round 2, **strong**, fresh context required) — cold-review the prompts: is each independently
    executable? correct order? hidden deps between steps? are the workspace gotchas captured? is
    every checkpoint testable? Reports findings. The Conductor adjudicates: route the fix back to
    The Spellwright (max 2x), note + proceed, or `[CHECKPOINT]`.
 5. **Gate** — show the human the prompt folder and get a go before building. `[CHECKPOINT]`.
    (If they only wanted the prompts, stop here; that's a valid end.)
+5b. **Worktree** (before step 6) — create an isolated git worktree for this run (see
+   `docs/git-worktree.md`). From the **target repo** named in the plan / workspace map:
+
+   ```bash
+   <FRAMEWORK>/scripts/run-worktree.sh create \
+     --run-dir "$RUN_DIR" \
+     --repo <absolute repo path> \
+     --base <integration branch; default devel from project-context.md> \
+     --merge-policy end_of_job
+   ```
+
+   Record paths in `state.json` (`git` block). All build-party spawns get **`WORKTREE:`** —
+   the absolute `worktree_path`. Never edit `devel` (or the integration branch) directly during
+   the run. Commit in the worktree before each prompt handoff is accepted.
+
+   **Merge policy** (`git.merge_policy` in `state.json`):
+   - `end_of_job` (default) — merge at step 7 only.
+   - `per_prompt` — after each accepted prompt: `run-worktree.sh merge`, then `sync` before the next.
+   - `checkpoint` — merge only when the human says so at `[CHECKPOINT]`.
+
 6. **Build, part by part** — The Conductor runs the prompts **in order, 01→NN**, dispatching each
    to the coder named by its **`Coder:` tag** — the tag is the assignment; do not re-infer the
    owner from the sub-app. (A missing or wrong tag is a Spellwright defect: route it back rather
    than guessing.)
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
-   Each coder loads the target sub-app's CLAUDE.md + the skills the prompt names, builds exactly
-   that one prompt, and gets its checkpoint green. After each part:
-   - **The Challenger** (**opus**) cold-reviews that single diff against the prompt and the plan → findings.
+   Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
+   sub-app's CLAUDE.md + the skills the prompt names, builds exactly that one prompt, commits
+   in the worktree, and gets its checkpoint green. After each part:
+   - **The Challenger** (**strong**, fresh context required) cold-reviews that single diff against the prompt and the plan → findings.
    - **The Cleric (mode: review)** additionally checks UI prompts: the built screens against
      `design/manifest.md` (components, tokens, states, flow, real data). FAITHFUL or DRIFTED
      with findings; drift fixes route back to The Mage with the correctness fixes.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
+   - If `merge_policy` is `per_prompt` and the prompt is accepted: `run-worktree.sh merge`,
+     then `sync`, append prompt id to `git.prompts_merged` in `state.json`.
 
    **Parallel tracks (optional).** Two prompts may build SIMULTANEOUSLY (e.g. The Systemsmith on a
    backend prompt while The Mage builds UI) only when ALL hold:
@@ -71,8 +94,11 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    Each track keeps its own build→review→adjudicate loop; The Conductor interleaves
    adjudications and respects the overall ship order at the end. When in doubt, serialize —
    parallelism saves wall-clock, not review effort.
-7. **Close out** (The Conductor) — summarize what shipped vs. what the plan asked for, flag anything
-   deferred, append the run to `RUN_DIR/log.md`, and move the plan doc out of `todo/` (or mark done).
+7. **Close out** (The Conductor) — if `git.merge_policy` is `end_of_job` and worktree is active:
+   human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
+   human resolves on integration branch, then `remove`). Summarize what shipped vs. what the plan
+   asked for, flag anything deferred, append the run to `RUN_DIR/log.md`, and move the plan doc
+   out of `todo/` (or mark done).
 
 ## Prompt folder format
 
