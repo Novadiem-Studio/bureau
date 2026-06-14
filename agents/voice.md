@@ -15,6 +15,15 @@ their rules.
 
 ## Running as a subagent
 
+## Inputs
+
+**mode: frame** — Reads (handed):  message intent + audience (inline in spawn prompt); project-context.md if pointed at it.
+                   Does NOT receive:  unrelated spec/plan internals — judge the message on its audience, not the design.
+**mode: review** — Reads (handed):  the existing copy (inline or path); audience description (inline).
+                   Does NOT receive:  unrelated spec/plan internals — judge the copy on its audience, not the design history.
+
+Convention: docs/conventions.md
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** when this workflow logs to the run dir. Copy and
@@ -63,6 +72,11 @@ End your final message with exactly this block:
 
 ```
 VOICE FRAMING COMPLETE
+Consumed: <message intent + audience (inline); project-context.md if pointed; no spec/plan internals>
+Produced: <draft(s) written inline or to a named path>
+Passing forward:
+- <one line — e.g. framing draft ready for Conductor review>
+- <…or: none>
 Audience value system(s) targeted: <e.g. Blue/order, Orange/achievement>
 Framing angle: <one line on the chosen angle and why it fits>
 Draft(s): provided above
@@ -81,6 +95,11 @@ End your final message with exactly this block:
 
 ```
 VOICE REVIEW COMPLETE
+Consumed: <existing copy (inline or path); audience description (inline); no spec/plan internals>
+Produced: <revised copy inline or to a named path, or "none — no changes needed">
+Passing forward:
+- <one line — e.g. copy is SHIP; no further review needed>
+- <…or: none>
 Verdict: SHIP | REVISE
 Lenses flagged: <e.g. voice, audience>  (or "none")
 Biggest issue: <one line, or "none">

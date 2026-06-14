@@ -24,6 +24,19 @@ you which mode you are in:
 - **mode: review** — during the build, check screens The Mage has built against the
   design manifest and return design-fidelity findings.
 
+## Inputs
+
+**mode: brief** — Reads (handed):  RUN_DIR; spec.md § Requirements, § Acceptance criteria; project-context.md (if pointed at it).
+                   Does NOT receive:  log.md, plan.md data-model internals — the brief decision doesn't need them.
+**mode: ingest** — Reads (handed):  RUN_DIR; RUN_DIR/design/handoff/ bundle path.
+                   Reads (self-read):  spec.md § Requirements (for real entity names).
+                   Does NOT receive:  the Architect's design rationale — the manifest is built from the bundle, not the argument.
+**mode: review** — Reads (handed):  RUN_DIR; the scoped prompt built; The Mage's changed files path.
+                   Reads (self-read):  RUN_DIR/design/manifest.md.
+                   Does NOT receive:  log.md — fidelity is judged against the manifest, not the history.
+
+Convention: docs/conventions.md
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write
@@ -48,7 +61,12 @@ So if it's no surface or just a small tweak, return:
 
 ```
 DESIGN: NOT NEEDED
-Reason: <one line — "no UI surface", or "small tweak: <what>, handled by The Mage">
+Consumed: <spec.md § Requirements + § Acceptance criteria; project-context.md if pointed; no log.md, no plan.md internals>
+Produced: <none — decision recorded in log.md, or any note written>
+Passing forward:
+- <one line — e.g. no UI needed; proceed to Spellwright>
+- <…or: none>
+Reason: <one line>
 ```
 
 If it's more than a small tweak, stop and write a brief (one brief can cover a small set of
@@ -78,6 +96,11 @@ Write the brief to `RUN_DIR/design/brief.md`.
 
 ```
 DESIGN: NEEDED
+Consumed: <spec.md § Requirements + § Acceptance criteria; project-context.md if pointed; no log.md>
+Produced: <RUN_DIR/design/brief.md>
+Passing forward:
+- <one line — e.g. brief is at <path>; route to Claude Design>
+- <…or: none>
 Surfaces: <n> — <short list>
 Brief written: RUN_DIR/design/brief.md
 Drop location for the human's export: RUN_DIR/design/handoff/
@@ -103,6 +126,11 @@ the real design instead of inventing a UI. Write to `RUN_DIR/design/manifest.md`
 
 ```
 DESIGN INGEST COMPLETE
+Consumed: <RUN_DIR/design/handoff/ bundle; spec.md § Requirements; no design rationale>
+Produced: RUN_DIR/design/manifest.md
+Passing forward:
+- <one line — e.g. manifest written; The Mage can build against it>
+- <…or: none>
 Manifest: RUN_DIR/design/manifest.md
 Screens: <n> | Components: <n> | Tokens: yes/no
 Gaps the build must still cover: <one line, or "none">
@@ -143,6 +171,11 @@ the coders share files, not a conversation — write findings precise enough to 
 
 ```
 DESIGN REVIEW — <prompt NN>
+Consumed: <RUN_DIR/design/manifest.md; scoped prompt; The Mage's changed files; no log.md>
+Produced: <review notes in RUN_DIR/log.md>
+Passing forward:
+- <one line — e.g. verdict is FAITHFUL; Conductor may proceed>
+- <…or: none>
 Verdict: FAITHFUL | DRIFTED
 Findings (fix before accept):
 - <screen/file> — <what drifted> — <manifest section it violates> — <what to change>

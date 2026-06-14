@@ -20,6 +20,13 @@ Load the global **novadiem-engineering** skill first. The coder who runs each pr
 too, so you write to the same standards without restating the universal rules in every prompt
 (see "Name the coder's context" below).
 
+## Inputs
+
+Reads (handed by the Conductor):  RUN_DIR; spec.md (full); plan.md (full); RUN_DIR/design/manifest.md (if it exists — only when a design was produced).
+Does NOT receive:  log.md, the Challenger's findings, the Architect's design rationale — build prompts from the approved spec/plan, not the debate.
+
+Convention: docs/conventions.md
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write
@@ -185,7 +192,11 @@ beyond what you give them. Assume nothing is obvious.
 
 ```
 PROMPT ENGINEER COMPLETE
-Wrote: RUN_DIR/prompts.md
+Consumed: <spec.md (full) + plan.md (full) [+ design/manifest.md if it existed]; no log.md, no Challenger findings, no design rationale>
+Produced: RUN_DIR/prompts.md
+Passing forward:
+- <one line — e.g. a scope decision the builder must know, or a prompt that needs Conductor review>
+- <…or: none>
 Prompts: <n>  | covers phases: <list>
 Coder split (execute-plan only): The Mage <n> · The Systemsmith <n> · The Mechanic <n>
 Each prompt independently executable: yes/no
