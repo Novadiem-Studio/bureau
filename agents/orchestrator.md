@@ -86,9 +86,20 @@ WORKTREE: <absolute worktree path — build/execute prompts only; omit for plann
 
 1. Read in full and adopt as your role:
    <ROOT>/agents/<role>.md
-2. Read your inputs (absolute paths — only what your role needs):
-   <RUN_DIR>/spec.md
-   <RUN_DIR>/plan.md
+2. Read your inputs (absolute paths). Pass EXACTLY what the role's `## Inputs` block in
+   `<ROOT>/agents/<role>.md` declares — not a default pair. If you're tempted to add more,
+   name the specific decision in this agent's task that needs it; if you can't, don't.
+   (Convention: <ROOT>/docs/conventions.md.)
+
+   Resolved from each role's `## Inputs` block — two worked examples:
+   • Analizer 2000 (single input set): `<RUN_DIR>` + the project idea inline (and
+     `project-context.md` only if you are pointing the run at it). NOT plan.md/log.md —
+     the Analyst writes Requirements before they exist.
+   • The Challenger / The Spellwright (multi-artifact set): The Challenger round 1 gets
+     `<RUN_DIR>/spec.md` (full) + `<RUN_DIR>/plan.md` (full) + `spec.md § Acceptance
+     criteria` — and NOTHING from any prior round, no log.md, no design rationale. The
+     Spellwright gets `<RUN_DIR>/spec.md` (full) + `<RUN_DIR>/plan.md` (full) +
+     `RUN_DIR/design/manifest.md` if it exists.
 3. Project idea: <idea>
    Project context (if present): <project-root>/project-context.md
    Critic blockers to address (revision loops only):
@@ -583,6 +594,7 @@ State discipline — all three of these have bitten real runs:
   `log.md`; state.json may hold a one-line pointer to it.
 - **Carried items get their own key.** Open questions, caveats, and confirm-before-build
   notes go in `carried_items` — never appended to the `phase` string.
+- `carried_items` is populated 1:1 from each agent's `Passing forward` footer bullets — copy them, don't author a parallel list (`docs/conventions.md`).
 - **Validate after every write.** Duplicate keys silently shadow each other and stale values
   survive. After each update run:
   `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`

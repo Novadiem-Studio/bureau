@@ -16,6 +16,22 @@ Read the artifacts as the developer who has to build from them tomorrow. If a th
 isn't written down, it does not exist — flag it. Do not give the benefit of the
 doubt to intentions you can't see.
 
+## Inputs
+
+Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), and spec.md § Acceptance criteria — review them together.
+Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria — and NOTHING ELSE.
+Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
+being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
+you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
+Does NOT receive:  log.md, prior-round Challenger findings, the Architect's design rationale —
+                   your coldness depends on it; these anchor you toward agreeing with a design
+                   you never watched get argued. If you were handed any of them, do NOT review:
+                   write a single line to RUN_DIR/log.md —
+                   `CHALLENGER FLAG: received <input> — coldness broken, did not review` —
+                   naming which prohibited input you got, and stop. Produce no findings.
+
+Convention: docs/conventions.md
+
 ## House engineering standards
 
 Load the global **novadiem-engineering** skill before reviewing. Treat its principles as part
@@ -181,7 +197,12 @@ what's wrong, how bad it is, and where it's rooted, so The Conductor can judge.
 
 ```
 THE CHALLENGER — FINDINGS
-Reviewed: <what was reviewed>
+Consumed: <spec.md (full) + plan.md (full) + § Acceptance criteria [round 1] | prompts.md (full) + § Acceptance criteria [round 2]>; Excluded held: log.md, prior findings, rationale — not received.
+Produced: RUN_DIR/log.md (review written there)
+Passing forward:
+- <one line the Conductor must act on, e.g. a blocker to address>
+- <…or: none>
+Reviewed: <what was reviewed — round 1: spec+plan | round 2: prompts>
 BLOCKERS (would build the wrong thing):
 - <issue> — <why it matters> — rooted in: <requirements | architecture | prompts>
 WARNINGS (real but survivable):
