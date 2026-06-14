@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# check-drift.sh — diff LEGACY per-project copies against this canonical repo.
-# Prefer one global install (see docs/git-worktree.md, README.md). Remove old copies when migrated.
+# check-drift.sh — diff per-project copies against this canonical repo.
+#
+# As of 2026-06-13 there are NO per-project framework copies: the studio runs from this
+# ONE global install (see docs/git-worktree.md). The old GrowOperative and Oriva copies
+# were retired to output-only archives (history kept for Society Desk); their pre-retire
+# state is in ../_retired-framework-copies-20260613/. Run from any project by pointing at
+# this install's CLAUDE.md — nothing to sync. This script now only checks installs you
+# pass explicitly, for the rare case a copy is spun up again.
 #
 # Usage:
-#   ./check-drift.sh                      # check the known installs listed below
-#   ./check-drift.sh /path/to/install ... # check specific installs
+#   ./check-drift.sh /path/to/install ... # check specific installs (none tracked by default)
 #
 # Per-project files (output/, project-context.md, .claude/) are excluded — only the
 # framework itself (agents/, workflows/, templates/, CLAUDE.md, README.md) is compared.
@@ -16,11 +21,13 @@ CANON="$(cd "$(dirname "$0")" && pwd)"
 if [ "$#" -gt 0 ]; then
   INSTALLS=("$@")
 else
-  # Known installs — add a line here whenever the framework is copied into a new project.
-  INSTALLS=(
-    "$HOME/Code/novadiem/oriva/agent-framework"
-    "$HOME/Code/foaftech/Growoperative/agent-framework"
-  )
+  # Centralized: one global install, no per-project copies to track.
+  INSTALLS=()
+fi
+
+if [ "${#INSTALLS[@]}" -eq 0 ]; then
+  echo "One global install — no per-project copies to drift-check. Pass paths to check specific installs."
+  exit 0
 fi
 
 EXCLUDES=(-x output -x project-context.md -x .claude -x .git -x .DS_Store -x check-drift.sh -x check-framework.sh)

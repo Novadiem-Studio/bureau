@@ -21,8 +21,10 @@ gives you: the scoped prompt file (`<plan-folder>/NN-<slug>.md`), the target sub
 path, and the local context to load (that sub-app's CLAUDE.md + the skills the prompt names).
 
 Do this:
-1. Load the sub-app's local CLAUDE.md and the skills the prompt names (`auth`, `mutual-credit`,
-   `docker`, `testing`, …). Mirror the analogous shipped feature the prompt points to.
+1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local
+   CLAUDE.md, and the skills the prompt names (`auth`, `mutual-credit`, `docker`, `testing`,
+   …). The local CLAUDE.md wins over the global skill on any conflict for this sub-app.
+   Mirror the analogous shipped feature the prompt points to.
    Also read the spec/plan sections and any contract the prompt names — resolve ambiguity
    against the written requirement, not a guess. If your prompt owns a contract a later
    prompt consumes, state it explicitly in your handoff block.

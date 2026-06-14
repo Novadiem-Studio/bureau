@@ -15,6 +15,7 @@ The framework is self-contained in `agents/`, `workflows/`, and `templates/`. A 
 
 | Skill | Used by | Required? | Fallback |
 |-------|---------|-----------|----------|
+| **novadiem-engineering** | The Architect, The Challenger, the build party (Mage/Systemsmith/Mechanic), The Spellwright | Recommended (cross-project coding standards) | Agents fall back to the simplest-model + reuse-first language already in their personas and the sub-app's local CLAUDE.md |
 | **define-workflow** | Conductor, when no workflow in `workflows/index.md` fits | Optional | Conductor drafts a one-off sequence in `log.md` and flags it for promotion to `workflows/` |
 | **humanizer** | The Counselor (`copy-review`, `message-framing`) | Optional for non-copy workflows | Counselor applies the short voice rules in `agents/voice.md` only |
 | **spiral-dynamics** | The Counselor (`copy-review`, `message-framing`) | Optional | Counselor skips audience vMEME classification; uses plain-language audience notes |

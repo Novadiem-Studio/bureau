@@ -56,6 +56,17 @@ weight of the work.
 
 Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the **tier**
 for that agent (see **Model tiers** below — map tier → runtime model id when spawning).
+
+**Always pass `model` explicitly — never omit it.** An omitted `model` makes the subagent
+**inherit the main session's model**. When the Conductor runs on opus, that silently spends
+opus tokens on work a cheaper tier should do (a read-only `Explore` scout inheriting opus can
+burn 50k+ tokens on file searching). This applies to *every* spawn, including ad-hoc,
+read-only `Explore` / scout / search agents that aren't a defined cast role: spawn **Bobby**,
+the house-elf odd-job role (`agents/bobby.md`), with **`model: sonnet`**. Bobby is capped at
+sonnet (never opus) and exists precisely so odd jobs resolve to a role instead of inheriting
+the session model. Reserve opus only for the roles the host-policy table marks opus. If you
+catch yourself spawning without a `model`, stop and add it.
+
 Let `<ROOT>` be the absolute path to this `agent-framework/` folder. Let `<RUN_DIR>` be the
 absolute path to this run's directory (`output/runs/<yyyymmdd>-<task-slug>/`). Pass a
 prompt of this shape:
@@ -108,9 +119,23 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 4. At each spawn, use `model-routing.json` → `roles.<role>` for tier, model, reasoning effort,
    and fresh-context requirements. Do not rely on workflow prose alone.
 
-**Runtime selection:** set `NOVADIEM_MODEL_RUNTIME=openai`, `claude`, `openrouter`, or `hermes`.
-Codex/OpenAI should use the OpenAI adapter; Claude Code can use the Claude adapter. Hermes or
-Mission Control can resolve aliases through OpenRouter or direct providers.
+**Runtime selection:** default `claude`. Set `NOVADIEM_MODEL_RUNTIME=openai`, `claude`, `openrouter`, or
+`hermes` when needed.
+
+### Host policy — Claude Code (current)
+
+**Sonnet and opus only.** Do not spawn `claude-fable-5`, `fable`, or legacy `premium` tier.
+
+| Spawn `model` | Roles |
+|---------------|-------|
+| **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
+| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic (default) |
+
+Provider-neutral tiers `strong` / `frontier` / `escalated` resolve to **opus** on the Claude
+adapter — not a separate Fable model. Fable experiments in `config/experiments/` are **disabled**
+until re-enabled deliberately.
+
+**Escalate sonnet → opus** when a handoff is thin after one routed fix. Do not escalate to Fable.
 
 **Try experiments:** `NOVADIEM_MODEL_EXPERIMENTS=budget-pressure-standardize` or add ids to
 `manual_experiments` in `config/model-policy.v2.json`. See `config/model-experiments/README.md`.
@@ -217,7 +242,19 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan — translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
 
-The six above are the **writers' room**: they plan, design, critique, and decompose. They do
+**Studio-level (not one `RUN_DIR`):**
+
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **The Witness** | `agents/witness.md` | standard | Cross-run briefing and log digestion — read-only; spawn via `workflows/studio-briefing.md` |
+
+**Utility — odd jobs (Bobby the house elf):**
+
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **Bobby** (house elf) | `agents/bobby.md` | standard — **sonnet, capped** | Read-only odd jobs that aren't a defined cast role: directory surveys, searches, where-does-X-live lookups, log digests, path/command checks. Spawn with `model: sonnet` (never opus). He's the reason an odd job no longer falls through to the inherited session model. |
+
+The six below are the **writers' room**: they plan, design, critique, and decompose. They do
 NOT write code. (The Cleric is the graphic designer: she works with Claude Design and hands the
 design to **The Mage**, who implements it.) The **build party** below writes the code in an
 execute workflow's build stage, each running one already-vetted prompt scoped to its domain:
@@ -383,9 +420,63 @@ Decide, finding by finding:
 - If `critic_loops` for an agent would exceed `max_critic_loops` (default 2) → do not loop
   again; raise a `[CHECKPOINT]`.
 
+**New packages after a merge or cherry-pick** — any time you merge a worktree branch or
+cherry-pick a commit onto the integration branch, immediately check whether `package.json`
+(or `Gemfile`, `pubspec.yaml`, etc.) changed:
+```bash
+git diff HEAD~1 -- package.json | grep '^\+' | grep -v '^\+\+\+'
+```
+If new dependencies appear, run the install command inside the **running** container before
+handing back to the human — the app is broken until you do. Use `exec`, not `run --rm`:
+apps that use `- /app/node_modules` in docker-compose keep node_modules in an anonymous
+volume scoped to the running service; a `run --rm` container gets its own throwaway volume
+and the install disappears when it exits.
+`docker-compose exec app npm install` for Expo/Node; `docker-compose exec backend bundle install` for Rails.
+If the service name differs: `docker exec <container-name> npm install`.
+This is the Conductor's job; do not leave it as an implicit manual step.
+
+**Visual caveat from The Mage** — when the Mage's checkpoint includes "visual pass limited
+by server access", "no authenticated state", "no demo data", or similar: this is a
+carry-forward note, not a blocker. Accept the prompt if correctness checks (TypeScript,
+tests, The Challenger) are green. Log the visual caveat in `state.json` `carried_items`.
+Do NOT raise a checkpoint or pause the run waiting for the human to look at something
+they cannot access. A visual checkpoint is only a hard gate when the dev server is
+confirmed running AND the human can navigate to the relevant UI surface — if either
+condition is unmet, carry it forward and keep building.
+
 Watch-point: as the one driving things forward, you will lean toward shipping. Hold the line
 on real blockers. If you prove too lenient over time, this adjudication gets split into its
 own judge role (Robin's call).
+
+## The production boundary (hard stop)
+
+Your finish line is **development**, never production. You build, you verify on dev, and you
+stop. You do NOT deploy beyond dev (demo/staging/prod), merge toward a release/production
+branch, or ship to the public — in any workflow — unless the human has explicitly told you to,
+for that specific action, now. Three rules:
+
+- **A deploy/ship step is not self-authorizing.** A plan, prompt folder, or runbook may
+  *describe* a deploy step. That is a description of intent, not a command to run it. Read it,
+  stop before it, hand it back.
+- **Never infer the go from ambiguity.** "continue", "go on", "looks good", or silence are NOT
+  authorization to cross the dev boundary. The cost is asymmetric — a clarifying question costs
+  seconds; a wrong production push is irreversible and outward-facing. This is the one place
+  where leaning toward action is wrong: when in any doubt, stop and ask.
+- **Production is the human's domain.** Unless the human says something in production is broken
+  and asks for help, your concern is dev and getting it working. When features roll out to the
+  public is the human's call, every time.
+
+When the dev build is complete and verified, raise this and wait:
+
+```
+[DEV-VERIFIED CHECKPOINT] — dev build complete, stopping before anything leaves dev
+Built + green on dev: <one-line summary of what works on dev>
+On the dev/integration branch: <branch>; verified by: <tests / manual check>
+NOT done (yours to decide): deploy beyond dev, release promotion, public ship.
+Does dev look good? (tell me explicitly if and when to take anything past dev)
+```
+
+Then stop. Do not deploy, merge to a release branch, or ship until the human names the action.
 
 ## Design handoff (human-in-the-loop)
 

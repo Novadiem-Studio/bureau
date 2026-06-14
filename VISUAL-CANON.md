@@ -195,6 +195,7 @@ The Society operates from a grand **institutional workshop** — the control roo
 - Celestial clocks, orreries, astronomical instruments
 - Streamlined consoles, curved glass walls, grand institutional scale
 - Gold desk nameplates; dark wood + gold trim + leather seating (light or dark palette both valid)
+- **Ducting (canon — the studio visibly moves things):** **conduits are the invariant** — every composition shows energy and work in transit through the building. The *rendering* flexes with the motif: glass-and-brass pneumatic tubes, glowing conduit runs, light ropes, circuit raceways. **The beloved register is fat, proudly-routed tubes** — *Brazil* ducting, Mario warp pipes — chunky, rounded, unapologetically present, snaking through walls and ceilings and between stations rather than hidden inside them. Pneumatic capsule carriers whoosh artifacts between specialists and the Archive; junction manifolds, brass valves, pressure gauges, send/receive stations at desks. Conduits glow where current passes; the building reads as a living instrument. Elegant Deco plumbing — polished, labeled, intentional — never industrial-decay pipe clutter
 
 **Architectural language — avoid:**
 - Gothic darkness, cyberpunk clutter, Blade Runner rain, industrial decay
@@ -215,7 +216,7 @@ The Society operates from a grand **institutional workshop** — the control roo
 
 ### Workshop scene composition (unified environment — preferred for tone)
 
-One continuous institutional hall. Busy but purposeful — every specialist **actively at work**. The workshop **responds visibly** to The Conductor's gestures (routes shift, connections activate, Archive artifacts reorganize).
+One continuous institutional hall. Busy but purposeful — every specialist **actively at work**. The workshop **responds visibly** to The Conductor's gestures (routes shift, connections activate, Archive artifacts reorganize, **pneumatic capsules fire down the tubes**). Artifacts physically travel: a spec leaves the Analizer's desk in a brass capsule and whooshes to the Archive; the tube network is the visible counterpart of the routing field.
 
 **Placement guide (approximate — adjust for composition):**
 

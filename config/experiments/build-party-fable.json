@@ -1,6 +1,7 @@
 {
+  "disabled": true,
   "id": "build-party-fable",
-  "description": "Architect + Mage both on premium (fable) — manual experiment.",
+  "description": "DISABLED — Fable paused.",
   "activate_when": {
     "manual_only": true
   },

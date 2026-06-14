@@ -12,8 +12,10 @@ projects, the workspace orientation (see "Existing-project mode" in `agents/orch
 **Outputs:** under `RUN_DIR` (`output/runs/<yyyymmdd>-<task-slug>/`): `spec.md`, `plan.md`,
 `prompts.md`, `log.md`, `state.json`, plus `design/` artifacts if a UI is involved.
 
-**Leans on skills:** none required — the agents are self-contained. In existing projects,
-agents load the relevant per-sub-app skills when they work in that area. See `DEPENDENCIES.md`.
+**Leans on skills:** **novadiem-engineering** (the cross-project coding standards) — loaded by
+The Architect, The Challenger, and The Spellwright so design, review, and prompts hold the
+same bar. In existing projects, agents also load the relevant per-sub-app skills when they
+work in that area. See `DEPENDENCIES.md`.
 
 ## Steps
 

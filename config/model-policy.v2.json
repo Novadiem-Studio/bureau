@@ -1,7 +1,14 @@
 {
   "version": 2,
   "description": "Provider-neutral role policy. Resolve with scripts/resolve-model-routing.sh, then copy the result to RUN_DIR/model-routing.json.",
-  "default_runtime": "openai",
+  "default_runtime": "claude",
+  "host_policy": {
+    "claude": {
+      "allowed_spawn_models": ["sonnet", "opus"],
+      "forbidden": ["claude-fable-5", "fable", "premium"],
+      "note": "Fable/premium paused — use opus. Jun 2026."
+    }
+  },
   "manual_experiments": [],
   "tiers": ["cheap", "standard", "strong", "frontier", "escalated"],
   "roles": {
@@ -94,6 +101,24 @@
       "lock": false,
       "escalate_when": ["prod_deploy", "irreversible_infra", "secret_handling", "database_restore_or_migration"],
       "deescalate_when": ["local_build_or_smoke_test", "budget_pressure"]
+    },
+    "witness": {
+      "agent": "The Witness",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["huge_log_volume", "many_installs_first_pass_thin"],
+      "deescalate_when": ["routine_briefing", "budget_pressure"]
+    },
+    "bobby": {
+      "agent": "Bobby",
+      "default_tier": "standard",
+      "allowed": ["cheap", "standard"],
+      "fresh_context_required": true,
+      "lock": true,
+      "escalate_when": [],
+      "deescalate_when": ["trivial_lookup", "budget_pressure"]
     }
   }
 }

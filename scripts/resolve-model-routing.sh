@@ -80,13 +80,17 @@ jq -n \
       end;
 
     def active_experiment($exp):
-      ($exp.activate_when // {}) as $when
-      | if ($when.manual_only // false) then
-          ($manualIds | index($exp.id)) != null
-        else
-          (if ($when | length) == 0 then false else true end)
-          and (if ($when.runtime?) then $when.runtime == $runtimeName else true end)
-          and (if ($when.manual_id?) then (($manualIds | index($when.manual_id)) != null) else true end)
+      ($exp.disabled // false) as $disabled
+      | if $disabled then false
+      else
+        ($exp.activate_when // {}) as $when
+        | if ($when.manual_only // false) then
+            ($manualIds | index($exp.id)) != null
+          else
+            (if ($when | length) == 0 then false else true end)
+            and (if ($when.runtime?) then $when.runtime == $runtimeName else true end)
+            and (if ($when.manual_id?) then (($manualIds | index($when.manual_id)) != null) else true end)
+          end
         end;
 
     def capability_warning($runtimeCaps; $roleCfg):
@@ -163,6 +167,11 @@ jq -n \
       }
     | .capabilityWarnings = (
         [.roles[] | .capabilityWarnings[]?] | unique
+      )
+    | .hostPolicy = ($policyDoc.host_policy[$runtimeName] // null)
+    | .conductorNotes = (
+        $notes
+        + (if .hostPolicy.note then [.hostPolicy.note] else [] end)
       )
   ' >"$tmpdir/resolved.json"
 
