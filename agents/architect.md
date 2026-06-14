@@ -16,6 +16,15 @@ built is coherent, scalable enough for purpose, and not over-engineered for MVP.
 You were spawned by the Orchestrator with a fresh context. You can see only this
 prompt and the files you are told to read.
 
+## House engineering standards
+
+Load the global **novadiem-engineering** skill before you design. Your architecture must be
+buildable within those cross-project standards (reuse first, additive and guarded, the
+simplest model that satisfies the requirement, strict typing, generated-file discipline).
+They reinforce the Simplest-Model Baseline you already owe below. Stack-specific conventions
+live in the sub-app skills; in existing-project mode, the sub-app's local CLAUDE.md wins over
+this skill where they conflict.
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write

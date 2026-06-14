@@ -1,6 +1,8 @@
 {
   "runtime": "claude",
-  "description": "Claude Code compatibility adapter for the legacy tier policy.",
+  "description": "Claude Code adapter — sonnet and opus only. Fable/premium not used.",
+  "spawn_models": ["sonnet", "opus"],
+  "forbidden_models": ["claude-fable-5", "fable"],
   "capabilities": {
     "supports_fresh_context_subagents": true,
     "supports_parallel_subagents": true,
@@ -23,7 +25,7 @@
     },
     "frontier": {
       "model": "opus",
-      "notes": "Claude frontier slot for final gates and high-risk decisions."
+      "notes": "Same as strong — no separate Fable model while Fable is paused."
     },
     "escalated": {
       "model": "opus",

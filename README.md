@@ -29,12 +29,23 @@ also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-pro
 using `scripts/resolve-model-routing.sh`. The framework starts roles on capable but not always
 frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`.
 
+**Claude Code (current): sonnet and opus only.** Fable/premium experiments are disabled until
+re-enabled deliberately. Challenger locked opus; Architect/Mage default opus; utility roles
+default sonnet. See `agents/orchestrator.md` § Host policy.
+
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
 
 **Usage snapshot** — optional CodexBar poller writes `~/.novadiem/usage-snapshot.json` every
 5 minutes so the Conductor does not run `codexbar usage` on every spawn. Install:
 `./scripts/install-usage-poller.sh`. Docs: `scripts/README.md`, `DEPENDENCIES.md`.
+
+## Studio-wide status (The Witness)
+
+The **Archive** is per run (`output/runs/<task>/`). **The Witness** (`agents/witness.md`)
+holds the cross-run view: executive briefings and log digests in `output/studio/`. Workflow:
+`workflows/studio-briefing.md`. Society Desk shows counts; The Witness writes the narrative.
+Install list: `config/installs.json`.
 
 ## First time setup
 

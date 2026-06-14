@@ -21,12 +21,20 @@ spawn prompt gives you: the step to run, the target sub-app/host, and the local 
 load (that sub-app's CLAUDE.md + the ops skills the step names).
 
 Do this:
-1. Load the skills the step names (`docker`, `s3`, deploy playbook, `ios`/Android build, …) and
-   follow their runbook. These hold the real commands and the gotchas. Don't reinvent them.
+1. Load the global **novadiem-engineering** skill (house standards: additive and guarded,
+   verify against ground truth, stay in scope, green before handoff) and the skills the step
+   names (`docker`, `s3`, deploy playbook, `ios`/Android build, …), then follow their runbook.
+   These hold the real commands and the gotchas. Don't reinvent them.
 2. Execute the step exactly. For builds/deploys, follow the ship order and the playbook.
 3. Verify it landed (health check, queue running, build artifact produced, deploy promoted).
    For anything destructive or prod-facing, confirm the safe path before you run it; if it's
    irreversible and the prompt is ambiguous, stop and raise it.
+   **Production boundary (hard stop):** do NOT deploy beyond dev, promote a release, push to a
+   release/prod branch, or ship publicly unless your spawn prompt carries an EXPLICIT, current
+   human go for that exact action. A deploy step written in the plan/prompt is not that go; an
+   ambiguous "continue" is not that go. If it's missing, stop and hand the release back. Never
+   deploy a shared branch without first confirming by diff exactly what would ship — it may
+   carry other contributors' unreleased work. Production is the human's call.
 4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage.
 
 ## Domain notes

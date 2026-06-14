@@ -59,18 +59,22 @@ jq -n \
   --argjson experiments "$experiments_json" \
   '
     def active_experiment($exp):
-      ($exp.activate_when // {}) as $when
-      | if ($when.manual_only // false) then
-          ($manualIds | index($exp.id)) != null
-        else
-          (if ($when | length) == 0 then false else true end)
-          and (if ($when.sonnetBurnMode? // false) then ($usage.sonnetBurnMode == true) else true end)
-          and (if ($when.weeklyUsedPercent_gte?) then
-                ($usage.weeklyUsedPercent != null and $usage.weeklyUsedPercent >= $when.weeklyUsedPercent_gte)
-              else true end)
-          and (if ($when.sessionUsedPercent_gte?) then
-                ($usage.sessionUsedPercent != null and $usage.sessionUsedPercent >= $when.sessionUsedPercent_gte)
-              else true end)
+      ($exp.disabled // false) as $disabled
+      | if $disabled then false
+      else
+        ($exp.activate_when // {}) as $when
+        | if ($when.manual_only // false) then
+            ($manualIds | index($exp.id)) != null
+          else
+            (if ($when | length) == 0 then false else true end)
+            and (if ($when.sonnetBurnMode? // false) then ($usage.sonnetBurnMode == true) else true end)
+            and (if ($when.weeklyUsedPercent_gte?) then
+                  ($usage.weeklyUsedPercent != null and $usage.weeklyUsedPercent >= $when.weeklyUsedPercent_gte)
+                else true end)
+            and (if ($when.sessionUsedPercent_gte?) then
+                  ($usage.sessionUsedPercent != null and $usage.sessionUsedPercent >= $when.sessionUsedPercent_gte)
+                else true end)
+          end
         end;
 
     ($policy[0].roles) as $roles

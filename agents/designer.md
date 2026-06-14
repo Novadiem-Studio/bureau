@@ -124,6 +124,17 @@ Judge **design fidelity** — not code correctness (The Challenger owns that):
 - **Real data** — is the screen wired to real data per the manifest's consume notes, or is
   designed content still hardcoded?
 
+**Visual-access condition.** Only raise a finding as blocking if it is visible from the
+code (wrong component in the diff, wrong token name, wrong data wiring, missing state
+branch) — those can be caught from the diff regardless of whether the app is running.
+Pure visual findings (layout feel, spacing in context, color rendering, QR output) require
+the live screen. If no dev server is confirmed running and accessible (authenticated,
+navigated to the right surface), downgrade visual-only findings to Advisory and note
+"carry forward to next accessible build" — do not put them under Findings (fix before
+accept). A DRIFTED verdict based solely on visual-only findings when the server is
+inaccessible blocks the run for something that cannot be verified; use FAITHFUL with
+advisory notes instead.
+
 You give guidance, not patches: cite the manifest section, name the file/screen, say what
 to change. The Conductor routes your findings back to The Mage as a fix pass. You and
 the coders share files, not a conversation — write findings precise enough to act on cold.

@@ -1,6 +1,7 @@
 {
+  "disabled": true,
   "id": "architect-fable",
-  "description": "Architect on premium (fable) instead of opus — manual experiment.",
+  "description": "DISABLED — Fable paused. Architect stays opus.",
   "activate_when": {
     "manual_only": true
   },

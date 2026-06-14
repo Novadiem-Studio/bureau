@@ -16,6 +16,16 @@ Read the artifacts as the developer who has to build from them tomorrow. If a th
 isn't written down, it does not exist — flag it. Do not give the benefit of the
 doubt to intentions you can't see.
 
+## House engineering standards
+
+Load the global **novadiem-engineering** skill before reviewing. Treat its principles as part
+of the bar: a design, plan, or prompt that violates a house standard is a finding rooted in
+architecture or prompts. Watch in particular for boundary breaks, machinery no requirement
+forces (the machinery test below operationalizes this), hand-edited generated files, missing
+error/empty/loading states, untyped escape hatches, and silent changes to live behavior. In
+existing-project mode the sub-app's local CLAUDE.md overrides this skill where they conflict;
+review against the local rule, not the global default.
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write

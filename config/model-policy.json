@@ -1,12 +1,14 @@
 {
   "version": 1,
-  "description": "Base model tiers per role. Only challenger is locked. Resolve at run start via scripts/resolve-model-tiers.sh",
+  "description": "Legacy Claude tier policy. Spawn models: sonnet and opus only — premium/fable disabled.",
+  "spawn_models": ["sonnet", "opus"],
+  "forbidden_tiers": ["premium"],
   "manual_experiments": [],
   "roles": {
     "conductor": {
       "agent": "The Conductor",
       "default_tier": "opus",
-      "allowed": ["sonnet", "premium", "opus", "escalated"],
+      "allowed": ["sonnet", "opus", "escalated"],
       "lock": false
     },
     "challenger": {
@@ -18,20 +20,21 @@
     "architect": {
       "agent": "The Architect",
       "default_tier": "opus",
-      "allowed": ["premium", "opus", "escalated"],
+      "allowed": ["opus", "escalated"],
       "lock": false
     },
     "mage": {
       "agent": "The Mage",
       "default_tier": "opus",
-      "allowed": ["premium", "opus", "escalated"],
+      "allowed": ["opus", "escalated"],
       "lock": false
     },
-    "analyst": { "agent": "Analizer 2000", "default_tier": "sonnet", "allowed": ["sonnet", "premium", "opus", "escalated"] },
-    "cleric": { "agent": "The Cleric", "default_tier": "sonnet", "allowed": ["sonnet", "premium", "opus", "escalated"] },
-    "spellwright": { "agent": "The Spellwright", "default_tier": "sonnet", "allowed": ["sonnet", "premium", "opus", "escalated"] },
-    "counselor": { "agent": "The Counselor", "default_tier": "sonnet", "allowed": ["sonnet", "premium", "opus", "escalated"] },
-    "systemsmith": { "agent": "The Systemsmith", "default_tier": "premium", "allowed": ["sonnet", "premium", "opus", "escalated"] },
-    "mechanic": { "agent": "The Mechanic", "default_tier": "sonnet", "allowed": ["sonnet", "premium", "opus", "escalated"] }
+    "analyst": { "agent": "Analizer 2000", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "cleric": { "agent": "The Cleric", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "spellwright": { "agent": "The Spellwright", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "counselor": { "agent": "The Counselor", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "systemsmith": { "agent": "The Systemsmith", "default_tier": "opus", "allowed": ["sonnet", "opus", "escalated"] },
+    "mechanic": { "agent": "The Mechanic", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "witness": { "agent": "The Witness", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] }
   }
 }

@@ -6,7 +6,10 @@ fuzzy ask that still needs requirements (that's `feature`). A plan is an EARLY a
 what the Analyst produces; this workflow carries it forward to vetted, decomposed prompts.
 
 **Type:** mixed (produces a reviewed set of scoped prompts, then builds them part by part with
-review. The build stage is gated: you approve the prompt folder before any code is written.)
+review. The build stage is gated twice: you approve the prompt folder before any code is
+written, and the run **stops at development** — nothing deploys beyond dev, merges toward a
+release/prod branch, or ships to the public until you confirm dev looks good. See "Production
+boundary" below.)
 
 **Inputs:** the path to the plan doc; the workspace orientation (`monorepo-orientation`); the
 per-sub-app skills the plan's surfaces need.
@@ -15,9 +18,10 @@ per-sub-app skills the plan's surfaces need.
 `00-index.md` + `NN-<slug>.md` scoped prompts (format below). Example:
 `foaf-auth/docs/plans/todo/50-email-verification/`.
 
-**Leans on skills:** `monorepo-orientation` (routing) + whatever the plan's surfaces call for
-(`auth`, `mutual-credit`, `redux`, `components`, `testing`, `docker`, `s3`, …). Load the skill,
-don't duplicate its runbook.
+**Leans on skills:** **novadiem-engineering** (cross-project coding standards, loaded by the
+Architect, Challenger, Spellwright, and every build-party coder) + `monorepo-orientation`
+(routing) + whatever the plan's surfaces call for (`auth`, `mutual-credit`, `redux`,
+`components`, `testing`, `docker`, `s3`, …). Load the skill, don't duplicate its runbook.
 
 ## Steps
 
@@ -80,6 +84,13 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    - **The Cleric (mode: review)** additionally checks UI prompts: the built screens against
      `design/manifest.md` (components, tokens, states, flow, real data). FAITHFUL or DRIFTED
      with findings; drift fixes route back to The Mage with the correctness fixes.
+   - **Visual blocking rule:** a visual checkpoint (browser/device inspection of the live UI)
+     is only a hard gate when a dev server is confirmed running AND the relevant UI surface is
+     accessible (authenticated, navigated to the right screen). When the Mage reports limited
+     visual access (no server, no demo data, no auth), carry the visual check as a
+     `carried_items` note in `state.json` and proceed — do not block prompt acceptance on a
+     check that cannot actually be performed. Code-visible drift (wrong component in the diff,
+     wrong token, wrong data wiring) is always blocking regardless of server access.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
    - If `merge_policy` is `per_prompt` and the prompt is accepted: `run-worktree.sh merge`,
@@ -94,11 +105,42 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    Each track keeps its own build→review→adjudicate loop; The Conductor interleaves
    adjudications and respects the overall ship order at the end. When in doubt, serialize —
    parallelism saves wall-clock, not review effort.
+
+> **Production boundary — hard stop (non-negotiable).** The build party's finish line is
+> **development**: code built, checkpoints green, integrated on the dev/integration branch and
+> verified there. The Conductor does **not** deploy beyond dev, merge toward a release/prod
+> branch, or ship to the public as part of this workflow. Any prompt whose work crosses that
+> line (deploy to demo/staging/prod, promote a release, publish a build, push to a prod branch)
+> is a **release step**, not a build step — it is NEVER run in the 01→NN build loop. When the
+> build prompts are done and dev is green, STOP and raise the `[DEV-VERIFIED CHECKPOINT]`
+> (format in `agents/orchestrator.md`). A deploy step written into the plan or prompt folder is
+> a description of intent, not authorization to run it; the human decides if and when anything
+> goes past dev. Production is the human's call, every time.
+
 7. **Close out** (The Conductor) — if `git.merge_policy` is `end_of_job` and worktree is active:
    human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
-   human resolves on integration branch, then `remove`). Summarize what shipped vs. what the plan
-   asked for, flag anything deferred, append the run to `RUN_DIR/log.md`, and move the plan doc
-   out of `todo/` (or mark done).
+   human resolves on integration branch, then `remove`). This merge targets the **dev/integration
+   branch only** (e.g. `devel`), never a release/prod branch.
+
+   **After the merge, immediately check for new packages:**
+   ```bash
+   git diff HEAD~1 -- package.json | grep '^\+' | grep -v '^\+\+\+'
+   ```
+   If any dependency lines were added, install into the **running** container — not a fresh
+   `run --rm` one. Apps that use `- /app/node_modules` in docker-compose keep node_modules
+   in an anonymous volume scoped to the running service; a `run --rm` container gets its own
+   throwaway volume and the install is lost when it exits:
+   ```bash
+   docker-compose exec app npm install              # Expo / Node (running container)
+   docker exec <container-name> npm install         # if compose service name differs
+   # or: docker-compose exec backend bundle install # Rails
+   ```
+   Do not hand back to the human with the app broken because packages are missing.
+
+   Summarize what shipped to dev vs. what the plan asked for, flag anything deferred, append
+   the run to `RUN_DIR/log.md`, and move the plan doc out of `todo/` (or mark done). The run
+   ends at **dev-verified**; taking anything past dev is a separate, human-initiated action
+   (see "Production boundary").
 
 ## Prompt folder format
 
@@ -126,6 +168,10 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
 - `## Do` — numbered, concrete steps naming **exact file paths**, what to clone/mirror, and the
   specifics (columns, method signatures, params).
 - `## Checkpoint (green before NN+1)` — the exact tests / verification that must pass.
+- **Release steps are not build steps.** A prompt that deploys beyond dev, promotes a release,
+  publishes a build, or pushes to a release/prod branch must be tagged `Release-step: yes` and
+  ordered LAST, after a `[DEV-VERIFIED CHECKPOINT]`. The 01→NN build loop never runs it
+  autonomously (see "Production boundary").
 
 Keep each prompt self-contained but anchored to its plan section. Match the established example at
 `foaf-auth/docs/plans/todo/50-email-verification/`.

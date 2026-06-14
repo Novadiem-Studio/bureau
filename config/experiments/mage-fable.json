@@ -1,6 +1,7 @@
 {
+  "disabled": true,
   "id": "mage-fable",
-  "description": "Mage on premium (fable) instead of opus — manual experiment.",
+  "description": "DISABLED — Fable paused. Mage stays opus.",
   "activate_when": {
     "manual_only": true
   },

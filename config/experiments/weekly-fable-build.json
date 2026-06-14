@@ -1,6 +1,7 @@
 {
+  "disabled": true,
   "id": "weekly-fable-build",
-  "description": "When weekly quota is hot, try Architect+Mage on fable instead of opus.",
+  "description": "DISABLED — was auto-switch to Fable when weekly hot; Fable paused.",
   "activate_when": {
     "weeklyUsedPercent_gte": 70
   },

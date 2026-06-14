@@ -21,8 +21,8 @@ jq '.roles' ~/.novadiem/resolved-model-tiers.json
 ## Rules
 
 - **Only Challenger is locked** (always opus). All other roles accept experiment overrides within `allowed`.
+- **Claude Code: sonnet and opus only** — `premium` / Fable experiments are **disabled** (`disabled: true`).
 - Overrides must use a tier in the role's `allowed` array — invalid overrides fall back to default.
-- **`premium`** maps to **fable** at spawn time (`claude-fable-5` in Claude Code).
 - Log active experiments and tier per spawn in `RUN_DIR/log.md`.
 - Copy resolved tiers to `RUN_DIR/model-tiers.json` at run start.
 
@@ -31,20 +31,10 @@ jq '.roles' ~/.novadiem/resolved-model-tiers.json
 | Id | Trigger | Effect |
 |----|---------|--------|
 | `sonnet-burn` | `sonnetBurnMode` | Utility roles → sonnet; spawn don't inline |
-| `weekly-fable-build` | weekly ≥ 70% used | Architect + Mage → premium (fable) |
-| `architect-fable` | manual | Architect → premium |
-| `mage-fable` | manual | Mage → premium |
-| `build-party-fable` | manual | Architect + Mage → premium |
 | `conductor-sonnet` | manual | Main session → sonnet (strict routing) |
 | `systemsmith-sonnet` | manual | Systemsmith → sonnet |
-
-```bash
-# Fable build party for one run
-NOVADIEM_MODEL_EXPERIMENTS=build-party-fable ./scripts/resolve-model-tiers.sh
-
-# Conductor on sonnet, everything else default/experiments
-NOVADIEM_MODEL_EXPERIMENTS=conductor-sonnet,sonnet-burn ./scripts/resolve-model-tiers.sh
-```
+| ~~`weekly-fable-build`~~ | — | **disabled** |
+| ~~`architect-fable` / `mage-fable`~~ | — | **disabled** |
 
 ## Adding an experiment
 
@@ -54,9 +44,14 @@ NOVADIEM_MODEL_EXPERIMENTS=conductor-sonnet,sonnet-burn ./scripts/resolve-model-
    - `weeklyUsedPercent_gte: 85`
    - `sessionUsedPercent_gte: 90`
    - `manual_only: true` — only via env / `manual_experiments`
-3. `overrides`: role key → tier (`sonnet`, `premium`, `opus`, `escalated`).
+3. `overrides`: role key → tier (`sonnet` or `opus` on Claude Code).
 4. `conductor_notes`: strings the Conductor should log when this experiment is active.
+
+```bash
+# Conductor on sonnet, utility burn when snapshot says so
+NOVADIEM_MODEL_EXPERIMENTS=conductor-sonnet,sonnet-burn ./scripts/resolve-model-tiers.sh
+```
 
 ## Role keys
 
-`conductor`, `challenger`, `architect`, `mage`, `analyst`, `cleric`, `spellwright`, `counselor`, `systemsmith`, `mechanic`
+`conductor`, `challenger`, `architect`, `mage`, `analyst`, `cleric`, `spellwright`, `counselor`, `systemsmith`, `mechanic`, `witness`

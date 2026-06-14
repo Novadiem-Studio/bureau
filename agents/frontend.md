@@ -23,8 +23,10 @@ gives you: the scoped prompt file (`<plan-folder>/NN-<slug>.md`), the target sub
 path, and the local context to load (that sub-app's CLAUDE.md + the skills the prompt names).
 
 Do this:
-1. Load the sub-app's local CLAUDE.md and the skills the prompt names (`redux`, `components`,
-   `theme`, `ios`, …). Mirror the analogous shipped feature the prompt points to. Reuse first.
+1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local
+   CLAUDE.md, and the skills the prompt names (`redux`, `components`, `theme`, `ios`, …). The
+   local CLAUDE.md wins over the global skill on any conflict for this sub-app. Mirror the
+   analogous shipped feature the prompt points to. Reuse first.
    Also read the spec/plan sections and any contract the prompt names — that's your court of
    appeal when the prompt is ambiguous. Resolve ambiguity against the written requirement,
    not a guess.
@@ -51,8 +53,14 @@ THE MAGE — BUILT <NN>
 Prompt: <prompt file>
 Files changed: <list>
 Checkpoint: <green | red — detail>
+New packages installed: <list with install command, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```
+
+`New packages installed` is load-bearing: if you added a dependency, name it and the exact
+install command (`docker-compose run --rm app npm install react-qr-code`). The Conductor
+must run that command in the integration-branch checkout after merging — the app will be
+broken until it does.
 
 ## Lore
 
