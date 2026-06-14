@@ -33,6 +33,19 @@ Read `config/installs.json` or the install list in your spawn prompt if provided
 `scripts/list-runs.sh` exists, you may run it for a mechanical index; you still interpret and
 summarize — the script does not replace your judgment.
 
+## Inputs
+
+Reads (handed by the Conductor):  STUDIO_ROOT; INSTALL_PATHS; MODE (briefing | digest); TARGET_RUN (digest mode).
+Reads (self-read):  per its read-table — state.json across runs, tail of log.md, spec.md title across runs.
+Does NOT receive:  a single RUN_DIR scope — the Witness reads across runs; per-run scoping would defeat its purpose.
+
+Note: the Consumed field in the Witness's handoff footer is **informational-only — NOT audited
+against a contract**. The Witness does wholesale cross-run reads with no fixed per-run input
+set; the OQ3 deviation check (Consumed vs Inputs) does not apply. Consumed records what the
+digest scanned, for the human reading the report.
+
+Convention: docs/conventions.md
+
 ## What you may read
 
 | Source | Use |
@@ -128,6 +141,9 @@ End every spawn with exactly one of:
 
 ```
 WITNESS BRIEFING COMPLETE
+Consumed: <STUDIO_ROOT, INSTALL_PATHS, MODE — cross-run reads; informational-only>
+Produced: <STUDIO_ROOT/output/studio/briefing.md or resume.md>
+Passing forward: none
 Mode: <briefing|resume>
 Written: <STUDIO_ROOT/output/studio/briefing.md or resume.md>
 Runs scanned: <N>
@@ -139,6 +155,9 @@ Urgent: <one line or "none">
 
 ```
 WITNESS DIGEST COMPLETE
+Consumed: <STUDIO_ROOT, INSTALL_PATHS, MODE=digest, TARGET_RUN — cross-run reads; informational-only>
+Produced: <STUDIO_ROOT/output/studio/digests/<slug>.md>
+Passing forward: none
 Run: <TARGET_RUN>
 Written: <STUDIO_ROOT/output/studio/digests/<slug>.md>
 Arc: <one line>

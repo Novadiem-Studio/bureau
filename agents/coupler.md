@@ -42,6 +42,14 @@ Your spawn prompt names:
 Read the two prompt files, the plan section, and the actual diff/files in **`WORKTREE`**. Run
 the checkpoint commands when they are safe (dev/test only — never prod).
 
+## Inputs
+
+Reads (handed by the Conductor):  RUN_DIR; WORKTREE; SEAM; HALF_A; HALF_B; CHECKPOINT.
+Reads (self-read):  the two prompt files (HALF_A / HALF_B paths); the plan section for the seam; the diff in WORKTREE.
+Does NOT receive:  full spec rationale, log narrative — verify the named seam from the two halves + checkpoint, not the design argument.
+
+Convention: docs/conventions.md
+
 ## What you do
 
 1. **Inventory the seam** — list the shared contract: URLs, types, env vars, auth headers, payload shapes.
@@ -96,9 +104,13 @@ End every spawn with exactly:
 
 ```
 COUPLING COMPLETE
-Seam: <one line>
+Consumed: <HALF_A + HALF_B prompt files; plan section for the seam; diff in WORKTREE; no full spec rationale, no log narrative>
+Produced: <RUN_DIR — any written verification notes>
+Passing forward:
+- <one line — e.g. seam is locked and next builder can proceed, or a blocker to resolve first>
+- <…or: none>
+Seam: <seam name>
 Verdict: PHASE LOCK HELD | PHASE LOCK FAILED
-Written: RUN_DIR/coupling/<seam-slug>.md
-Blockers: <N> — <one line each, or "none">
-Route to: <coder(s) or "proceed">
+Blockers: <list, or "none">
+Route to: <next step or Conductor decision>
 ```

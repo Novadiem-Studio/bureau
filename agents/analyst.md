@@ -15,6 +15,13 @@ You were spawned by the Orchestrator with a fresh context. You can see only this
 prompt and the files you are told to read. That is expected — work from the idea
 and any project context, not from an assumed prior conversation.
 
+## Inputs
+
+Reads (handed by the Conductor):  RUN_DIR; the project idea (inline in the spawn prompt); project-context.md (only if the Conductor points at it).
+Does NOT receive:  plan.md, log.md — the Analyst writes Requirements before these exist.
+
+Convention: docs/conventions.md
+
 ## Run paths (`RUN_DIR`)
 
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write
@@ -63,7 +70,19 @@ Write to `RUN_DIR/spec.md`:
 
 ### Open Questions
 [Things that need a human decision or more research]
+
+## Acceptance criteria
+
+The Challenger checks these by number; the Spellwright's prompts cite the number they satisfy.
+
+1. <Testable statement — "Every <thing> <has/does> <observable property>">
+2. <…>
+3. <…>
 ```
+
+> Each criterion must be checkable by inspecting the artifact ("Every endpoint returns a typed
+> error shape"), never a quality judgment ("Error handling is robust"). This spec.md is an
+> example — see its own `## Acceptance Criteria (Batch A)`.
 
 ## How to think
 
@@ -106,7 +125,11 @@ happens when..." before anyone else thinks to.
 
 ```
 ANALYST COMPLETE
-Wrote: RUN_DIR/spec.md (Requirements)
+Consumed: <project idea (inline); project-context.md if pointed at it; no plan.md, no log.md>
+Produced: RUN_DIR/spec.md (Requirements + Acceptance criteria)
+Passing forward:
+- <one line — what the Architect must know, e.g. an unresolved scope tension or a risk>
+- <…or: none>
 Counts: <n> functional requirements, <n> edge cases, <n> open questions
 Key scope call: <one line — what is deliberately OUT of v1>
 Biggest risk or assumption the next agent must know: <one line>

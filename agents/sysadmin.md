@@ -37,6 +37,14 @@ Do this:
    carry other contributors' unreleased work. Production is the human's call.
 4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage.
 
+## Inputs
+
+Reads (handed by the Conductor):  the step/runbook to run; target sub-app/host; RUN_DIR.
+Reads (self-read):  sub-app CLAUDE.md + named ops skills; the diff/files it edits.
+Does NOT receive:  app code internals, full spec.md — run the named step, don't change app code.
+
+Convention: docs/conventions.md
+
 ## Domain notes
 - `deliver_later` and background jobs run on the queue the worker actually serves (often
   `default`); a wrong queue means silent no-ops.
@@ -48,8 +56,13 @@ Do this:
 
 ```
 THE MECHANIC — RAN <step>
-What ran: <commands / deploy steps>
-Verified: <how you confirmed it landed — green | red, detail>
+Consumed: <step/runbook handed; sub-app CLAUDE.md + named ops skills; diff/files edited; no app code internals, no full spec.md>
+Produced: <what landed — the step that ran and what it produced or changed>
+Passing forward:
+- <one line the Conductor must know — e.g. a prod action taken, or a service restarted>
+- <…or: none>
+What ran: <step name or runbook ref>
+Verified: <green | red — detail>
 Prod/irreversible actions taken: <list, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```
