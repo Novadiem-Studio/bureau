@@ -1,7 +1,7 @@
 {
   "runtime": "claude",
-  "description": "Claude Code adapter — sonnet and opus only. Fable/premium not used.",
-  "spawn_models": ["sonnet", "opus"],
+  "description": "Claude Code adapter — haiku, sonnet, opus. Fable/premium not used.",
+  "spawn_models": ["haiku", "sonnet", "opus"],
   "forbidden_models": ["claude-fable-5", "fable"],
   "capabilities": {
     "supports_fresh_context_subagents": true,
@@ -12,8 +12,8 @@
   },
   "tiers": {
     "cheap": {
-      "model": "sonnet",
-      "notes": "Routine utility work."
+      "model": "haiku",
+      "notes": "Trivial read-only utility work — Scoot's tier. Split out from sonnet so cheap is a genuinely cheaper rung (haiku/sonnet/opus ladder)."
     },
     "standard": {
       "model": "sonnet",

@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "description": "Legacy Claude tier policy. Spawn models: sonnet and opus only — premium/fable disabled.",
-  "spawn_models": ["sonnet", "opus"],
+  "description": "Legacy Claude tier policy. Spawn models: haiku, sonnet, opus — premium/fable disabled.",
+  "spawn_models": ["haiku", "sonnet", "opus"],
   "forbidden_tiers": ["premium"],
   "manual_experiments": [],
   "roles": {
@@ -35,6 +35,9 @@
     "counselor": { "agent": "The Counselor", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
     "systemsmith": { "agent": "The Systemsmith", "default_tier": "opus", "allowed": ["sonnet", "opus", "escalated"] },
     "mechanic": { "agent": "The Mechanic", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
-    "witness": { "agent": "The Witness", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] }
+    "witness": { "agent": "The Witness", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "coupler": { "agent": "The Coupler", "default_tier": "sonnet", "allowed": ["sonnet", "opus", "escalated"] },
+    "tally": { "agent": "Tally", "default_tier": "sonnet", "allowed": ["sonnet"], "lock": true },
+    "scoot": { "agent": "Scoot", "default_tier": "haiku", "allowed": ["haiku"], "lock": true }
   }
 }
