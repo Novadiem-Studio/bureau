@@ -34,7 +34,7 @@ These remain valid for **character locks** and reference. Combining them in one 
 | **Workshop scene** | Unified environment — all members at stations (layout below) — **ENGINE tone ref** | **No** |
 | **Annotated roster** | Workshop scene + per-member blurbs (see *Member blurbs*) — **ENGINE + copy variant** | **No** |
 | **Solo portrait** | One member, waist-up or full | Optional — use tarot table below |
-| **Tarot deck** | Eleven solo cards (Visionary + ten specialists) | **Yes** — one card each |
+| **Tarot deck** | Thirteen solo cards (Visionary + cast + Witness + Coupler); Tally/Scoot not in deck | **Yes** — one card per tarot member |
 
 **Hub / Current rule:** Specialists as **icons, sigils, or small abstract busts** only — no full species art.
 

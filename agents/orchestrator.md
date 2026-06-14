@@ -61,11 +61,18 @@ for that agent (see **Model tiers** below — map tier → runtime model id when
 **inherit the main session's model**. When the Conductor runs on opus, that silently spends
 opus tokens on work a cheaper tier should do (a read-only `Explore` scout inheriting opus can
 burn 50k+ tokens on file searching). This applies to *every* spawn, including ad-hoc,
-read-only `Explore` / scout / search agents that aren't a defined cast role: spawn **Bobby**,
-the house-elf odd-job role (`agents/bobby.md`), with **`model: sonnet`**. Bobby is capped at
-sonnet (never opus) and exists precisely so odd jobs resolve to a role instead of inheriting
-the session model. Reserve opus only for the roles the host-policy table marks opus. If you
-catch yourself spawning without a `model`, stop and add it.
+read-only `Explore` / scout / search agents that aren't a defined cast role. Route these to the
+studio's two shop droids — never let an odd job inherit the session model:
+
+- **Scoot** (`agents/scoot.md`) — **`model: haiku`** — one-breath errands: does a path exist,
+  grep one pattern, fetch one value, confirm a command runs. Default for trivial lookups (cheapest rung).
+- **Tally** (`agents/tally.md`) — **`model: sonnet`** — meatier read-only errands: directory
+  surveys, log digests, mapping every place X appears across the repos, gathering the files a coder needs.
+
+Both are capped below opus, so an odd job can never inherit opus the way a bare spawn does.
+Pick Scoot by default; reach for Tally when the errand needs care or breadth. Reserve opus only
+for the roles the host-policy table marks opus. If you catch yourself spawning without a `model`,
+stop and add it.
 
 Let `<ROOT>` be the absolute path to this `agent-framework/` folder. Let `<RUN_DIR>` be the
 absolute path to this run's directory (`output/runs/<yyyymmdd>-<task-slug>/`). Pass a
@@ -124,12 +131,14 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 
 ### Host policy — Claude Code (current)
 
-**Sonnet and opus only.** Do not spawn `claude-fable-5`, `fable`, or legacy `premium` tier.
+**Haiku, sonnet, and opus.** Do not spawn `claude-fable-5`, `fable`, or legacy `premium` tier.
+**Always pass `model` explicitly** on every spawn (see "How to spawn an agent" above).
 
 | Spawn `model` | Roles |
 |---------------|-------|
+| **haiku** | Scoot only (locked) |
+| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic, Witness, Coupler, Tally (default utility) |
 | **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
-| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic (default) |
 
 Provider-neutral tiers `strong` / `frontier` / `escalated` resolve to **opus** on the Claude
 adapter — not a separate Fable model. Fable experiments in `config/experiments/` are **disabled**
@@ -248,11 +257,20 @@ parentheses and the persona lives in `agents/<role>.md`.
 |-------|------|------|-----|
 | **The Witness** | `agents/witness.md` | standard | Cross-run briefing and log digestion — read-only; spawn via `workflows/studio-briefing.md` |
 
-**Utility — odd jobs (Bobby the house elf):**
+**Junction (one `RUN_DIR`, cross-coder seams):**
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **Bobby** (house elf) | `agents/bobby.md` | standard — **sonnet, capped** | Read-only odd jobs that aren't a defined cast role: directory surveys, searches, where-does-X-live lookups, log digests, path/command checks. Spawn with `model: sonnet` (never opus). He's the reason an odd job no longer falls through to the inherited session model. |
+| **The Coupler** | `agents/coupler.md` | standard | Phase-lock verification when two build halves must compound — spawn via `workflows/execute-plan.md` coupling pass |
+
+**Utility — odd jobs (the two shop droids):**
+
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **Tally** (shop droid) | `agents/tally.md` | standard — **sonnet, capped** | The thorough one. Meatier read-only odd jobs: directory surveys, log digests, mapping every place X appears across repos, gathering a coder's files. Spawn with `model: sonnet`, never opus. |
+| **Scoot** (shop droid) | `agents/scoot.md` | cheap — **haiku, locked** | The fast one. One-breath read-only fetches: path exists?, grep one pattern, fetch a value, confirm a command. Spawn with `model: haiku`. |
+
+Together they're the reason an odd job no longer falls through to the inherited session model.
 
 The six below are the **writers' room**: they plan, design, critique, and decompose. They do
 NOT write code. (The Cleric is the graphic designer: she works with Claude Design and hands the

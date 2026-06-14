@@ -29,9 +29,9 @@ also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-pro
 using `scripts/resolve-model-routing.sh`. The framework starts roles on capable but not always
 frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`.
 
-**Claude Code (current): sonnet and opus only.** Fable/premium experiments are disabled until
-re-enabled deliberately. Challenger locked opus; Architect/Mage default opus; utility roles
-default sonnet. See `agents/orchestrator.md` § Host policy.
+**Claude Code (current): haiku, sonnet, and opus.** Haiku = Scoot (cheap errands). Fable/premium
+experiments disabled. Challenger locked opus; Architect/Mage default opus; utility roles default
+sonnet. See `agents/orchestrator.md` § Host policy.
 
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
@@ -46,6 +46,12 @@ The **Archive** is per run (`output/runs/<task>/`). **The Witness** (`agents/wit
 holds the cross-run view: executive briefings and log digests in `output/studio/`. Workflow:
 `workflows/studio-briefing.md`. Society Desk shows counts; The Witness writes the narrative.
 Install list: `config/installs.json`.
+
+## Build seams (The Coupler)
+
+When parallel build halves must compound (Mage UI ↔ Systemsmith API), **The Coupler**
+(`agents/coupler.md`) verifies **phase lock** at the junction. Wired into
+`workflows/execute-plan.md` — writes `RUN_DIR/coupling/`. Energy/spells metaphor, not railway.
 
 ## First time setup
 

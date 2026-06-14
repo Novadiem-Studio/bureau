@@ -21,7 +21,7 @@ jq '.roles' ~/.novadiem/resolved-model-tiers.json
 ## Rules
 
 - **Only Challenger is locked** (always opus). All other roles accept experiment overrides within `allowed`.
-- **Claude Code: sonnet and opus only** — `premium` / Fable experiments are **disabled** (`disabled: true`).
+- **Claude Code: haiku, sonnet, and opus** — `premium` / Fable experiments are **disabled** (`disabled: true`). Haiku is locked to Scoot.
 - Overrides must use a tier in the role's `allowed` array — invalid overrides fall back to default.
 - Log active experiments and tier per spawn in `RUN_DIR/log.md`.
 - Copy resolved tiers to `RUN_DIR/model-tiers.json` at run start.
@@ -54,4 +54,4 @@ NOVADIEM_MODEL_EXPERIMENTS=conductor-sonnet,sonnet-burn ./scripts/resolve-model-
 
 ## Role keys
 
-`conductor`, `challenger`, `architect`, `mage`, `analyst`, `cleric`, `spellwright`, `counselor`, `systemsmith`, `mechanic`, `witness`
+`conductor`, `challenger`, `architect`, `mage`, `analyst`, `cleric`, `spellwright`, `counselor`, `systemsmith`, `mechanic`, `witness`, `coupler`, `tally`, `scoot`

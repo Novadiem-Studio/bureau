@@ -176,7 +176,8 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
 | **2** | Cast rail + activity feed from `log.md` |
 | **3** | Run board kanban + stale detection + file-open links |
 | **4** | Drift badge, fs watch, polish |
-| **1.1** | **The Witness** narrative layer — display `output/studio/briefing.md` above briefing bar; optional link to per-run digests (`workflows/studio-briefing.md`) |
+| **1.1** | **The Witness** narrative layer — display `output/studio/briefing.md` above briefing bar |
+| **1.2** | **The Coupler** seam status — show last `RUN_DIR/coupling/` verdict on run detail when present |
 
 Society Desk v1 is mechanical truth (columns, counts, links). **The Witness** writes the
 executive paragraph and log digests the Desk does not generate. See `agents/witness.md`,
