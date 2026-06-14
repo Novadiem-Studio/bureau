@@ -4,6 +4,9 @@
 table) have drifted from code ground truth — work progressed via direct commits, a revert,
 or renumbered migrations, and the docs still describe the old state. The deliverable is
 updated docs, not code.
+
+**When NOT to use:** docs that are wrong because the *code* is wrong — fix the code first, reconcile the docs after ground truth is stable. Not for spec/plan docs that haven't been committed yet.
+
 **Type:** mixed
 **Inputs:** the target repo(s), the list of doc files suspected stale, and any known drift
 signals (commits, migration numbers, reverted features).
@@ -14,24 +17,8 @@ signals (commits, migration numbers, reverted features).
 
 ## Steps
 
-1. **Survey (spawn, tier: standard).** A fresh-context agent reads ONLY the repo, not the
-   docs' claims: git history since the docs' last substantive edit, the migrations
-   directory (numbers, names, header comments), routes/screens that exist, reverted
-   commits (note what was reverted and keep the why if discoverable). Writes
-   `<run dir>/ground-truth.md`: a flat, cited list of facts (migration table, shipped
-   surfaces, reverts, open decisions visible in code). No recommendations.
-2. **Reconcile (spawn, tier: standard).** Reads `ground-truth.md` + the named doc files.
-   Edits the docs in place to match ground truth, preserving each doc's conventions and
-   voice. Rules: never invent a decision the code didn't make — where code answered an
-   open question, record the answer and mark the question resolved; where code and plan
-   genuinely diverge (e.g. a planned rename not done), keep it listed as open, updated to
-   the current state. Status markers (✅/🟡/⬜, "In progress") must match ground truth.
-   Returns a list of every doc change with its ground-truth citation.
-3. **Cold review (spawn The Challenger, `agents/critic.md`, tier: strong).** Fresh context.
-   Reads the edited docs + the repo itself (NOT ground-truth.md — it re-derives, so a
-   survey error can't propagate). Flags: doc claims still contradicting the repo, invented
-   decisions, stale status markers, broken internal references. FINDINGS block as usual.
-4. **Adjudicate (Conductor).** Route blockers back to the Reconcile agent (max 2 loops),
-   judge warnings, log calls in the run dir's `log.md`.
-5. **Close out (Conductor).** Show the user a summary diff of the doc changes; on go,
-   commit in the target repo (docs-only commit, current branch). Update run `state.json`.
+1. **Analizer 2000** (Survey, **standard**, fresh context) — read ONLY the repo, not the docs' claims: git history since the docs' last substantive edit, the migrations directory (numbers, names, header comments), routes/screens that exist, reverted commits (note what was reverted and keep the why if discoverable). No recommendations. → `<run dir>/ground-truth.md` (a flat, cited list of facts: migration table, shipped surfaces, reverts, open decisions visible in code)
+2. **The Architect** (Reconcile, **standard**) — read `ground-truth.md` + the named doc files; edit the docs in place to match ground truth, preserving each doc's conventions and voice. Rules: never invent a decision the code didn't make; where code answered an open question, record the answer and mark it resolved; where code and plan genuinely diverge, keep it listed as open, updated to current state; status markers (✅/🟡/⬜, "In progress") must match ground truth. → corrected doc files + a list of every doc change with its ground-truth citation
+3. **The Challenger** (Critic, round 1, **strong**, fresh context required) — cold-review the edited docs against the repo itself (NOT `ground-truth.md` — it re-derives, so a survey error can't propagate). Flag: doc claims still contradicting the repo, invented decisions, stale status markers, broken internal references. → FINDINGS block
+4. **The Conductor** (**standard**) — adjudicate: route blockers back to the Reconcile agent (The Architect) (max 2 loops), judge warnings → `<run dir>/log.md`
+5. **The Conductor** (**standard**) — close out: show the user a summary diff of the doc changes; on go, commit in the target repo (docs-only commit, current branch) → committed docs, updated `state.json`

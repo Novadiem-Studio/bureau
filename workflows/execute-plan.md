@@ -5,6 +5,8 @@ the job is to turn it into the executable, scoped prompts that build it. NOT a r
 fuzzy ask that still needs requirements (that's `feature`). A plan is an EARLY artifact, roughly
 what the Analyst produces; this workflow carries it forward to vetted, decomposed prompts.
 
+**When NOT to use:** a raw idea or fuzzy ask that still needs requirements (use `feature`). Not for a runbook-driven ops build with no plan to decompose (use `operational-build`).
+
 **Type:** mixed (produces a reviewed set of scoped prompts, then builds them part by part with
 review. The build stage is gated twice: you approve the prompt folder before any code is
 written, and the run **stops at development** — nothing deploys beyond dev, merges toward a
@@ -71,10 +73,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    - `per_prompt` — after each accepted prompt: `run-worktree.sh merge`, then `sync` before the next.
    - `checkpoint` — merge only when the human says so at `[CHECKPOINT]`.
 
-6. **Build, part by part** — The Conductor runs the prompts **in order, 01→NN**, dispatching each
-   to the coder named by its **`Coder:` tag** — the tag is the assignment; do not re-infer the
-   owner from the sub-app. (A missing or wrong tag is a Spellwright defect: route it back rather
-   than guessing.)
+6. **The Conductor** (**strong**) — build part by part: run the prompts in order, 01..NN, dispatching each to the coder named by its `Coder:` tag — the tag is the assignment; do not re-infer the owner from the sub-app (a missing or wrong tag is a Spellwright defect: route it back rather than guessing) → a reviewed diff per part
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
    Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
@@ -134,7 +133,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 > a description of intent, not authorization to run it; the human decides if and when anything
 > goes past dev. Production is the human's call, every time.
 
-7. **Close out** (The Conductor) — if `git.merge_policy` is `end_of_job` and worktree is active:
+7. **The Conductor** (**strong**) — close out: if `git.merge_policy` is `end_of_job` and worktree is active, human go, then merge, then remove (on conflict: `[CHECKPOINT]`); then check for new packages, install into the running container, summarize what shipped to dev vs. planned, and move the plan doc out of `todo/` → updated `RUN_DIR/log.md`, `state.json`, relocated plan doc
    human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
    human resolves on integration branch, then `remove`). This merge targets the **dev/integration
    branch only** (e.g. `devel`), never a release/prod branch.
