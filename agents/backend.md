@@ -36,6 +36,14 @@ Do this:
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong or blocked, stop
    and say so.
 
+## Inputs
+
+Reads (handed by the Conductor):  the scoped prompt file path; RUN_DIR.
+Reads (self-read):  sub-app CLAUDE.md + named skills; the contract the prompt names; the diff/files it edits; relevant spec.md/plan.md sections the prompt cites.
+Does NOT receive:  full spec.md, log.md, unrelated prompts — build exactly the one scoped prompt assigned.
+
+Convention: docs/conventions.md
+
 ## Domain notes
 - Migrations **additive + latin1**: local MySQL is utf8mb4 and `db:migrate` rewrites every
   table's charset in `schema.rb`. Stage only the new table/columns + version bump.
@@ -46,10 +54,14 @@ Do this:
 
 ```
 THE SYSTEMSMITH — BUILT <NN>
+Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; the contract the prompt named; relevant spec.md/plan.md sections the prompt cited; no full spec.md, no log.md, no unrelated prompts>
+Produced: <files changed — list>
+Passing forward:
+- <one line the next builder/Conductor needs, e.g. a seam the other side depends on>
+- <…or: none>
 Prompt: <prompt file>
-Files changed: <list>
-Checkpoint: <green | red — detail; note any pre-existing failures isolated>
-API contract handed to the client: <one or two lines, if this prompt owns a contract>
+Checkpoint: <green | red — detail>
+API contract handed to the client: <endpoint, payload shape, status codes — or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```
 
