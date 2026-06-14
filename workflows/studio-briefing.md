@@ -5,6 +5,8 @@ Archive. Active jobs across installs, what's blocked, executive summary, or a di
 `log.md`. Run at session start, after a checkpoint, or on demand. Complements **Society Desk**
 (mechanical kanban) with narrative synthesis from **The Witness**.
 
+**When NOT to use:** a single run's own status — read its `log.md` directly. Not for making changes; The Witness is read-only.
+
 **Type:** mixed (spawn only — read-only, no code changes)
 
 **Inputs:** install paths to scan (default: canonical framework `output/runs/` plus configured
@@ -34,14 +36,12 @@ with a note in install health.
 
 ## Steps
 
-1. **Conductor** resolves mode from the task:
+1. **The Conductor** resolves mode from the task:
    - "what's running / briefing / morning check" → `briefing`
    - "resume society" / session start → `resume`
    - "digest this run" / "what happened in X" → `digest` + `TARGET_RUN`
-2. **Spawn The Witness** (`agents/witness.md`, tier: **standard**, fresh context):
-   - Pass `STUDIO_ROOT`, `INSTALL_PATHS`, `MODE`, and `TARGET_RUN` if digest.
-   - Witness writes to `output/studio/` only.
-3. **Conductor** surfaces the top of `briefing.md` or `resume.md` to the Visionary. Log spawn
+2. **The Witness** (**standard**, fresh context) — read run dirs and logs for the resolved mode; pass `STUDIO_ROOT`, `INSTALL_PATHS`, `MODE`, and `TARGET_RUN` if digest. Writes to `output/studio/` only. → `output/studio/{briefing.md | resume.md | digests/<slug>.md}`
+3. **The Conductor** surfaces the top of `briefing.md` or `resume.md` to the Visionary. Log spawn
    in the **current** `RUN_DIR/log.md` if a society run is active; otherwise append one line to
    `output/studio/briefing-log.md`.
 
