@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Git worktree lifecycle for Society execute runs.
+# Git worktree lifecycle for Bureau execute runs.
 #
 # Usage:
 #   ./scripts/run-worktree.sh create --run-dir RUN_DIR --repo REPO_PATH [options]
@@ -204,7 +204,7 @@ cmd_merge() {
   git -C "$repo" fetch origin "$base" 2>/dev/null || true
 
   local msg
-  msg="${MERGE_MSG:-Society run merge: $branch → $base ($policy)}"
+  msg="${MERGE_MSG:-Bureau run merge: $branch → $base ($policy)}"
 
   # Merge society branch into base at the main repo checkout
   local prev_branch

@@ -1,4 +1,4 @@
-# Idea Definition — Society Desk
+# Idea Definition — Ministry of Flow (aka Logistics)
 
 > **Status:** idea (pre-spec)  
 > **Suggested workflow:** `feature`  
@@ -10,20 +10,20 @@
 
 ## One-liner
 
-A local web dashboard — **Society Desk** — that shows every agent-framework project install and run at a glance, with Society cast avatars, run status, blocked checkpoints, and links into run artifacts.
+A local web dashboard — **Ministry of Flow (aka Logistics)** — that shows every agent-framework project install and run at a glance, with Bureau cast avatars, run status, blocked checkpoints, and links into run artifacts.
 
 ---
 
 ## Problem
 
-The Novadiem Studio AI Framework (Society of Specialists) runs across multiple project installs (GrowOperative, Oriva, …). Each install tracks work in `output/runs/<date>-<slug>/` via `state.json` and `log.md`.
+The Novadiem Studio AI Framework (The Bureau) runs across multiple project installs (GrowOperative, Oriva, …). Each install tracks work in `output/runs/<date>-<slug>/` via `state.json` and `log.md`.
 
 Today there is **no single view** of:
 
 - Which runs are active, done, or blocked on the Visionary
 - What open questions or checkpoints need a human answer
 - Which framework installs have drifted from canonical
-- Who in the Society cast is active on the current run
+- Who in the Bureau cast is active on the current run
 
 Operators must SSH, grep, or open multiple run directories manually. `check-drift.sh` compares framework *files* but not *run status*. OpenClaw Mission Control on rheo.ca solves a different problem (live gateway agents) and is being retired in favor of Hermes.
 
@@ -43,12 +43,12 @@ Primary user: Robin, solo, on macOS, multiple repos on disk.
 
 ## Vision
 
-**Society Desk** is a read-only local mission control for the **Society of Specialists** — not for OpenClaw, Hermes, or Claude Code team tasks (though the scanner pattern is borrowed from those tools).
+**Ministry of Flow (aka Logistics)** is a read-only local mission control for the **The Bureau** — not for OpenClaw, Hermes, or Claude Code team tasks (though the scanner pattern is borrowed from those tools).
 
 It should feel like the polished dark dashboard Robin liked on rheo.ca:3001 ([builderz-labs/mission-control](https://github.com/builderz-labs/mission-control)), but:
 
 - **Data source:** filesystem (`state.json`, `log.md`) — not SQLite task store, not gateway WebSocket
-- **Cast:** fixed Society members from `LORE.md` / `VISUAL-CANON.md` with sigils or bust avatars — not runtime agent initials
+- **Cast:** fixed Bureau members from `LORE.md` / `VISUAL-CANON.md` with sigils or bust avatars — not runtime agent initials
 - **Scope:** framework run tracking across configured installs — not fleet ops, cron, skills hub, or GitHub sync
 
 The UI centers on **runs** (not installs). A run is one feature/docs/execute workflow tracked under `output/runs/<yyyymmdd>-<slug>/`.
@@ -82,7 +82,7 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
 
 - For each install, scan `output/runs/*/state.json` (and legacy `output/state.json` if present)
 - Parse: `project`, `workflow`, `phase`, `phase_status`, `open_questions`, `checkpoints`, `phases_complete`, `last_updated`, `carried_items`
-- Infer **active Society member** from last relevant handoff in `log.md` (e.g. "Spawned The Architect")
+- Infer **active Bureau member** from last relevant handoff in `log.md` (e.g. "Spawned The Architect")
 - Detect **stale** runs (no `log.md` / `state.json` mtime change in N hours while phase suggests in-progress)
 
 ### 3. Overview dashboard
@@ -95,7 +95,7 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
   - Complete
 - Column mapping rules are a spec detail — derive from `phase` + `phase_status` + `open_questions`
 
-### 4. Society cast rail
+### 4. Bureau cast rail
 
 - Fixed cast from registry (`society-cast.json` or equivalent): Conductor, Analyst, Architect, Challenger, Cleric, Spellwright, Counselor, Mage, Systemsmith, Mechanic; Archive as sidebar object (not a character)
 - Each member: name, subtitle, sigil SVG (v1) and/or bust WebP (v1.1), accent color
@@ -151,7 +151,7 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
 3. Clicking a run shows cast status, phase, open questions, and links to artifacts
 4. Growoperative's three June 2026 runs render correctly from real on-disk data without manual config per run
 5. App starts with one documented command; no Docker required for v1
-6. Society cast appears with sigil avatars (not MC-style initials circles)
+6. Bureau cast appears with sigil avatars (not MC-style initials circles)
 
 ---
 
@@ -161,8 +161,8 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
 2. **Drift in v1?** Show drift badge via `check-drift.sh` or defer to v1.1?
 3. **Kanban columns:** fixed set vs derived dynamically from `phase` strings (legacy runs use varied vocabulary)?
 4. **Cast inference:** rules for mapping `log.md` handoffs → active member when `state.json` only has `phase`?
-5. **Theme:** adopt one MC dark theme vs custom Society / Novadiem tokens from VISUAL-SYSTEM?
-6. **Name:** Society Desk vs The Hub vs Archive Console — ship one, alias in docs?
+5. **Theme:** adopt one MC dark theme vs custom Bureau / Novadiem tokens from VISUAL-SYSTEM?
+6. **Name:** Ministry of Flow (aka Logistics) — shipped; repo `society-desk` until renamed
 7. **Growoperative-only dev:** use Growoperative runs as fixtures during build, or point at both installs from day one?
 
 ---
@@ -179,7 +179,7 @@ The UI centers on **runs** (not installs). A run is one feature/docs/execute wor
 | **1.1** | **The Witness** narrative layer — display `output/studio/briefing.md` above briefing bar |
 | **1.2** | **The Coupler** seam status — show last `RUN_DIR/coupling/` verdict on run detail when present |
 
-Society Desk v1 is mechanical truth (columns, counts, links). **The Witness** writes the
+Ministry of Flow (aka Logistics) v1 is mechanical truth (columns, counts, links). **The Witness** writes the
 executive paragraph and log digests the Desk does not generate. See `agents/witness.md`,
 `LORE.md` § Studio Record.
 
@@ -192,8 +192,8 @@ In a project with `agent-framework/` installed (or from canonical copy):
 ```
 Read agent-framework/CLAUDE.md and start the agent framework.
 
-Task: Society Desk — local dashboard for agent-framework run status across installs,
-with Society cast avatars. Idea definition: agent-framework/ideas/society-desk.md
+Task: Ministry of Flow (aka Logistics) — local dashboard for agent-framework run status across installs,
+with Bureau cast avatars. Idea definition: agent-framework/ideas/society-desk.md
 
 Mode: existing project where the "codebase" is new tooling in the Novadiem workspace;
 data sources are existing framework run dirs on disk. Reference mission-control UX

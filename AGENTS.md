@@ -1,4 +1,4 @@
-# Novadiem Studio AI Framework — The Society of Specialists
+# Novadiem Studio AI Framework — The Bureau
 
 A reusable multi-agent development framework for Codex. Drop this entire
 `agent-framework/` folder into any project root and run it.

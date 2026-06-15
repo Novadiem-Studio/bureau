@@ -1,4 +1,4 @@
-# Idea Definition — Society Desk: Workflow Registry Visualizer
+# Idea Definition — Ministry of Flow (aka Logistics): Workflow Registry Visualizer
 
 > **Status:** idea (pre-spec)
 > **Suggested workflow:** `feature`
@@ -12,7 +12,7 @@
 
 ## One-liner
 
-A read-only **Workflows** view in Society Desk that parses each install's workflow registry
+A read-only **Workflows** view in Ministry of Flow (aka Logistics) that parses each install's workflow registry
 (`workflows/index.md` + `workflows/<name>.md`) and renders every registered workflow as a
 **structured pipeline** — the ordered agents, their power levels (tiers) and the models those
 levels resolve to, what each reads and writes, the human checkpoints, and the skills loaded —
@@ -37,7 +37,7 @@ The level→model mapping is deliberately defined **separately** from the stage�
 assignment (tiers in `config/model-policy.v2.json` + the workflow files; models per tier in
 `config/runtimes/*.json`), and there is no view that shows the two together.
 
-Society Desk already shows run **state** (`state.json` / `log.md`). It does not show the
+Ministry of Flow (aka Logistics) already shows run **state** (`state.json` / `log.md`). It does not show the
 **definitions** those runs execute. Understanding or explaining a workflow today means tracing
 markdown by hand.
 
@@ -49,9 +49,9 @@ markdown by hand.
 |---------|------|
 | **Robin (Visionary)** | See what a workflow does without reading the files; spot when a workflow is heavier or lighter than the task needs |
 | **The Conductor** | A quick visual reference during triage — what each registered workflow entails before picking one |
-| **Future collaborators** | Understand the Society pipeline without learning the file layout |
+| **Future collaborators** | Understand the Bureau pipeline without learning the file layout |
 
-Primary user: Robin, solo, macOS, the Society Desk app already running on `:3010`.
+Primary user: Robin, solo, macOS, the Ministry of Flow (aka Logistics) app already running on `:3010`.
 
 ---
 
@@ -157,7 +157,7 @@ The `society-desk` app already has the exact seams this needs; mirror the **Sess
 
 ## Open questions (for spec phase)
 
-1. **Standalone vs Society Desk v2:** drafted as a standalone idea doc; team may fold it into
+1. **Standalone vs Ministry of Flow (aka Logistics) v2:** drafted as a standalone idea doc; team may fold it into
    the `society-desk` lineage instead.
 2. **Per-step skill derivation depth:** full per-step (richer, more brittle) vs workflow-level
    only (robust). Recommend workflow-level first, per-step where cheap.
@@ -198,7 +198,7 @@ In the canonical install:
 ```
 Read agent-framework/CLAUDE.md and start the agent framework.
 
-Task: Society Desk — add a read-only Workflows view that parses each install's workflow
+Task: Ministry of Flow (aka Logistics) — add a read-only Workflows view that parses each install's workflow
 registry (workflows/index.md + workflows/<name>.md) and renders each workflow as a
 structured pipeline: agents; the power-level tier per stage AND the model it resolves to;
 I/O; human checkpoints; skills. Include a level->model panel that reads the routing config

@@ -1,6 +1,6 @@
 # Novadiem Studio Framework — Visual System v2
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Purpose:** Primary poster family for the framework — process, structure, philosophy, and (proposed) outcomes.  
 **Authority:** Poster composition and material language live here. Character species and appearance live in `VISUAL-CANON.md`. Mechanics live in `workflows/` and `agents/`. Lore lives in `LORE.md`.
 
@@ -12,10 +12,10 @@
 
 | # | Title | Subtitle | Answers | Status |
 |---|---|---|---|---|
-| I | **THE CURRENT** | FEATURE WORKFLOW | How does a feature move through the Society? | **Commission** |
-| II | **THE HUB** | THE SOCIETY OF SPECIALISTS | How is the Society structured and routed? | **Commission** |
-| III | **THE ENGINE** | THE GREAT ENGINE OF CREATION | What is the Society, philosophically? | **Commission** |
-| IV | **THE FRONTIER** | OUTCOMES OF THE SOCIETY | What does the Society produce? | **Proposed** |
+| I | **THE CURRENT** | FEATURE WORKFLOW | How does a feature move through The Bureau? | **Commission** |
+| II | **THE HUB** | THE BUREAU | How is The Bureau structured and routed? | **Commission** |
+| III | **THE ENGINE** | THE GREAT ENGINE OF CREATION | What is The Bureau, philosophically? | **Commission** |
+| IV | **THE FRONTIER** | OUTCOMES OF THE BUREAU | What does The Bureau produce? | **Proposed** |
 
 The trilogy explains **process**, **structure**, and **philosophy**. THE FRONTIER completes the set with **emergence** — what leaves the system.
 
@@ -29,7 +29,7 @@ The trilogy explains **process**, **structure**, and **philosophy**. THE FRONTIE
 
 **Subtitle:** FEATURE WORKFLOW
 
-**Purpose:** Show how a feature moves through the Society.
+**Purpose:** Show how a feature moves through The Bureau.
 
 **Replaces:** Assembly Line poster.
 
@@ -145,7 +145,7 @@ Show as dashed return paths to the rail, not specialist-to-specialist arrows.
 
 # II. THE HUB
 
-**Subtitle:** THE SOCIETY OF SPECIALISTS
+**Subtitle:** THE BUREAU
 
 **Purpose:** Show structure. Show relationships. Show routing.
 
@@ -233,27 +233,49 @@ Specialists may appear as **labels, sigils, or small abstract busts** — not fu
 
 **Purpose:** Master poster. Philosophy piece. Internal flagship image. The iconic framework artifact.
 
-**Replaces:** workshop scene / annotated roster as the primary flagship poster.
+THE ENGINE ships as **two official compositions** — same lore, footer, and species locks; different readability:
+
+| Composition | Role | Reference file |
+|---|---|---|
+| **Workshop control room** *(primary)* | Operational flagship — everyone at stations, ducting, Archive panel; how The Bureau actually works | `the-engine-workshop-v1.png` *(commission)* |
+| **Vertical monument** *(variation)* | Mythic read — civilization-scale instrument, specialists as forces in tiers | `the-engine-creation-v1.png` ✓ locked + `…-v1-light.png` ✓ |
+
+Use **workshop** for onboarding, Ministry of Flow (aka Logistics), annotated roster, and "explain the framework in one glance." Use **monument** when the brief calls for philosophical scale without desk-level detail.
 
 ---
 
 ## Core concept
 
-An enormous civic machine.
+The Bureau operates a **living instrument** — intent enters, flow is regulated, specialists refine reality, the Archive remembers.
 
-The Society is **not** depicted as workers at a table. The Society is depicted as **forces** operating a civilization-scale instrument.
-
-- The Visionary provides intent
-- The Conductor regulates flow
-- The Specialists refine reality
-- The Archive remembers
+- The Visionary provides intent *(at his own station — never merged with the Conductor)*
+- The Conductor regulates flow *(central platform)*
+- The Specialists work at stations *(primary)* or as forces in the machine *(monument variation)*
+- The Archive remembers *(physical panel or foundation tier)*
 - The Build Party manifests *(execute-plan — Mage, Systemsmith, Mechanic)*
 
 ---
 
-## Composition
+## Primary composition — workshop control room
 
-Vertical. Three tiers.
+**Format:** Wide or square (~16:9 or 1:1). Circular or arc-shaped institutional hall.
+
+**Layout lock:** All ten specialists + Visionary + Conductor + Archive in one continuous space. See `reference/legacy-workshop-ensemble-v1-notes.md` for density, sidebar Archive (SPEC · PLAN · BRIEF · MANIFEST · PROMPTS · LOG · STATE), footer tagline, and ducting between stations.
+
+- **Visionary** — human at own workstation; match `visionary-reference.png`
+- **Conductor** — central raised platform; match `conductor-reference.png`; regulating flow through visible ducting
+- **Specialists** — each at an active station; ensemble nameplates per `VISUAL-CANON.md` § Member label format
+- **Archive** — brass panel or cabinet on the wall; seven collection labels illuminated
+- **Ducting** — fat brass/glass tubes along floor and **upper vault** connecting every desk to the hub; cyan current visible in transit
+- **Novadiem emblem** — architectural seal near Archive, not scene dominator
+
+*(Character appearance: species locks in `VISUAL-CANON.md`.)*
+
+---
+
+## Variation composition — vertical monument
+
+**Format:** Vertical (~2:3 or 9:16). Three tiers. **Locked** in `the-engine-creation-v1.png`.
 
 ### Tier one — THE VISIONARY
 
@@ -263,19 +285,15 @@ At the top. Outside the machine. Intent enters the system.
 
 Massive central rotunda. Split-spiral routing field. Alpha and Omega currents. The living regulator.
 
-*(Character appearance: `VISUAL-CANON.md` § THE CONDUCTOR.)*
+### Tier three — The Bureau
 
-### Tier three — the Society
-
-Arranged in concentric rings:
+Arranged in concentric rings as **forces** (not seated at desks):
 
 Analizer 2000 · Architect · Challenger · Cleric · Spellwright · Counselor · Mage · Systemsmith · Mechanic
 
 ### Base — THE ARCHIVE
 
-SPEC · PLAN · BRIEF · MANIFEST · PROMPTS · LOG · STATE
-
-The foundation of the machine.
+SPEC · PLAN · BRIEF · MANIFEST · PROMPTS · LOG · STATE — foundation of the machine.
 
 ---
 
@@ -297,17 +315,19 @@ The foundation of the machine.
 
 Same Sacred Instrument material language as I and II, at **monumental scale** — TVA × Art Deco × World's Fair Futurism (`VISUAL-CANON.md` § Workshop environment v1.5).
 
+**Locked motifs (required on THE ENGINE):** exposed brass upper-wall/ceiling ducting · amber/green readout panels in gold geometry · abstract hologlyphs above the central platform (not literal faces) · temporal clock ornament (concentric rings, orrery, gear-work). See `VISUAL-CANON.md` § Locked workshop motifs (v2.2).
+
 Character depiction **allowed** on THE ENGINE only (flagship). Species locks still apply. Solo portraits remain the lock source for drift-prone members.
 
-**Note:** THE ENGINE centers the **machine**. THE FRONTIER (below) inverts the hierarchy — outcomes dominate, Society is small.
+**Note:** THE ENGINE centers the **machine in operation** (workshop) or the **machine as monument** (variation). THE FRONTIER inverts the hierarchy — outcomes dominate, Bureau is small.
 
 ---
 
 # IV. THE FRONTIER *(proposed)*
 
-**Subtitle:** OUTCOMES OF THE SOCIETY
+**Subtitle:** OUTCOMES OF THE BUREAU
 
-**Purpose:** Show what emerges from the Society — the creation, not the institution.
+**Purpose:** Show what emerges from The Bureau — the creation, not the institution.
 
 **Status:** Proposed fourth poster. **Do not commission before the trilogy ships.**
 
@@ -315,7 +335,7 @@ Character depiction **allowed** on THE ENGINE only (flagship). Species locks sti
 
 **Replaces:** legacy process-poster step 5 (OUTCOMES / luminous city) as a standalone piece.
 
-**Public-site fit:** Strongest candidate for **material-language-only** credential art on novadiem.com — no Society characters required (`brand-brief-sacred-instrument.md`).
+**Public-site fit:** Strongest candidate for **material-language-only** credential art on novadiem.com — no Bureau characters required (`brand-brief-sacred-instrument.md`).
 
 ---
 
@@ -323,9 +343,9 @@ Character depiction **allowed** on THE ENGINE only (flagship). Species locks sti
 
 The framework is not about the specialists. It is about **what gets built**.
 
-The Society appears **small** — a distant instrument silhouette, brass schematic, or compact hub glyph. The **frontier of creation** dominates: applications, products, communities, businesses, creative works, infrastructure emerging from the Archive and Build Party.
+The Bureau appears **small** — a distant instrument silhouette, brass schematic, or compact hub glyph. The **frontier of creation** dominates: applications, products, communities, businesses, creative works, infrastructure emerging from the Archive and Build Party.
 
-Idea → Society → **Product** (Society is the middle, not the subject).
+Idea → Bureau → **Product** (Bureau is the middle, not the subject).
 
 ---
 
@@ -382,7 +402,7 @@ Real Novadiem work (Nutrifax, GrowOperative, FOAF, etc.) may inform **shape lang
 ```
 NOVADIEM STUDIO
 THE FRONTIER
-OUTCOMES OF THE SOCIETY
+OUTCOMES OF THE BUREAU
 ```
 
 **Caption (optional):**
@@ -403,7 +423,7 @@ or reuse structure line only: *One Visionary. One Conductor. Many Specialists. O
 Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 
 - Deep Instrument field; **outcomes lit** in circuit cyan and warm gold
-- Society/instrument **≤15%** of frame — lower corner or distant center
+- Bureau/instrument **≤15%** of frame — lower corner or distant center
 - No character art · no species · no tarot
 - Feels like: the exhibit hall **after** the machine room — what the institution built for the world
 
@@ -434,6 +454,18 @@ Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 | Type | Sora + DM Mono |
 | Public site | Material language only — see `novadiem.com/docs/brand-brief-sacred-instrument.md` |
 
+### Theme alias — Sacred Deco Futurism
+
+**Sacred Deco Futurism** is the short umbrella name for the architecture + environment layer above. It does **not** replace **Sacred Instrument** (material language — palette, brass/cyan/gold HUD, instrument readouts).
+
+| Layer | Name | Use in prompts |
+|---|---|---|
+| Genre / environment | **Sacred Deco Futurism** | Workshop scenes, THE ENGINE, Ministry of Flow (aka Logistics) chrome, institutional control-room scale |
+| Material / palette | **Sacred Instrument** | Trilogy posters, HUD panels, routing diagrams, novadiem.com |
+| Long formula (still valid) | TVA × Art Deco × World's Fair Futurism | When image-gen needs explicit civic anchors |
+
+**Esoteric Art Deco Futurism** — optional modifier for **character / myth** commissions only (ENGINE tier, tarot, solo portraits). Signals hidden-order lore without making occult the public brand. Do not use for site UI, CURRENT/HUB/FRONTIER, or copy — avoids drift toward dark-academia alchemical UI (see Avoid list below).
+
 **Avoid on all pieces:**
 
 - Fantasy races visible *(THE ENGINE only — character depiction with species locks; never on CURRENT, HUB, FRONTIER)*
@@ -453,8 +485,7 @@ Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 |---|---|
 | **Solo portrait** | Lock species before compositing into ENGINE |
 | **Tarot deck** | Thirteen solo cards — tarot never on poster-family pieces |
-| **Workshop scene** | Character + environment reference; tone for ENGINE tier |
-| **Annotated roster** | ENGINE + per-member blurbs (`VISUAL-CANON.md` § Member blurbs) |
+| **Annotated roster** | Optional member blurbs on workshop ENGINE (`VISUAL-CANON.md` § Member blurbs) |
 | **Build Party sheet** | `execute-plan` workflow — companion to THE CURRENT, not yet a trilogy member |
 
 ---
@@ -464,8 +495,9 @@ Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 | Piece | Suggested path |
 |---|---|
 | THE CURRENT | `reference/the-current-feature-v1.png` |
-| THE HUB | `reference/the-hub-society-v1.png` |
-| THE ENGINE | `reference/the-engine-creation-v1.png` |
+| THE HUB | `reference/the-hub-bureau-v1.png` |
+| THE ENGINE *(primary — workshop)* | `reference/the-engine-workshop-v1.png` |
+| THE ENGINE *(variation — monument)* | `reference/the-engine-creation-v1.png` ✓ + `…-v1-light.png` ✓ |
 | THE FRONTIER *(proposed)* | `reference/the-frontier-outcomes-v1.png` |
 | Build Party companion | `reference/the-build-party-execute-plan-v1.png` |
 

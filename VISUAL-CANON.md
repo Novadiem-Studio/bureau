@@ -1,11 +1,19 @@
 # Novadiem Studio AI Framework — Visual Character Canon
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Purpose:** Character, appearance, and composition spec. Defines *who* each member is and *what they look like*. Poster **composition** and the primary poster family live in **`VISUAL-SYSTEM.md`** (THE CURRENT · THE HUB · THE ENGINE · proposed THE FRONTIER).
 
 **How to use:** Apply a visual style in a separate prompt (Sacred Instrument HUD, illuminated poster, watercolor, etc.). This document is the invariant **character** layer beneath any style pass.
 
 **Authority:** Character and appearance canon lives here and in `LORE.md`. Poster trilogy → `VISUAL-SYSTEM.md`. Mechanics live in `CLAUDE.md`, `agents/`, and `workflows/`. If this file and `LORE.md` disagree on lore, fix `LORE.md` first, then sync here.
+
+**Flat export (ChatGPT / image-gen uploads):** A single-folder copy of canon docs + locked references lives at `../chatgpt-export/` (sibling of `agent-framework/` — i.e. `AI_skills/chatgpt-export/`). Nested paths are flattened (`conductor-motif/x.png` → `conductor-motif-x.png`) because upload UIs have no file tree. **After editing this file, `VISUAL-SYSTEM.md`, `LORE.md`, or locking a new reference image, run:**
+
+```bash
+./scripts/sync-chatgpt-export.sh
+```
+
+See `reference/README.md` for what ships in the bundle.
 
 ---
 
@@ -16,11 +24,11 @@ New commissions use the **v2 trilogy** — do not merge in one prompt:
 | Piece | Subtitle | Character art? |
 |---|---|---|
 | **THE CURRENT** | Feature Workflow | **No** — routing rail + stations |
-| **THE HUB** | The Society of Specialists | Sigils / labels only |
+| **THE HUB** | The Bureau | Sigils / labels only |
 | **THE ENGINE** | The Great Engine of Creation | **Yes** — flagship; species locks below apply |
-| **THE FRONTIER** *(proposed)* | Outcomes of the Society | **No** — outcomes dominate; public-site candidate |
+| **THE FRONTIER** *(proposed)* | Outcomes of the Bureau | **No** — outcomes dominate; public-site candidate |
 
-Supersedes: Assembly Line · character grid as architecture diagram · workshop scene as flagship. Commission FRONTIER after trilogy ships.
+Supersedes: Assembly Line · character grid as architecture diagram. **THE ENGINE** primary composition is the **workshop control room** (see `VISUAL-SYSTEM.md` § Primary — workshop). Commission FRONTIER after trilogy ships.
 
 ---
 
@@ -31,16 +39,17 @@ These remain valid for **character locks** and reference. Combining them in one 
 | Deliverable | What it shows | Tarot on piece? |
 |---|---|---|
 | **Ensemble grid** | All ten members + Archive sidebar (layout below) — **reference only** | **No** |
-| **Workshop scene** | Unified environment — all members at stations (layout below) — **ENGINE tone ref** | **No** |
-| **Annotated roster** | Workshop scene + per-member blurbs (see *Member blurbs*) — **ENGINE + copy variant** | **No** |
+| **THE ENGINE — workshop** *(primary)* | Unified control room — all members at stations, Archive panel, ducting — **flagship composition** | **No** |
+| **THE ENGINE — monument** *(variation)* | Vertical civic machine — specialists as forces in tiers — **locked ref** `the-engine-creation-v1.png` | **No** |
+| **Annotated roster** | Workshop scene + per-member blurbs (see *Member blurbs*) — optional copy layer on workshop ENGINE | **No** |
 | **Solo portrait** | One member, waist-up or full | Optional — use tarot table below |
 | **Tarot deck** | Thirteen solo cards (Visionary + cast + Witness + Coupler); Tally/Scoot not in deck | **Yes** — one card per tarot member |
 
 **Hub / Current rule:** Specialists as **icons, sigils, or small abstract busts** only — no full species art.
 
-**Engine rule:** Character depiction allowed; match species locks in this file. Solo-first for drift-prone members (Mechanic, Architect, Challenger).
+**Engine rule:** Character depiction allowed on **both** ENGINE compositions; match species locks in this file. Solo-first for drift-prone members (Mechanic, Architect, Challenger).
 
-**Workshop scene rule:** One continuous institutional space. Each member at their **station**, actively working. Archive as physical prop. **Preferred environment:** TVA × Art Deco × World's Fair Futurism (see *Workshop environment v1.5*) — primary tone reference for THE ENGINE.
+**Workshop scene rule (ENGINE primary):** One continuous institutional space. Each member at their **station**, actively working. Archive as physical prop on the wall. Conductor on central platform; Visionary at his own workstation — **never merged**. Brass ducting connects every station to the hub. **Preferred environment:** Sacred Deco Futurism / TVA × Art Deco × World's Fair (`VISUAL-CANON.md` § Workshop environment v1.5). Layout density reference: `reference/legacy-workshop-ensemble-v1-notes.md`.
 
 **Solo-first rule:** If a member drifts in crowded prompts, commission a **solo portrait**, lock it as reference, then composite into THE ENGINE or workshop explorations.
 
@@ -53,7 +62,7 @@ These remain valid for **character locks** and reference. Combining them in one 
 ### Naming on art
 - **The Conductor** is always labeled THE CONDUCTOR / REGULATOR OF FLOW.
 - His private name **never** appears in art, artifacts, logs, or public copy — not even beside an Ω symbol.
-- All other members use their **Society name** and **canon subtitle** from this file — no invented titles.
+- All other members use their **Bureau name** and **canon subtitle** from this file — no invented titles.
 
 ### Visionary and Conductor are two figures
 **Never merge** The Visionary and The Conductor into one glowing character.
@@ -63,7 +72,7 @@ These remain valid for **character locks** and reference. Combining them in one 
 
 A variant that labels the center figure "Visionary / Conductor" or "Rheo" is **wrong** — reject and regenerate.
 
-**Family resemblance is canon (echo, never twin).** The Society manifests through the Visionary, so members who take human-adjacent shape may carry a subtle echo of his features — the **Conductor** foremost (goatee, brow), the **Mage** faintly. This is intentional: the beings exist through him. Resemblance yes; same person, never. Two distinct figures, two distinct stations, two distinct labels — always.
+**Family resemblance is canon (echo, never twin).** The Bureau manifests through the Visionary, so members who take human-adjacent shape may carry a subtle echo of his features — the **Conductor** foremost (goatee, brow), the **Mage** faintly. This is intentional: the beings exist through him. Resemblance yes; same person, never. Two distinct figures, two distinct stations, two distinct labels — always.
 
 ### Ω symbol usage (Conductor + studio)
 
@@ -86,7 +95,7 @@ The Ω should feel **discovered**, not worn.
 **Symbol hierarchy (emblem vs Ω — when both share a composition):**
 
 ```
-NOVADIEM contains THE SOCIETY contains THE CONDUCTOR,
+NOVADIEM contains THE BUREAU contains THE CONDUCTOR,
 who regulates THE CURRENT, which manifests α and Ω
 ```
 
@@ -113,7 +122,7 @@ Never substitute these or similar:
 | The Spellwright | Holographic feminine being | Generic wizard, crystalline princess only |
 | The Challenger | **Small male imp** | Human woman, leather-jacket strategist, demon |
 | The Counselor | Distinguished human woman **of African descent** | Young woman, idle background figure, generic white elder |
-| The Cleric | Fae healer **with fairy wings** | Armored elf ranger, leaf crown, forest druid |
+| The Cleric | **Fae alien** (fairy-fae) — face/hair likeness `cleric-reference.png`; **iridescent fairy wings** | Human woman, forest elf, leaf crown, forest druid, plate armor |
 | The Mage | **Male** cybernetic elf | Female, armored knight, fantasy wizard |
 | The Systemsmith | **Male space dwarf**, black hair + black beard | Human woman, young engineer, orc, auburn/ginger hair |
 | The Mechanic | **Small matte-grey alien technician** | Human, orc, goblin, reptile, dragon, green skin, bulbous cartoon eyes |
@@ -125,7 +134,7 @@ The Archive is a **bookshelf or ornate cabinet** of seven labeled collections (S
 ### Emotional tone (world, not render style)
 Ancient. Wise. Technological. Hopeful. Guardians of creation.
 
-The Society is a **timeless institution** devoted to creation, coordination, knowledge, craftsmanship, and human flourishing — not a fantasy adventuring party.
+The Bureau is a **timeless institution** devoted to creation, coordination, knowledge, craftsmanship, and human flourishing — not a fantasy adventuring party.
 
 Target feeling: *"We are looking inside the organization that quietly helps humanity build the future."*
 
@@ -139,7 +148,7 @@ The official Novadiem emblem replaces generic sunbursts or mystery sigils as the
 
 Render as: brass-and-enamel seal, architectural relief, illuminated wall plaque, stained-glass interpretation, or institutional insignia — like a NASA patch, Starfleet delta, or civic seal.
 
-**Not** a mystical focal object. **Not** larger than the Society itself. **Once per composition** — embedded in the building, never repeated as branding or wallpaper. Never the Conductor's personal symbol (see *Symbol hierarchy* under Ω usage).
+**Not** a mystical focal object. **Not** larger than the Bureau itself. **Once per composition** — embedded in the building, never repeated as branding or wallpaper. Never the Conductor's personal symbol (see *Symbol hierarchy* under Ω usage).
 
 **Preferred placement:** above or near The Archive, on the back wall, integrated into architecture (relief, plaque, or window).
 
@@ -168,9 +177,9 @@ Right side: THE ARCHIVE (shelf — not a person)
 
 ### Workshop environment v1.5 (preferred direction)
 
-**Style formula:** TVA × Art Deco × World's Fair Futurism
+**Style formula:** TVA × Art Deco × World's Fair Futurism — umbrella alias: **Sacred Deco Futurism** (`VISUAL-SYSTEM.md` § Theme alias). Material palette pass remains **Sacred Instrument**.
 
-The Society operates from a grand **institutional workshop** — the control room of civilization's imagination. Civilization-scale coordination, not a fantasy tavern.
+The Bureau operates from a grand **institutional workshop** — the control room of civilization's imagination. Civilization-scale coordination, not a fantasy tavern.
 
 **Primary influences:** TVA (Loki) civic aesthetic · 1939 New York World's Fair · Streamline Moderne · Art Deco observatories · Tomorrowland / EPCOT concept-art optimism · monumental civic architecture · retro-futurist aerospace optimism
 
@@ -184,6 +193,7 @@ The Society operates from a grand **institutional workshop** — the control roo
 |---|---|
 | Structure | Brass, copper, bronze, enamel, polished stone, glass |
 | Warm accents | Warm gold, amber |
+| Status readouts | **Amber and green** instrument panels — enamel/glass indicators mixed into gold geometry (see *Locked workshop motifs*) |
 | Cool accents | Sky blue, deep teal (holographics, flow, cosmic circuitry) |
 | Avoid | Neon noir, rust decay, flat corporate grey |
 
@@ -195,7 +205,23 @@ The Society operates from a grand **institutional workshop** — the control roo
 - Celestial clocks, orreries, astronomical instruments
 - Streamlined consoles, curved glass walls, grand institutional scale
 - Gold desk nameplates; dark wood + gold trim + leather seating (light or dark palette both valid)
-- **Ducting (canon — the studio visibly moves things):** **conduits are the invariant** — every composition shows energy and work in transit through the building. The *rendering* flexes with the motif: glass-and-brass pneumatic tubes, glowing conduit runs, light ropes, circuit raceways. **The beloved register is fat, proudly-routed tubes** — *Brazil* ducting, Mario warp pipes — chunky, rounded, unapologetically present, snaking through walls and ceilings and between stations rather than hidden inside them. Pneumatic capsule carriers whoosh artifacts between specialists and the Archive; junction manifolds, brass valves, pressure gauges, send/receive stations at desks. Conduits glow where current passes; the building reads as a living instrument. Elegant Deco plumbing — polished, labeled, intentional — never industrial-decay pipe clutter
+- **Ducting (canon — the studio visibly moves things):** **conduits are the invariant** — every composition shows energy and work in transit through the building. See *Locked workshop motifs* § exposed upper ducting for placement and finish. Rendering flex: glass-and-brass pneumatic tubes, glowing conduit runs, light ropes, circuit raceways. **The beloved register is fat, proudly-routed tubes** — *Brazil* ducting, Mario warp pipes — chunky, rounded, unapologetically present. Pneumatic capsule carriers whoosh artifacts between specialists and the Archive; junction manifolds, brass valves, pressure gauges, send/receive stations at desks. Conduits glow where current passes; the building reads as a living instrument. Elegant Deco plumbing — polished, labeled, intentional — never industrial-decay pipe clutter
+- **Temporal ornament:** concentric ring dials, orrery mechanisms, gear-work as **architectural decoration** on walls, vaults, and near the central rotunda — celestial-clock vocabulary, not plot machinery (see *Locked workshop motifs*)
+
+### Locked workshop motifs (v2.2 — required)
+
+These elements are **architectural invariant** for **THE ENGINE**, workshop scenes, and annotated-roster explorations. Treat as a commission checklist — not optional mood.
+
+| Motif | Requirement |
+|---|---|
+| **Exposed upper ducting** | **Brass-finished** conduit runs along **upper walls and ceiling vaults** — visible overhead, never tucked behind flat dropped ceilings. Branch lines, junction manifolds, and capsule ports read from the floor looking up. Same fat, proudly-routed tube register as desk-level ducting; the vault layer is where the building's circulation is most legible. |
+| **Amber / green readout panels** | **Amber and green** enamel or glass indicator panels **mixed into the gold geometry** — phase lamps, routing labels, pressure/status meters at stations, junctions, and Archive send/receive points. The workshop **reports state** like a sacred instrument HUD; not monochrome brass throughout. |
+| **Platform hologlyphs** | **Abstract holographic figures or glyphs** hovering **above the central Conductor platform** — routing sigils, split-spiral marks, lane diagrams, geometric specialist-icons-as-glyphs. **Abstract only — not literal faces** or full character portraits overhead (that duplicates the cast and violates Hub/Current rules). Complements the Conductor's waist-to-eye holo bubble; the vault above the dais carries the **map of the field**. |
+| **Temporal clock decoration** | **Concentric rings**, **orrery mechanisms**, and **gear-work as ornament** — celestial clocks on walls and vaults, synchronized ring dials flanking the rotunda, astronomical-instrument vocabulary at the Architect's station and in background architecture. Decorative world-building; suggests time, phases, and coordination — not a functional story clock unless the brief asks for one. |
+
+**Reject** compositions that hide all ducting in walls, omit instrument readouts, float literal specialist faces above the platform, or strip temporal/celestial ornament from the rotunda hall.
+
+**After changing this section:** run `./scripts/sync-chatgpt-export.sh` so `../chatgpt-export/` stays current for commissions.
 
 **Architectural language — avoid:**
 - Gothic darkness, cyberpunk clutter, Blade Runner rain, industrial decay
@@ -223,7 +249,7 @@ One continuous institutional hall. Busy but purposeful — every specialist **ac
 | Zone | Who | Station |
 |---|---|---|
 | Back / by windows | **The Visionary** | Command workstation — **eyes on his own monitors/plans**, not gazing at the room |
-| Center | **The Conductor** | Circular orchestration platform / rotunda dais — **actively regulating flow** (see Conductor motion) |
+| Center | **The Conductor** | Circular orchestration platform / rotunda dais — **actively regulating flow** (see Conductor motion). **Above the platform:** abstract hologlyphs (routing sigils, lane geometry — not literal faces; see *Locked workshop motifs*) |
 | Left | **Analizer 2000** | Desk, floating diagram screens |
 | Left-rear | **The Architect** | Orrery, star charts, celestial instruments |
 | Center-float | **The Spellwright** | Weaving script-streams in the air |
@@ -237,12 +263,13 @@ One continuous institutional hall. Busy but purposeful — every specialist **ac
 
 **Workshop scene — keep from approved explorations (v1.1–v1.5):**
 - Institutional optimism (not dystopian cyberpunk)
+- **Locked motifs v2.2** — exposed brass upper ducting, amber/green readout panels, platform hologlyphs, temporal clock ornament
 - Archive as physical prop with readable labels
 - Challenger small at desk with papers
 - Systemsmith dwarf at forge
 - Conductor: **split-spiral cosmic circuitry**, **ornate open vest** (canon — see THE CONDUCTOR § Appearance), **in motion**
 - Counselor: distinguished elder **of African descent**, Guinan-like presence, **relationally active**
-- Cleric: fae healer with **iridescent fairy wings**, geometric manifest (not forest druid)
+- Cleric: **fae alien** with **iridescent fairy wings**; face/hair per `cleric-reference.png`; geometric manifest (not forest druid)
 - Mage: tools of light (not armored knight)
 - Mechanic: grey-variant alien at console
 
@@ -251,7 +278,7 @@ One continuous institutional hall. Busy but purposeful — every specialist **ac
 - **Never** merge Visionary + Conductor
 - **Mechanic:** matte stone-grey or taupe small alien — not green reptile
 - **Architect:** hairless silver-grey cranium — not blue elf
-- **Cleric:** Fae healer with fairy wings — no leaf crown, no plate armor
+- **Cleric:** Fae alien with fairy wings — face/hair match `cleric-reference.png`; no leaf crown, no plate armor
 - **Mage:** cybernetic elf — not ornate plate armor
 - **Conductor:** not static, hands in waist–eye zone (arms elevated OK), warm expression, crown markings, not white robes
 
@@ -261,7 +288,7 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 
 **Audience read (Spiral Dynamics):**
 - **Green** (primary) — flourishing, harmony, human journey, serves the audience, craft with care
-- **Yellow** (primary) — systems, coordination, specialists, flow maps, the Society as intelligible structure
+- **Yellow** (primary) — systems, coordination, specialists, flow maps, the Bureau as intelligible structure
 - **Purple** (underpinnings) — mythos, ritual, belonging to the workshop; carried by **visuals and cast**, not preachy copy
 - **Orange** (healthy — must be present) — finished work, scoped delivery, Truth Before Comfort, defines what must be true
 
@@ -269,7 +296,7 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 
 | Register | Use on | What differs |
 |---|---|---|
-| **Workshop** *(default for Society poster)* | Annotated roster, workshop scenes, Sacred Instrument art | Warmer member blurbs, full Conductor caption, cosmic α/Ω — **same mission/footer as below** |
+| **Workshop** *(default for Bureau poster)* | Annotated roster, workshop scenes, Sacred Instrument art | Warmer member blurbs, full Conductor caption, cosmic α/Ω — **same mission/footer as below** |
 | **Credential** | Upwork proposals, plain decks, public site | Tighter blurbs, telegraphic Conductor caption |
 
 **Poster rule (both registers):** one mission statement per piece — mission block *or* flourish footer, not both stacked with the alternate footer.
@@ -278,10 +305,10 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 
 #### Shared taglines *(both registers)*
 
-- **Title block:** *NOVADIEM STUDIO* / *THE SOCIETY OF SPECIALISTS*
+- **Title block:** *NOVADIEM STUDIO* / *THE BUREAU*
 - **Header:** *Clear Intent. Deep Expertise. Better Outcomes.*
 - **Mission block:** *We turn ideas into finished work through coordinated specialists and a shared project record.*
-- **Footer (structure):** *One Visionary. One Conductor. Many Specialists. One Archive.*
+- **Footer (structure):** *One Conductor. Many Specialists. Clear Intent.*
 - **Footer (mission):** *We build for human flourishing.* *(alternate)* *Together we ship what was scoped. Coordination. Craft. Review.*
 
 **Credential header alternate:** *Human Intent. Coordinated Craft. Better Outcomes.*
@@ -302,7 +329,7 @@ Copy below is **canon for posters and workshop scenes**. Most of it already live
 
 (Source: Conductor iconography in `LORE.md` — poster-readable condensation.)
 
-**Member label format** (ensemble roster / nameplates): `SOCIETY NAME — SUBTITLE`
+**Member label format** (ensemble roster / nameplates): `BUREAU NAME — SUBTITLE`
 
 | Member | Ensemble label |
 |---|---|
@@ -496,6 +523,7 @@ This is the default Conductor mark on chest, crown, or platform field. The diamo
 Preferred vocabulary: **mudras** — precise finger positions, tap and slide on holographic surfaces, sacred-geometry gestures, classical conducting. He **operates** the field as much as he conducts it.
 
 - **360° holographic interface** materializes around him on the platform — flow maps, routing diagrams, Archive connections, specialist lanes. His **controls live in this bubble**; no physical keyboard or dashboard
+- **Above the dais (vault layer):** abstract **hologlyphs** — geometric routing marks, split-spiral sigils, lane diagrams; **not literal specialist faces** (see *Locked workshop motifs* § platform hologlyphs)
 - **α and Ω streams** stay as approved: electrical initiation to the **right**, fluid integration to the **left** — may read as glowing symbols beside the hands or at the edge of the interface
 - **Hand zone:** all active gesture stays **inside the holographic interface** around him — waist to eye level, within comfortable reach. He never lunges or fully extends to touch something far away
 - **Arm range:** arms swing with life — sometimes **three-quarter extended** into the interface, sometimes closer in mudra pose; not locked stiff, not ballet-wide, not hands above the head
@@ -668,17 +696,34 @@ His controls exist in the air around him — always within the bubble he can ope
 
 **Archetype:** Fae guardian · Keeper of coherence · Priestess of fidelity
 
-**Appearance:** Fae — luminous, precise, slightly otherworldly.
+**Species:** **Fae alien** (fairy-fae) — not human. She only *reads* human-adjacent in face and
+silhouette the way a fairy elf might pass for human at a glance. Slightly otherworldly in
+precision and light; wings and mineral-attentive nature mark her as non-human.
 
-- **Iridescent fairy wings** — delicate, luminous, part of her fae nature (approved; keep from recent comps)
-- Robed like the temple healer she once was — white and gold, temple healer energy
+**Reference photo (face/hair lock only):** `reference/cleric-reference.png` — Robin's old friend.
+Attach for likeness of **face and hair only** — not species, wardrobe, or setting. The reference
+is a human photo; render her as fae alien with wings, using that face and hair as the lock.
+
+- **Face (lock):** straight prominent nose; defined jawline; fair-to-medium skin; natural look;
+  dark attentive eyes — wonder and discernment
+- **Hair (lock):** dark brown to black; short-to-medium; wavy/curly; effortless, slightly messy
+- **Wings (required):** **iridescent fairy wings** — delicate, luminous, part of her fae nature
+- **Signature jewelry:** turquoise bead strand; stacked bracelets (wood, seed-tones, turquoise) —
+  earthy fae adornment; may catch Deco workshop light without going full bureaucratic grey
+- **Wardrobe:** robed healer energy — white, gold, olive-green textured layers; organic warmth
+  against the TVA Deco room; amethyst / deep purple in props or manifest glow
 - Misaligned margins glow to her eyes like wounds
 - Treats the design manifest as a binding bargain — every deviation noticed
-- Holds or blesses a glowing **geometric manifest** (lattice, grid, sacred-geometry form) — not a forest orb
+- Holds or blesses a glowing **geometric manifest** (lattice, grid, sacred-geometry form) — studies
+  inner structure the way she studies crystal in the reference photo
+
+**Workshop behavior:** Front-left station; manifest in hand, blessing posture; jewel-toned fae
+among brass and enamel.
 
 **Relationship:** Works closely with The Mage. Blesses every export.
 
-**NOT:** Leaf crown. Forest druid. Heavy plate armor. Butterflies. Elf ranger.
+**NOT:** Human woman (species). Leaf crown. Forest druid. Heavy plate armor. Butterflies. Elf
+ranger. Wingless. Different face/hair from reference.
 
 **Tarot (solo):** V — The Hierophant
 
@@ -693,7 +738,7 @@ His controls exist in the air around him — always within the bubble he can ope
 **Archetype:** Male cybernetic elf · Creative technologist
 
 **Appearance:**
-- **Male.** Youngest-looking member of the Society
+- **Male.** Youngest-looking member of the Bureau
 - Subtle neural augmentations, luminous circuitry, elegant technological enhancements
 - Slender and quick; eyes reflect whatever interface he is conjuring
 - **Tools made of light** — surfaces of light take shape under his hands
@@ -809,7 +854,7 @@ Image models default to fantasy tropes when prompts are crowded. Known failure m
 | The Architect | Blue elf, Legolas, Empress tarot princess |
 | The Challenger | Human woman, red-team hacker, leather jacket |
 | The Systemsmith | Human woman engineer, slim builder |
-| The Cleric | Forest elf, leaf crown, druid, wingless fae |
+| The Cleric | Human woman, forest elf, leaf crown, druid, **wingless** fae, generic fantasy healer |
 | The Mage | Armored knight, fantasy wizard |
 | The Conductor | All-white/gold robes, faceless light statue, static pose, hands above head, stern/angry face, bare shaved head, generic dense mesh instead of split-spiral circuitry |
 | The Archive | Akashic librarian, robed sage (XII The World) |

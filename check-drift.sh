@@ -3,7 +3,7 @@
 #
 # As of 2026-06-13 there are NO per-project framework copies: the studio runs from this
 # ONE global install (see docs/git-worktree.md). The old GrowOperative and Oriva copies
-# were retired to output-only archives (history kept for Society Desk); their pre-retire
+# were retired to output-only archives (history kept for Ministry of Flow (aka Logistics)); their pre-retire
 # state is in ../_retired-framework-copies-20260613/. Run from any project by pointing at
 # this install's CLAUDE.md — nothing to sync. This script now only checks installs you
 # pass explicitly, for the rare case a copy is spun up again.

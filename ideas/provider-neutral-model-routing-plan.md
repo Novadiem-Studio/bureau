@@ -4,7 +4,7 @@ Date: 2026-06-12
 
 ## Purpose
 
-Update the agent-framework model policy so the Society can run through Claude Code, Codex/OpenAI,
+Update the agent-framework model policy so the Bureau can run through Claude Code, Codex/OpenAI,
 Hermes, Mission Control, or OpenRouter without rewriting role instructions.
 
 The goal is not "always use the strongest model." The goal is:
@@ -39,7 +39,7 @@ intentional budget-aware model choices across providers.
 Split model routing into three layers:
 
 1. **Role policy**
-   - The Society role: Conductor, Challenger, Architect, Mage, Systemsmith, etc.
+   - The Bureau role: Conductor, Challenger, Architect, Mage, Systemsmith, etc.
    - Default capability tier.
    - Allowed tiers.
    - Escalation and de-escalation triggers.
@@ -327,7 +327,7 @@ Run one low-risk workflow in Codex/OpenAI mode:
 
 ## Non-Goals
 
-- Do not rewrite the Society roles.
+- Do not rewrite the Bureau roles.
 - Do not remove Claude support.
 - Do not require the same model provider for every role in a run.
 - Do not make the Conductor guess model IDs from memory.
