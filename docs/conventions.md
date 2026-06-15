@@ -198,7 +198,7 @@ typed error shape"), never a quality judgment ("Error handling is robust").
 
 ## Workflow step-line spec
 
-Every numbered step in a `workflows/*.md` file has a **leading line** that the Society Desk
+Every numbered step in a `workflows/*.md` file has a **leading line** that the Ministry of Flow (aka Logistics)
 parser (`society-desk/lib/workflow-parser.ts`) and a human skimmer both read for three things:
 the agent, the tier, and the output. Author every step line to this shape so it is
 self-describing for free.

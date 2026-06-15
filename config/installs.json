@@ -1,5 +1,5 @@
 {
-  "description": "Framework installs The Witness and Society Desk scan. Extend as legacy copies are retired.",
+  "description": "Framework installs The Witness and Ministry of Flow (aka Logistics) scan. Extend as legacy copies are retired.",
   "studio_root": "~/Code/novadiem/AI_skills/agent-framework",
   "installs": [
     {

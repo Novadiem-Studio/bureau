@@ -1,6 +1,6 @@
 # Novadiem Studio AI Framework — Quick Reference
 
-**The Society of Specialists** — a multi-agent dev framework where the **main session
+**The Bureau** — a multi-agent dev framework where the **main session
 orchestrates and spawns real subagents**. Each specialist runs in its own fresh context,
 so reviews are genuinely independent instead of one Claude critiquing its own earlier
 reasoning. Who the specialists *are* — names, archetypes, voice — is canon in `LORE.md`.
@@ -44,7 +44,7 @@ sonnet. See `agents/orchestrator.md` § Host policy.
 
 The **Archive** is per run (`output/runs/<task>/`). **The Witness** (`agents/witness.md`)
 holds the cross-run view: executive briefings and log digests in `output/studio/`. Workflow:
-`workflows/studio-briefing.md`. Society Desk shows counts; The Witness writes the narrative.
+`workflows/studio-briefing.md`. Ministry of Flow (aka Logistics) shows counts; The Witness writes the narrative.
 Install list: `config/installs.json`.
 
 ## Build seams (The Coupler)
@@ -65,7 +65,7 @@ cp ~/Code/novadiem/AI_skills/agent-framework/templates/project-context-template.
 Optional one-liner in the project's `CLAUDE.md`:
 
 ```
-Society framework: ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md
+Bureau framework: ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md
 ```
 
 ### Greenfield vs existing projects
@@ -182,7 +182,7 @@ blocker that needs a product call, or after looping twice on the same issue.
 - Edit an agent file only when its behavior is wrong *everywhere* — it's read fresh on
   every spawn, and the edit must be ported to the canonical copy (see "Canonical copy").
 - Adjust `max_critic_loops` in the run's `state.json` for more or fewer revision cycles.
-- The cast and its lore (`LORE.md`) are the same in every project — one Society, many studios.
+- The cast and its lore (`LORE.md`) are the same in every project — one Bureau, many studios.
 
 ## Note on the subagent model
 

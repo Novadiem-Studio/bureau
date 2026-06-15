@@ -169,4 +169,19 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
 **create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
 `--worktree-dir` (default: `REPO/.society-worktrees/SLUG`).
 
-Requires **jq**. Society branch naming: `society/<slug>`.
+Requires **jq**. Bureau run branches still use the `society/<slug>` prefix (legacy git naming).
+
+---
+
+## ChatGPT flat export
+
+`sync-chatgpt-export.sh` copies canon visual docs + locked `reference/` assets into
+`../chatgpt-export/` (flat directory for ChatGPT and similar upload UIs).
+
+```bash
+./scripts/sync-chatgpt-export.sh
+ls ../chatgpt-export/
+```
+
+Run after editing `LORE.md`, `VISUAL-CANON.md`, `VISUAL-SYSTEM.md`, or adding a locked
+reference image. Full manifest: `reference/README.md` (copied flat as `UPLOAD-INDEX.md`).

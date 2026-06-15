@@ -127,14 +127,14 @@ NO tarot, NO medieval fantasy.
 
 # II. THE HUB
 
-**Subtitle:** THE SOCIETY OF SPECIALISTS  
+**Subtitle:** THE BUREAU  
 **Format:** Square or 4:5 radial diagram  
 **Character art:** Sigils / mono labels only — no portraits
 
 ## Composition checklist
 
 - [ ] Center: **THE CONDUCTOR** — abstract split-spiral routing glyph (not a person)
-- [ ] Inner ring: specialist nodes as brass sigils + Society name + subtitle
+- [ ] Inner ring: specialist nodes as brass sigils + Bureau name + subtitle
 - [ ] Outer ring: **ARCHIVE** — seven illuminated nodes SPEC PLAN BRIEF MANIFEST PROMPTS LOG STATE
 - [ ] **Visionary** outside the ring below — intent enters, does not route
 - [ ] Spokes: all paths through Conductor only — no specialist-to-specialist lines
@@ -169,7 +169,7 @@ ARTIFACTS MOVE THROUGH THE ARCHIVE
 ```
 NOVADIEM STUDIO
 THE HUB
-THE SOCIETY OF SPECIALISTS
+THE BUREAU
 ```
 
 **Archive tagline (under ring):**
@@ -236,7 +236,7 @@ NO elf faces, NO dwarves, NO imp characters, NO workshop interior scene, NO taro
 | Analizer 2000 | Warm-gold vintage robot |
 | Architect | Hairless silver-grey stellar being — NOT blue elf |
 | Challenger | Small male imp at paper desk |
-| Cleric | Fae healer, iridescent fairy wings, geometric manifest |
+| Cleric | Fae alien, iridescent fairy wings; face/hair per `cleric-reference.png`; turquoise/stacked bracelets; geometric manifest |
 | Spellwright | Holographic feminine being, script streams |
 | Counselor | African-descent distinguished elder woman, relationally active |
 | Mage | Male cybernetic elf, tools of light — NOT armored knight |
@@ -274,9 +274,9 @@ split-spiral cosmic circuitry on scalp and crown, warm calm expression, semi-tra
 Alpha electrical current right hand, omega fluid flow left hand. NOT white priest robes,
 NOT stern emperor, NOT bare bald head without crown markings.
 
-TIER THREE — THE SOCIETY as forces in concentric brass rings operating the machine:
+TIER THREE — THE BUREAU as forces in concentric brass rings operating the machine:
 warm-gold vintage robot (Analizer), hairless silver-grey stellar Architect (NOT blue elf),
-small red imp Challenger, fae Cleric with iridescent fairy wings, holographic Spellwright,
+small red imp Challenger, fae-alien Cleric with iridescent wings (face/hair per cleric-reference), holographic Spellwright,
 African-descent elder Counselor, cybernetic elf Mage, black-haired dwarf Systemsmith at forge,
 matte grey small alien Mechanic at console.
 
@@ -347,7 +347,7 @@ Title: NOVADIEM STUDIO · THE BUILD PARTY · EXECUTE-PLAN WORKFLOW
 
 # V. THE FRONTIER *(proposed — do not commission yet)*
 
-**Subtitle:** OUTCOMES OF THE SOCIETY  
+**Subtitle:** OUTCOMES OF THE BUREAU  
 **Format:** Horizontal wide landscape ~2:1  
 **Character art:** None — strongest public-site candidate
 
@@ -357,7 +357,7 @@ Title: NOVADIEM STUDIO · THE BUILD PARTY · EXECUTE-PLAN WORKFLOW
 - [ ] **Small** instrument silhouette (Engine/Hub abstract, ≤15% frame) — brass schematic only
 - [ ] Subtle Archive → Build Party trace (cyan path: collections → manifestation → ship)
 - [ ] **Dominant** frontier field: outcomes at civic scale (see categories below)
-- [ ] Title THE FRONTIER / OUTCOMES OF THE SOCIETY
+- [ ] Title THE FRONTIER / OUTCOMES OF THE BUREAU
 - [ ] Optional caption: mission line from `LORE.md`
 - [ ] Minimal footer — *Better Outcomes.* or structure line only
 - [ ] No logos, no product screenshots unless later case-study inset commission
@@ -375,7 +375,7 @@ Title: NOVADIEM STUDIO · THE BUILD PARTY · EXECUTE-PLAN WORKFLOW
 ```
 NOVADIEM STUDIO
 THE FRONTIER
-OUTCOMES OF THE SOCIETY
+OUTCOMES OF THE BUREAU
 
 We turn ideas into finished work through coordinated specialists and a shared project record.
 
@@ -391,7 +391,7 @@ THE FRONTIER — outcomes dominate, institution is small. TVA Art Deco World's F
 optimism. NOT a team poster, NOT character art, NOT product marketing grid.
 
 Upper left: small abstract INTENT marker. Below it: tiny brass instrument silhouette
-(the Society as distant schematic — orrery hint, not characters) feeding cyan traces
+(the Bureau as distant schematic — orrery hint, not characters) feeding cyan traces
 from Archive collections through Build Party into a vast luminous frontier.
 
 Dominant lower two-thirds: THE FRONTIER OF CREATION — civic-scale emergence:
@@ -399,13 +399,13 @@ streamlined application interfaces as instrument panels, community network flows
 infrastructure arcs, Art Deco future city skyline, designed artifacts made real.
 Circuit cyan #3ECFCF and filament gold #C9A227 on brass geometry. Hopeful daylight.
 
-Society/instrument occupies no more than 15% of frame. This is what the machine
+Bureau/instrument occupies no more than 15% of frame. This is what the machine
 built for the world — not the machine itself.
 
 DM Mono gold labels. Museum exhibit after the machine room. No fantasy races,
 no tarot, no cyberpunk dystopia.
 
-Title: NOVADIEM STUDIO · THE FRONTIER · OUTCOMES OF THE SOCIETY
+Title: NOVADIEM STUDIO · THE FRONTIER · OUTCOMES OF THE BUREAU
 ```
 
 ---

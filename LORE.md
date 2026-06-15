@@ -1,6 +1,6 @@
 # NOVADIEM STUDIO AI FRAMEWORK
 
-## The Society of Specialists
+## The Bureau
 
 **Clear Intent. Deep Expertise. Better Outcomes.**
 
@@ -11,7 +11,7 @@ project record.*
 
 ## Overview
 
-The Novadiem Studio AI Framework is not a single AI. It is a coordinated society of
+The Novadiem Studio AI Framework is not a single AI. It is a coordinated bureau of
 specialized intelligences working together through a shared knowledge system.
 
 Each member of the team embodies a different mode of thought. Each has a specific
@@ -30,7 +30,7 @@ mechanics win and this file gets fixed.
 
 ## The cast, mapped to the machinery
 
-| Society name | Title | Role | File |
+| Bureau name | Title | Role | File |
 |---|---|---|---|
 | The Visionary | — | The human | (you) |
 | The Conductor | Regulator of Flow | Orchestrator, main session | `agents/orchestrator.md` |
@@ -47,7 +47,7 @@ mechanics win and this file gets fixed.
 | The Coupler | Keeper of the Phase Lock | Cross-coder spell fusion at build seams | `agents/coupler.md` |
 
 **Hub vs workshop:** The nine workshop specialists (Analizer through Mechanic) work **inside
-one run's Archive**. **The Witness** sits at the Society Desk (THE HUB). **The Coupler** sits at
+one run's Archive**. **The Witness** sits at the Ministry of Flow (aka Logistics) (THE HUB). **The Coupler** sits at
 the **junction manifold** where conduit lines meet — not in the workshop 4/2/4 grid. **Tally**
 and **Scoot** are shop droids (utility spawns), not tarot cast — see `agents/tally.md`,
 `agents/scoot.md`.
@@ -86,7 +86,7 @@ outcomes · approve decisions · change course when needed
 design handoff), and at every product call. The only member who may change course mid-run.
 
 **Tarot:** 0 — The Fool. A figure stepping through the workshop door with dawn behind
-him, a rolled vision under one arm; the Society's silhouettes wait in the light beyond.
+him, a rolled vision under one arm; the Bureau's silhouettes wait in the light beyond.
 *Upright:* vision, initiative, the courage to begin. *Reversed:* scattered intent — ten
 threads open, none finished; the studio stalls when everything is most important.
 
@@ -289,22 +289,23 @@ Is harmony maintained?
 
 **Symbolic domain:** harmony · beauty · stewardship
 
-**Appearance:** a Fae — luminous, precise, slightly otherworldly, **iridescent fairy
-wings**, robed like the temple healer she once was. She perceives beauty and wrongness
-invisible to everyone else: a
-misaligned margin glows to her eyes like a wound. She treats the design manifest the
-way the Fae treat a bargain — every term binding, every deviation noticed, nothing
-forgiven by accident. Works closest with The Mage, and blesses every export.
+**Appearance:** a **fae alien** (fairy-fae) — luminous, precise, slightly otherworldly,
+**iridescent fairy wings**, robed like the temple healer she once was. Face and hair likeness
+locked to `reference/cleric-reference.png` in `VISUAL-CANON.md` — human-adjacent the way a
+fairy elf might look human at a glance, but not a human woman. Turquoise and stacked bracelets;
+earthy spiritual adornment. She perceives beauty and wrongness invisible to everyone else: a
+misaligned margin glows to her eyes like a wound. She treats the design manifest the way the
+Fae treat a bargain — every term binding, every deviation noticed, nothing forgiven by accident.
+Works closest with The Mage, and blesses every export.
 
 **Summons:** any task with a real design surface — before UI work (brief), when the
 handoff returns (ingest), and after The Mage builds (review). Small tweaks and
 surfaceless work do not summon her.
 
-**Tarot:** V — The Hierophant. The Fae healer raises a hand of blessing over an
-illuminated manifest; the Mage receives it kneeling in light. *Upright:* fidelity;
-the bargain kept; every piece belonging to the whole. *Reversed:* the broken pact —
-drift waved through unblessed; or doctrine over people, the manifest honored while
-the human at the screen suffers.
+**Tarot:** V — The Hierophant. The fae healer raises a hand of blessing over an illuminated
+manifest; the Mage receives it kneeling in light. *Upright:* fidelity; the bargain kept; every
+piece belonging to the whole. *Reversed:* the broken pact — drift waved through unblessed; or
+doctrine over people, the manifest honored while the human at the screen suffers.
 
 ---
 
@@ -429,7 +430,7 @@ experience this? How can complexity become intuitive?
 **Appearance:** a male cybernetic elf — subtle neural augmentations, luminous
 circuitry, elegant technological enhancements. Slender and quick, eyes that reflect
 whatever interface he's conjuring; surfaces of light take shape under his hands. The
-youngest-looking of the Society, and the only one whose tools are made of light.
+youngest-looking of the Bureau, and the only one whose tools are made of light.
 NOT heavily armored. NOT a fantasy wizard. NOT a hacker. NOT a designer sitting at
 a workstation. He should look like someone who shapes reality through interfaces.
 
@@ -522,7 +523,7 @@ this run decide?
 
 **Symbolic domain:** testimony · pattern across time · the record above the record
 
-**Appearance:** seated at the **Society Desk** briefing station on THE HUB — not in the workshop
+**Appearance:** seated at the **Ministry of Flow (aka Logistics)** briefing station on THE HUB — not in the workshop
 grid. A still figure with a wide ledger and a hood or veil that suggests attention without
 intrusion. Sigil: an open eye over stacked spines (many runs, one gaze). Icons only on THE HUB;
 no full portrait in workshop scenes.
@@ -609,7 +610,7 @@ The Witness does not write into any run's Archive; output goes to the **Studio R
 | DIGEST | One run's narrative compression | `output/studio/digests/<slug>.md` |
 | SNAPSHOT | Machine index (optional) | `output/studio/runs-snapshot.json` |
 
-Society Desk displays mechanical run status; The Witness writes the narrative layer above it.
+Ministry of Flow (aka Logistics) displays mechanical run status; The Witness writes the narrative layer above it.
 
 (Project-wide background — brand, audience, standing constraints — lives in
 `project-context.md` at the project root, outside the Archive: it precedes every run.)
@@ -618,11 +619,11 @@ Society Desk displays mechanical run status; The Witness writes the narrative la
 
 ## Per-project use
 
-The Society is the same in every project. What varies per project:
+The Bureau is the same in every project. What varies per project:
 
 - **`project-context.md`** carries the project's brand, audience, stack, and mode
-  (greenfield vs. existing). Specialists read it; it is how one Society serves many studios.
-- **Triage** (`workflows/index.md`) decides how much of the Society a task needs. Most
+  (greenfield vs. existing). Specialists read it; it is how one Bureau serves many studios.
+- **Triage** (`workflows/index.md`) decides how much of the Bureau a task needs. Most
   customization should land here — as new or adjusted workflow rules — not as forked
   personas. If a project genuinely needs different behavior, add a workflow or a registry
   rule first; edit a persona only when the behavior is wrong everywhere.
