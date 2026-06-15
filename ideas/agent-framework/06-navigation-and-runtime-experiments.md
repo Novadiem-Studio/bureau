@@ -33,11 +33,16 @@ Bundle 04 can show which tasks are actually worth routing locally.
 
 Implement name lint only:
 
-1. Add a warning-only section to `check-framework.sh`.
+1. Add a warning-only section to `check-framework.sh` (at repo root, not `scripts/`).
+   The lint block must print warnings to stdout and **must never increment `errors` or alter
+   the exit code** — `check-framework.sh` exits 1 when `errors > 0`, so a hygiene warning
+   that touches `errors` becomes a build break across every install.
 2. Back it with a small script only if the shell logic becomes awkward.
 3. Flag generic names such as `util`, `helper`, `run`, `test`, `common`, temp-looking files
    outside temp paths, and near-duplicate workflow/script names.
-4. Add an allowlist for legitimate legacy names.
+4. Add an allowlist for legitimate legacy names, **pre-populated from the current tree** so
+   the check is silent on day one. A noisy lint on first run trains agents to ignore
+   `check-framework.sh` entirely, which is worse than no lint.
 5. Do not fail the build on warnings.
 
 ## Local runtime experiment slice

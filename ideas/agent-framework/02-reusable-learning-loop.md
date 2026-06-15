@@ -45,10 +45,19 @@ Do not create a new persona first. Add a close-out discipline and one repair pat
    - durable artifact patched;
    - smallest verification case.
 3. Add a `docs-sync-needed` close-out check for any changed script, runbook, or workflow.
+   This must be Challenger-checkable, not just a flag the Conductor can wave past: the
+   required form is "for every script/runbook/workflow changed this run, name the durable
+   artifact patched — or state explicitly why none." A flag with no required body is theater.
 4. Create `output/studio/README.md` and `output/studio/lessons.md` as the studio learning
    area and human-readable learning log.
 5. Add a minimal recurrence rule: a lesson seen in two runs must be either promoted or
    explicitly deferred with a reason.
+6. Add a one-paragraph **convention-retirement rule** to `docs/conventions.md`: to deprecate
+   a convention, mark it superseded (name the replacement), set a removal date, and add a
+   Challenger check that a superseded block is not still cited as a live instruction. This
+   bundle roughly doubles the convention surface in `conventions.md` and the persona files;
+   without a retirement path the document becomes unreadable and cold reviewers encounter
+   contradictory instructions.
 
 Scripts can come later. The v1 win is making the Conductor stop treating repeated fixes as
 session-local knowledge.

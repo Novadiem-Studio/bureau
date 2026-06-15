@@ -37,7 +37,11 @@ implemented incrementally, mostly through workflow text, a small script, and con
 
 Ship the highest-blast-radius guardrails first:
 
-1. Add a canonical `docs/external-action-boundary.md`.
+1. Add a canonical `docs/external-action-boundary.md` that enumerates the taxonomy of
+   external actions: email, Slack, webhooks, notifications, payments, DNS changes, and any
+   outbound POST with side effects. Include a default rule: **when unsure, treat as external
+   and gate it.** The boundary is not self-evident — concrete enumeration prevents
+   inconsistent application.
 2. Teach `agents/orchestrator.md`, `agents/sysadmin.md`, and `workflows/execute-plan.md` that
    external actions require an `[EXTERNAL-ACTION CHECKPOINT]` gate.
 3. Add `scripts/preflight.sh` with a narrow v1:

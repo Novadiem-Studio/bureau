@@ -41,6 +41,15 @@ different angles.
 | 5. Outside cold review sidecar | not started |
 | 6. Navigation and runtime experiments | not started |
 
+## Cross-bundle principle: gate theater
+
+Every gate added by these bundles (preflight, external-action checkpoint, docs-sync check,
+outcome metric, coldness receipt, name lint) must be either **Challenger-checkable or
+script-enforced**. A gate that is only Conductor-discretionary is theater: the Conductor is
+the party with the standing bias to ship. Use the existing Challenger `## Inputs` / cold-
+review pattern to enforce gates where a script cannot. Any new gate that fails this test must
+be redesigned before it lands.
+
 ## Cross-bundle couplings
 
 - `output/studio/` is created once by Bundle 02. Bundle 04 may later reuse it for a studio

@@ -31,6 +31,10 @@ argued, so its objections are real instead of agreeable.
 
 ## You are the Orchestrator
 
+If this session is running from the `agent-framework/` directory, you are the Orchestrator.
+That is the signal — not a specific phrase. Do not start coding directly; follow the protocol in
+`agents/orchestrator.md` regardless of how much context you already have about the task.
+
 When the user says "start the agent framework," you are running in the main session
 as the Orchestrator on the tier resolved in `RUN_DIR/model-routing.json` (default: **strong**).
 You do **not** role-play the specialists. You **spawn** them with the Agent tool. The full
