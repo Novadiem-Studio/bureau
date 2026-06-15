@@ -1,0 +1,29 @@
+# Not-started ideas — index
+
+Each idea has its own numbered file. Start a run with `feature` (or the indicated workflow)
+when ready to promote an idea. Promote one at a time; confirm the pattern has appeared in
+real Bureau runs before building.
+
+---
+
+| # | Title | One-liner | Likely home | Priority rationale |
+|---|-------|-----------|-------------|-------------------|
+| [01](01-self-annealing-failure-loop.md) | Self-annealing failure loop | After a failed operational run, patch the reusable artifact and lock in the fix before the session ends. | `operational-build`, `runbook-repair` workflow, or `agents/sysadmin.md` | Closes a tight feedback loop that every Bureau run hits — failure without a durable fix is wasted work. |
+| [02](02-approach-bakeoff.md) | Approach bake-off workflow | Run two or three isolated approaches against predeclared criteria, pick a winner, discard cleanly. | New `approach-bakeoff` workflow or branch inside `feature`/`execute-plan` | Avoids the most expensive architectural mistakes — a bad path chosen early and iterated late. |
+| [03](03-doc-sync-pass.md) | Doc-sync pass after script/runbook changes | Sync directive docs to the executable ground truth after any meaningful script change. | `docs-reconcile` workflow, close-out step in `operational-build` | Doc drift is a direct cause of agent failures; this is the smallest intervention that prevents it. |
+| [04](04-descriptive-name-lint.md) | Descriptive-name lint | Warning-only check that flags vague script/workflow/runbook names for fresh-agent navigability. | `check-framework.sh` + `scripts/` | Low effort, immediate navigability improvement, no breaking changes. |
+| [05](05-per-run-accounting-ledger.md) | Per-run accounting ledger | Every completed run produces an `accounting.json` packet; Ministry of Flow shows cost and efficiency trends. | `accounting.json` schema, `scripts/account-run.sh`, Tally extension, Ministry of Flow | Enables workflow sizing decisions with data rather than instinct. Tally is already in the cast. |
+| [06](06-codex-outside-challenger-sidecar.md) | Codex outside challenger sidecar | Cue a cold Codex reviewer at a checkpoint; it reads only the allowlist, writes one artifact, Robin stays out of the loop. | `external_review` cue schema, `outside-challenger.md` convention, Conductor instructions, Ministry of Flow | Removes the copy-paste friction for outside cold review without breaking the coldness discipline. |
+| [07](07-generalized-external-action-boundary.md) | Generalized external-action boundary | Gate emails, Slack posts, webhooks, and notifications behind the same human-approval boundary as production deploys. | `agents/orchestrator.md`, relevant agent files, `docs/external-action-boundary.md` | The production gate already exists; this extends it to the overlooked class of irreversible external actions. |
+| [08](08-representative-case-battle-test-matrix.md) | Representative-case / battle-test matrix | Require a passing run against 3–5 representative inputs before promoting a workflow or prompt to canon. | `execute-plan` and `operational-build` close-out, Challenger checklist | One-case promotion is how fragile workflows get canonized; this adds a minimal real-world gate. |
+| [09](09-close-out-reusable-learning-pass.md) | Close-out reusable-learning pass | When the same fix or Challenger finding recurs across two runs, escalate it to a convention or runbook. | Close-out step in any workflow with `log.md`, `output/studio/lessons.md` | Recurring lessons that stay in `log.md` are wasted learning. The fix is noticed once and then rediscovered. |
+| [10](10-analyst-value-metric.md) | Analyst value metric | Name the specific bottleneck or outcome the work must move before the spec is written. | `agents/analyst.md`, Challenger checklist, build workflow close-out | Prevents theater builds. The Analyst template is the right place to install this discipline. |
+| [11](11-local-runtime-experiment.md) | Local runtime experiment | Capability-aware `local` adapter for offline/cheap utility work plus a smoke test before first use. | `config/runtimes/`, model routing scripts, `scripts/` | Reduces cost for utility tasks. Lower priority because existing cloud routing works and local quality varies. |
+| [12](12-assumption-reduction-question-pass.md) | Assumption-reduction question pass | Before a greenfield spec is finalized, surface and close unstated assumptions explicitly. | Analyst–Architect handoff step in `feature` workflow, `agents/analyst.md` | Unstated assumptions are the dominant source of mid-build rework on greenfield projects. |
+| [13](13-env-preflight-before-execution.md) | Env preflight before execution | Check required vars, `.env.example`, and reachability targets before the build party starts — no fake passes. | `scripts/preflight.sh`, `execute-plan` and `operational-build` workflow start | Cheap check that prevents mid-run failures from knowable missing inputs. |
+| [14](14-regression-harness-capture.md) | Regression harness capture | After each accepted phase, preserve E2E checks as lasting regression fixtures, not one-off smoke runs. | `execute-plan` phase acceptance step, `RUN_DIR/regression/`, target project test dir | Phase regressions are hard to catch without fixtures. Each phase protects prior ones. |
+| [15](15-git-log-commit-summary-resume-signal.md) | Git-log / commit-message summary as resume signal | Standardized commit messages as a first-class resume signal alongside `state.json` and `log.md`. | `docs/commit-convention.md`, `scripts/resume-from-git.sh`, `execute-plan` phase acceptance, `agents/orchestrator.md` | Useful quality-of-life improvement but the current `state.json`+`log.md` approach already works. |
+
+---
+
+*To start a run on any idea: `feature` workflow (default) or the indicated workflow. Update the idea file's `status` field when a run is created, and move it to `in-progress/` in the parent index.*
