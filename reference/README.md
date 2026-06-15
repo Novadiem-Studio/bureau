@@ -1,7 +1,7 @@
 # Reference assets — Novadiem Studio AI Framework
 
 > **ChatGPT uploads:** a flat copy of all canon docs + references lives at
-> `../../chatgpt-export/` (sibling of `agent-framework/`). Refresh with
+> `../chatgpt-export/` (sibling of `agent-framework/` at `~/Code/novadiem/chatgpt-export/`). Refresh with
 > `scripts/sync-chatgpt-export.sh` after locking anything new. In the flat
 > folder this file is copied as **`UPLOAD-INDEX.md`** — read it first.
 

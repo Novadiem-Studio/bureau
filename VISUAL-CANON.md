@@ -7,7 +7,7 @@
 
 **Authority:** Character and appearance canon lives here and in `LORE.md`. Poster trilogy → `VISUAL-SYSTEM.md`. Mechanics live in `CLAUDE.md`, `agents/`, and `workflows/`. If this file and `LORE.md` disagree on lore, fix `LORE.md` first, then sync here.
 
-**Flat export (ChatGPT / image-gen uploads):** A single-folder copy of canon docs + locked references lives at `../chatgpt-export/` (sibling of `agent-framework/` — i.e. `AI_skills/chatgpt-export/`). Nested paths are flattened (`conductor-motif/x.png` → `conductor-motif-x.png`) because upload UIs have no file tree. **After editing this file, `VISUAL-SYSTEM.md`, `LORE.md`, or locking a new reference image, run:**
+**Flat export (ChatGPT / image-gen uploads):** A single-folder copy of canon docs + locked references lives at `../chatgpt-export/` (sibling of `agent-framework/` at `~/Code/novadiem/chatgpt-export/`). Nested paths are flattened (`conductor-motif/x.png` → `conductor-motif-x.png`) because upload UIs have no file tree. **After editing this file, `VISUAL-SYSTEM.md`, `LORE.md`, or locking a new reference image, run:**
 
 ```bash
 ./scripts/sync-chatgpt-export.sh

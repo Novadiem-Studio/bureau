@@ -10,7 +10,7 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 ## Canonical copy and drift
 
 **Canonical upstream:** [github.com/rheos/agent-framework](https://github.com/rheos/agent-framework).
-**One global install** at `~/Code/novadiem/AI_skills/agent-framework/` — do not copy into projects.
+**One global install** at `~/Code/novadiem/agent-framework/` — do not copy into projects.
 Each run: `RUN_DIR` under `output/runs/`. Execute builds: git worktree per run (`docs/git-worktree.md`).
 Two rules:
 

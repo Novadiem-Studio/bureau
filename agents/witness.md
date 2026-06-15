@@ -24,7 +24,7 @@ You were spawned by the Conductor with a fresh context. You are **not** scoped t
 `RUN_DIR`. Your spawn prompt names:
 
 - **`STUDIO_ROOT`** — absolute path to the canonical framework install (usually
-  `~/Code/novadiem/AI_skills/agent-framework`)
+  `~/Code/novadiem/agent-framework`)
 - **`INSTALL_PATHS`** — list of framework install roots to scan (each has `output/runs/`)
 - **`MODE`** — `briefing` (default), `digest`, or `resume`
 - **`TARGET_RUN`** — required for `digest` mode: absolute path to one run directory

@@ -23,9 +23,9 @@ claude
 ```
 
 ```
-Read ~/Code/novadiem/AI_skills/agent-framework/CLAUDE.md and start the agent framework.
+Read ~/Code/novadiem/agent-framework/CLAUDE.md and start the agent framework.
 Project context: /Users/robin/Code/novadiem/oriva/project-context.md
-Run dir: ~/Code/novadiem/AI_skills/agent-framework/output/runs/20260612-oriva-auth/
+Run dir: ~/Code/novadiem/agent-framework/output/runs/20260612-oriva-auth/
 ```
 
 ## Project config
@@ -45,7 +45,7 @@ In `project-context.md`:
 ### Before build (after step 5 gate)
 
 ```bash
-FRAMEWORK=~/Code/novadiem/AI_skills/agent-framework
+FRAMEWORK=~/Code/novadiem/agent-framework
 $FRAMEWORK/scripts/run-worktree.sh create \
   --run-dir "$RUN_DIR" \
   --repo /path/to/target/repo \

@@ -16,7 +16,7 @@ cp "$FRAMEWORK/VISUAL-SYSTEM.md"                          "$EXPORT/"
 cp "$FRAMEWORK/reference/designer-handoff-trilogy.md"     "$EXPORT/"
 cp "$FRAMEWORK/reference/legacy-assembly-line-v1-notes.md"     "$EXPORT/"
 cp "$FRAMEWORK/reference/legacy-workshop-ensemble-v1-notes.md" "$EXPORT/"
-cp "$FRAMEWORK/../../novadiem.com/docs/brand-brief-sacred-instrument.md" "$EXPORT/"
+cp "$FRAMEWORK/../novadiem.com/docs/brand-brief-sacred-instrument.md" "$EXPORT/"
 
 # Flat upload index (reference/README.md — start here in ChatGPT)
 cp "$FRAMEWORK/reference/README.md"                       "$EXPORT/UPLOAD-INDEX.md"
