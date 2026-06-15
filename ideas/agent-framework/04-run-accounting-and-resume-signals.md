@@ -27,6 +27,9 @@ session.
 
 Run this after Bundles 01 and 02. Accounting is most useful when runs have stable phases,
 failure signatures, regression fixtures, and close-out conventions.
+Reuse `output/studio/` only after Bundle 02 creates it. This bundle may add only a short
+accounting status/path pointer to `templates/state.json`; the actual accounting packet lives
+in `RUN_DIR/accounting.json`.
 
 ## First implementation slice
 
@@ -43,12 +46,14 @@ failure signatures, regression fixtures, and close-out conventions.
 3. Emit `RUN_DIR/accounting.json`.
 4. Add a close-out convention: the Conductor runs accounting after a completed run, or records
    why accounting is unavailable.
-5. Add commit message guidance for execute workflows, but keep it supplementary:
+5. Add only a short accounting status/path pointer to `templates/state.json`.
+6. Add commit message guidance for execute workflows, but keep it supplementary:
    `state.json` remains authoritative.
 
 ## Later implementation slice
 
-- Aggregate `RUN_DIR/accounting.json` into `output/studio/accounting-ledger.json`.
+- Aggregate `RUN_DIR/accounting.json` into `output/studio/accounting-ledger.json`, reusing the
+  directory created by Bundle 02.
 - Give Tally a read-only accounting errand only after the script schema stabilizes.
 - Add `scripts/resume-from-git.sh` to summarize framework-tagged commits.
 - Add Ministry of Flow surfaces once the ledger has enough real data.
@@ -57,6 +62,8 @@ failure signatures, regression fixtures, and close-out conventions.
 
 - A completed run produces `accounting.json` or a clear unavailable reason.
 - Accounting fields never appear without confidence labels.
+- Any `state.json` accounting addition is only a short status/path pointer, not a copy of the
+  packet.
 - A fresh session can use git history as a quick primer without replacing `state.json` and
   `log.md`.
 - Workflow sizing decisions can reference actual pass counts and routing choices.
@@ -67,4 +74,3 @@ failure signatures, regression fixtures, and close-out conventions.
 - Tally must stay read-only. The script or Conductor writes the packet.
 - Commit conventions must not fight target-project norms. Use prefixes/trailers only where
   the target repo allows them.
-

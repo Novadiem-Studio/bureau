@@ -19,15 +19,18 @@ Visionary checkpoint.
 
 The idea is valuable, but it touches artifact boundaries, thread coordination, Ministry of
 Flow visibility, and proof-of-coldness questions. It should come after the framework has clear
-preflight, regression, close-out, and accounting artifacts.
+preflight, regression, close-out, planning-quality, and accounting artifacts. Bundle 03 should
+land first so the reviewed specs already name their outcome; Bundle 04 should land first
+because both bundles touch `templates/state.json` and `agents/orchestrator.md`.
 
 ## First implementation slice
 
 Do not automate thread creation in v1. Start with the artifact contract:
 
-1. Add an `external_review` block to `templates/state.json` or define a separate
-   `external-review.json` convention.
-2. Define `RUN_DIR/reviews/outside-challenger.md` as the default write path.
+1. Define `templates/external-review.json` as the packet template, and add only a short
+   `external_review` status/path pointer to `templates/state.json`, not the full packet.
+2. Define `RUN_DIR/external-review.json` as the cue packet and
+   `RUN_DIR/reviews/outside-challenger.md` as the default review artifact path.
 3. Add `docs/outside-cold-review.md` with:
    - allowed inputs;
    - denied inputs;
@@ -52,6 +55,8 @@ Only after the manual flow works:
 ## Done when
 
 - A run can request an outside review without copying freeform chat context.
+- Any `state.json` external-review addition is only a short status/path pointer; the allowlist,
+  denylist, and coldness receipt live in `external-review.json`.
 - The sidecar declares exactly what it read and did not read.
 - The Conductor consumes the sidecar review as advisory, not authoritative.
 - The reviewer cannot silently expand scope or approve checkpoints.
@@ -62,4 +67,3 @@ Only after the manual flow works:
   `state.json` decisions, prior Challenger findings, or Conductor rationale.
 - Automation before the artifact boundary is proven will create trust problems.
 - This must not become a general chat bridge between agents.
-

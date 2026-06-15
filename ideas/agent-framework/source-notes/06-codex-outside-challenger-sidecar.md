@@ -14,7 +14,8 @@ Let a running framework workflow cue a Codex outside challenger that waits on th
 The framework gets value from cold review — The Challenger sees artifacts, not the conversation that produced them. But Robin sometimes wants an extra Codex sanity check while a run is paused, especially around workflow shape, hidden implementation risks, and mechanical oversights. Today that requires manually copying artifacts into Codex and copying findings back. That works, but it breaks flow. The outside reviewer should be able to wait for an explicit cue, read the right artifacts, and place its review in the run directory, while preserving the same coldness discipline that makes The Challenger useful.
 
 ## Idea
-1. Define an `external_review` cue schema in `state.json`: question, cold-read allowlist, denied files, `write_to` path.
+1. Define an `external-review.json` cue packet with question, cold-read allowlist, denied files,
+   and `write_to` path. `state.json` may hold only a short `external_review` status/path pointer.
 2. The framework writes the cue at checkpoints or sensitive design calls where an outside view adds value.
 3. Codex reads only the named artifacts — never `log.md`, `state.json` decisions, or prior Challenger findings — and writes one bounded `RUN_DIR/outside-challenger.md`.
 4. The Conductor reads that artifact and adjudicates (accept / reject / route through normal adjudication) — same process as an official Challenger finding, labeled as advisory/sidecar.
@@ -45,7 +46,7 @@ Default denied inputs: `log.md`, `state.json` decisions, Conductor commentary, p
 
 ## Proposed cue contract
 
-In `state.json`:
+In `RUN_DIR/external-review.json`:
 ```json
 {
   "external_review": {
@@ -64,13 +65,13 @@ In `state.json`:
 The review artifact (`RUN_DIR/outside-challenger.md`) declares its inputs: what it read, what it did not read, the question, verdict, findings, and suggested hand-back.
 
 ## Likely home
-`external_review` cue schema + `outside-challenger.md` artifact convention + Conductor instructions for consuming it + selected workflow hookpoints + Ministry of Flow surface. Build via `feature` workflow.
+`templates/external-review.json` cue packet + short `state.json` pointer + `outside-challenger.md` artifact convention + Conductor instructions for consuming it + selected workflow hookpoints + Ministry of Flow surface. Build via `feature` workflow.
 
 ## Done when
 On a design-call pause, the framework writes a cue; Codex reads only the named artifacts and writes `outside-challenger.md`; the Conductor consumes it without Robin moving text by hand; Ministry of Flow shows the cue status. On a future run like `bug-fix-workflow`, the framework can pause at a design call and request a cold outside review of workflow shape.
 
 ## Open questions
-- Should the cue live in `state.json`, a separate `external-review.json`, or both?
+- Which fields belong in `external-review.json` vs. the short `state.json` pointer?
 - Should review artifacts live at `RUN_DIR/outside-challenger.md` or under `RUN_DIR/reviews/`?
 - Can Codex app thread tools safely create a review thread with only artifact allowlists?
 - How should the system prove the reviewer did not read denied files?

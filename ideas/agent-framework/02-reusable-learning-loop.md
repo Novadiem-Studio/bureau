@@ -27,8 +27,10 @@ smallest representative case, and keep docs synchronized with executable ground 
 
 ## Dependency
 
-Run this after Bundle 01 if possible. The learning loop is much stronger when failures have
-preflight artifacts, regression fixtures, and representative cases to point at.
+Run this after Bundle 01's two slices if possible. The learning loop is much stronger when
+failures have preflight artifacts, regression fixtures, and representative cases to point at.
+This bundle owns creation of `output/studio/`; later bundles may reuse that directory but
+must not assume it already exists.
 
 ## First implementation slice
 
@@ -43,7 +45,8 @@ Do not create a new persona first. Add a close-out discipline and one repair pat
    - durable artifact patched;
    - smallest verification case.
 3. Add a `docs-sync-needed` close-out check for any changed script, runbook, or workflow.
-4. Add `output/studio/lessons.md` as the human-readable studio learning log.
+4. Create `output/studio/README.md` and `output/studio/lessons.md` as the studio learning
+   area and human-readable learning log.
 5. Add a minimal recurrence rule: a lesson seen in two runs must be either promoted or
    explicitly deferred with a reason.
 
@@ -63,6 +66,7 @@ After the convention has appeared in real runs:
 
 - A failed operational/build run records a failure signature and the durable artifact patched.
 - The fix is verified against the smallest representative case.
+- `output/studio/README.md` and `output/studio/lessons.md` exist.
 - If a script or runbook changed, matching docs are reconciled before close-out or a carried
   item explains why not.
 - A repeated lesson across two runs is promoted, deferred, or intentionally scoped local.
@@ -74,4 +78,3 @@ After the convention has appeared in real runs:
   executable truth.
 - Lesson matching can become fuzzy. Start with manual tags and exact failure signatures before
   adding clever inference.
-
