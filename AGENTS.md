@@ -9,7 +9,7 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 
 ## Canonical copy and drift
 
-`~/Code/novadiem/AI_skills/agent-framework/` is the **canonical upstream**. Project installs
+`~/Code/novadiem/agent-framework/` is the **canonical upstream**. Project installs
 are copies, and they drift. Two rules:
 
 1. **Improvements flow upstream.** Any change made to a project's copy (a persona edit, a

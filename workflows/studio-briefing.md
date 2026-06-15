@@ -27,7 +27,7 @@ Default installs to scan (extend in spawn prompt or `config/installs.json` when 
 
 | Name | Path |
 |------|------|
-| Canonical | `~/Code/novadiem/AI_skills/agent-framework` |
+| Canonical | `~/Code/novadiem/agent-framework` |
 | GrowOperative (legacy) | `~/Code/foaftech/Growoperative/agent-framework` |
 | Oriva (legacy) | `~/Code/novadiem/oriva/agent-framework` |
 

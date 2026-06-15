@@ -1,11 +1,11 @@
 {
   "description": "Framework installs The Witness and Ministry of Flow (aka Logistics) scan. Extend as legacy copies are retired.",
-  "studio_root": "~/Code/novadiem/AI_skills/agent-framework",
+  "studio_root": "~/Code/novadiem/agent-framework",
   "installs": [
     {
       "id": "canonical",
       "name": "Agent Framework (canonical)",
-      "path": "~/Code/novadiem/AI_skills/agent-framework",
+      "path": "~/Code/novadiem/agent-framework",
       "runs_glob": "output/runs/*"
     },
     {
