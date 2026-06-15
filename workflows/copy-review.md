@@ -4,6 +4,8 @@
 ships — marketing copy, app microcopy, emails, error messages, release notes, a bio, a
 post. Point it at a blob of copy.
 
+**When NOT to use:** framing a message before it's written (use `message-framing`), or reviewing code — this workflow covers user-facing text only.
+
 **Type:** mixed (it reviews and hands back fixed copy)
 
 **Inputs:** the copy to review; who the audience is and where it appears (infer if not given).

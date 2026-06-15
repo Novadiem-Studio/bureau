@@ -13,6 +13,8 @@ this folder with the full step definition.
 5. If the task is mixed (e.g. "fix these bugs AND add a feature"), split it and run each
    part through its own workflow.
 
+> **Authoring a step line?** Lead with **the agent's bold cast name**, make the tier its own **standard**/**strong** token, use → for outputs. Full spec: docs/conventions.md § Workflow step-line spec.
+
 ## Registered workflows
 
 | Workflow | When to use | Type | Summary |
@@ -23,9 +25,26 @@ this folder with the full step definition.
 | [copy-review](copy-review.md) | Any user-facing text needs a voice / tone / audience check before it ships | mixed | Runs The Counselor (Voice) in review mode (humanizer + spiral-dynamics + clarity + honesty) → findings + revised copy |
 | [docs-reconcile](docs-reconcile.md) | Plan/status docs drifted from code ground truth (direct commits, reverts, renumbered migrations); deliverable is updated docs, not code | mixed | Survey agent re-derives ground truth from the repo → Reconcile agent edits docs → The Challenger re-verifies cold against the repo → Conductor adjudicates, user-gated commit |
 | [studio-briefing](studio-briefing.md) | Studio-wide status: what's running, blocked, stale; executive summary or digest of run logs across installs | mixed | Spawn The Witness (read-only) → `output/studio/briefing.md` / `resume.md` / digests — narrative layer above Society Desk |
+| [operational-build](operational-build.md) | A defined, runbook-driven build/ops task — iOS build, container image, release prep — where a skill/runbook already holds the steps and the job is to run them under a gate | execute | The Conductor loads the runbook → gate → The Mechanic runs it (stops at the production boundary) → The Conductor closes out with a build/deploy record |
 
 > Add a row here whenever a workflow is defined. This table is the single source of truth
 > for triage — every workflow file must have a row.
+
+## Triage examples
+
+These are anchors, not rules. Apply each workflow's **When to use** / **When NOT to use**; the
+table just starts the comparison. A task that's 85% similar to an example may still belong to a
+different workflow — match the criteria, not the closest-looking row.
+
+| Task | Workflow |
+|------|----------|
+| A new feature request ("add team invitations") | `feature` |
+| There's a `plans/todo/50-email-verification.md`; turn it into executable prompts and build it | `execute-plan` |
+| Write a launch-announcement email to a cold enterprise audience | `message-framing` |
+| The landing-page copy sounds like an AI wrote it | `copy-review` |
+| Migration numbers in a `plans/todo/` README are wrong after a revert | `docs-reconcile` |
+| What's running, blocked, or stale across all active runs this morning? | `studio-briefing` |
+| Run an iOS archive build from the existing release runbook | `operational-build` |
 
 ## Types
 
