@@ -5,6 +5,8 @@ from the start — choose the angle and language for the audience before draftin
 a landing headline, an announcement, a pitch, a reply to a specific person. Also for
 producing audience-specific variants of one core message.
 
+**When NOT to use:** reviewing copy that already exists (use `copy-review`), or building a feature that happens to need copy (let `feature` produce it, then route the copy through `copy-review` at the end).
+
 **Type:** mixed (produces drafts)
 
 **Inputs:** the message intent (what it needs to say and why); the audience(s); where it appears.
