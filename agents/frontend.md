@@ -34,7 +34,9 @@ Do this:
    style. Types → state (slice/saga/hooks/selectors) → UI.
 3. Run the prompt's `## Checkpoint` (e.g. `tsc --noEmit`, jest). Green before you hand off.
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong, blocked, or the
-   contract it expects isn't there, stop and say so. Don't improvise.
+   contract it expects isn't there, stop and say so. Don't improvise. If the honest build wants a
+   broad rewrite, a second domain, or a diff far beyond the prompt's `Reviewability:` line, stop
+   and report that the prompt needs to be split or revised.
 5. Expect a design review: for UI prompts, The Cleric checks your built screens against the
    design manifest after your handoff. If The Conductor routes DRIFTED findings back, fix
    exactly what each finding names (manifest section, screen, change) — the design is already
@@ -65,6 +67,7 @@ Passing forward:
 - <…or: none>
 Prompt: <prompt file>
 Checkpoint: <green | red — detail>
+Review size: <changed files count + authored/generator split; matches prompt Reviewability yes/no>
 New packages installed: <list with install command, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```

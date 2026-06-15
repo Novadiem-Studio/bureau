@@ -14,6 +14,9 @@ this folder with the full step definition.
    part through its own workflow.
 
 > **Authoring a step line?** Lead with **the agent's bold cast name**, make the tier its own **standard**/**strong** token, use → for outputs. Full spec: docs/conventions.md § Workflow step-line spec.
+> **Authoring a workflow or runbook?** Use docs/conventions.md § Workflow / runbook authoring
+> quality bar: objective, inputs, steps, outputs, done criteria, edge cases, fallback behavior,
+> and observability for unattended or externally visible work.
 
 ## Registered workflows
 
@@ -21,6 +24,7 @@ this folder with the full step definition.
 |----------|-------------|------|---------|
 | [feature](feature.md) | A new feature, a new product, or any substantial change needing a fresh spec + design + build plan | plan | Full multi-agent pipeline → spec, plan, scoped prompts |
 | [bug-fix](bug-fix.md) | A known defect in existing code — crash, wrong result, regression — to reproduce, locate, fix, and verify in one tight loop. No spec/plan: the bug is the spec | mixed | Analizer 2000 reproduces (captures the repro) + locates the cause + names the domain → worktree → the domain's coder (Mage/Systemsmith/Mechanic) fixes it → The Challenger cold-reviews the diff → The Conductor adjudicates, re-runs the repro to verify, stops at the dev-verified boundary |
+| [code-review](code-review.md) | Review an existing diff, branch, pull request, or uncommitted changes before human review/merge; no code edits by default | mixed | The Conductor captures the review target → The Challenger cold-reviews the diff against local standards → The Conductor adjudicates, optionally runs named checks, and returns findings-first review |
 | [execute-plan](execute-plan.md) | There's a written plan doc (a `plans/todo/NN-*.md`); turn it into vetted scoped prompts and (gated) build them | mixed | The Architect (fit + chunk) → The Challenger → The Spellwright → `00-index + NN-*` prompt folder beside the plan → The Challenger → **gate** → build party builds each part (Mage/Systemsmith/Mechanic), The Challenger reviews each diff, The Conductor adjudicates |
 | [message-framing](message-framing.md) | You're writing user-facing copy and want the framing/angle chosen for the audience up front (or audience variants) | mixed | Runs The Counselor (Voice) in frame mode (spiral-dynamics framing + house voice) → tuned draft(s) |
 | [copy-review](copy-review.md) | Any user-facing text needs a voice / tone / audience check before it ships | mixed | Runs The Counselor (Voice) in review mode (humanizer + spiral-dynamics + clarity + honesty) → findings + revised copy |
@@ -40,6 +44,7 @@ different workflow — match the criteria, not the closest-looking row.
 | Task | Workflow |
 |------|----------|
 | Fix a crash on login | `bug-fix` |
+| Review this PR before I request human review | `code-review` |
 | A new feature request ("add team invitations") | `feature` |
 | There's a `plans/todo/50-email-verification.md`; turn it into executable prompts and build it | `execute-plan` |
 | Write a launch-announcement email to a cold enterprise audience | `message-framing` |

@@ -34,7 +34,9 @@ Do this:
    doesn't wipe dev data; via docker per the skill). Green before you hand off. If a failure is
    pre-existing and unrelated, prove it (diff review) and flag it, don't fix out of scope.
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong or blocked, stop
-   and say so.
+   and say so. If the honest build wants a broad rewrite, a second domain, or a diff far beyond
+   the prompt's `Reviewability:` line, stop and report that the prompt needs to be split or
+   revised.
 
 ## Inputs
 
@@ -61,6 +63,7 @@ Passing forward:
 - <…or: none>
 Prompt: <prompt file>
 Checkpoint: <green | red — detail>
+Review size: <changed files count + authored/generated split; matches prompt Reviewability yes/no>
 API contract handed to the client: <endpoint, payload shape, status codes — or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```

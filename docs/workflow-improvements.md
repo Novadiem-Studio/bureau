@@ -1,7 +1,7 @@
 # Improving the agentic workflows
 
 A working list of where the workflow layer can get stronger, written 2026-06-14 after a
-read-through of all six registered workflows (`workflows/*.md`), the orchestrator protocol
+read-through of the then-registered workflows (`workflows/*.md`), the orchestrator protocol
 (`agents/orchestrator.md`), and the registry parser the new Ministry of Flow (aka Logistics) Workflows tab runs
 on (`society-desk/lib/workflow-parser.ts`).
 
@@ -11,25 +11,19 @@ priority table at the end is the short version.
 
 ---
 
-## 1. Coverage — workflows the framework promises but doesn't have
+## 1. Coverage — workflow gaps now closed
 
 `CLAUDE.md` says "a bug fix, an iOS build, and a new feature run very different workflows,"
 and `feature.md` explicitly excludes its own use for "one-line bug fixes or operational
-builds — those get lighter workflows." Those lighter workflows don't exist. Triage has
-nowhere to route them except `feature` (too heavy) or improvisation (defeats the registry).
+builds — those get lighter workflows." Those lighter workflows now exist in the registry.
 
-| Missing workflow | Type | What it covers | Why it matters |
-|---|---|---|---|
-| `bug-fix` | mixed | Reproduce → locate → fix → verify in one tight loop, no full spec/plan | The single most common task has no home. Today it falls back to `feature` or freelancing. |
-| `operational-build` | execute | A defined build/deploy runbook: iOS build, container image, release prep | The `execute` type is defined in `index.md`'s legend but **no workflow uses it**. The type is dead. |
-| `code-review` | mixed | Standalone cold review of a diff/branch, Challenger + optional Cleric | Code review only exists buried inside `execute-plan` step 6. There's no way to review existing code without running a build. (`copy-review` covers prose; nothing covers code.) |
+| Workflow | Type | Status |
+|---|---|---|
+| `bug-fix` | mixed | Registered; routes known defects through reproduce → locate → worktree fix → cold diff review → dev verification. |
+| `operational-build` | execute | Registered; gives the `execute` type a runbook-driven ops/build path. |
+| `code-review` | mixed | Registered 2026-06-15; standalone cold review for diffs, branches, PRs, and uncommitted changes. |
 
-A `bug-fix` workflow is the highest-value gap. Sketch: Analyst reproduces and scopes (1
-step, `standard`), a coder fixes in a worktree, the Challenger reviews the diff cold, the
-Conductor adjudicates. Three to four steps, no spec.md, no design checkpoint.
-
-The `execute` type being unused is worth a decision: either write one workflow that uses it
-(`operational-build`) or drop the type from the legend so the taxonomy matches reality.
+Remaining coverage work should start from real missed triage cases, not from this old gap list.
 
 ---
 
@@ -224,22 +218,25 @@ next time, and it feeds the per-run post-mortem in §5.
 
 ## Priority
 
+Status note: this is the original backlog ordering; rows that have since landed are left here
+for history and marked as done.
+
 | # | Change | Effort | Payoff |
 |---|---|---|---|
 | 1 | Per-role **Inputs contract** in every `agents/*.md` + Conductor passes only that (§7.1–7.2) | M | Highest — better output, fewer tokens, keeps the Challenger cold |
 | 2 | Acceptance-criteria checklist carried Analyst → Challenger → coder (§4) | M | High — turns cold review into review against a contract; also the Challenger's core input |
-| 3 | Write a `bug-fix` workflow (§1) | M | High — the most common task has no home |
+| 3 | Done: write a `bug-fix` workflow (§1) | M | Completed — registered in `workflows/index.md` |
 | 4 | Standardize step authoring (bold agent, standalone tier, `→` output) + back-fill the six steps (§2) | S | High — every workflow self-describes; viz accuracy for free |
 | 5 | Scope manifest (cheap Tally pass) for existing-project spawns (§7.3) | M | High — biggest over-context blast radius |
 | 6 | Structured handoff footer: consumed / produced / passing-forward (§5, §7.5) | S | High — stops downstream re-reading; the audit hook |
 | 7 | Add The Coupler / Scoot / Tally to `AGENT_ALIASES` + cast (§3) | S | Medium — closes visible registry gaps |
 | 8 | Defined tier-escalation step on a failed critic loop (§4) | S | Medium — fewer cold checkpoints to the human |
 | 9 | `check-state.sh` resume validation (§5) | S | Medium — protects the resume path |
-| 10 | Decide the `execute` type's fate (`operational-build` or drop it) (§1) | S | Medium — taxonomy matches reality |
+| 10 | Done: decide the `execute` type's fate (`operational-build` or drop it) (§1) | S | Completed — `operational-build` is registered |
 | 11 | Per-run post-mortem block + triage examples + "when NOT to use" (§5, §6) | M | Medium — compounding, feeds routing experiments |
 
 Do §7 first. Right-sizing context is the change that makes every other agent better at once,
 and the Inputs contract is the artifact the acceptance-criteria work (item 2) and the
-existing-project scope manifest (item 5) both build on. Items 3 and 4 — a real workflow for
-the most common task, and a step-authoring convention — are the next tier: cheap, visible,
-and they make the whole registry legible to both the new viz and the next person reading it.
+existing-project scope manifest (item 5) both build on. With the coverage gaps in §1 closed,
+the next strongest live improvements are scope manifests, step-line cleanup, and resume
+validation.

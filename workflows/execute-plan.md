@@ -47,6 +47,10 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    **prompt folder** (format below), beside the plan doc. One prompt = one coherent unit a single
    Claude Code session can finish, owned by **exactly one coder** (carry the Architect's chunk
    assignment; tag every prompt `Coder:`). Each names exact files and ends with a green checkpoint.
+   Keep every prompt reviewable: it should fit in one focused code-review sitting, touch only one
+   domain/surface, and produce a diff The Challenger can inspect cold. If the plan chunk would
+   create a sprawling diff, split it before the build stage; a 10k-line surprise is a planning
+   failure, not a productivity win.
 4. **The Challenger** (Critic, round 2, **strong**, fresh context required) — cold-review the prompts: is each independently
    executable? correct order? hidden deps between steps? are the workspace gotchas captured? is
    every checkpoint testable? Reports findings. The Conductor adjudicates: route the fix back to
@@ -92,11 +96,17 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
      wrong token, wrong data wiring) is always blocking regardless of server access.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
+   - **Review-size gate:** before accepting a coder handoff, compare the diff to the prompt's
+     named files, domain, and `Review size` handoff line. If the authored change is much broader
+     than the prompt, crosses into another coder's domain, or hides large conceptual work behind
+     generated churn, do not accept it just because checkpoints are green. Route it back, split the
+     prompt, or checkpoint for a human call.
    - If `merge_policy` is `per_prompt` and the prompt is accepted: `run-worktree.sh merge`,
      then `sync`, append prompt id to `git.prompts_merged` in `state.json`.
 
-   **Parallel tracks (optional).** Two prompts may build SIMULTANEOUSLY (e.g. The Systemsmith on a
-   backend prompt while The Mage builds UI) only when ALL hold:
+   **Parallel tracks (optional).** No more than two prompts may build SIMULTANEOUSLY (e.g. The
+   Systemsmith on a backend prompt while The Mage builds UI) unless the human explicitly asks for
+   a wider experiment. Even two is allowed only when ALL hold:
    - different coders AND different repos/sub-apps;
    - neither prompt consumes a contract the other produces (check `Depends on` / the named
      contract — contract-owning prompts always ship before their consumers);
@@ -184,6 +194,9 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
   contract), **The Mechanic** (ops/deploy/infra). One prompt = one coder; if a unit needs two,
   split it and name the shared contract in both prompts.
 - `Plan:` the canonical plan section it implements (`../<plan>.md §N`) + the analog to mirror.
+- `Reviewability:` one line naming the expected diff surface: the primary files/dirs, whether
+  generated files or lockfiles are expected, and the boundary that would make the coder stop
+  instead of expanding scope.
 - `## Do` — numbered, concrete steps naming **exact file paths**, what to clone/mirror, and the
   specifics (columns, method signatures, params).
 - `## Checkpoint (green before NN+1)` — the exact tests / verification that must pass.

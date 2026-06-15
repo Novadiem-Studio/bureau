@@ -2,8 +2,9 @@
 
 **When to use:** a defined, runbook-driven build or ops task where the steps are already known
 and the job is execution, not design — an iOS archive build, a container image build, release
-prep, a scripted deploy-to-dev. There is an existing skill or runbook that holds the procedure;
-this workflow loads it and runs it under a gate.
+prep, a scripted deploy-to-dev. There is an existing skill or runbook that holds the procedure
+and meets docs/conventions.md § Workflow / runbook authoring quality bar; this workflow loads it
+and runs it under a gate.
 
 **When NOT to use:** there is NO runbook/skill yet and the procedure has to be designed —
 that needs `feature` (to design it) or a `define-workflow` pass (to author the runbook) first.
@@ -26,9 +27,11 @@ skill and follow it; do not duplicate its steps here.
 ## Steps
 
 1. **The Conductor** (**standard**) — load the runbook: find the skill/runbook that holds the
-   procedure (`.claude/skills/`, or the project's documented build runbook). If none exists,
-   STOP — this is the wrong workflow (see "When NOT to use"). → confirmed runbook + the exact
-   target and params
+   procedure (`.claude/skills/`, or the project's documented build runbook). Confirm it names the
+   objective, inputs, ordered steps, expected outputs, done criteria, edge/fallback behavior, and
+   observability for unattended/dev-deploy work. If none exists or the runbook is too vague to
+   run from written context alone, STOP — this is the wrong workflow (see "When NOT to use"). →
+   confirmed runbook + the exact target and params
 2. **Gate** — show the human the runbook, the target, and what running it will touch; get a go
    before anything executes. `[CHECKPOINT]`.
 3. **The Mechanic** (**standard**) — run the runbook steps exactly as the skill defines them,

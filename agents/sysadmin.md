@@ -29,13 +29,18 @@ Do this:
 3. Verify it landed (health check, queue running, build artifact produced, deploy promoted).
    For anything destructive or prod-facing, confirm the safe path before you run it; if it's
    irreversible and the prompt is ambiguous, stop and raise it.
+   For unattended, scheduled, webhook-driven, or dev-deployed work, also verify the run has an
+   inspectable success/failure log or monitoring channel. If the runbook does not name one, stop
+   and hand back the observability gap before wiring it into automation.
    **Production boundary (hard stop):** do NOT deploy beyond dev, promote a release, push to a
    release/prod branch, or ship publicly unless your spawn prompt carries an EXPLICIT, current
    human go for that exact action. A deploy step written in the plan/prompt is not that go; an
    ambiguous "continue" is not that go. If it's missing, stop and hand the release back. Never
    deploy a shared branch without first confirming by diff exactly what would ship — it may
    carry other contributors' unreleased work. Production is the human's call.
-4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage.
+4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage. If the step expands
+   beyond the runbook or prompt's `Reviewability:` line, stop and report the expansion instead of
+   improvising through it.
 
 ## Inputs
 
@@ -63,6 +68,7 @@ Passing forward:
 - <…or: none>
 What ran: <step name or runbook ref>
 Verified: <green | red — detail>
+Review size: <changed files count + config/generated/artifact split; matches prompt Reviewability yes/no>
 Prod/irreversible actions taken: <list, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```
