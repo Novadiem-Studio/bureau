@@ -32,4 +32,5 @@ at-a-glance view.
 | Group | Index | Notes |
 |-------|-------|-------|
 | **Agent framework improvements** | [`agent-framework/not-started/index.md`](agent-framework/not-started/index.md) | 15 ranked ideas for making Bureau runs more efficient and less error-prone. Ordered by dependency, then strength. Each idea keeps its own status as it moves to `in-progress/` or `done/` inside `agent-framework/`. |
+| **Rheo persistent memory** | [`not-started/rheo-persistent-memory.md`](not-started/rheo-persistent-memory.md) | MOT conversations table + MCP tools (`chat_recent`, `chat_search`) so Rheo remembers across restarts and sessions. |
 | **Other** | [`not-started/`](not-started/) | All other not-started ideas. One numbered file per idea. Promote one at a time; run `feature` or the indicated workflow. |

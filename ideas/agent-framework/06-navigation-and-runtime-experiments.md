@@ -1,0 +1,67 @@
+---
+priority: bundle-06
+status: idea (consolidated)
+suggested-workflow: feature
+suggested-run-slug: navigation-and-runtime-experiments
+source-ideas:
+  - source-notes/04-descriptive-name-lint.md
+  - source-notes/11-local-runtime-experiment.md
+---
+
+# 06. Navigation and runtime experiments
+
+## Purpose
+
+Improve fresh-agent navigability and explore cheaper/offline runtime paths for low-risk
+utility tasks. This bundle is intentionally last because it optimizes the framework rather
+than protecting correctness.
+
+## Consolidates
+
+| Source | Role in this bundle |
+|---|---|
+| `04-descriptive-name-lint` | Warning-only check for vague script, workflow, and runbook names. |
+| `11-local-runtime-experiment` | Capability-aware local adapter for cheap/offline utility work. |
+
+## Execution note
+
+The two parts do not have to land together. Descriptive-name lint is a tiny opportunistic win
+and can be done earlier if a small warm-up change is useful. Local runtime should wait until
+Bundle 04 can show which tasks are actually worth routing locally.
+
+## First implementation slice
+
+Implement name lint only:
+
+1. Add a warning-only section to `check-framework.sh`.
+2. Back it with a small script only if the shell logic becomes awkward.
+3. Flag generic names such as `util`, `helper`, `run`, `test`, `common`, temp-looking files
+   outside temp paths, and near-duplicate workflow/script names.
+4. Add an allowlist for legitimate legacy names.
+5. Do not fail the build on warnings.
+
+## Local runtime experiment slice
+
+Only after accounting identifies repeated low-risk utility work:
+
+1. Add a provider-neutral `local` runtime adapter under `config/runtimes/`.
+2. Define a capability profile:
+   - safe: name lint, doc formatting, template fill, narrow summaries;
+   - unsafe: architecture, Challenger review, code generation, external side effects.
+3. Add a smoke test before routing any real task locally.
+4. Fall back to `standard` with a log line if local is unavailable or incoherent.
+5. Keep local routing opt-in until several runs prove it does not degrade quality.
+
+## Done when
+
+- `check-framework.sh` can warn about vague names without blocking legitimate work.
+- Local routing, if enabled, is explicit, smoke-tested, and never silently lowers quality.
+- The local adapter is used for utility tasks only, not judgment-heavy roles.
+
+## Risks
+
+- Name lint can become noisy and train agents to ignore framework checks. Keep warnings few.
+- Local runtime can save money while quietly reducing quality. Default to fallback and opt-in.
+- Maintaining a capability profile is ongoing work; do not add it unless accounting shows a
+  real utility workload.
+

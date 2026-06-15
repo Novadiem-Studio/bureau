@@ -1,0 +1,77 @@
+---
+priority: bundle-02
+status: idea (consolidated)
+suggested-workflow: feature
+suggested-run-slug: reusable-learning-loop
+source-ideas:
+  - source-notes/01-self-annealing-failure-loop.md
+  - source-notes/03-doc-sync-pass.md
+  - source-notes/09-close-out-reusable-learning-pass.md
+---
+
+# 02. Reusable learning loop
+
+## Purpose
+
+Make failures and repeated corrections improve the reusable framework layer before the run
+ends. The core behavior is: capture the failure, patch the right durable artifact, verify the
+smallest representative case, and keep docs synchronized with executable ground truth.
+
+## Consolidates
+
+| Source | Role in this bundle |
+|---|---|
+| `01-self-annealing-failure-loop` | The immediate failure-to-fix loop. |
+| `03-doc-sync-pass` | Keep runbooks and directive docs aligned after scripts or executable steps change. |
+| `09-close-out-reusable-learning-pass` | Escalate repeated lessons into conventions, runbooks, scripts, or checks. |
+
+## Dependency
+
+Run this after Bundle 01 if possible. The learning loop is much stronger when failures have
+preflight artifacts, regression fixtures, and representative cases to point at.
+
+## First implementation slice
+
+Do not create a new persona first. Add a close-out discipline and one repair path:
+
+1. Add a "Failure repair" subsection to `workflows/operational-build.md` and
+   `workflows/execute-plan.md`.
+2. Define a failure signature format in `docs/conventions.md`:
+   - failing command/tool/runbook step;
+   - observed error;
+   - suspected layer: script, workflow directive, env/preflight, external contract, target code;
+   - durable artifact patched;
+   - smallest verification case.
+3. Add a `docs-sync-needed` close-out check for any changed script, runbook, or workflow.
+4. Add `output/studio/lessons.md` as the human-readable studio learning log.
+5. Add a minimal recurrence rule: a lesson seen in two runs must be either promoted or
+   explicitly deferred with a reason.
+
+Scripts can come later. The v1 win is making the Conductor stop treating repeated fixes as
+session-local knowledge.
+
+## Likely follow-up
+
+After the convention has appeared in real runs:
+
+- add `scripts/scan-lessons.sh` to find recurring failure signatures;
+- create a `runbook-repair` workflow if repairs become common enough;
+- add a docs-reconcile variant that runs specifically after script/runbook changes;
+- add a Challenger checklist for "fix is in the reusable layer, not only in log.md."
+
+## Done when
+
+- A failed operational/build run records a failure signature and the durable artifact patched.
+- The fix is verified against the smallest representative case.
+- If a script or runbook changed, matching docs are reconciled before close-out or a carried
+  item explains why not.
+- A repeated lesson across two runs is promoted, deferred, or intentionally scoped local.
+
+## Risks
+
+- "Self-annealing" can become overcorrection if transient failures are treated as structural.
+- Doc-sync can become a second full review workflow; keep it least-privilege and grounded in
+  executable truth.
+- Lesson matching can become fuzzy. Start with manual tags and exact failure signatures before
+  adding clever inference.
+
