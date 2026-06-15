@@ -95,11 +95,18 @@ Each prompt should:
 **One prompt = one coherent unit of work** that Claude Code can complete in a
 single session without losing context or going in unexpected directions.
 
+Each prompt must also be reviewable. Design prompts so the resulting authored diff can be
+understood in one focused code-review sitting. Large generated files, lockfiles, or schema
+snapshots are allowed when the project requires them, but name them explicitly and keep the
+human-authored conceptual change small.
+
 Signs a prompt is too big:
 - It produces more than 5-6 new files
 - It spans multiple system components
 - The "done when" has more than 3 criteria
 - You find yourself writing "and also..."
+- The expected diff would be hard to review without separating generated churn from authored code
+- The coder would need to choose between unrelated fixes, refactors, or product decisions
 
 Signs a prompt is too small:
 - It produces a single function with no integration
@@ -142,6 +149,9 @@ you name the owner — The Conductor dispatches off your tag, not off inference.
 - **One prompt = one coder's domain.** If a unit spans domains, SPLIT it: a backend contract
   prompt for The Systemsmith first, then a frontend prompt for The Mage that consumes it — and
   name the shared contract in BOTH prompts (the contract rule below).
+- **Name the review surface.** Add a `Reviewability:` line to every `NN-<slug>.md`: expected
+  primary files/dirs, expected generated files or lockfiles, and the boundary where the coder
+  should stop instead of expanding the prompt.
 - **Load the owner's domain gotchas into the prompt**, so the coder doesn't rediscover them:
   - The Systemsmith — rails + docker test commands (`-e RAILS_ENV=test` so DatabaseCleaner doesn't
     wipe dev data), additive/latin1 migrations, audit-type registration, queue names.
@@ -168,6 +178,10 @@ there. So every prompt must carry or name the context the work needs:
   will be built) against. A coder discovering mid-build that the contract "isn't in my
   prompt" is a vetting failure — yours.
 - If a prompt builds a contract a later prompt consumes, say so in BOTH prompts.
+- Name any external-service tooling the coder should use. For common authenticated services,
+  prefer the project's established CLI/runbook when it exists; for specialized internal services,
+  latest docs, or language-server search, point at the relevant skill/MCP/tooling instead of
+  leaving the choice implicit.
 
 ## Revision loops — rewrite, don't patch
 
@@ -200,6 +214,7 @@ Passing forward:
 Prompts: <n>  | covers phases: <list>
 Coder split (execute-plan only): The Mage <n> · The Systemsmith <n> · The Mechanic <n>
 Each prompt independently executable: yes/no
+Each prompt reviewable and tagged with Reviewability (execute-plan only): yes/no
 Full sequence produces a working MVP end-to-end: yes/no
 ```
 

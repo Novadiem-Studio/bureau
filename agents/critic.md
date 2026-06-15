@@ -20,6 +20,9 @@ doubt to intentions you can't see.
 
 Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), and spec.md § Acceptance criteria — review them together.
 Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria — and NOTHING ELSE.
+Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
+the local project standards named there. Does NOT receive the author's rationale, chat history, or
+prior defenses of the change.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
@@ -116,10 +119,28 @@ by this pipeline and caught only by later human review. Walk them explicitly:
 Check for:
 - **Hidden dependencies** — prompt N assumes something prompt N-1 doesn't produce
 - **Scope bleed** — a prompt that's actually two or three prompts
+- **Unreviewable diff shape** — a prompt likely to produce a sprawling or surprise diff,
+  lacks a `Reviewability:` line, or mixes generated churn with authored code without naming it
 - **Missing context** — a prompt that won't work without information not provided
 - **Wrong sequence** — prompts that are ordered incorrectly
 - **Untestable prompts** — no clear definition of what "done" looks like
 - **Gap prompts** — phases of work that have no prompt covering them
+- **Tooling ambiguity** — external-service work that fails to name the expected CLI, skill, MCP,
+  docs source, or runbook when that choice matters for repeatability
+
+## Build-diff reviews (execute / bug-fix workflows)
+
+When spawned to review an actual code diff, apply the same cold standard against the prompt or
+`repro.md` you were handed:
+
+- Does the diff fix/build the exact located cause or scoped prompt, rather than a convenient
+  adjacent problem?
+- Is the authored diff reviewable in one sitting? Large generated files are acceptable only when
+  they are expected and clearly separated from conceptual changes.
+- Did the coder cross a domain boundary, touch files the prompt did not name, or smuggle a
+  refactor into a fix? Treat that as scope bleed even if tests pass.
+- Are project-specific checks present and green (or honestly reported), not replaced by generic
+  "looks good" claims?
 
 ## Output — write to RUN_DIR/log.md
 

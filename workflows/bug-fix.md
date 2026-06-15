@@ -74,12 +74,15 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
    the located cause turns out to span a second coder's domain once you open it, STOP and raise
    `[CHECKPOINT]` (human decides: split into two `bug-fix` runs, or escalate to `feature`) — do not
    reach into the other domain. That is not one bug fix, and fixing across a contract boundary
-   single-handed is exactly what this stop exists to prevent.
+   single-handed is exactly what this stop exists to prevent. Keep the fix reviewable: if the
+   smallest honest fix becomes a broad refactor, a multi-surface rewrite, or a large surprise
+   diff, stop and report that the bug is bigger than the located cause. The Conductor chooses
+   whether to split it or escalate.
 4. **The Challenger** (Critic, **strong**, fresh context required) — cold-review the fix diff (in
    `WORKTREE`) against `RUN_DIR/repro.md` (the captured repro + located cause); it does **NOT**
    receive `log.md`, the fix rationale, or the coder's reasoning (coldness): does it fix the located
-   cause (not just mask the symptom)? does it touch only what the cause requires? any regression
-   risk? → `log.md`, findings
+   cause (not just mask the symptom)? does it touch only what the cause requires? is the diff small
+   and coherent enough for a real review? any regression risk? → `log.md`, findings
    - **The Conductor adjudicates**: route the fix back to the coder (max 2x — `max_critic_loops`),
      accept, or `[CHECKPOINT]`.
    - **Then verify** (Conductor): re-run the repro captured in `RUN_DIR/repro.md` — it must now PASS — and run the

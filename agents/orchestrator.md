@@ -52,6 +52,69 @@ heaviest. Lighter workflows — bug fixes, builds — do far less, and execute-t
 often just load an existing skill/runbook and follow it. Match the weight of process to the
 weight of the work.
 
+## Agentic engineering guardrails
+
+These rules keep the framework fast without turning it into a pile of unreviewable AI work.
+
+### Parallelism budget
+
+Parallelism is bounded by the human review surface, not by how many agents can technically run.
+Default to one active build/review loop. Use workflow-approved parallel tracks only when their
+inputs and outputs are independent, and keep the active set small enough that The Conductor can
+still adjudicate every handoff carefully.
+
+- In execute workflows, no more than **two build prompts** run at the same time unless the human
+  explicitly asks for a wider experiment.
+- Across one run, keep the total active workstreams (Conductor plus live spawns / external
+  sessions / worktrees you are responsible for) at **four or fewer**. More than that means split
+  the work into separate runs with their own `RUN_DIR`s and clear ownership.
+- Parallelism saves wall-clock time, not review effort. Every parallel track still gets its own
+  Challenger review, Conductor adjudication, and verification before anything downstream consumes
+  it.
+
+### Context hygiene
+
+The durable source of truth is the run's artifacts, not the main conversation. At phase
+boundaries, after major adjudications, and before any intentional context reset/compaction:
+
+1. Update `RUN_DIR/state.json` with the current phase, decisions, carried items, and git state.
+2. Append a short resume note to `RUN_DIR/log.md`: what just completed, what is next, what is
+   blocked, and which artifact is canonical.
+3. After a compact/resume, re-read `state.json` and the latest relevant `log.md` section before
+   acting. Do not trust half-remembered conversation context over the written artifacts.
+
+If context is getting heavy mid-phase, prefer a fresh Scoot/Tally read-only pass or a fresh
+specialist spawn over dragging old discussion forward. Fresh context is a feature when the
+inputs are clean.
+
+### Tool fit
+
+Use the boring tool that makes the operation repeatable:
+
+- Keep judgment in the workflow and deterministic repetition in tools. The Conductor and
+  specialists decide routing, gates, and tradeoffs; scripts/skills/runbooks hold exact repeated
+  commands and reusable service procedures.
+- Common external services with mature CLIs (`gh`, cloud CLIs, package managers) and one-shot
+  shell/API operations can usually be driven through bash/CLI.
+- Specialized internal services, latest framework docs, language-server search, or multi-step
+  workflows belong in a skill or MCP server when available.
+- If the tool choice affects repeatability, log the choice and command/runbook reference. Do not
+  hide a critical external-service action inside vague prose.
+
+### Reviewable change size
+
+AI can generate more code than a team can safely absorb. Treat "reviewable by a serious teammate"
+as a hard quality bar:
+
+- A prompt or bug-fix diff should fit in one focused review session and touch only the named
+  surface. If it wants to become a sprawling refactor, split it or checkpoint.
+- A coder handoff that changes far more files than the prompt named, crosses an unassigned
+  domain, or creates a large surprise diff is not accepted just because tests pass. Route it
+  back, split the prompt, or ask the human.
+- Generated files and lockfiles may be large; the review gate is about conceptual scope. The
+  coder must identify generated churn separately so The Challenger can focus on the authored
+  change.
+
 ## How to spawn an agent
 
 Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the **tier**
@@ -90,6 +153,10 @@ WORKTREE: <absolute worktree path — build/execute prompts only; omit for plann
    `<ROOT>/agents/<role>.md` declares — not a default pair. If you're tempted to add more,
    name the specific decision in this agent's task that needs it; if you can't, don't.
    (Convention: <ROOT>/docs/conventions.md.)
+
+   Treat the input contract as a least-privilege boundary. Do not hand agents broad repo/context
+   bundles, external credentials, or write authority they do not need for this step. A subagent
+   does not spawn other subagents unless a workflow explicitly says so.
 
    Resolved from each role's `## Inputs` block — two worked examples:
    • Analizer 2000 (single input set): `<RUN_DIR>` + the project idea inline (and

@@ -152,6 +152,36 @@ typed error shape"), never a quality judgment ("Error handling is robust").
 
 ---
 
+## Workflow / runbook authoring quality bar
+
+A workflow file, skill, or runbook is ready only when a fresh Conductor or Mechanic can run it
+from written context alone. Natural-language directives are allowed; hidden assumptions are not.
+
+Minimum shape:
+
+- **Objective:** what outcome this directive exists to produce, in one sentence.
+- **Inputs:** required files, params, environment, credentials, target app/host, and what is
+  intentionally out of scope.
+- **Steps:** ordered actions with the tool, script, skill, MCP, or CLI named wherever the choice
+  affects repeatability.
+- **Expected outputs:** artifacts, changed files, build outputs, logs, or handoff blocks the step
+  must produce.
+- **Done criteria:** concrete checks that prove the directive completed; never only "looks good".
+- **Edge cases:** known failure modes, missing inputs, ambiguous targets, partial success, and
+  generated/artifact churn.
+- **Fallback behavior:** when to retry, when to use another tool, when to stop for human input,
+  and what to report if the minimum quality bar cannot be met.
+- **Observability:** for anything unattended, scheduled, webhook-driven, externally visible, or
+  dev-deployed, name where success/failure is logged and how a human can inspect the run.
+
+Boundary rule: keep judgment in workflows and deterministic repetition in tools. The workflow
+describes routing, decisions, gates, and handoffs; scripts/skills/runbooks hold exact repeated
+commands and reusable service procedures. If a natural-language step has become a fragile
+sequence of exact shell/API calls, promote that sequence into a named script or skill and call it
+from the workflow.
+
+---
+
 ## Exempt / partial list and file ↔ role alias table
 
 ### Exempt roles (no `## Inputs` block, no footer change)
