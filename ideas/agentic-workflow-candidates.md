@@ -1,11 +1,11 @@
-# Ideas — not-started backlog (pointer doc)
+# Agent-framework improvement backlog (pointer doc)
 
-Individual idea docs live in [`not-started/`](not-started/) — one file per idea, numbered
-in priority order. That folder is the source of truth.
+The agent-framework improvement backlog now lives in [`agent-framework/`](agent-framework/).
+It is organized as execution bundles, with original source notes preserved under
+`agent-framework/source-notes/`.
 
-**Start here:** [`not-started/index.md`](not-started/index.md) — table of all 15 ideas with
-one-liners, likely homes, and priority rationale.
+**Start here:** [`agent-framework/index.md`](agent-framework/index.md) — dependency-ordered
+roadmap for the consolidated improvement phases.
 
-To promote an idea: pick the highest-numbered not-started item that has shown up in real
-Bureau runs, run the indicated workflow, and move the entry to `in-progress/` in
-[`ideas/index.md`](index.md).
+To promote an idea: pick the next not-started phase from the roadmap, run the indicated
+workflow, and update [`ideas/index.md`](index.md) plus the bundle's status.

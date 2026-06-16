@@ -25,11 +25,11 @@ session.
 
 ## Dependency
 
-Run this after Bundles 01 and 02. Accounting is most useful when runs have stable phases,
-failure signatures, regression fixtures, and close-out conventions.
-Reuse `output/studio/` only after Bundle 02 creates it. This bundle may add only a short
-accounting status/path pointer to `templates/state.json`; the actual accounting packet lives
-in `RUN_DIR/accounting.json`.
+Run this after Phases 1a/1b and Bundle 02. Accounting is most useful when runs have stable
+phases, failure signatures, regression fixtures, and close-out conventions.
+Reuse the existing Studio Record (`output/studio/`) without redefining ownership. This bundle
+may add only a short accounting status/path pointer to `templates/state.json`; the actual
+accounting packet lives in `RUN_DIR/accounting.json`.
 
 ## First implementation slice
 
@@ -49,11 +49,17 @@ in `RUN_DIR/accounting.json`.
 5. Add only a short accounting status/path pointer to `templates/state.json`.
 6. Add commit message guidance for execute workflows, but keep it supplementary:
    `state.json` remains authoritative.
+7. Add optional memory fields when a run uses Rheo/MOT memory:
+   - retrieval count;
+   - writes proposed / accepted;
+   - conflicts flagged;
+   - digest freshness;
+   - whether memory preflight passed.
 
 ## Later implementation slice
 
 - Aggregate `RUN_DIR/accounting.json` into `output/studio/accounting-ledger.json`, reusing the
-  directory created by Bundle 02.
+  existing Studio Record.
 - Give Tally a read-only accounting errand only after the script schema stabilizes.
 - Add `scripts/resume-from-git.sh` to summarize framework-tagged commits.
 - Add Ministry of Flow surfaces once the ledger has enough real data.
@@ -64,6 +70,8 @@ in `RUN_DIR/accounting.json`.
 - Accounting fields never appear without confidence labels.
 - Any `state.json` accounting addition is only a short status/path pointer, not a copy of the
   packet.
+- Runs that use memory record memory retrieval/write/conflict/digest freshness signals when
+  available, each with confidence labels.
 - A fresh session can use git history as a quick primer without replacing `state.json` and
   `log.md`.
 - Workflow sizing decisions can reference actual pass counts and routing choices.

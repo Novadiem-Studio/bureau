@@ -34,6 +34,8 @@ Do not automate thread creation in v1. Start with the artifact contract:
 3. Add `docs/outside-cold-review.md` with:
    - allowed inputs;
    - denied inputs;
+   - memory access denied by default, with explicit memory excerpts allowed only when
+     allowlisted with provenance;
    - review artifact format;
    - Conductor adjudication rules;
    - advisory status.
@@ -57,6 +59,8 @@ Only after the manual flow works:
 - A run can request an outside review without copying freeform chat context.
 - Any `state.json` external-review addition is only a short status/path pointer; the allowlist,
   denylist, and coldness receipt live in `external-review.json`.
+- Memory is denied by default; any memory excerpt supplied to a sidecar is explicit,
+  allowlisted, and provenance-bearing.
 - The sidecar declares exactly what it read and did not read.
 - The Conductor consumes the sidecar review as advisory, not authoritative.
 - The reviewer cannot silently expand scope or approve checkpoints.

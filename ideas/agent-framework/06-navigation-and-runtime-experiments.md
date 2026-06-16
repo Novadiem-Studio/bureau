@@ -47,7 +47,9 @@ Implement name lint only:
 
 ## Local runtime experiment slice
 
-Only after accounting identifies repeated low-risk utility work:
+Only after accounting identifies repeated low-risk utility work. Session digesting and
+candidate memory extraction may become candidates, but only after Rheo memory has enough
+quality/cost data to prove local routing will not degrade recall or pollute memory.
 
 1. Add a provider-neutral `local` runtime adapter under `config/runtimes/`.
 2. Define a capability profile:
@@ -69,4 +71,3 @@ Only after accounting identifies repeated low-risk utility work:
 - Local runtime can save money while quietly reducing quality. Default to fallback and opt-in.
 - Maintaining a capability profile is ongoing work; do not add it unless accounting shows a
   real utility workload.
-

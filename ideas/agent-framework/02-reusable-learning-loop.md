@@ -29,8 +29,19 @@ smallest representative case, and keep docs synchronized with executable ground 
 
 Run this after Bundle 01's two slices if possible. The learning loop is much stronger when
 failures have preflight artifacts, regression fixtures, and representative cases to point at.
-This bundle owns creation of `output/studio/`; later bundles may reuse that directory but
-must not assume it already exists.
+`output/studio/` is the existing Studio Record used by The Witness; this bundle owns the
+lessons surface inside it (`output/studio/lessons.md` and any README section), not the whole
+directory.
+
+## Memory integration boundary
+
+Rheo persistent memory is an active sibling track, not the implementation of this bundle.
+It currently runs in the remote MOT/Rheo runtime while the Bureau framework runs locally.
+Memory may surface candidate lessons or recurring procedural patterns, but it does not promote
+canon and the local framework must not assume direct write access to the remote memory store.
+Promotion still happens through the framework learning loop: Conductor adjudication,
+Challenger-checkable evidence, and a durable local artifact such as `docs/conventions.md`, a
+runbook, or `output/studio/lessons.md`.
 
 ## First implementation slice
 
@@ -48,8 +59,9 @@ Do not create a new persona first. Add a close-out discipline and one repair pat
    This must be Challenger-checkable, not just a flag the Conductor can wave past: the
    required form is "for every script/runbook/workflow changed this run, name the durable
    artifact patched — or state explicitly why none." A flag with no required body is theater.
-4. Create `output/studio/README.md` and `output/studio/lessons.md` as the studio learning
-   area and human-readable learning log.
+4. Create or update the lessons surface in the Studio Record:
+   `output/studio/README.md` if missing or missing a lessons section, plus
+   `output/studio/lessons.md` as the human-readable learning log.
 5. Add a minimal recurrence rule: a lesson seen in two runs must be either promoted or
    explicitly deferred with a reason.
 6. Add a one-paragraph **convention-retirement rule** to `docs/conventions.md`: to deprecate

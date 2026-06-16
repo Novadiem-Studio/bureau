@@ -44,6 +44,9 @@ unexamined preference?" They should be one planning discipline, not three separa
 4. Add a small "bake-off trigger" rule to `agents/architect.md`:
    recommend a bake-off only when two or more viable approaches have materially different
    cost, reversibility, risk, or fit with existing code.
+5. Add a memory-citation rule for any assumption closed using Rheo/MOT memory:
+   source, confidence, timestamp, and whether the fact is stale-sensitive. Memory retrieval
+   reduces assumptions only when the evidence is visible in the artifact.
 
 Do not create the full bake-off workflow until the trigger has appeared in at least one real
 run. A trigger rule is cheaper and proves demand.
@@ -64,6 +67,7 @@ When the trigger proves useful, create `workflows/approach-bakeoff.md`:
 
 - Every non-exploratory feature spec names an observable bottleneck or outcome.
 - Greenfield specs distinguish decisions from assumptions.
+- Any assumption closed by memory cites source, confidence, timestamp, and staleness sensitivity.
 - The Architect has a documented threshold for proposing a bake-off.
 - Bake-offs are optional, bounded, and criteria-first.
 
@@ -73,4 +77,3 @@ When the trigger proves useful, create `workflows/approach-bakeoff.md`:
 - Assumption reduction can slow down small features if applied outside greenfield/high-risk work.
 - Bake-offs can multiply work if the trigger is too loose. Use them for expensive uncertainty,
   not ordinary implementation choice.
-

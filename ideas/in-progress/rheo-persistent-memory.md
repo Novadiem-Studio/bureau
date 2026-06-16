@@ -1,6 +1,124 @@
 # Rheo — Persistent Chat Memory
 
 Date: 2026-06-15
+Status: in progress — Layer 0 + Layer 4 v1 built out of band; framework review/deploy pending.
+
+Framework-side integration checklist: [Rheo memory framework integration](../agent-framework/07-rheo-memory-framework-integration.md).
+
+## Current execution boundary
+
+This idea has already started. Treat the existing MOT diff as implementation work that needs
+to be pulled back under the Bureau:
+
+1. Run a cold Challenger review on the current Layer 0 + Layer 4 diff.
+2. Route any blockers to the correct coder.
+3. Hand the deploy/build/restart steps to The Mechanic under the production/external-action
+   boundary.
+4. Only after that, promote Phase 2 memory work (digests, topics, graph, procedural notes).
+
+## Local / remote boundary
+
+The Bureau framework currently lives in the local development workspace. Rheo memory lives in
+the remote MOT/Rheo agent runtime. They are expected to converge, but not by blurring runtime
+ownership:
+
+- The local framework may review, plan, and produce prompts/runbooks for memory work.
+- The remote MOT/Rheo runtime owns the actual memory ledger, MCP tools, bot integration, and
+  service restarts.
+- Any framework-facing memory integration should begin read-first, with provenance and
+  confidence attached to retrieved facts.
+- Writes from framework workflows into remote memory must stay deny-by-default until there is
+  an explicit adapter, write contract, conflict behavior, and audit trail.
+- Shared artifacts are the bridge for now: Challenger findings, deploy records, memory
+  receipts, `output/studio/lessons.md`, and future accounting fields.
+
+## Production track
+
+This is the longer production track that absorbs the useful framework/memory concepts while
+keeping local framework and remote agent runtime separate.
+
+### Track 0 - Stabilize what already exists
+
+Layer 0 + Layer 4 v1 already exist out of band. Before any new memory layer is added:
+
+1. Cold Challenger review of the MOT diff.
+2. Route blockers to the correct coder.
+3. Mechanic runs remote build and service restart steps under the production/external-action
+   boundary.
+4. Capture deploy record and memory smoke results.
+5. Add a battle-test matrix for the current tools:
+   - `chat_log_turn` records a user/assistant turn.
+   - `chat_recent` returns the expected recent turns by chat/session.
+   - `chat_search` finds exact text through FTS.
+   - restart does not lose recall.
+
+### Track 1 - Session digests and safe writes
+
+Add the first compressed episodic layer and write discipline:
+
+1. `session_digests` table or equivalent storage.
+2. Digest pass at session boundary or on demand.
+3. `summarize_and_archive` and basic `write_memory` tool.
+4. Candidate extraction for entities and procedural notes, but candidates stay reviewable.
+5. Memory receipts for writes: source turn/session, confidence, timestamp, and write reason.
+6. Conflict behavior for high-risk writes: version, flag, or require review; no silent overwrite.
+
+### Track 2 - Topics, graph skeleton, and procedural memory
+
+Once digests are reliable:
+
+1. Topic threads with canonical slugs.
+2. JSONL entity graph for Person, Project, Deadline, Preference, and Fact.
+3. Basic graph traversal tools: `entity_get`, `entity_search`, `entity_related`.
+4. Procedural notes as first-class memory, not just buried digest text.
+5. Session-boundary automation with a conservative prompt and confidence thresholds.
+
+### Track 3 - Production graph and review surface
+
+When query volume and conflict handling justify it:
+
+1. Migrate JSONL graph to SQLite adjacency tables.
+2. Add sqlite-vec for semantic retrieval, keeping FTS5 for exact recall.
+3. Add hybrid retrieval (`fts` + vector + graph expansion).
+4. Add a MOT review surface for conflicts, stale facts, candidate entities, and procedural notes.
+5. Add decay/maintenance routines for stale-sensitive facts.
+6. Integrate memory retrieval into planning and bug-fix workflows through cited excerpts only.
+
+### Track 4 - Optimization and convergence
+
+Only after the production graph is stable:
+
+1. Proactive surfacing for dated entities and recurring obligations.
+2. Cross-channel ingestion, such as Gmail routines, through the same write contract.
+3. Evals and benchmarks for recall accuracy, false writes, conflict handling, and digest quality.
+4. Local-runtime experiments for digesting or candidate extraction only after accounting shows
+   cost/quality data.
+5. A narrow framework-facing memory adapter: read-first, provenance-bearing, and deny-by-default
+   for writes.
+6. Archive and visual-canon representation once the system is real enough to depict: memory
+   conduits into the Archive, entity graph views, and temporal flows. Poster updates are a
+   visual follow-up, not a production blocker.
+
+## Framework integration rules
+
+These rules connect the remote memory track to the local Bureau roadmap:
+
+- **Bundle 01:** memory tool preflight checks remote reachability and schema/tool availability.
+  Persistent memory writes are durable state mutations, not ordinary local notes.
+- **Bundle 02:** memory may surface candidate lessons, but only the framework learning loop
+  promotes canon into `docs/conventions.md`, runbooks, or `output/studio/lessons.md`.
+- **Bundle 03:** memory can close planning assumptions only when the artifact cites source,
+  confidence, timestamp, and stale-sensitivity.
+- **Bundle 04:** run accounting should track memory retrieval count, writes proposed/accepted,
+  conflicts flagged, digest freshness, and memory preflight status when applicable.
+- **Bundle 05:** outside cold review gets no memory by default. Any memory excerpt must be
+  explicitly allowlisted with provenance.
+- **Bundle 06:** local runtime is allowed to experiment with digesting and candidate extraction
+  only after remote memory accounting proves the workload and quality bar.
+
+The convergence rule: local framework artifacts may consume memory receipts, cited excerpts,
+and accounting fields before they ever gain write authority. Write authority requires an
+adapter, a write contract, conflict behavior, and an audit trail.
 
 ## Starting point — out-of-band work (2026-06-15)
 
@@ -300,6 +418,23 @@ Versioned, not overwritten. Every fact carries `source` and optionally `supersed
 The agent never auto-resolves a high-confidence contradiction. Low-confidence candidates
 (extracted from conversations, not manually confirmed) can be quietly revised.
 
+## Regression and evaluation harness
+
+Memory needs a lasting harness, not one-off smoke checks:
+
+- **Recall checks:** known phrase, known person, known deadline, known project, and known
+  preference can be retrieved after restart.
+- **Digest checks:** a sample session produces summary, entity candidates, and procedural
+  candidates without inventing facts.
+- **Conflict checks:** changed deadline preserves the old value with provenance and flags when
+  confidence requires review.
+- **Noise checks:** pleasantries and speculation do not create memory writes.
+- **Staleness checks:** stale-sensitive facts are marked for review instead of treated as live
+  forever.
+
+Accepted checks should become fixtures on the memory track and feed Bundle 01b's regression
+fixture convention when the framework phase lands.
+
 ---
 
 ## Prompts & Extraction Guidelines
@@ -371,6 +506,21 @@ Facts become stale. A "Nutrifax has 3 paying customers" fact from six months ago
 wrong today. Mitigation: `confidence` decays on time-sensitive facts (deadlines, counts,
 states) after a configurable interval. The digest pass flags time-sensitive entities for
 review when they're older than their expected shelf life.
+
+---
+
+## Success Criteria
+
+- Rheo can recall cross-session details through tools without injecting large raw history.
+- Remote memory survives service restarts and returns cited, timestamped results.
+- Memory writes carry source, confidence, reason, and conflict behavior.
+- No high-confidence contradiction is silently overwritten.
+- Memory-surfaced lessons can improve the Bureau, but only through the local framework's
+  Challenger-checkable promotion path.
+- Accounting can show whether memory improves resume speed, assumption reduction, and learning
+  loop effectiveness.
+- The local framework and remote memory runtime converge through explicit adapters and shared
+  artifacts, not ambient access.
 
 ---
 
