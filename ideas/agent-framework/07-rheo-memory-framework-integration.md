@@ -30,8 +30,7 @@ the Bureau roadmap as Rheo memory becomes real.
 
 - [Rheo persistent memory](../in-progress/rheo-persistent-memory.md) — remote MOT/Rheo production track.
 - [Agent-framework roadmap](index.md) — local Bureau framework improvement track.
-- Pasted technical vision in Codex attachment:
-  `/Users/robin/.codex/attachments/00a2d87d-7fcd-4e3d-a34e-be0085b6b618/pasted-text.txt`
+- [Rheo memory technical vision](../in-progress/rheo-memory-technical-vision.md) — integrated cognitive model, layered architecture, phased roadmap, and success criteria.
 
 ## Already worked in
 

@@ -3,6 +3,9 @@
 This folder is now organized by execution bundle, not by raw benefit rank. The original
 numbered notes are preserved in [`source-notes/`](source-notes/) as source material.
 
+Framework docs roadmap: [docs/roadmap.md](../../docs/roadmap.md).
+Spotlight overview: [The Bureau Learns to Remember](../../docs/spotlight-bureau-rheo-memory.md).
+
 The working rule: promote one bundle at a time. Each bundle should become one framework run
 or one small series of runs with a clear acceptance boundary. Do not start by implementing
 every source idea as a separate mechanism; several of them are the same discipline seen from
