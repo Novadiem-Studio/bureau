@@ -77,6 +77,13 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    - `per_prompt` — after each accepted prompt: `run-worktree.sh merge`, then `sync` before the next.
    - `checkpoint` — merge only when the human says so at `[CHECKPOINT]`.
 
+5c. **The Conductor** — run preflight **after the worktree exists, before the build party dispatches** → `RUN_DIR/preflight.md`.
+   Invoke `scripts/preflight.sh <target-dir> <RUN_DIR>` where `<target-dir>` is the worktree root
+   (the absolute `worktree_path` from `state.json`). The script checks `<target-dir>/.env.example`
+   keys against the live environment and writes `RUN_DIR/preflight.md` (result PASS or FAIL). If
+   preflight exits non-zero, the run **halts**: the Conductor may not dispatch the build party until
+   `preflight.md` shows PASS. The close-out in step 7 re-checks this before accepting the run.
+
 6. **The Conductor** (**strong**) — build part by part: run the prompts in order, 01..NN, dispatching each to the coder named by its `Coder:` tag — the tag is the assignment; do not re-infer the owner from the sub-app (a missing or wrong tag is a Spellwright defect: route it back rather than guessing) → a reviewed diff per part
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
@@ -115,6 +122,10 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    adjudications and respects the overall ship order at the end. When in doubt, serialize —
    parallelism saves wall-clock, not review effort.
 
+   An `[EXTERNAL-ACTION CHECKPOINT]` raised during ANY active build track halts ALL active
+   build tracks until the Conductor logs resolution. Neither track proceeds autonomously while
+   an external action awaits human approval — same discipline as the production boundary.
+
    **Coupling pass (when halves must compound).** After **both** sides of a named seam are
    accepted — typically Mage UI ↔ Systemsmith API, or any cross-coder contract the plan or
    `00-index.md` calls out — spawn **The Coupler** (`agents/coupler.md`, tier: **standard**,
@@ -143,6 +154,16 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 > a description of intent, not authorization to run it; the human decides if and when anything
 > goes past dev. Production is the human's call, every time.
 
+> **External-action boundary — separate gate.** Distinct from the production boundary above:
+> before executing any action in the external-action taxonomy (sent emails/SMS, chat posts,
+> webhook calls, customer-facing notifications, payment triggers, calendar invites, DNS/infra
+> mutations, other side-effecting outbound HTTP), the build party must **surface it** and raise
+> an `[EXTERNAL-ACTION CHECKPOINT]` before it fires. See `docs/external-action-boundary.md` for
+> the full taxonomy, the default rule, and the reversibility tiers. This gate and the
+> production-deploy gate are **separate protections** — the external-action gate applies
+> **regardless of deployment stage** (a dev-stage step that fires a real email is still gated);
+> neither boundary subsumes the other.
+
 7. **The Conductor** (**strong**) — close out: if `git.merge_policy` is `end_of_job` and worktree is active, human go, then merge, then remove (on conflict: `[CHECKPOINT]`); then check for new packages, install into the running container, summarize what shipped to dev vs. planned, and move the plan doc out of `todo/` → updated `RUN_DIR/log.md`, `state.json`, relocated plan doc
    human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
    human resolves on integration branch, then `remove`). This merge targets the **dev/integration
@@ -167,6 +188,18 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    the run to `RUN_DIR/log.md`, and move the plan doc out of `todo/` (or mark done). The run
    ends at **dev-verified**; taking anything past dev is a separate, human-initiated action
    (see "Production boundary").
+
+   **Close-out gates (Conductor-owned, not Challenger checks).** Before accepting the run, the
+   Conductor runs both of these itself — neither is delegated to The Challenger or `critic.md`:
+   - **Preflight PASS** — the Conductor reads `RUN_DIR/preflight.md` directly. A missing file, or
+     one whose `result` field reads FAIL while a build party was dispatched, is a **Blocker** /
+     halt — not a Conductor-discretion call.
+   - **External-action log** — `RUN_DIR/log.md` must contain a logged `[EXTERNAL-ACTION CHECKPOINT]`
+     entry for each external action that actually fired during the run. A fired external action with
+     no `log.md` entry is a **Blocker** / halt. The Conductor cross-checks the Mechanic's
+     handoff-footer line `Prod/irreversible actions taken:` against the logged
+     `[EXTERNAL-ACTION CHECKPOINT]` entries in `log.md` to confirm every fired action was logged
+     before it fired.
 
 ## Prompt folder format
 

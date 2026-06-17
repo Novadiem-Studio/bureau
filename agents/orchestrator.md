@@ -574,6 +574,37 @@ Does dev look good? (tell me explicitly if and when to take anything past dev)
 
 Then stop. Do not deploy, merge to a release branch, or ship until the human names the action.
 
+## The external-action boundary (gate)
+
+Some actions an agent might fire are externally visible and not cleanly reversible — sent
+emails, webhook calls, payment triggers, DNS changes. These require a human decision before
+they fire, regardless of which workflow is running or which agent proposed the action. This
+boundary is parallel to the production-deploy boundary, not a subset of it: the production
+boundary covers deploy-surface changes; this boundary covers outbound communications and side
+effects. Neither subsumes the other.
+
+See `docs/external-action-boundary.md` for the full taxonomy, the default rule, and the
+reversibility tier definitions.
+
+When an agent surfaces an external action, the Conductor raises and logs this checkpoint
+BEFORE the action fires:
+
+```
+[EXTERNAL-ACTION CHECKPOINT]
+Action type:        <one taxonomy category from docs/external-action-boundary.md>
+Target:             <the real recipient / URL / address / phone / account the action hits>
+Content/payload:    <the message body, payload summary, or amount>
+Reversibility:      <irreversible | reversible> — <one-line justification>
+                    (default: irreversible when the classifier cannot decide)
+```
+
+Every [EXTERNAL-ACTION CHECKPOINT] must be logged to RUN_DIR/log.md by the Conductor
+before the action fires. This log entry is the machine-checkable approval record.
+
+A baked-in instruction in a spawn prompt — "send the confirmation email after running X" —
+is NOT sufficient authorization. The gate requires a real-time checkpoint logged to log.md
+with human approval.
+
 ## Design handoff (human-in-the-loop)
 
 Claude Design has no API, so design is a human step. After you've adjudicated The

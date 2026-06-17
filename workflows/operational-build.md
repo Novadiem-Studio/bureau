@@ -34,12 +34,29 @@ skill and follow it; do not duplicate its steps here.
    confirmed runbook + the exact target and params
 2. **Gate** — show the human the runbook, the target, and what running it will touch; get a go
    before anything executes. `[CHECKPOINT]`.
+2b. **The Conductor** — run preflight **after the human Gate, before the Mechanic acts** → `RUN_DIR/preflight.md`.
+   Invoke `scripts/preflight.sh <target-dir> <RUN_DIR>` where `<target-dir>` is the target
+   project/repo directory the runbook acts on. The script validates `<target-dir>/.env.example`
+   keys against the live environment and writes `RUN_DIR/preflight.md` (result PASS or FAIL). A
+   non-zero exit **stops the run**: the Mechanic must not act until `preflight.md` shows PASS. The
+   close-out in step 4 re-checks this before accepting the run.
 3. **The Mechanic** (**standard**) — run the runbook steps exactly as the skill defines them,
    stopping at the **production boundary** (below). Build/dev-deploy only; never promote,
    publish, or push toward release/prod. → build artifact or dev-deploy record + checkpoint output
 4. **The Conductor** (**standard**) — close out: confirm the artifact/checkpoint is green,
    summarize what ran and what was produced, flag anything deferred → one-block summary appended
    to `RUN_DIR/log.md`, updated `state.json`
+
+   **Close-out gates (Conductor-owned).** Before accepting the run, the Conductor runs both of
+   these itself — neither is delegated to The Challenger or `critic.md`. (operational-build has no
+   Challenger round, so this close-out is the only home for these checks in this workflow.)
+   - **Preflight PASS** — the Conductor reads `RUN_DIR/preflight.md` directly. A missing file, or
+     one whose `result` field reads FAIL while the Mechanic was dispatched, is a **Blocker** / halt.
+   - **External-action log** — `RUN_DIR/log.md` must carry a logged `[EXTERNAL-ACTION CHECKPOINT]`
+     entry for each external action that actually fired. A fired action with no `log.md` entry is a
+     **Blocker** / halt. The Conductor cross-checks the Mechanic's handoff-footer line
+     `Prod/irreversible actions taken:` against the logged `[EXTERNAL-ACTION CHECKPOINT]` entries in
+     `log.md`.
 
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is a
 > **dev/build artifact**: an image built, an archive produced, a deploy to dev verified. It does
