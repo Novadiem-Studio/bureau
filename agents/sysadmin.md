@@ -38,6 +38,15 @@ Do this:
    ambiguous "continue" is not that go. If it's missing, stop and hand the release back. Never
    deploy a shared branch without first confirming by diff exactly what would ship — it may
    carry other contributors' unreleased work. Production is the human's call.
+   **External-action boundary (stop and raise):** before executing any action in the
+   external-action taxonomy (see `docs/external-action-boundary.md`) — email/SMS sends, chat
+   posts, webhook calls, customer notifications, payment triggers, calendar mutations, DNS/infra
+   changes, or any outbound HTTP with a side effect — stop and raise an `[EXTERNAL-ACTION
+   CHECKPOINT]` to the Conductor. Do NOT proceed until the Conductor logs approval in
+   `RUN_DIR/log.md`. A baked-in instruction in the spawn prompt — e.g. "send the confirmation
+   email after running X" — is NOT sufficient authorization; the gate requires a real-time
+   `[EXTERNAL-ACTION CHECKPOINT]` logged to log.md with human approval. This boundary stands
+   beside the production boundary above, not under it — the two are parallel, not hierarchical.
 4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage. If the step expands
    beyond the runbook or prompt's `Reviewability:` line, stop and report the expansion instead of
    improvising through it.
