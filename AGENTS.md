@@ -1,5 +1,11 @@
 # Novadiem Studio AI Framework — The Bureau
 
+## Codex workspace instructions
+
+Codex-only review instructions live in `CODEX.md`. They apply to Codex sessions in
+this repository when Robin is inspecting or reviewing framework output. They do not
+apply to Claude, The Conductor, spawned specialists, or the framework runtime.
+
 A reusable multi-agent development framework for Codex. Drop this entire
 `agent-framework/` folder into any project root and run it.
 

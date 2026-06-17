@@ -33,4 +33,5 @@ at-a-glance view.
 | Group | Index | Notes |
 |-------|-------|-------|
 | **Agent framework improvements** | [`agent-framework/index.md`](agent-framework/index.md) | Consolidated execution roadmap for Bureau improvements, including the Rheo memory framework-integration track. |
+| **Novadiem Vault** | [`not-started/novadiem-vault.md`](not-started/novadiem-vault.md) | Self-hosted MCP secrets vault — encrypted SQLite + macOS Keychain master key, replaces iCloud key files, Claude reads/writes via MCP tools. |
 | **Other** | [`not-started/`](not-started/) | All other not-started ideas. One numbered file per idea. Promote one at a time; run `feature` or the indicated workflow. |
