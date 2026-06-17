@@ -162,14 +162,14 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
 |------------|---------|
 | `create` | `git worktree add` + `state.json` `git` block |
 | `status` | Print `git` state + `git status -sb` in worktree |
-| `sync` | Rebase society branch onto integration branch |
-| `merge` | Merge society branch into integration branch (in repo root) |
+| `sync` | Rebase bureau branch onto integration branch |
+| `merge` | Merge bureau branch into integration branch (in repo root) |
 | `remove` | Drop worktree; delete branch if already merged |
 
 **create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
-`--worktree-dir` (default: `REPO/.society-worktrees/SLUG`).
+`--worktree-dir` (default: `REPO/.bureau-worktrees/SLUG`).
 
-Requires **jq**. Bureau run branches still use the `society/<slug>` prefix (legacy git naming).
+Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
 
 ---
 

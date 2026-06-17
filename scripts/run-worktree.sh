@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/run-worktree.sh create --run-dir RUN_DIR --repo REPO_PATH [options]
 #   ./scripts/run-worktree.sh merge  --run-dir RUN_DIR [--message MSG]
-#   ./scripts/run-worktree.sh sync   --run-dir RUN_DIR   # rebase society branch onto base
+#   ./scripts/run-worktree.sh sync   --run-dir RUN_DIR   # rebase bureau branch onto base
 #   ./scripts/run-worktree.sh remove --run-dir RUN_DIR [--force]
 #   ./scripts/run-worktree.sh status --run-dir RUN_DIR
 #
@@ -12,7 +12,7 @@
 #   --base BRANCH          default: devel
 #   --slug SLUG            default: basename of RUN_DIR
 #   --merge-policy POLICY  end_of_job | per_prompt | checkpoint (default: end_of_job)
-#   --worktree-dir PATH    default: REPO/.society-worktrees/SLUG
+#   --worktree-dir PATH    default: REPO/.bureau-worktrees/SLUG
 
 set -euo pipefail
 
@@ -101,9 +101,9 @@ cmd_create() {
   git -C "$REPO" rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1 \
     || die "base branch not found: $BASE_BRANCH (in $REPO)"
 
-  local branch="society/${SLUG}"
+  local branch="bureau/${SLUG}"
   if [[ -z "$WORKTREE_DIR" ]]; then
-    WORKTREE_DIR="$REPO/.society-worktrees/$SLUG"
+    WORKTREE_DIR="$REPO/.bureau-worktrees/$SLUG"
   fi
   mkdir -p "$(dirname "$WORKTREE_DIR")"
 
@@ -196,7 +196,7 @@ cmd_merge() {
   policy="$(jq -r '.merge_policy' <<<"$git")"
   [[ -d "$wt" ]] || die "worktree missing: $wt"
 
-  # Ensure society branch commits are flushed
+  # Ensure bureau branch commits are flushed
   if ! git -C "$wt" diff --quiet || ! git -C "$wt" diff --cached --quiet; then
     die "uncommitted changes in worktree — commit or stash before merge"
   fi
@@ -206,7 +206,7 @@ cmd_merge() {
   local msg
   msg="${MERGE_MSG:-Bureau run merge: $branch → $base ($policy)}"
 
-  # Merge society branch into base at the main repo checkout
+  # Merge bureau branch into base at the main repo checkout
   local prev_branch
   prev_branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
   git -C "$repo" checkout "$base"

@@ -47,7 +47,7 @@ For each relevant repo / sub-app:
 ## Git integration (execute / build runs)
 - **Integration branch:** `devel` (branch that receives Bureau merges — adjust per project)
 - **Target repo path:** absolute path to the git root that build prompts edit
-- **Worktrees:** `.society-worktrees/<run-slug>/` under the target repo (optional `.gitignore` entry)
+- **Worktrees:** `.bureau-worktrees/<run-slug>/` under the target repo (optional `.gitignore` entry)
 
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who
