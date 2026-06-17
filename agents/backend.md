@@ -51,6 +51,12 @@ Convention: docs/conventions.md
   table's charset in `schema.rb`. Stage only the new table/columns + version bump.
 - Watch idempotency, N+1 on index/list endpoints, and money/credit correctness.
 - New audit event types must be registered or audit rows are silently dropped.
+- **Session-auth web builds — prove the real login path.** Your Checkpoint must drive a real
+  unauth → login form → authed fetch end-to-end; a seeded-session test bypass hides production auth
+  bugs (every M.O.T. login bug shipped green under seeded sessions). Write-path tests must exercise
+  **session-cookie auth**, not only the API key; web writes should accept session **or** API key.
+  For Next.js prod/`next start`/reverse-proxy specifics (instrumentation module-memory trap, native
+  deps, Edge middleware redirects, basePath), see the **react-nextjs** skill §10.
 
 ## Handoff — end your final message with exactly this block
 
