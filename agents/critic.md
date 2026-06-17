@@ -72,6 +72,30 @@ Check for:
   artifacts. A stale block that contradicts the canonical text actively misleads — flag it
   for deletion, and treat any contradiction it creates as the artifact's problem, not yours
   to reconcile.
+- **Missing external-action gate** — any plan step that describes an action in the
+  external-action taxonomy without a corresponding `[EXTERNAL-ACTION CHECKPOINT]` is a
+  **Blocker** (not a Warning). An action whose type or target is ambiguous (e.g. "notify
+  users" with no mechanism specified) must also be flagged, because the action type and
+  target cannot be confirmed from written context — the Challenger cannot approve what it
+  cannot classify. When applying this check in Review 1, read the plan steps in
+  `RUN_DIR/plan.md`; an `[EXTERNAL-ACTION CHECKPOINT]` is expected in a plan step whenever the
+  plan describes an externally visible action — the checkpoint is the gate the plan must
+  carry. The 8-category taxonomy is inlined here (the Challenger's input contract forbids
+  reading files beyond its declared inputs, so the list is inlined rather than referenced):
+
+  1. **Email and SMS sends** — any outbound message to a real recipient address or phone number
+  2. **Chat platform posts** — Slack, Discord, Teams, or equivalent outbound posts
+  3. **Webhook calls to external URLs** — any POST/PUT/PATCH to a non-local URL that produces a side effect on the receiving system
+  4. **Customer-facing notifications** — push notifications, in-app notifications, or equivalent outbound alerts to real end users
+  5. **Payment triggers** — charge initiation, refund, or subscription modification
+  6. **Calendar invites or event mutations** — any calendar event visible to or delivered to external participants
+  7. **DNS and infrastructure mutations** — DNS record changes, domain transfers, firewall rule changes, or equivalent provider-side changes
+  8. **Any other outbound HTTP to a non-local URL with a side effect** — the catch-all for actions not enumerated above but that produce an externally visible effect
+
+  > RECIPROCAL SYNC NOTE: this inlined list duplicates the canonical taxonomy in
+  > `docs/external-action-boundary.md`. If the taxonomy is edited in one file it must be
+  > edited in the other. The canonical source is `docs/external-action-boundary.md`; this
+  > copy is the enforcement fixture.
 
 ### The machinery test (over-engineering, operationalized)
 
@@ -127,6 +151,24 @@ Check for:
 - **Gap prompts** — phases of work that have no prompt covering them
 - **Tooling ambiguity** — external-service work that fails to name the expected CLI, skill, MCP,
   docs source, or runbook when that choice matters for repeatability
+- **Missing external-action gate** — in Review 2 you read `RUN_DIR/prompts.md` (a declared
+  Review-2 input — fully in-contract). Apply two sub-checks against the 8-category taxonomy
+  inlined under Review 1 above:
+    (a) any prompt describing an action in the external-action taxonomy without a corresponding
+        `[EXTERNAL-ACTION CHECKPOINT]` is a **Blocker**;
+    (b) for each external action that IS present in prompts.md and does carry an
+        `[EXTERNAL-ACTION CHECKPOINT]` reference, verify the reference is present — a
+        fired-able external action in a prompt with no checkpoint reference is a **Blocker**.
+  Do NOT read `preflight.md` at any point in either review round — AC 16 (preflight PASS) is
+  owned by the Conductor's workflow close-out, not a Challenger check.
+
+  > DISAMBIGUATION — two boundaries, never double-flagged. The **production boundary** is the
+  > existing "Production boundary — hard stop" block in `execute-plan.md`: deploy beyond dev,
+  > release promotion, public ship. The **external-action boundary** is the 8-category taxonomy
+  > inlined under Review 1: outbound communications and externally visible side effects,
+  > regardless of deployment stage. They are parallel protections for different risk classes.
+  > Classify each finding as exactly ONE of the two — do NOT conflate them or double-label a
+  > single finding as both.
 
 ## Build-diff reviews (execute / bug-fix workflows)
 
