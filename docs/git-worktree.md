@@ -35,7 +35,7 @@ In `project-context.md`:
 ```markdown
 ## Git integration
 - **Integration branch:** `devel`
-- **Worktree parent:** `.society-worktrees/` (under target repo; add to `.gitignore` if desired)
+- **Worktree parent:** `.bureau-worktrees/` (under target repo; add to `.gitignore` if desired)
 ```
 
 `integration_branch` defaults to `devel` when omitted.
@@ -99,8 +99,8 @@ one worktree. Stagger test DB / docker steps if both hit shared infra.
     "enabled": true,
     "repo": "/path/to/repo",
     "base_branch": "devel",
-    "branch": "society/20260612-oriva-auth",
-    "worktree_path": "/path/to/repo/.society-worktrees/20260612-oriva-auth",
+    "branch": "bureau/20260612-oriva-auth",
+    "worktree_path": "/path/to/repo/.bureau-worktrees/20260612-oriva-auth",
     "merge_policy": "end_of_job",
     "run_slug": "20260612-oriva-auth",
     "prompts_merged": [],
@@ -120,8 +120,8 @@ one worktree. Stagger test DB / docker steps if both hit shared infra.
 |---------|---------|
 | `run-worktree.sh create` | Branch + worktree + state |
 | `run-worktree.sh status` | Show state + `git status -sb` |
-| `run-worktree.sh sync` | Rebase society branch onto `devel` |
-| `run-worktree.sh merge` | Merge society branch into `devel` |
+| `run-worktree.sh sync` | Rebase bureau branch onto `devel` |
+| `run-worktree.sh merge` | Merge bureau branch into `devel` |
 | `run-worktree.sh remove` | Drop worktree (and branch if merged) |
 
 See `scripts/README.md` for flags.
