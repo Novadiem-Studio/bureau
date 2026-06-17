@@ -38,7 +38,7 @@ different angles.
 
 | Phase | Status |
 |---|---|
-| 1a. Validation and safety - damage preventers | not started |
+| 1a. Validation and safety - damage preventers | done — shipped to main 2026-06-17 (preflight.sh + external-action boundary gate) |
 | 1b. Validation and safety - process gates | not started |
 | 2. Reusable learning loop | not started |
 | 3. Planning decision quality gates | not started |

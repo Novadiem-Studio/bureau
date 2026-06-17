@@ -1,6 +1,6 @@
 ---
 priority: bundle-01a
-status: idea (consolidated)
+status: shipped
 suggested-workflow: feature
 suggested-run-slug: validation-safety-damage-preventers
 source-ideas:
