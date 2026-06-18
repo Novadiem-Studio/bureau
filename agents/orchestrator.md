@@ -540,6 +540,40 @@ they cannot access. A visual checkpoint is only a hard gate when the dev server 
 confirmed running AND the human can navigate to the relevant UI surface — if either
 condition is unmet, carry it forward and keep building.
 
+### Declaring a canon/process-surface review
+
+Whenever a run touches any **canon/process surface** (the list below — `workflows/`, `agents/`, `docs/conventions.md`, `plans/` prompt folders, the spawn-prompt template in `agents/orchestrator.md`, `workflows/index.md`), the Conductor's Challenger spawn prompt **MUST** include this structured block:
+
+```
+Promotion to canon: yes/no
+Reason: <one line>
+```
+
+This obligation is **unconditional on the run** because the Conductor always knows what the run touches — even a conceptually described canon edit that names no file path must be declared. It applies to BOTH outcomes:
+
+- **`Promotion to canon: yes`** — the run promotes a workflow or prompt to canon (adds a row to `workflows/index.md`, or commits a prompt folder to `plans/` as the accepted set). Declare `yes` and name the path to the `battle-test.md` alongside the artifact.
+- **`Promotion to canon: no`** — the run edits a canon/process surface WITHOUT promoting to canon. Declare `no` with a one-line reason. Silence is not a valid answer; even `no` must be explicit.
+
+The Challenger keys off this structured block and never self-infers a promotion from context. Absence of the block on a canon/process-surface review is itself a Blocker (see 15a in `agents/critic.md`).
+
+**The canon/process surfaces (canonical home — this file):**
+
+- `workflows/` — any workflow file
+- `agents/` — any persona file
+- `docs/conventions.md`
+- `plans/` prompt folders (`NN-*.md` / `00-index.md`)
+- The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
+- `workflows/index.md`
+
+> RECIPROCAL SYNC NOTE: `agents/critic.md` carries an inlined copy of this surface list under
+> its "Promotion gate" Blocker check (15a). If this list is edited here it must be edited there,
+> and vice versa. This file (`agents/orchestrator.md`) is the canonical source; the critic.md
+> copy is the enforcement fixture for the cold Challenger, which cannot read this file.
+
+**Re-run-at-promotion obligation:** On `Promotion to canon: yes`, as part of promoting, the Conductor re-runs the full `battle-test.md` matrix and writes a **FRESH `## Run <date>` block** with the new results before the promotion is declared. The declaration block names the `battle-test.md` path. The Conductor authors the first `battle-test.md` at promotion time (v1 Conductor-owned; see spec Open Questions 1). This makes matrix staleness a producer obligation rather than a date comparison the cold Challenger cannot perform — the Challenger verifies `## Run` block presence and clean results only.
+
+**MVP-Scope target-file expectation (FR 13a):** A plan-type run whose changes touch any canon/process surface MUST enumerate the concrete target files affected in the spec's **§ MVP Scope**. This gives the round-1 Challenger file-path evidence to detect a touched canon surface in a spec+plan-only review (where it has no diff and no prompts' named targets). Without it, the round-1 15a check can confirm only whether the structured block is present — it cannot independently verify which surfaces are touched. This expectation is on the spec the Conductor's own run produces; no new mechanism is required.
+
 Watch-point: as the one driving things forward, you will lean toward shipping. Hold the line
 on real blockers. If you prove too lenient over time, this adjudication gets split into its
 own judge role (Robin's call).
