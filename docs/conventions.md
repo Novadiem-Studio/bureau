@@ -290,3 +290,89 @@ lead as a non-agent node, so it is not a malformed agent step. Example:
 
 **Reference, don't re-document.** `index.md` and the `define-workflow` skill point at this
 section; they do not restate it.
+
+---
+
+## Regression fixture file format
+
+One canonical definition of the per-fixture file format used in `RUN_DIR/regression/`. Every workflow and persona file points at this section; nothing re-documents it inline.
+
+**Location and naming:** Fixtures live in `RUN_DIR/regression/`, one file per fixture, named `<NN>-<slug>.md` (NN = capture order).
+
+**Five required fields:**
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `name:` | yes | Human-readable fixture name. |
+| `command:` | yes | Copy-pasteable command. The literal value `command: <none — phase accepted on visual inspection>` is the legal value when a phase had no discrete verification command (see "Handling on re-run" below). A `command:` whose passing signal is "it worked when I ran it" is malformed — the `expected:` field must carry an objective signal instead. |
+| `expected:` | yes | The passing signal: exit code, log line, or visible output. Must be specific enough that a fresh agent running the command in a clean context can determine pass/fail without judgment. |
+| `phase:` | yes | Prompt id + workflow that introduced the fixture (e.g. `04 · execute-plan`). |
+| `owner:` | yes | Owning workflow/prompt — so a deliberate breaking change knows which fixture to retire and why. |
+
+**Two optional state flags** (not required fields; presence signals special handling):
+
+| Field | Optional | Meaning |
+|-------|----------|---------|
+| `slow:` | optional | `slow: human judgment required` — present when the fixture cannot meet the <2-minute re-run target. A `slow:` fixture is **carried as a Warning** on re-run, never a blocker. |
+| `retired:` | optional | `retired: <phase> — <reason>` — present when a deliberate change makes the fixture incorrect. A file carrying a `retired:` flag is **skipped** (not failed) by the re-run gate. Do NOT delete retired fixture files; the retirement notation is the record of a deliberate breaking change. |
+
+**Handling on re-run**
+
+When the Conductor re-runs fixtures from `RUN_DIR/regression/` before dispatching the next prompt (per `workflows/execute-plan.md`), it applies the following rules per fixture file:
+
+- **`retired:` present** → skip; not run, not a blocker.
+- **`slow:` present** → skip running; carry as a Warning in the re-run log.
+- **`command:` is the literal `<none — phase accepted on visual inspection>`** → skip; carry as a Warning (same handling as `slow:`); NOT run, NOT a blocker. This rule must be stated explicitly here so the legal `<none>` value cannot silently defeat the re-run gate (FR 4, Edge Case 1).
+- **All other fixtures** → run the `command:` and compare output to `expected:`. A failure BLOCKS the next prompt; the logged failure names the fixture file, the command, and the actual failing output (never a generic "regression failed").
+- The re-run result (per-fixture: pass / skip-Warning / fail-Blocker) is logged to `RUN_DIR/log.md` before the next coder is dispatched. This log entry is the inspectable artifact that makes the gate non-discretionary (AC 11).
+
+**Passing signal, not a judgment rule:** A fixture whose `expected:` field is a vague judgment ('it worked', 'looks right') is malformed; the expected signal must be objective enough for a fresh agent to evaluate from the command's output alone.
+
+No other section in the framework re-documents this format. Workflow and persona files reference this section by name.
+
+---
+
+## Battle-test matrix file format
+
+One canonical definition of the `battle-test.md` format required before any workflow or prompt is promoted to canon. Every workflow and persona file points at this section; nothing re-documents it inline.
+
+**Location and naming:** A file named `battle-test.md`, placed alongside the workflow or prompt file being promoted to canon.
+
+**When required:** Before any canon promotion — adding a row to `workflows/index.md` (workflow) or committing a prompt folder to `plans/` as the accepted prompt set (prompt).
+
+**File structure**
+
+1. **`## Run <date>` archive block** — the file always opens with a `## Run <date>` heading above the current case table. The date is the date of the run being recorded. On re-promotion (when a workflow or prompt is updated and re-entering canon), the prior `## Run` block is left in place; a NEW `## Run <date>` heading + fresh case table is added ABOVE it. "Re-run in full" means: all cases are re-evaluated and results written fresh — never appending new rows to an existing table. The most recent `## Run` block is the live one. This is a re-run obligation on the Conductor (on `Promotion to canon: yes`, the Conductor re-runs the full matrix and writes a fresh `## Run <date>` block as part of promoting); prior blocks are the audit history.
+
+2. **Case table** — the matrix contains 3–5 representative cases (FR 8). Each row records four required fields (FR 9):
+
+   | Field | Description |
+   |-------|-------------|
+   | Case name | A short, distinct name for this case. |
+   | Input description | Enough detail for a fresh agent to reproduce the run — project type, inputs, any unusual context. |
+   | Expected outcome | What "pass" looks like for this case (observable, not judgmental). |
+   | Actual result | `pass` or `fail` + a one-line note on any deviation. |
+
+3. **Case representativeness requirement** — the 3–5 cases MUST include:
+   - At least one **happy-path / typical** case.
+   - At least one **edge case** (unusual-but-valid input or uncommon input shape) — named as such.
+   - At least one **failure mode** (bad input, missing dependency, or the scenario the workflow is most likely to fail on) — named as such.
+
+   Case count alone does not satisfy this requirement. A matrix of 3–5 cases that are all happy-path variants under different labels is NOT representative and does not pass the gate, regardless of case count (Edge Case 3).
+
+**FR 12 open-ended-generative interpretation**
+
+For workflows with open-ended input spaces (e.g. arbitrary human text as input), the three category requirements above are re-interpreted as operational scenarios: (1) one nominal run, (2) one run that hits an expected edge (empty input, very long input, or missing context), (3) one run that the workflow must refuse or checkpoint rather than complete. The four per-case fields and the 3–5 count are unchanged.
+
+**`waiver:` block** (optional, but with strict validity rules):
+
+A `waiver:` block may appear in `battle-test.md` when one or more cases fail and Robin has explicitly accepted the failure as a known limitation. A valid waiver MUST name ALL THREE of:
+- The failing case (by name).
+- The reason the failure is known and accepted.
+- Robin's explicit acceptance (a statement attributing the decision to Robin, not a blank entry).
+
+A `waiver:` block that is blank, that names the failing case but not the reason, or that names neither, is NOT a valid waiver and does not close the battle-test Blocker (AC 5, Edge Case 4). Example of an INVALID waiver: `waiver: accepted`. A waiver is a conscious exception with a named reason, not a default.
+
+A valid waiver closes the battle-test gate for the specific failing case it names. It does not close the gate for unnamed cases.
+
+No other section in the framework re-documents this format. Workflow and persona files reference this section by name.
