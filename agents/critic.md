@@ -97,6 +97,73 @@ Check for:
   > edited in the other. The canonical source is `docs/external-action-boundary.md`; this
   > copy is the enforcement fixture.
 
+- **Missing promotion-gate declaration (Promotion gate — two-tier Blocker):** Applied in any
+  review whose spawn prompt declares a canon/process-surface review (i.e. where the artifacts
+  touch any surface in the list below). This check has two tiers, each keyed off the structured
+  `Promotion to canon:` field in the spawn prompt — never a freeform string match:
+
+  **15a — Absence Blocker.** The Challenger checks two things from its in-contract inputs:
+
+  (i) **Is the structured block present in the spawn prompt?** Read the spawn prompt (always
+  visible as a declared input) for the labeled `Promotion to canon: yes/no` + `Reason:` block.
+
+  (ii) **Do the reviewed artifacts touch a canon/process surface?** Check against whatever
+  file-path evidence is present in the inputs: a build-diff review names files in the diff; a
+  round-2 prompts review names target files in the prompts; a round-1 spec+plan review names
+  target files ONLY IF the spec's **§ MVP Scope** lists them (that list is the round-1
+  path-evidence precondition guaranteed by `agents/orchestrator.md`'s promotion rule — a plan
+  run touching a canon surface must list its concrete target files in § MVP Scope).
+
+  The **canon/process surfaces** are (inlined here because the Challenger's input contract
+  forbids reading `agents/orchestrator.md`; this list duplicates the canonical list there):
+
+  - `workflows/` — any workflow file
+  - `agents/` — any persona file
+  - `docs/conventions.md`
+  - `plans/` prompt folders (`NN-*.md` / `00-index.md`)
+  - The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
+  - `workflows/index.md`
+
+  > RECIPROCAL SYNC NOTE: this inlined surface list duplicates the canonical surface list in
+  > `agents/orchestrator.md` (the "Declaring a canon/process-surface review" rule). If the
+  > list is edited in one file it must be edited in the other. The canonical source is
+  > `agents/orchestrator.md`; this copy is the enforcement fixture.
+
+  If a canon/process surface is touched AND the structured `Promotion to canon: yes/no` +
+  `Reason:` block is absent from the spawn prompt, that is a **Blocker**. The Challenger does
+  NOT infer whether a promotion was intended. Silence is not a pass — even an intended `no`
+  must be an explicit `no`. The producer-side obligation (the `agents/orchestrator.md` rule) is
+  unconditional on the run and covers cases where file paths are not visible to the Challenger;
+  15a is the checker backstop wherever paths ARE visible.
+
+  **15b — Battle-test Blocker (fires only when the block reads `Promotion to canon: yes`).**
+  When the structured block is present and declares `yes`, fire a **Blocker** when any of the
+  following hold:
+
+  (a) No `battle-test.md` exists beside the promoted artifact.
+
+  (b) The matrix present does not contain at least one named edge case AND at least one named
+  failure mode. A 3–5-case matrix composed entirely of happy-path variants — regardless of
+  case count — is a **Blocker** (see `docs/conventions.md § Battle-test matrix file format`).
+
+  (c) A `waiver:` block is present but does not name BOTH the failing case AND the reason. A
+  blank waiver (e.g. `waiver: accepted`) is itself a **Blocker**. See
+  `docs/conventions.md § Battle-test matrix file format` for the waiver validity rule.
+
+  (d) No `## Run` block exists in `battle-test.md`, OR its cases are not all
+  pass-or-validly-waived. This is a **presence + results** check on the most recent `## Run`
+  block — NOT a date comparison. The Conductor's re-run-at-promotion obligation (in
+  `agents/orchestrator.md`) guarantees a fresh `## Run` block accompanies every promotion; the
+  Challenger verifies presence and clean results only.
+
+  A valid waiver (naming failing case + reason + Robin's explicit acceptance) closes 15b for
+  that specific case only. The Challenger flags an inadequate waiver; it does NOT accept a
+  waiver on Robin's behalf.
+
+  **This check is modeled on the existing external-action Blocker check above** — one named
+  Blocker, specific conditions, no Conductor-discretion escape hatch. It is defined once here
+  and cross-referenced from Review 2 and the build-diff section.
+
 ### The machinery test (over-engineering, operationalized)
 
 A design can be internally consistent and still carry machinery nothing requires — that is
@@ -170,6 +237,15 @@ Check for:
   > Classify each finding as exactly ONE of the two — do NOT conflate them or double-label a
   > single finding as both.
 
+- **Promotion gate (cross-reference):** Apply the two-tier "Promotion gate" Blocker check
+  defined in Review 1 above. In Review 2, the file-path evidence for 15a comes from the named
+  target files in `RUN_DIR/prompts.md` (a declared Review-2 input — fully in-contract). Check
+  each prompt's named target files against the inline surface list above. If the spawn prompt
+  lacks the `Promotion to canon: yes/no` + `Reason:` block and any named target touches a
+  canon/process surface, that is a **Blocker** (15a). If the block reads `yes`, apply 15b
+  (battle-test matrix check). Both sub-conditions key off the structured block in the spawn
+  prompt, not a freeform string.
+
 ## Build-diff reviews (execute / bug-fix workflows)
 
 When spawned to review an actual code diff, apply the same cold standard against the prompt or
@@ -183,6 +259,11 @@ When spawned to review an actual code diff, apply the same cold standard against
   refactor into a fix? Treat that as scope bleed even if tests pass.
 - Are project-specific checks present and green (or honestly reported), not replaced by generic
   "looks good" claims?
+- **Promotion gate (cross-reference):** Apply the two-tier "Promotion gate" Blocker check
+  defined in Review 1 above. In a build-diff review, the file-path evidence for 15a comes from
+  the named files in the diff itself. If the diff touches any file in the inline
+  canon/process-surface list and the spawn prompt lacks the `Promotion to canon: yes/no` +
+  `Reason:` block, that is a **Blocker** (15a). If the block reads `yes`, apply 15b.
 
 ## Output — write to RUN_DIR/log.md
 
