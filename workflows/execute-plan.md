@@ -85,6 +85,19 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    `preflight.md` shows PASS. The close-out in step 7 re-checks this before accepting the run.
 
 6. **The Conductor** (**strong**) — build part by part: run the prompts in order, 01..NN, dispatching each to the coder named by its `Coder:` tag — the tag is the assignment; do not re-infer the owner from the sub-app (a missing or wrong tag is a Spellwright defect: route it back rather than guessing) → a reviewed diff per part
+
+   **Prior-fixture re-run gate (before ANY coder dispatch):** Before dispatching any build-party coder for a prompt — including when another parallel track is already mid-flight — the Conductor re-runs all fixture files in `RUN_DIR/regression/` from prior accepted phases, applying these rules per file:
+   - Files with a `retired:` flag → **skip** (do not run; not a failure).
+   - Files with `slow: human judgment required` → **skip running; carry as a Warning** in the re-run log.
+   - Files whose `command:` is the literal `<none — phase accepted on visual inspection>` → **skip; carry as a Warning** (same handling as `slow:` — NOT run, NOT a blocker). The legal `<none>` value cannot silently defeat the re-run gate.
+   - All other files → run the `command:` and compare output to `expected:`.
+
+   Log the re-run result to `RUN_DIR/log.md` before dispatch (one line per fixture: pass / skip-Warning / fail-Blocker). This log entry is the inspectable artifact that makes the gate non-discretionary.
+
+   A fixture failure **BLOCKS** the prompt. The logged failure names: the fixture file, the `command:` value, and the actual failing output. A generic "regression failed" without these details is not a valid failure log.
+
+   No new script is required — the Conductor reads each fixture file and runs its `command:` field directly against the worktree or target directory. See `docs/conventions.md § Regression fixture file format` for the fixture format.
+
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
    Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
@@ -103,6 +116,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
      wrong token, wrong data wiring) is always blocking regardless of server access.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
+   - **Fixture capture (on accept):** When the Conductor accepts a coder's prompt, capture the verification command(s) used for that prompt as one or more regression fixture files in `RUN_DIR/regression/`, per the format in `docs/conventions.md § Regression fixture file format`. One file per fixture, named `<NN>-<slug>.md`. Set `phase:` to the prompt id + workflow (`e.g. 03 · execute-plan`) and `owner:` to the prompt file. If the accepted phase had no discrete verification command (a "looks right" acceptance with no runnable command), record a fixture with `command: <none — phase accepted on visual inspection>` and log a Warning to `RUN_DIR/log.md` — this is a planning deficiency, not a gate failure.
    - **Review-size gate:** before accepting a coder handoff, compare the diff to the prompt's
      named files, domain, and `Review size` handoff line. If the authored change is much broader
      than the prompt, crosses into another coder's domain, or hides large conceptual work behind
@@ -121,6 +135,8 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    Each track keeps its own build→review→adjudicate loop; The Conductor interleaves
    adjudications and respects the overall ship order at the end. When in doubt, serialize —
    parallelism saves wall-clock, not review effort.
+
+   The **prior-fixture re-run gate** (defined above) applies before ANY coder is dispatched for a prompt, including a parallel track that is already mid-flight. A track does not bypass the gate because another track is active.
 
    An `[EXTERNAL-ACTION CHECKPOINT]` raised during ANY active build track halts ALL active
    build tracks until the Conductor logs resolution. Neither track proceeds autonomously while
