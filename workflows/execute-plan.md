@@ -159,6 +159,27 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    coders shipped and the plan names a **final integration seam**, run one Coupler pass before
    step 7 close-out.
 
+   ### Failure repair
+
+   When a failure surfaces during a build-stage coder dispatch (step 6), the Conductor must, per
+   failure:
+   1. Record a failure signature in `RUN_DIR/log.md`, per `docs/conventions.md § Failure signature
+      format` (cite by name — do NOT restate the five fields).
+   2. Identify the suspected layer and patch the durable artifact named by that layer.
+   3. Run the verification case before dispatching the coder to retry or before adjudicating the
+      next prompt.
+
+   The Conductor adjudicates carried-vs-promoted at step 6 (per failure, before accepting the
+   prompt):
+   - A fix that landed in the **reusable layer** (a named durable artifact: a workflow file, a
+     convention, a runbook, a persona) = **promoted** — the fix travels with the framework.
+   - A fix that touched only `log.md` = **carried** item, NOT accepted as closed. Flag it
+     explicitly. A carried fix must go into a durable artifact or be deferred with a written
+     reason before step 7 close-out.
+
+   This adjudication MUST live in step 6. Do NOT defer the carried-vs-promoted decision to step 7
+   — step 7 is the close-out gate, not the place to first decide.
+
 > **Production boundary — hard stop (non-negotiable).** The build party's finish line is
 > **development**: code built, checkpoints green, integrated on the dev/integration branch and
 > verified there. The Conductor does **not** deploy beyond dev, merge toward a release/prod
@@ -216,6 +237,10 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
      handoff-footer line `Prod/irreversible actions taken:` against the logged
      `[EXTERNAL-ACTION CHECKPOINT]` entries in `log.md` to confirm every fired action was logged
      before it fired.
+
+   **`docs-sync-needed` (Conductor-owned Blocker).** For every script, runbook, or workflow changed this run, name the durable artifact patched — or state explicitly why none. Produce a list: one line per changed artifact, naming what was updated (e.g. `scripts/preflight.sh → docs/runbook X updated`). If no script/runbook/workflow changed this run, write the single line `docs-sync-needed: none — no script/runbook/workflow changed this run`. **An empty checkbox, a bare "done", or "docs are fine" is a Blocker** — the gate is satisfied only by the named list or the explicit no-change line. A change to `docs/conventions.md` itself satisfies the gate by naming `docs/conventions.md` as the artifact patched — the convention change IS the durable artifact; no further downstream update is implied.
+
+   **`lessons-append` (Conductor-owned Blocker).** If a failure signature was recorded in `RUN_DIR/log.md` this run (per `docs/conventions.md § Failure signature format`), name the `output/studio/lessons.md` entry appended for it — by its `failure-signature:` slug — or state `lessons-append: none — carried` with the reason it was not appended this run (e.g. promotion deferred to a named next run). If no failure signature was recorded this run, write the single line `lessons-append: none — no failure signature recorded this run`. **An empty line, a bare "lessons updated", or "lessons.md is fine" with no named entry is a Blocker** — the gate is satisfied only by a named `lessons.md` entry (its slug), the explicit `none — carried` with a reason, or the explicit no-failure line. A failure signature in `log.md` with no corresponding `lessons.md` entry and no `none — carried` reason is a **Blocker** at close-out.
 
 ## Prompt folder format
 
