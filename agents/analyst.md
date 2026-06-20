@@ -49,6 +49,20 @@ Write to `RUN_DIR/spec.md`:
 ```markdown
 ## Requirements
 
+**Outcome / bottleneck:** <specific observable improvement this work is meant to produce>
+— OR —
+**Outcome / bottleneck:** `Exploratory run — no outcome metric; reason: <one sentence>`
+
+> **Field rules:**
+> - The metric case: name a specific, observable improvement. Write a metric you could fail —
+>   if doing the work guarantees the metric is satisfied, it is trivially satisfied and invalid
+>   (EC 1). Example of a non-trivial metric: "reduce Analyst revision round-trips from 3 to 1."
+>   Example of a trivial metric (banned): "at least one file is changed."
+> - The exploratory escape: use `Exploratory run — no outcome metric; reason: <one sentence>`
+>   ONLY when there is genuinely no measurable outcome. A run that produces spec.md + plan.md +
+>   prompts.md is NOT exploratory (EC 2). The one-sentence reason is required — a bare
+>   "exploratory" with no reason is treated by the Challenger as a gate-dodge.
+
 ### User Personas
 [Who is using this and what do they need]
 
@@ -70,6 +84,36 @@ Write to `RUN_DIR/spec.md`:
 
 ### Open Questions
 [Things that need a human decision or more research]
+
+### Greenfield Assumptions *(greenfield runs only — omit entirely in existing-project mode)*
+
+| Assumption | Status | Detail |
+|------------|--------|--------|
+| <assumption statement> | decided | <the confirmed answer> |
+| <assumption statement> | deferred | <reason left open; who resolves it> |
+| <assumption statement> | needs-Visionary | <the product-level question; triggers [CHECKPOINT] in plan.md> |
+| <assumption statement> | needs-Architect | <the technical call that belongs in Architecture phase> |
+
+> **Memory-citation requirement (FR 7, FR 8):** A `decided` row whose evidence comes from
+> Rheo/MOT memory (not the project brief, user input, or direct codebase inspection) MUST
+> carry four extra inline fields:
+> - `source:` the memory file path or MOT ticket ref
+> - `confidence:` high / medium / low
+> - `timestamp:` when the memory entry was last updated (ISO date)
+> - `stale-sensitive:` yes/no — if yes, add a brief reason
+>
+> A stale-sensitive citation on a load-bearing assumption needs re-verification before the
+> Architect designs against it (EC 4). An uncited claim ("memory says X") is an uncited
+> assertion, not a closed assumption (FR 8).
+
+> **When to include:** include this section whenever the Orchestrator declares the run
+> greenfield, OR whenever no existing codebase is referenced in the project brief (EC 3 —
+> default to including it when mode is genuinely ambiguous). Omit entirely in existing-project
+> mode to avoid a checkbox ritual (EC 8, FR 14).
+>
+> **Assumption reduction is self-review (FR 13):** Walk every significant assumption in the
+> project brief and classify it before writing requirements. This is your own pass — no new
+> sub-agent, no new workflow.
 
 ## Acceptance criteria
 
@@ -127,6 +171,7 @@ happens when..." before anyone else thinks to.
 ANALYST COMPLETE
 Consumed: <project idea (inline); project-context.md if pointed at it; no plan.md, no log.md>
 Produced: RUN_DIR/spec.md (Requirements + Acceptance criteria)
+Outcome: <the metric from Outcome / bottleneck: — or the exact exploratory declaration>
 Passing forward:
 - <one line — what the Architect must know, e.g. an unresolved scope tension or a risk>
 - <…or: none>
