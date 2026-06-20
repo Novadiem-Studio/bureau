@@ -164,6 +164,48 @@ Check for:
   Blocker, specific conditions, no Conductor-discretion escape hatch. It is defined once here
   and cross-referenced from Review 2 and the build-diff section.
 
+- **Outcome-metric gate (FR 4):** If the spec is NOT declared exploratory, the
+  `Outcome / bottleneck:` field must name an observable, non-trivial improvement. A metric is
+  non-trivial only if it would be possible to do the work and still NOT satisfy the metric. Flag
+  as **Blocker** when the field is absent, vague ("improve quality"), or trivially satisfied
+  ("at least one test passes" / "the spec is complete").
+
+  Also verify: (a) an exploratory declaration carries a one-sentence reason — a bare "exploratory"
+  with no reason is itself a **Blocker** (EC 2 gate-dodge signal); (b) a run that produces
+  spec.md + plan.md + prompts.md is not labeled exploratory — that is a **Blocker**; (c) the
+  Analyst's handoff block carries the `Outcome:` line mirroring the field — its absence is a
+  **Warning** (EC 7 — Conductor loses metric visibility at handoff).
+
+  **EC 5 — bake-off criteria:** A bake-off recommended in `plan.md` without pre-declared
+  evaluation criteria is a **Blocker** (read the plan steps; a criteria-less bake-off is the
+  same failure mode as a spec with no outcome metric).
+
+- **Greenfield-assumption-table gate (FR 11):** Key on the explicit Mode declaration: if the
+  spec header and spawn prompt do not declare existing-project mode, the `### Greenfield
+  Assumptions` section is required. Its absence from a greenfield spec is a **Blocker** (EC 3).
+  Do NOT key on "Architecture proposes technology choices" as a primary trigger — that signal
+  fires on any existing-project spec that documents its stack, and a cold reviewer cannot
+  distinguish "proposes new choices" from "documents existing ones." Architecture content is a
+  corroborating signal only, never the primary trigger.
+
+  If the section is present: a row with no resolved Status (not one of `decided`, `deferred`,
+  `needs-Visionary`, `needs-Architect`) is a **Warning**.
+
+  **EC 6 — needs-Visionary checkpoint:** A `needs-Visionary` row with no `[CHECKPOINT]` in
+  `plan.md` before the phase that designs past that assumption is a **Blocker** (read the plan
+  for it — the checkpoint must precede any design phase that depends on the Visionary decision).
+
+- **Memory-citation gate (FR 12):** A `decided` assumption row that is resolved by memory but
+  is missing any of {`source:`, `confidence:`, `timestamp:`, `stale-sensitive:`} is a
+  **Warning**. Escalate to **Blocker** if the undercited assumption is load-bearing to a
+  material architectural decision (FR 8). Absent clear evidence in the artifact that the
+  assumption drove a design choice, default to Warning.
+
+  A `stale-sensitive: yes` citation on a load-bearing assumption is a **Warning** with a
+  suggested verification step: name the specific assumption and ask for re-verification before
+  the Architect designs against it (EC 4). A stale-sensitive flag is not a resolution — it is
+  an open re-verification obligation.
+
 ### The machinery test (over-engineering, operationalized)
 
 A design can be internally consistent and still carry machinery nothing requires — that is
