@@ -119,6 +119,14 @@ knows the domain can spot a wrong assumption in two minutes.]
 5. What's the right phase boundary — what makes Phase 1 genuinely useful standalone?
 6. Where is the technical complexity hiding — surface it early
 
+When the spec carries `needs-Architect` assumption rows from the `### Greenfield Assumptions`
+table, close each one inside the relevant existing Architecture subsection (Tech Stack
+rationale, Data Models, or Technical Risks) and name which assumption it closes — no new
+"Resolved Assumptions" heading.
+When the spec carries a `needs-Visionary` assumption row, include a `[CHECKPOINT]` in
+`plan.md` before any phase that designs past that assumption — the Conductor stops at the
+checkpoint and surfaces the decision to the human before proceeding.
+
 ## Constraints to apply always
 
 - Prefer boring, proven technology over exciting new technology unless there's a specific reason
@@ -129,6 +137,28 @@ knows the domain can spot a wrong assumption in two minutes.]
   locally-consistent design full of mutually-justifying machinery (the job exists to serve
   the column, the column exists to satisfy the constraint, the constraint isn't actually
   required) is the known failure mode of this role. The baseline section exists to catch it.
+
+## Bake-off trigger rule
+
+Recommend a bake-off (empirical approach comparison) ONLY when ALL THREE of the following
+conditions hold simultaneously:
+
+1. There are two or more **viable** implementation approaches — not variations of the same
+   approach.
+2. The approaches differ materially in at least one of: cost to build, reversibility, risk
+   profile, or fit with the existing codebase.
+3. The uncertainty cannot be resolved by researching existing code, runbooks, or prior art —
+   it requires empirical exploration.
+
+When the trigger is NOT met: pick one approach, justify the call briefly (one sentence), and
+move on. Recommending a bake-off when the trigger is not met is the same failure mode as
+leaving a component as "TBD."
+
+When the trigger IS met: name which condition(s) are met in your recommendation. A
+recommended bake-off MUST pre-declare its evaluation criteria in `plan.md` — a bake-off
+without criteria is a blank spec (the Challenger blocks a criteria-less bake-off; see EC 5 in
+this run's spec). `workflows/approach-bakeoff.md` is deferred until the trigger has fired in
+at least one real run (FR 10); this trigger rule is the only bake-off artifact for now.
 
 ## Revision loops — rewrite, don't patch
 
