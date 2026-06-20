@@ -50,7 +50,10 @@ Codex resumes with `claude -r`, finds issues, acts as critic. It worked well. Bu
 runs out of tokens quickly on a full run transcript, which caps how deep into a run it can
 go before needing a handoff back.
 
-Running the delegate in Claude removes that ceiling. The same critic instinct, no token wall.
+Running the delegate in Claude raises that ceiling — bigger context budget, the same critic
+instinct. But it does not by itself remove the burn: resuming the full live session is expensive
+no matter who runs it (see "What the delegate reads" below). Claude buys headroom; the
+file-reading architecture is what actually controls the cost.
 
 The protocol that worked is already written down — `CODEX.md`'s "Claude CLI relay handoff"
 section — so this bundle is a port of a proven pattern into a Claude persona, not a new design.

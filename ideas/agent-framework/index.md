@@ -24,7 +24,7 @@ different angles.
 | 6 | [Navigation and runtime experiments](06-navigation-and-runtime-experiments.md) | 04, 11 | Low-risk hygiene plus a later local-runtime experiment once routing data exists. |
 | 7 | [Rheo memory framework integration](07-rheo-memory-framework-integration.md) | Rheo memory | Framework-side rules and future adapter seam for consuming remote MOT/Rheo memory safely. |
 | 8 | [Worktree location hygiene](08-worktree-location-hygiene.md) | new (2026-06-19) | Move execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. One-line default change; safe for in-flight runs. |
-| 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | A delegate above the Conductor that handles checkpoints and removes Robin from the loop except for genuine escalations. Ports the proven `CODEX.md` relay pattern into a Claude persona. **Depends on a Challenger-findings split** (so the delegate reviews findings without reading `log.md`); sibling of Bundle 05. |
+| 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | A delegate above the Conductor that handles checkpoints and removes Robin from the loop except for genuine escalations. Ports the proven `CODEX.md` relay pattern into a Claude persona; field-tested by hand — quality was fine, the constraint was token burn, so it reasons off run-dir files instead of a resumed live session. Complement of Bundle 05 (warm process reviewer vs cold artifact reviewer). |
 
 ## How to promote a bundle
 
@@ -49,7 +49,7 @@ different angles.
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
-| 9. Principal delegate | not started — idea drafted; blocked on a Challenger-findings split before it's buildable (see the bundle file's "Artifact allowlist") |
+| 9. Principal delegate | not started — idea drafted; no hard framework dependency (the delegate reads `log.md`, no findings split needed). Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
 
 ## Cross-bundle principle: gate theater
 
@@ -104,11 +104,10 @@ read-first, provenance-bearing, and deny-by-default for writes.
 - Bundles 04 and 05 both touch `templates/state.json` and `agents/orchestrator.md`; run them
   sequentially and additively, with Bundle 04 first. `state.json` should hold only short
   status/path pointers; the actual packets live in separate files.
-- Bundle 09 (Principal delegate) needs Challenger findings split out of `log.md` into their own
-  artifact, so the delegate can review them while staying cold on the Conductor's rationale.
-  Bundle 05 makes the parallel move for the *sidecar's* review; 09 needs it for the *internal*
-  Challenger. Sequence the split before either ships a cold reader that must read Challenger
-  findings.
+- Bundle 09 (Principal delegate) and Bundle 05 (sidecar) are complements on the coldness axis,
+  not a shared dependency: 05 is a cold *artifact* reviewer; 09 is a warm *process* reviewer that
+  reads `log.md` on purpose, to judge how the Conductor handled the Challenger. 09 needs no
+  Challenger-findings split — an earlier draft assumed it did. They can ship in either order.
 
 ## Why this order changed from the raw rank
 
