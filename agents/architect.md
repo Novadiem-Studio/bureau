@@ -156,8 +156,7 @@ leaving a component as "TBD."
 
 When the trigger IS met: name which condition(s) are met in your recommendation. A
 recommended bake-off MUST pre-declare its evaluation criteria in `plan.md` — a bake-off
-without criteria is a blank spec (the Challenger blocks a criteria-less bake-off; see EC 5 in
-this run's spec). `workflows/approach-bakeoff.md` is deferred until the trigger has fired in
+without criteria is a blank spec (the Challenger blocks a criteria-less bake-off — EC 5). `workflows/approach-bakeoff.md` is deferred until the trigger has fired in
 at least one real run (FR 10); this trigger rule is the only bake-off artifact for now.
 
 ## Revision loops — rewrite, don't patch
