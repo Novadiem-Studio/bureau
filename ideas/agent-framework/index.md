@@ -24,7 +24,7 @@ different angles.
 | 6 | [Navigation and runtime experiments](06-navigation-and-runtime-experiments.md) | 04, 11 | Low-risk hygiene plus a later local-runtime experiment once routing data exists. |
 | 7 | [Rheo memory framework integration](07-rheo-memory-framework-integration.md) | Rheo memory | Framework-side rules and future adapter seam for consuming remote MOT/Rheo memory safely. |
 | 8 | [Worktree location hygiene](08-worktree-location-hygiene.md) | new (2026-06-19) | Move execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. One-line default change; safe for in-flight runs. |
-| 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | A delegate above the Conductor that handles checkpoints and removes Robin from the loop except for genuine escalations. Ports the proven `CODEX.md` relay pattern into a Claude persona; field-tested by hand — quality was fine, the constraint was token burn, so it reasons off run-dir files instead of a resumed live session. Complement of Bundle 05 (warm process reviewer vs cold artifact reviewer). |
+| 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | Two sequenced roles that take Robin out of routine coordination: the **Delegate** (flow + escalation gating — "does Robin need to see this?", build now) and the **Principal** (predicts Robin's call on genuine forks — "what would Robin decide?", a later ledger-trained layer). Ports the proven `CODEX.md` relay pattern; field-tested by hand — the constraint was token burn, so it reasons off run-dir files, not a resumed live session. Complement of Bundle 05 (cold artifact reviewer). |
 
 ## How to promote a bundle
 
@@ -49,7 +49,7 @@ different angles.
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
-| 9. Principal delegate | not started — idea drafted; no hard framework dependency (the delegate reads `log.md`, no findings split needed). Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
+| 9. Principal delegate | not started — idea drafted (Delegate = build now; Principal = later, ledger-trained predictor). No hard framework dependency (the delegate reads `log.md`). Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
 
 ## Cross-bundle principle: gate theater
 
