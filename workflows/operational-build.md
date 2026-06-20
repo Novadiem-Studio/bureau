@@ -58,6 +58,22 @@ skill and follow it; do not duplicate its steps here.
      `Prod/irreversible actions taken:` against the logged `[EXTERNAL-ACTION CHECKPOINT]` entries in
      `log.md`.
 
+   ### Failure repair
+
+   When a runbook step fails during step 3, the Conductor must, per failure:
+   1. Record a failure signature in `RUN_DIR/log.md`, per `docs/conventions.md § Failure signature
+      format` (cite the section by name — do NOT restate the five fields here).
+   2. Identify the suspected layer and patch the durable artifact named by that layer.
+   3. Run the verification case before retrying or closing out.
+   4. At close-out, confirm that every failure recorded this run carries an `artifact-patched:`
+      field naming a durable file — or explicitly states `none — carried` with a reason. A verbal
+      assurance is not acceptable; a named file or a written deferral is the only passing form
+      (this is Challenger-checkable).
+
+   **`docs-sync-needed` (Conductor-owned Blocker).** For every script, runbook, or workflow changed this run, name the durable artifact patched — or state explicitly why none. Produce a list: one line per changed artifact, naming what was updated (e.g. `scripts/preflight.sh → docs/runbook X updated`). If no script/runbook/workflow changed this run, write the single line `docs-sync-needed: none — no script/runbook/workflow changed this run`. **An empty checkbox, a bare "done", or "docs are fine" is a Blocker** — the gate is satisfied only by the named list or the explicit no-change line. A change to `docs/conventions.md` itself satisfies the gate by naming `docs/conventions.md` as the artifact patched — the convention change IS the durable artifact; no further downstream update is implied.
+
+   **`lessons-append` (Conductor-owned Blocker).** If a failure signature was recorded in `RUN_DIR/log.md` this run (per `docs/conventions.md § Failure signature format`), name the `output/studio/lessons.md` entry appended for it — by its `failure-signature:` slug — or state `lessons-append: none — carried` with the reason it was not appended this run (e.g. promotion deferred to a named next run). If no failure signature was recorded this run, write the single line `lessons-append: none — no failure signature recorded this run`. **An empty line, a bare "lessons updated", or "lessons.md is fine" with no named entry is a Blocker** — the gate is satisfied only by a named `lessons.md` entry (its slug), the explicit `none — carried` with a reason, or the explicit no-failure line. A failure signature in `log.md` with no corresponding `lessons.md` entry and no `none — carried` reason is a **Blocker** at close-out.
+
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is a
 > **dev/build artifact**: an image built, an archive produced, a deploy to dev verified. It does
 > NOT promote a release, publish a build to the public/store, or push toward a release/prod
