@@ -162,6 +162,10 @@ decided not to, with one line of why. That turns the dangerous case (silent non-
 an auditable list rather than an invisible negative: Robin reviews the borderline items, not the
 absence of them.
 
+When the delegate pulls in a cold Sidecar review (05) for a high-stakes artifact, the ledger entry
+references that review by path — so the provenance of an outside opinion is visible without
+complicating the Sidecar's cold contract.
+
 ## Critic checklist
 
 The delegate's review at each checkpoint is trainable. **Lead with the one check nothing else in
@@ -245,7 +249,9 @@ acts on the verdict — not multiplied across the delegate's reasoning turns.
 v1 — persona + protocol (note: this alone does **not** remove Robin):
 1. `agents/delegate.md` — persona file, critic checklist, escalation rules, handoff protocol
    (lift the authority contract from `CODEX.md` relay mode; make one file canonical).
-2. Add `delegate` to the CLAUDE.md agent table and the routing tier table.
+2. Add `delegate` to the CLAUDE.md agent table and the routing tier table, plus a one-line
+   three-role pointer (Sidecar / Delegate / Principal) in CLAUDE.md or LORE.md so later work
+   doesn't re-fuse the roles.
 
 v2 — the bridge is where the value lives, not automation layered on top. Its full design — the
 file mailbox, the blocking wait, the watcher, the verdict schema, and the escalation channel — is
@@ -317,6 +323,25 @@ Two residual tradeoffs to design against, not ignore:
   transcript) holds regardless.
 - **Blocking-call ceiling**: a foreground wait maxes ~10 min; past that use background + notify.
 
+### Failure modes the bridge must handle
+
+The mailbox is simple, which is the point — but a few failure modes have to be handled explicitly,
+not assumed away:
+
+- **Delegate crashes / no verdict written.** The Conductor's blocking wait must time out rather than
+  hang forever, and treat a *missing* verdict the same as a malformed one: escalate to Robin.
+- **Duplicate or partial verdicts.** Write atomically (`NN-verdict.md.tmp` then rename) so the
+  Conductor never reads a half-written file; ignore a second verdict for a checkpoint already
+  resolved.
+- **Watcher dies.** It's a dumb restartable process: on restart it re-scans `checkpoints/` for any
+  `*-request.md` with no matching `*-verdict.md` and resumes. A request with no verdict and no live
+  watcher is a stuck run — surface it, don't let the Conductor block silently.
+- **Stale request.** Each request carries the checkpoint id + run-dir path; the watcher ignores
+  requests for a run that has since closed.
+
+None of this is exotic — it's standard "file as a queue" hygiene (atomic write, idempotent consume,
+restartable consumer). Worth a tiny `bridge` helper so the Conductor side stays clean.
+
 ### Escalation channel
 
 When the delegate writes `Decision: escalate`, the watcher pings Robin and the run holds on that
@@ -352,11 +377,13 @@ Three guards keep it from over-reaching:
   Reasoning: <which doctrine/precedent it matches, what it checked>
   ```
 
-- **Calibrated against the ledger before it acts.** Because every escalation records Robin's actual
-  decision, the Principal's predictions can be scored against ground truth. Only once it is
-  measurably calibrated (high-confidence predictions match Robin at a set rate) does the Delegate
-  get to auto-act on a high-confidence prediction instead of escalating. Until then the prediction
-  is advisory and the fork still goes to Robin.
+- **Calibrated against the ledger before it acts, and the bar is two-dimensional.** Every escalation
+  records Robin's actual decision, so the Principal's predictions can be scored against ground
+  truth. Auto-acting requires BOTH high measured calibration on that *kind* of fork AND stakes below
+  an explicit ceiling — a 95%-calibrated prediction still escalates if the fork is irreversible or
+  touches a sensitive system. Until both hold, the prediction is advisory and the fork goes to
+  Robin. Even once it auto-acts, every auto-acted call is logged as a **borderline** ledger item for
+  Robin's periodic review, until trust is high enough to stop.
 
 - **Scoped to run-fork decisions.** The Principal models Robin's calls on framework-run tradeoffs
   (scope cuts, build-vs-buy, over- vs under-engineering, which approach wins a bake-off) — the
