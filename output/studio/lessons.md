@@ -53,4 +53,4 @@ is never counted as a real lesson or a recurrence.
 
 ---
 
-<!-- Live lessons log — append entries below; one per run that produced a failure repair. -->
+<!-- Live lessons log — append entries below; one per failure repair (one per failure-signature: slug). -->
