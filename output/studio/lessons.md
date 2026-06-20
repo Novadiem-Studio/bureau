@@ -1,11 +1,15 @@
 # Cross-run learning log
 
-This file is the framework's cross-run learning log. The Conductor appends one entry after
-each run that produced a failure repair — gated by the `lessons-append` gate in both
-`workflows/operational-build.md` and `workflows/execute-plan.md`, each in its respective
-close-out step. The full entry format is defined below.
+This file is the framework's cross-run learning log. The Conductor appends one entry per
+failure repair — gated by the `lessons-append` gate in both `workflows/operational-build.md`
+and `workflows/execute-plan.md`, each in its respective close-out step. The full entry format
+is defined below.
 
-A run that produced no failure repair appends nothing. One entry per run that did.
+A run that produced no failure repair appends nothing. A run that produced multiple failure
+repairs appends one entry per repair — multiple entries may share the same `run:` value. The
+recurrence rule (per `docs/conventions.md § Recurrence rule`) counts **distinct `run:` values**
+among entries sharing a failure tail, not the total number of entries — two entries from the
+same run are still one run, not two, for recurrence-counting purposes.
 
 ## Entry format
 
