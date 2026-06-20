@@ -23,6 +23,7 @@ different angles.
 | 5 | [Outside cold review sidecar](05-outside-cold-review-sidecar.md) | 06 | Add optional advisory review only after artifact boundaries are clear. |
 | 6 | [Navigation and runtime experiments](06-navigation-and-runtime-experiments.md) | 04, 11 | Low-risk hygiene plus a later local-runtime experiment once routing data exists. |
 | 7 | [Rheo memory framework integration](07-rheo-memory-framework-integration.md) | Rheo memory | Framework-side rules and future adapter seam for consuming remote MOT/Rheo memory safely. |
+| 8 | [Worktree location hygiene](08-worktree-location-hygiene.md) | new (2026-06-19) | Move execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. One-line default change; safe for in-flight runs. |
 
 ## How to promote a bundle
 
@@ -46,6 +47,7 @@ different angles.
 | 5. Outside cold review sidecar | not started |
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
+| 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
 
 ## Cross-bundle principle: gate theater
 
