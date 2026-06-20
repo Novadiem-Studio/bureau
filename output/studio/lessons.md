@@ -38,13 +38,14 @@ Every entry has four fields:
 format example — NOT a real lesson, remove before use
 
 run: EXAMPLE
-failure-signature: EXAMPLE-01-script-preflight-key-missing
+failure-signature: EXAMPLE-01-example-synthetic-not-real
 artifact-patched: docs/runbooks/ios-build.md
 status: promoted
 ```
 
-`run: EXAMPLE` is a synthetic slug, not a real `<run-slug>`, so the recurrence rule never
-matches it and this worked example is never counted as a real lesson or a recurrence.
+`run: EXAMPLE` is a synthetic slug, not a real `<run-slug>`, and `example-synthetic-not-real`
+is a tail no real failure can produce — so the recurrence rule never matches this entry and it
+is never counted as a real lesson or a recurrence.
 
 ---
 
