@@ -9,9 +9,10 @@ human-readable counterpart.
 `output/studio/lessons.md` is the full cross-run learning log. Read it there; this README
 does not duplicate lesson entries inline — it is an index, and `lessons.md` is the log.
 
-The Conductor's obligation: append a lesson entry to `lessons.md` after each run that
-produced a failure repair. This is gated by the `lessons-append` Blocker in the active
-workflow's close-out.
+The Conductor's obligation: append one entry to `lessons.md` per failure repair (one per
+`failure-signature:` slug recorded in `RUN_DIR/log.md`). A run with multiple failure repairs
+gets multiple entries; they may share the same `run:` value. This is gated by the
+`lessons-append` Blocker in the active workflow's close-out.
 
 The `lessons-append` gate lives in each workflow's close-out step — so a Conductor who has
 forgotten the obligation can find it by reading the close-out of whichever workflow was
