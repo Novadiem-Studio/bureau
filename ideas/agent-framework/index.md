@@ -49,7 +49,7 @@ different angles.
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
-| 9. Principal delegate | not started — idea drafted (Delegate = build now; Principal = later, ledger-trained predictor). No hard framework dependency (the delegate reads `log.md`). Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
+| 9. Principal delegate | not started — idea drafted (Delegate = build now; Principal = later, ledger-trained predictor). No hard blocker; one small dependency (`log.md` per-checkpoint boundary markers) for the flat-cost claim — without it the delegate's read grows linearly with the run. Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
 
 ## Cross-bundle principle: gate theater
 

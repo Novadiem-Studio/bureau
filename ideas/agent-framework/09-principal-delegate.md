@@ -123,8 +123,8 @@ context — it's to stop it from carrying the whole transcript. The delegate rea
 short-lived context** that reads the compact, durable run-dir handoff — `state.json`, `log.md`,
 and the artifact under review — the same surface the framework already uses to resume a run from
 disk. It never resumes the full live session, and a per-checkpoint invocation carries nothing
-forward from the last one. Context cost stays flat regardless of run length; quality doesn't drop,
-because the files hold what matters.
+forward from the last one. That makes the per-checkpoint cost *low-slope* instead of the live
+session's compounding growth — with one caveat the slicing note below fixes.
 
 So `log.md` is **read, not denied** — and the delegate needs it. Its lead job is reviewing the
 Conductor's *adjudication* of the Challenger ("was this blocker actually closed, or waved
@@ -138,8 +138,11 @@ blocker.
 Reads per checkpoint:
 
 - The artifact under review (`spec.md`, `plan.md`, `prompts.md`)
-- `log.md` — including the Challenger findings and the Conductor's adjudication (this is the point)
+- the **current checkpoint's slice** of `log.md` — the Challenger findings and the Conductor's
+  adjudication for this checkpoint (this is the point); not the whole file (see below)
 - `state.json` — phase, phases_complete, open questions
+- `docs/conventions.md` and `LORE.md` — the framework's own doctrine, to catch spec-compliant
+  doctrine violations (warm doctrine, not secret)
 - The task brief + acceptance criteria (warm on Robin's intent, by design)
 - Its own persona file (critic checklist, escalation rules)
 
@@ -147,15 +150,40 @@ Does **not** carry:
 
 - The Conductor's resumed live session transcript — the token sink; read the files instead
 - Any prior checkpoint's invocation context — each call is fresh
+- The whole of `log.md` — only the current checkpoint's slice (see below)
+
+### Keeping it flat (log.md grows, so slice it)
+
+One honest correction: `log.md` itself grows with the run — every phase and every Challenger review
+appends to it — so reading the *whole* file at checkpoint 50 is not flat, it's linear. The fix is
+that the delegate reads only the **current checkpoint's section**, delimited by a boundary marker
+the Conductor writes at each checkpoint (a `<!-- checkpoint NN -->` line in `log.md`, or
+per-checkpoint files under `log/NN.md`). Continuity across checkpoints comes from the short rolling
+`delegate-summary.md` (below), not from re-reading history. With slicing the per-checkpoint read is
+genuinely flat; without it the "flat" claim is aspirational. The boundary marker is a small
+`agents/orchestrator.md` / `execute-plan.md` change — and the only real framework dependency this
+bundle now carries.
 
 ### The decision ledger (auditability)
 
 A fresh per-checkpoint invocation has no memory of what it decided at earlier checkpoints, so on
 its own it cannot author the run-end summary or let Robin verify it escalated the right things.
-Fix: every checkpoint invocation **appends** its call + reasoning to a delegate-owned ledger,
-`RUN_DIR/delegate-decisions.md`. The run-end summary is a read over that ledger, and the ledger is
-what Robin spot-checks to confirm no silent pass-through. This is the mechanism behind the last two
-"Done when" bullets — without it they are unenforceable.
+Fix: every checkpoint invocation **appends** a structured entry to a delegate-owned ledger,
+`RUN_DIR/delegate-decisions.md` — a fixed header so it's greppable and the summary can be generated,
+not hand-rolled:
+
+```text
+## Checkpoint NN — <timestamp> — <proceed | revise | escalate>
+Rationale: …
+Borderline: … (or none)
+Refs: <sidecar review path | Principal prediction | none>
+```
+
+At run end the delegate writes a *separate* `RUN_DIR/delegate-summary.md` — decisions grouped by
+type, every escalation and borderline call surfaced — so Robin spot-checks the summary, not 50 raw
+entries. That rolling summary doubles as the cross-checkpoint continuity context (see "Keeping it
+flat"). This is the mechanism behind the last two "Done when" bullets — without it they are
+unenforceable.
 
 Each entry also names its **borderline calls** — anything the delegate considered escalating and
 decided not to, with one line of why. That turns the dangerous case (silent non-escalation) into
@@ -204,6 +232,10 @@ other. The signals:
 - Anything touching a system Robin explicitly marked as sensitive (prod DB, billing, auth)
 - Production/release deployment, public shipping, or any externally visible action — never the
   delegate's call (from the relay contract)
+- The Conductor is on a path that is **spec-compliant but violates the framework's own doctrine** —
+  complex machinery where the simplicity / over-engineering principle argues against it, or new
+  machinery a convention already covers — even when nothing in the spec forbids it. (This is why the
+  delegate reads `docs/conventions.md` + `LORE.md`.)
 
 Everything else: handle it, append it to the decision ledger, keep moving.
 
@@ -217,7 +249,7 @@ hardcoding "Sonnet"/"Opus" fights routing that already exists.
 
 | Role / mode | Tier | Reasoning |
 |---|---|---|
-| Delegate — relay loop (drives Conductor, talks to Robin) | standard | Flow control; escalation logic is structured matching |
+| Delegate — relay loop (drives Conductor, talks to Robin) | standard | Flow control; escalation logic is structured matching. May self-bump to `strong` for one checkpoint on a novel interpretation, with a ledger line noting why |
 | Delegate — per-checkpoint critic | standard | Critic checklist is pattern-matching; escalate one invocation to `strong` only when something hard surfaces |
 | Principal — decision predictor (later) | standard | Pattern-matches a fork against ledger doctrine to predict Robin's call + confidence; escalate to `strong` for high-stakes forks |
 | Conductor | unchanged | Its workflow default (`strong`); drives the run and adjudicates cross-agent conflicts |
@@ -249,9 +281,9 @@ acts on the verdict — not multiplied across the delegate's reasoning turns.
 v1 — persona + protocol (note: this alone does **not** remove Robin):
 1. `agents/delegate.md` — persona file, critic checklist, escalation rules, handoff protocol
    (lift the authority contract from `CODEX.md` relay mode; make one file canonical).
-2. Add `delegate` to the CLAUDE.md agent table and the routing tier table, plus a one-line
-   three-role pointer (Sidecar / Delegate / Principal) in CLAUDE.md or LORE.md so later work
-   doesn't re-fuse the roles.
+2. Add `delegate` to the CLAUDE.md agent table and the routing tier table, plus the three-role
+   contrast table (Sidecar / Delegate / Principal — cold/warm axis, authority, when invoked) in
+   CLAUDE.md or LORE.md so it's impossible to later add "Principal" as a sub-bullet under Delegate.
 
 v2 — the bridge is where the value lives, not automation layered on top. Its full design — the
 file mailbox, the blocking wait, the watcher, the verdict schema, and the escalation channel — is
@@ -278,8 +310,9 @@ Three parties, coordinating through `RUN_DIR/checkpoints/`:
    harness re-invokes the Conductor on exit (the `Monitor`/background-Bash pattern). It generates
    zero tokens while waiting.
 2. **Delegate** — a **headless one-shot** (`claude -p`) spawned per checkpoint. Reads the request +
-   `state.json` + `log.md` + the artifact (small, flat context), applies the checklist, writes
-   `NN-verdict.md`, appends to `delegate-decisions.md`, exits. No transcript, no growth.
+   `state.json` + the current checkpoint's `log.md` slice + the artifact (small, flat context),
+   applies the checklist, writes `NN-verdict.md`, appends to `delegate-decisions.md`, exits. No
+   transcript, no growth.
 3. **Watcher** — a dumb shell loop (or `fswatch`/inotify), *not* a model. Watches `checkpoints/`
    for new `*-request.md` and spawns the delegate headless. This is the heartbeat, and it's free
    because it's bash.
@@ -309,7 +342,8 @@ fields, act by Decision, and **never proceed on a malformed verdict — treat it
 
 - **Conductor**: pays for its own turns — unavoidable, it's the worker; pays **nothing** while
   waiting; carries **zero** delegate context.
-- **Delegate**: pays per checkpoint for a *small* file-only context, flat regardless of run length.
+- **Delegate**: pays per checkpoint for a *small* file-only context — flat *if it reads only the
+  current checkpoint's `log.md` slice* (see "Keeping it flat"); linear if it reads the whole log.
 - **Watcher**: ~free.
 
 Two residual tradeoffs to design against, not ignore:
@@ -338,6 +372,10 @@ not assumed away:
   watcher is a stuck run — surface it, don't let the Conductor block silently.
 - **Stale request.** Each request carries the checkpoint id + run-dir path; the watcher ignores
   requests for a run that has since closed.
+- **Conductor dies mid-wait.** The waiting party can die too. The watcher also monitors Conductor
+  liveness — a heartbeat field in `state.json` (last-progress timestamp), not just new request
+  files — and a wait past a **per-checkpoint-type timeout** (high-stakes checkpoints get longer)
+  escalates to Robin rather than hanging.
 
 None of this is exotic — it's standard "file as a queue" hygiene (atomic write, idempotent consume,
 restartable consumer). Worth a tiny `bridge` helper so the Conductor side stays clean.
