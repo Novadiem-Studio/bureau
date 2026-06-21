@@ -54,3 +54,15 @@ is never counted as a real lesson or a recurrence.
 ---
 
 <!-- Live lessons log — append entries below; one per failure repair (one per failure-signature: slug). -->
+
+run: 20260620-principal-delegate
+failure-signature: 12-fixture-false-pass-on-comment-match
+artifact-patched: output/runs/20260620-principal-delegate/regression/{04,09,12,15}-*.md (strip comment lines before grepping; mutation-test each static guard)
+status: deferred: promote as an authoring rule to docs/conventions.md § Regression fixture file format (next framework-touching run)
+note: A static-grep fixture false-passes when its asserted token also appears in a code COMMENT — the guarantee can be deleted from the real code and the fixture still passes. Caught by the Challenger via mutation testing (delete the guaranteed line from a script copy → the fixture must FAIL). Rule: grep only NON-comment code (e.g. pipe through `grep -v '^[[:space:]]*#'`), and always mutation-test a static guard before trusting it.
+
+run: 20260620-principal-delegate
+failure-signature: 12-bsd-grep-mid-dollar-mismatch
+artifact-patched: output/runs/20260620-principal-delegate/regression/{05,09,12}-*.md (use grep -F for literal-$ patterns)
+status: deferred: promote as an authoring rule to docs/conventions.md § Regression fixture file format (next framework-touching run)
+note: macOS/BSD grep BRE/ERE mishandles a `$` in the MIDDLE of a pattern, so `grep 'add-dir "$CTX"'` fails to match the literal text while `grep -F` matches it. Use grep -F (fixed-string) for any fixture/guard pattern containing a literal `$`. Confirmed twice this run.
