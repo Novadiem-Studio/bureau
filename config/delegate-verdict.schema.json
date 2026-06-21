@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Delegate verdict",
+  "description": "Machine contract for The Delegate's per-checkpoint verdict. Enforced by the CLI at verdict-emit time via --json-schema, and re-validated by verdict-write.sh as defense-in-depth. See agents/delegate.md and docs/delegate-bridge.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "Decision",
+    "Artifact-hash",
+    "Uncertainties",
+    "Rationale",
+    "Required-changes",
+    "Escalation",
+    "Ledger"
+  ],
+  "properties": {
+    "Decision": {
+      "type": "string",
+      "enum": ["proceed", "revise", "escalate"]
+    },
+    "Artifact-hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Uncertainties": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Required-changes": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Escalation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Ledger": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
