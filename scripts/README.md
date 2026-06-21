@@ -173,8 +173,6 @@ Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
 
 ---
 
----
-
 # Fixture promotion (`promote-fixtures.sh`)
 
 Deterministic mechanical core of Bureau regression fixture promotion. Run at execute-plan
