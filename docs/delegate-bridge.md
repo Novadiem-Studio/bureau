@@ -182,6 +182,15 @@ a real `revise` re-issue (where `revise-count + 1`) counts toward the cap.
   treats it as absent and re-spawns.
 - **Stale requests (FR 40):** Each request file carries `run-dir:` for cross-restart
   identification. A watcher that reads a request from a different run-dir must not claim it.
+- **Persistent spawn failure (spawn-failure ceiling, money-safety):** `--max-budget-usd`
+  caps the spend of one spawn but not the number of spawns, so a Delegate that keeps emitting
+  invalid/empty JSON (verdict-write fails closed, no verdict) would otherwise be re-spawned
+  every poll forever — unbounded spend. The watcher counts consecutive failed spawns per
+  checkpoint in `RUN_DIR/checkpoints/NN.failcount`. After `MAX_SPAWN_FAILURES` (default 3) in
+  a row for one NN, it gives up: fires `notify-escalation.sh`, writes a poison marker
+  `RUN_DIR/checkpoints/NN.failed` so later poll passes skip the request, and stops
+  re-spawning. Attended intervention is then required. A successful verdict clears the
+  failcount.
 
 ## Section 8: Escalation channel (FR 7 / EC4 / A2)
 
