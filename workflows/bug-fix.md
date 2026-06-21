@@ -92,8 +92,10 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
    - **Close out** at the `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`): human
      go, then merge the worktree to the **dev/integration branch only**, then `run-worktree.sh remove`
      (on conflict: `[CHECKPOINT]`); check for new packages after the merge and install into the
-     running container; append the run to `log.md`. The run ends at **dev-verified** — taking
-     anything past dev is the human's separate call (see "Production boundary" below).
+     running container; append the run to `log.md`. As the **final** close-out action, run
+     `scripts/account-run.sh <RUN_DIR>` and set `state.json#accounting` per
+     `agents/orchestrator.md § Run accounting (close-out)`. The run ends at **dev-verified** —
+     taking anything past dev is the human's separate call (see "Production boundary" below).
 
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is the fix
 > **built, verified, and green on the dev/integration branch**. The Conductor does NOT deploy

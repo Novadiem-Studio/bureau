@@ -45,7 +45,14 @@ skill and follow it; do not duplicate its steps here.
    publish, or push toward release/prod. → build artifact or dev-deploy record + checkpoint output
 4. **The Conductor** (**standard**) — close out: confirm the artifact/checkpoint is green,
    summarize what ran and what was produced, flag anything deferred → one-block summary appended
-   to `RUN_DIR/log.md`, updated `state.json`
+   to `RUN_DIR/log.md`, updated `state.json`. For commit-message guidance in execute-style runs,
+   see `workflows/execute-plan.md` step 7. (Run accounting **last** — see the end of this step.)
+
+   **Run accounting last.** As the *final* close-out action — after the summary and the final
+   `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>` so `accounting.json`
+   reflects the run's terminal state, then set `state.json#accounting` per
+   `agents/orchestrator.md § Run accounting (close-out)` (on failure: `status: unavailable`,
+   `path: null`). On an abnormal/interrupted exit, attempt accounting anyway per that convention.
 
    **Close-out gates (Conductor-owned).** Before accepting the run, the Conductor runs both of
    these itself — neither is delegated to The Challenger or `critic.md`. (operational-build has no
