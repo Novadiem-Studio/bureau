@@ -3,10 +3,14 @@
 # atomically, and append the ledger entry.
 #
 # This is the core bridge validator. On ANY validation failure (bad/invalid JSON,
-# missing field, unreadable request, hash mismatch) it prints the reason to stderr,
-# fires notify-escalation.sh, exits 2, and writes NOTHING — no verdict file (not
-# even a partial), no ledger entry. The verdict file is written ONLY via a
-# tmp->rename (atomic; EC6); there is no other write path.
+# missing field, unreadable request, hash mismatch) — OR any verdict write/rename
+# failure (full disk, unwritable target dir) — it prints the reason to stderr,
+# fires notify-escalation.sh, exits 2, and writes NOTHING durable: no verdict file
+# (not even a partial), no ledger entry. Write and ledger append are all-or-nothing:
+# the ledger is appended ONLY after the verdict file is confirmed on disk. The
+# verdict file is written ONLY via a tmp->rename (atomic; EC6); there is no other
+# write path. Free-text fields are newline/control-char sanitized before render so
+# a field value cannot inject an extra `key: value` line into the flat verdict file.
 #
 # Usage:
 #   verdict-write.sh <raw-json> <request-file> <verdict-file> <ledger-file> \
@@ -117,8 +121,16 @@ for key, _ in fields:
     if v is None or (isinstance(v, str) and v.strip() == ""):
         sys.stderr.write("missing or empty field: %s\n" % key)
         sys.exit(4)
+# The verdict .md and the ledger are flat, line-oriented (one `key: value` per
+# line). A free-text field value carrying an embedded newline/CR (or other
+# control char) would inject an extra line — e.g. a second `decision:` line —
+# that spoofs any line-grep consumer and defeats the file-level cap-rewrite
+# guarantee. Collapse all control chars to a single space here so EVERY
+# downstream use (verdict render AND ledger-append args) is clean.
+def sanitize(s):
+    return "".join(" " if (ord(c) < 0x20 or ord(c) == 0x7f) else c for c in s)
 for key, var in fields:
-    enc = base64.b64encode(str(data[key]).encode("utf-8")).decode("ascii")
+    enc = base64.b64encode(sanitize(str(data[key])).encode("utf-8")).decode("ascii")
     sys.stdout.write("%s=%s\n" % (var, enc))
 PY
 )" || fail "JSON parse/validation failed (see stderr above)"
@@ -190,9 +202,24 @@ fi
 # ── step 6: write the verdict file ATOMICALLY (EC6) ──────────────────────────
 # The ONLY write path for the verdict file: $3.tmp -> mv. checkpoint and attempt
 # come from the REQUEST file.
+#
+# Fail-closed: the write must be all-or-nothing with the ledger append. If the
+# render or the rename fails (full disk, unwritable dir, target dir removed),
+# we must NOT append the ledger — that would mark the checkpoint decided with no
+# verdict file and corrupt the append-only ledger. On any failure: remove the
+# leftover tmp, route through the SAME fail() path (fire the notifier, exit 2,
+# NO ledger append). The ledger append (step 7) happens ONLY after the verdict
+# file is confirmed on disk.
 
 TMPF="${VERDICT_FILE}.tmp"
-cat >"$TMPF" <<EOF
+
+# Helper: clean up the tmp file, then take the standard fail-closed path.
+write_fail() {
+  rm -f "$TMPF" 2>/dev/null || true
+  fail "$1"
+}
+
+if ! cat >"$TMPF" <<EOF
 checkpoint:       ${REQ_CHECKPOINT}
 attempt:          ${REQ_ATTEMPT}
 artifact-hash:    ${ARTIFACT_HASH_JSON}
@@ -203,7 +230,16 @@ required-changes: ${REQUIRED_CHANGES}
 escalation:       ${ESCALATION}
 ledger:           ${LEDGER}
 EOF
-mv "$TMPF" "$VERDICT_FILE"
+then
+  write_fail "could not render verdict tmp file: $TMPF"
+fi
+
+if ! mv "$TMPF" "$VERDICT_FILE"; then
+  write_fail "could not rename verdict tmp into place: $VERDICT_FILE"
+fi
+
+# Confirm the verdict file is actually on disk before we let the ledger append.
+[ -f "$VERDICT_FILE" ] || write_fail "verdict file missing after rename: $VERDICT_FILE"
 
 # ── step 7: append the ledger entry ──────────────────────────────────────────
 # Label is NN.A from the request (checkpoint.attempt). borderline = yes if the
@@ -223,6 +259,9 @@ else
   esac
 fi
 
+# refs (bridge § 9) is `<notary review path | none>`, NOT the escalation reason
+# (which already lives in the verdict file's `escalation:` line). No notary
+# pointer exists at this stage, so it is always `none`.
 sh "$SCRIPT_DIR/ledger-append.sh" \
   "$LEDGER_FILE" \
   "$LABEL" \
@@ -232,7 +271,7 @@ sh "$SCRIPT_DIR/ledger-append.sh" \
   "$UNCERTAINTIES" \
   "$RATIONALE" \
   "$BORDERLINE" \
-  "${ESCALATION:-none}"
+  "none"
 
 # ── step 8: escalation notification ──────────────────────────────────────────
 
