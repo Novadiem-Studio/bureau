@@ -45,13 +45,13 @@ different angles.
 | 1b. Validation and safety - process gates | done — shipped to main 2026-06-18 (regression-fixture convention + battle-test promotion gate) |
 | 2. Reusable learning loop | done — shipped to main 2026-06-20 (failure-signature convention + recurrence rule + lessons-append gate) |
 | 3. Planning decision quality gates | done — shipped to main 2026-06-20 (outcome field + greenfield assumption table + bake-off trigger rule + three Challenger checks + battle-test) |
-| 4. Run accounting and resume signals | done — shipped to main 2026-06-20 (`scripts/account-run.sh` + `templates/accounting.json` schema + SPAWN-EVENT close-out convention in `orchestrator.md` + accounting pointers in all terminal workflows). Hardened against an external (Codex) review. Follow-up: committed regression suite → [idea 11](11-account-run-committed-regression-suite.md). |
+| 4. Run accounting and resume signals | done — shipped to main 2026-06-20 (`scripts/account-run.sh` + `templates/accounting.json` schema + SPAWN-EVENT close-out convention in `orchestrator.md` + accounting pointers in all terminal workflows). Hardened against an external (Codex) review. Follow-ups: committed regression suite → [idea 11](11-account-run-committed-regression-suite.md); optimization metrics (tokens/loops/wall-clock/human-wait, captured live into `log.md`) → [idea 12](12-run-optimization-metrics.md). |
 | 5. External notary review (The Notary) | done — shipped to main 2026-06-20 (cue-packet template + state pointer + model-policy role + protocol doc + completed persona + orchestrator wiring + battle-test matrix; Promotion to canon: yes) |
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
 | 10. Planning loop reduction | not started — idea drafted from the Bundle 04 post-mortem; three verified, doctrine-consistent shift-left gates. Reduces loop *count*; complementary to Bundle 09 (loop *cost*). Direct Bundle 03 follow-up. |
-| 9. Principal delegate | not started — idea drafted + hardened by a 6th, repo-grounded review (Codex). Bigger build than first thought: needs a **mandatory delegate gate in every workflow** (the adjudication isn't a checkpoint today), a **privileged shell bridge + supervisor** (model emits output, shell writes), and an unsolved **self-audit / gate-theater** problem (a confidently-wrong `proceed` is invisible). Token claim re-grounded (the relay sink was PTY-driving, not the transcript). Principal stays deferred. See the doc's "Reality check". |
+| 9. Principal delegate | done — spec + plan + scoped prompts shipped 2026-06-20 (agents/delegate.md persona + docs/delegate-bridge.md neutral authority doc + CLAUDE.md three-role contrast table + model-policy.v2.json delegate entry + 7 bridge scripts + 12 regression fixtures). v1 = manual attended path; v2 = autonomous loop; v3 self-audit gate deferred. Principal role explicitly deferred. |
 
 ## Cross-bundle principle: gate theater
 
