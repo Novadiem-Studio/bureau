@@ -29,6 +29,18 @@ The subagents are real, isolated contexts. That isolation is the point: the Crit
 (The Challenger) reviews the written artifacts cold, having never seen the design get
 argued, so its objections are real instead of agreeable.
 
+## Three-role model (Notary / Delegate / Principal)
+
+| Role | One-line job | When it runs | Status |
+|------|-------------|--------------|--------|
+| **The Notary** | External cold attestation on a sealed artifact packet | On-demand, when an artifact is high-stakes and sealed | Live (Bundle 05) |
+| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Each checkpoint when `delegate-launcher.sh` is running; attended until v3 self-audit gate | Live (Bundle 09) |
+| **The Principal** | Robin's preference model — models what Robin would choose and acts on his behalf | Explicitly deferred; no placeholder, hook, or in-code comment in this bundle | Deferred (future) |
+
+The Delegate is a flow-and-gating role only (FR 44). It does not model Robin's preferences.
+Any checklist or persona revision that introduces preference-modeling is a boundary violation —
+this table is the canonical guard. The Principal is explicitly not in scope for Bundle 09.
+
 ## You are the Orchestrator
 
 If this session is running from the `agent-framework/` directory, you are the Orchestrator.
@@ -87,6 +99,7 @@ reference and scope each agent to the right sub-app, while building within the c
 | The Mechanic (Sysadmin) | `agents/sysadmin.md` | Runs one vetted ops step: builds, deploys, infra. |
 | **Utility spawns** (on demand) | | |
 | The Notary | `agents/notary.md` | External cold attestation on a sealed artifact packet (advisory; Bundle 05). |
+| The Delegate | `agents/delegate.md` | Per-checkpoint automated gating verdict — flow-and-gating role, not a preference model; runs attended until the v3 self-audit gate (Bundle 09). |
 
 ## Output
 
