@@ -201,7 +201,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 > **regardless of deployment stage** (a dev-stage step that fires a real email is still gated);
 > neither boundary subsumes the other.
 
-7. **The Conductor** (**strong**) — close out: if `git.merge_policy` is `end_of_job` and worktree is active, human go, then merge, then remove (on conflict: `[CHECKPOINT]`); then check for new packages, install into the running container, summarize what shipped to dev vs. planned, and move the plan doc out of `todo/` → updated `RUN_DIR/log.md`, `state.json`, relocated plan doc
+7. **The Conductor** (**strong**) — close out: if `git.merge_policy` is `end_of_job` and worktree is active, human go, then merge, then remove (on conflict: `[CHECKPOINT]`); then check for new packages, install into the running container, summarize what shipped to dev vs. planned, and move the plan doc out of `todo/` → updated `RUN_DIR/log.md`, `state.json`, relocated plan doc. (Run accounting **last** — see the end of this step.)
    human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
    human resolves on integration branch, then `remove`). This merge targets the **dev/integration
    branch only** (e.g. `devel`), never a release/prod branch.
@@ -221,10 +221,29 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    ```
    Do not hand back to the human with the app broken because packages are missing.
 
+   **Commit-message guidance (SHOULD, advisory — check target-repo norms first):**
+   Before committing the build outputs, check whether the target repository has a
+   commit-message convention (trailers, prefixes, required format). If the repo permits
+   supplementary trailers or body lines, add:
+   ```
+   Workflow: execute-plan
+   Phase: <NN-phase-slug>
+   ```
+   so `git log` can surface the run structure at a glance. If the repo forbids trailers or has a
+   strict format, skip these additions. This guidance is supplementary — `accounting.json` and
+   `state.json` remain the authoritative sources.
+
    Summarize what shipped to dev vs. what the plan asked for, flag anything deferred, append
    the run to `RUN_DIR/log.md`, and move the plan doc out of `todo/` (or mark done). The run
    ends at **dev-verified**; taking anything past dev is a separate, human-initiated action
    (see "Production boundary").
+
+   **Run accounting last.** As the *final* close-out action — after the merge, package install,
+   summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
+   so `accounting.json` reflects the run's terminal state (not a mid-close-out snapshot), then set
+   `state.json#accounting.status` and `.path` per `agents/orchestrator.md § Run accounting
+   (close-out)` (on failure: `status: unavailable`, `path: null`). On an abnormal/interrupted exit,
+   attempt accounting anyway per that convention.
 
    **Close-out gates (Conductor-owned, not Challenger checks).** Before accepting the run, the
    Conductor runs both of these itself — neither is delegated to The Challenger or `critic.md`:

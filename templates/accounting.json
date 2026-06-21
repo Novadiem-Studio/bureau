@@ -1,0 +1,163 @@
+{
+  "_comment": "templates/accounting.json — canonical schema + reference template for Bundle 04 run accounting. Uses JSON-with-_comment-keys format (NOT JSONC; jq cannot parse // comments). Every observation leaf is {value, confidence} — four legal confidence values: exact | estimated | inferred | unavailable. Exempt items carry no confidence: schema_version (structural integer); _comment/_note strings (documentation); container objects and arrays (run, specialist_spawns, phases, cost, usage_snapshot, memory). Emitted accounting.json from a real run carries only data keys plus any _note the script writes — it does NOT reproduce these teaching comments.",
+
+  "schema_version": 1,
+  "_comment_schema_version": "schema_version is a structural integer constant. It is the FIRST item on the observation-leaf exemption list — it carries no confidence key. v1 = 1.",
+
+  "run": {
+    "_comment": "Container — exempt from confidence. Wraps run-metadata leaves.",
+    "slug": {
+      "value": "20260620-run-accounting-and-resume-signals",
+      "confidence": "exact",
+      "_comment": "The RUN_DIR basename. Confidence: exact — read directly from the argument."
+    },
+    "workflow": {
+      "value": "feature",
+      "confidence": "exact",
+      "_comment": "From state.json#workflow. confidence: exact if set; inferred if derived from plan.md or context; unavailable if absent."
+    },
+    "run_date": {
+      "value": "20260620",
+      "confidence": "exact",
+      "_comment": "Calendar date extracted from the first 8 characters of the RUN_DIR basename, validated in TWO STAGES before any label is assigned. Stage 1: format — the 8 chars must match ^[0-9]{8}$. Stage 2: calendar reality — split as YYYY/MM/DD; YYYY must be 0001-9999 (civil Gregorian, no year zero), MM must be 01-12, DD must be 01 through the actual number of days in that month+year (standard month-length table, leap year = divisible by 4 except century years not divisible by 400). Both stages must pass for confidence:exact. If either stage fails: {value:null, confidence:unavailable, _note: 'RUN_DIR basename does not begin with a valid YYYYMMDD calendar date — run_date cannot be determined'}. Impossible-date examples that MUST degrade: 20261301 (month 13), 20260230 (Feb 30), 00001201 (year 0000 — year zero does not exist in civil Gregorian). Valid: 20240229 (leap year). Invalid: 20230229 (not a leap year). Source is NEVER state.json#last_updated (last mutation timestamp, not run start) and NEVER the RUN_DIR mtime (it moves when accounting.json itself is written)."
+    },
+    "started_at": {
+      "value": null,
+      "confidence": "unavailable",
+      "_note": "no start-time source in scope for v1; state.json#last_updated is last mutation, not run start",
+      "_comment": "v1 has no in-scope source for the precise run start time. state.json#last_updated is the last state-mutation timestamp — NOT a start time. RUN_DIR mtime shifts when accounting.json is written. Both are rejected as proxies. started_at is honestly unavailable."
+    },
+    "accounted_at": {
+      "value": "2026-06-20T14:30:00Z",
+      "confidence": "exact",
+      "_comment": "UTC ISO-8601 timestamp of when account-run.sh ran. This is the one exact timestamp the script can record unambiguously."
+    }
+  },
+
+  "specialist_spawns": [
+    {
+      "_comment": "Array — container, exempt from confidence. One entry per status=started attempt_id in log.md SPAWN-EVENT: records. The Conductor is EXCLUDED (FR 3b-addendum — the Conductor runs in the main session and is never spawned). Configured-but-never-spawned roles are EXCLUDED entirely (no unavailable placeholder row). attempt_id is the SPAWN-EVENT line's dedup/pairing key, built as role+'-'+attempt_number — it is NOT emitted as a leaf in the output (it is the key used to pair started/terminal events during parsing). Entries come from log.md SPAWN-EVENT: lines, NOT from model-routing.json membership.",
+      "role": {
+        "value": "analyst",
+        "confidence": "exact"
+      },
+      "agent": {
+        "value": "Analizer 2000",
+        "confidence": "exact"
+      },
+      "configured_model": {
+        "value": "sonnet",
+        "confidence": "exact",
+        "_comment": "From model-routing.json for this role. Confidence ladder: model-routing.json → exact; model-tiers.json → inferred; neither → unavailable. This answers SHOULD USE, not DID USE."
+      },
+      "actual_model": {
+        "value": "sonnet",
+        "confidence": "exact",
+        "_comment": "From the SPAWN-EVENT line's actual_model value. confidence:exact when a non-null string token is present. {value:null, confidence:unavailable} when the key is present but its value is JSON null (Conductor did not record the model). A missing actual_model key makes the event invalid at validation — it never reaches this label."
+      },
+      "attempt": {
+        "value": 1,
+        "confidence": "exact"
+      },
+      "reported_status": {
+        "value": "complete",
+        "confidence": "exact",
+        "_comment": "Terminal status from the SPAWN-EVENT termination line (same attempt_id). Legal terminal values: complete | no-handoff | failed | terminated. A spawn with a status:started line but no termination line gets reported_status:started (in-progress or abandoned — surfaced honestly, not hidden). The no-handoff/terminated case is NOT dropped."
+      }
+    }
+  ],
+  "_specialist_spawns_note_example": "When specialist_spawns is [], this sibling _note is present: 'no structured SPAWN-EVENT: lines found in log.md — run may predate the SPAWN-EVENT convention or log was not written'. This distinguishes no-events-found from a script failure.",
+
+  "phases": {
+    "_comment": "Container — exempt from confidence. Wraps phase-summary leaves. Sources: state.json#phases_complete, state.json#phase_status, state.json#critic_loops.",
+    "complete": {
+      "value": ["analyst", "architect", "challenger-r1", "spellwright"],
+      "confidence": "exact",
+      "_comment": "Copied verbatim from state.json#phases_complete. Confidence is about provenance, not truth: exact means the script read this from state.json faithfully."
+    },
+    "status": {
+      "value": "complete",
+      "confidence": "exact",
+      "_comment": "From state.json#phase_status. Surfaces EC 5 (in-progress) when the script runs on an incomplete run."
+    },
+    "critic_loops": {
+      "value": { "analyst": 0, "architect": 1, "prompts": 0 },
+      "confidence": "exact",
+      "_comment": "Copied verbatim from state.json#critic_loops. Work-shape evidence: how many Challenger loops each phase required."
+    }
+  },
+
+  "cost": {
+    "_comment": "Container — exempt from confidence. Cost EVIDENCE, not a cost. v1 ships work-shape signals (specialist count, critic-loop counts, phases completed) as the cost evidence. No dollar or token figure is available from in-scope sources.",
+    "currency_estimate": {
+      "value": null,
+      "confidence": "unavailable",
+      "_note": "no billing source in scope for v1",
+      "_comment": "PERMANENTLY null/unavailable in v1. No external API, no billing endpoint, no token counts in the usage snapshot. This field is NEVER populated in v1. The _note travels into emitted accounting.json."
+    },
+    "quota_gauge": {
+      "value": {
+        "sessionUsedPercent": 42,
+        "weeklyUsedPercent": 18,
+        "sonnetUsedPercent": 31
+      },
+      "confidence": "estimated",
+      "_comment": "Non-attributable whole-account quota reading from ~/.novadiem/usage-snapshot.json at close-out. NOT a per-run cost attribution. confidence:estimated when snapshot is present, polledAt is parseable, age <= USAGE_SNAPSHOT_MAX_AGE_SECONDS (600s/10min), AND ok:true. confidence:unavailable when snapshot is absent, stale (age > 600s), polledAt malformed/null, or ok:false. SOURCE PATH: the percent fields are nested under the .claude key in usage-snapshot.json (top-level keys are: polledAt, source, ok, providersRequested, providers, claude). Read as .claude.sessionUsedPercent, .claude.weeklyUsedPercent, .claude.sonnetUsedPercent — NOT .sessionUsedPercent at the top level."
+    }
+  },
+
+  "usage_snapshot": {
+    "_comment": "Container — exempt from confidence. Describes the ~/.novadiem/usage-snapshot.json read at accounting time.",
+    "present": {
+      "value": true,
+      "confidence": "exact",
+      "_comment": "Is there a USABLE snapshot? true when the file is present AND parses as a JSON object; false when absent OR present-but-unusable (unparseable, or valid JSON but not an object). The absent-vs-corrupt distinction is carried in the sibling polled_at/age_seconds/stale _note, not here. confidence: exact — always observable."
+    },
+    "polled_at": {
+      "value": "2026-06-20T14:20:00Z",
+      "confidence": "exact",
+      "_comment": "snapshot#polledAt when present and parseable. {value:null, confidence:unavailable} when snapshot is absent OR polledAt is null/missing/not-parseable-ISO-8601."
+    },
+    "age_seconds": {
+      "value": 600,
+      "confidence": "exact",
+      "_comment": "now - polledAt, computed by jq (NOT date -d or date -j — those diverge between macOS and Linux). jq expression: now - (.polledAt | fromdateiso8601) | floor. {value:null, confidence:unavailable, _note} when polledAt is absent or malformed. When snapshot is absent: {value:null, confidence:unavailable}."
+    },
+    "stale": {
+      "value": false,
+      "confidence": "exact",
+      "_comment": "age_seconds > USAGE_SNAPSHOT_MAX_AGE_SECONDS (600) OR ok:false → stale=true. confidence:exact when a snapshot is present and polledAt is parseable. IMPORTANT: when NO snapshot exists, stale is {value:null, confidence:unavailable} — NOT {value:false, confidence:exact}. You cannot observe staleness of a snapshot that is not there. Same null/unavailable treatment applies to polled_at and age_seconds in the absent case."
+    }
+  },
+
+  "memory": {
+    "_comment": "Container — exempt from confidence. CONDITIONAL: this block is OMITTED ENTIRELY from real-run accounting.json when state.json has NO top-level 'memory' key (FR 9 / EC 8). Its presence here in the template teaches the field shape. In real runs, the 'memory' key's presence and shape in state.json is the single switch: (1) no memory key → omit block; (2) memory == {} empty object → emit block with all six fields {null, unavailable}; (3) memory is a non-object (string/number/bool/array/null) → emit block with all six fields {null, unavailable} + sibling _note; (4) memory is a non-empty object → validate each sub-field independently. The Conductor writes state.json#memory during the run if Rheo/MOT memory was consulted; the script reads it, never writes it.",
+    "retrieval_count": {
+      "value": 3,
+      "confidence": "exact",
+      "_comment": "Number of memory lookups. exact when an integer >= 0; {null, unavailable, _note} when absent or wrong type."
+    },
+    "writes_proposed": {
+      "value": 1,
+      "confidence": "exact"
+    },
+    "writes_accepted": {
+      "value": 1,
+      "confidence": "exact"
+    },
+    "conflicts_flagged": {
+      "value": 0,
+      "confidence": "exact"
+    },
+    "digest_freshness": {
+      "value": "PT2H",
+      "confidence": "exact",
+      "_comment": "ISO-8601 duration or a staleness label. exact when a string; {null, unavailable, _note} when absent or wrong type."
+    },
+    "memory_preflight_passed": {
+      "value": true,
+      "confidence": "exact",
+      "_comment": "boolean. exact when present and boolean; {null, unavailable, _note} when absent or wrong type."
+    }
+  }
+}

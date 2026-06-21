@@ -38,6 +38,10 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model routing" 
 7. **The Spellwright** (Prompt Engineer, **standard**) — approved spec/plan (+ manifest) → `prompts.md`
 8. **The Challenger** (Critic, round 2, **strong**, fresh context required) — review the prompts → `log.md`, findings (The Conductor adjudicates)
 
+DONE — close-out: run `scripts/account-run.sh <RUN_DIR>` per
+`agents/orchestrator.md § Run accounting (close-out)`. (Feature is a plan workflow — no
+commit-message guidance applies here.)
+
 The full agent specs, verdict format, and checkpoint formats live in `agents/orchestrator.md`
 and the per-agent files in `agents/`. This file just names the sequence; it doesn't
 duplicate them.
