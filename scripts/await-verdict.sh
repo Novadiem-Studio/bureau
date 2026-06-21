@@ -48,6 +48,8 @@ esac
 
 echo "Waiting for verdict: $VERDICT_FILE (timeout: ${TIMEOUT}s)"
 
+# Poll resolution is 2s (the sleep step below), so the effective timeout rounds
+# up to the next 2s boundary (e.g. a 5s timeout fires at ~6s).
 elapsed=0
 until [ -f "$VERDICT_FILE" ]; do
   if [ "$elapsed" -ge "$TIMEOUT" ]; then

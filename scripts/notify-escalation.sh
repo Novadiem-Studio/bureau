@@ -36,13 +36,21 @@ REASON="$3"
 [ -n "$RUN_DIR" ] || usage
 [ -n "$REASON" ] || usage
 
-# ── try the desktop notification ─────────────────────────────────────────────
+# ── try the desktop notification (with one retry) ────────────────────────────
+# Bridge § 8 / FR 7: attempt the notification and retry once before falling back
+# to the ESCALATION-NN.md file. A transient daemon hiccup should not force the
+# fallback path.
 
 notify_ok=1
 if command -v osascript >/dev/null 2>&1; then
-  if osascript -e "display notification \"Delegate escalation: checkpoint ${CP} — ${REASON}\" with title \"Agent Framework\"" >/dev/null 2>&1; then
-    notify_ok=0
-  fi
+  attempt=0
+  while [ "$attempt" -lt 2 ]; do
+    if osascript -e "display notification \"Delegate escalation: checkpoint ${CP} — ${REASON}\" with title \"Agent Framework\"" >/dev/null 2>&1; then
+      notify_ok=0
+      break
+    fi
+    attempt=$((attempt + 1))
+  done
 fi
 
 if [ "$notify_ok" -eq 0 ]; then
