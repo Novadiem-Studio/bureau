@@ -328,6 +328,43 @@ When the Conductor re-runs fixtures from `RUN_DIR/regression/` before dispatchin
 
 **Passing signal, not a judgment rule:** A fixture whose `expected:` field is a vague judgment ('it worked', 'looks right') is malformed; the expected signal must be objective enough for a fresh agent to evaluate from the command's output alone.
 
+**Fixture lifecycle: scratch → promote → standing**
+
+Fixtures live in three homes across their lifetime:
+
+- **Scratch (in-build):** `RUN_DIR/regression/` — authored during an execute-plan build, gitignored, pointing at the worktree via the `$ROOT` anchor (see "Repo-relative authoring rule" below). These are never committed. After promotion the scratch copy is superseded-but-retained as run provenance; it is not deleted.
+- **Promote (close-out):** `scripts/promote-fixtures.sh` performs the deterministic mechanical core of promotion — skip `<none>` → refuse non-repo-relative → dedupe by slug + `command:`/`expected:` content → copy verbatim → run suite green — on the set the Conductor selects. The script does NOT repath, does NOT commit, does NOT push. See `scripts/README.md` and `workflows/execute-plan.md § step 7`.
+- **Standing (committed):** `<repo>/.bureau/regression/` — promoted fixtures committed to the integration branch. The runner at `.bureau/regression/run.sh` executes the suite. This is the machine-checkable guarantee on every clone and CI checkout.
+
+The scratch copy is superseded after promotion but left in place (gitignored, no cleanup cost; run archiving preserves it as provenance).
+
+**Repo-relative authoring rule (FR 13 — malformed-fixture condition)**
+
+Every fixture MUST be authored from the scratch dir with the anchor:
+
+```sh
+ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
+```
+
+and reference every in-repo path as `"$ROOT/…"`. Because of this anchor, the identical fixture text resolves to the worktree during the build (the runner exports `ROOT`; run standalone, `git rev-parse` resolves to the worktree) and to the repo after promotion — so **promotion is a verbatim copy with no rewriting**. A fixture that contains a machine-absolute path, a `$RUN_DIR` reference, or any un-anchored absolute path (not rooted at `$ROOT`) is **malformed** and is refused at promotion (never rewritten) — the same standard as a vague `expected:` field. The prototype's 15 fixtures in `.bureau/regression/` already follow this rule.
+
+**Mutation-test requirement (malformed-fixture condition)**
+
+Before a fixture is accepted into `RUN_DIR/regression/` and before it is promoted to `.bureau/regression/`, deleting or inverting the guaranteed code MUST make the fixture's `command:` exit non-zero. This is an **authoring obligation** — NOT something `scripts/promote-fixtures.sh` verifies. The script cannot mutation-test generically (it does not know which source line each fixture guards); it explicitly does not attempt it. A fixture that passes the suite but fails mutation-test is malformed and must be fixed before promotion. The Conductor confirms mutation-test by a note in `log.md` before invoking the script.
+
+**Comment-strip authoring rule (malformed-fixture condition)**
+
+Static-grep fixtures MUST strip comment lines before grepping. Use `grep -v '^[[:space:]]*#'` (or equivalent) before any pattern check. A fixture whose `grep` pattern matches a code comment rather than live code is malformed: the guarantee can be deleted from real code and the fixture still passes. Example (correct):
+
+```sh
+strip() { grep -v '^[[:space:]]*#' "$1"; }
+strip "$SCRIPT" | grep -q 'load-bearing-token'
+```
+
+**BSD grep / literal-`$` rule (malformed-fixture condition)**
+
+Any fixture pattern containing a literal `$` character MUST use `grep -F` (fixed-string). BSD/macOS grep BRE/ERE mishandles a `$` in the middle of a pattern, so `grep 'add-dir "$CTX"'` silently fails to match the literal text while `grep -F` matches it.
+
 No other section in the framework re-documents this format. Workflow and persona files reference this section by name.
 
 ---
