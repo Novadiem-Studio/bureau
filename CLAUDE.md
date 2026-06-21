@@ -108,6 +108,20 @@ Read agent-framework/CLAUDE.md and resume the agent framework.
 Run dir: agent-framework/output/runs/<task>/ — read its state.json and log.md for context.
 ```
 
+## Archiving
+
+When a run is finished — shipped/closed out, nothing left to do — **archive it**: move the
+whole run dir from `output/runs/<slug>/` to `output/archive/<slug>/`.
+
+```bash
+mv output/runs/<slug> output/archive/<slug>
+```
+
+It's a plain local move of the entire dir (every artifact, no state change). `output/` is
+gitignored except `output/studio/`, so archiving touches no git history — any shipped code is
+already committed separately. Refuse if `output/archive/<slug>` already exists. "Archive it"
+means exactly this.
+
 ## Checkpoints
 
 The framework runs mostly autonomously. If you see `[CHECKPOINT] — Human input
