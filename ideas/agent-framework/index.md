@@ -46,7 +46,7 @@ different angles.
 | 2. Reusable learning loop | done — shipped to main 2026-06-20 (failure-signature convention + recurrence rule + lessons-append gate) |
 | 3. Planning decision quality gates | done — shipped to main 2026-06-20 (outcome field + greenfield assumption table + bake-off trigger rule + three Challenger checks + battle-test) |
 | 4. Run accounting and resume signals | done — shipped to main 2026-06-20 (`scripts/account-run.sh` + `templates/accounting.json` schema + SPAWN-EVENT close-out convention in `orchestrator.md` + accounting pointers in all terminal workflows). Hardened against an external (Codex) review. Follow-up: committed regression suite → [idea 11](11-account-run-committed-regression-suite.md). |
-| 5. External notary review (The Notary) | not started |
+| 5. External notary review (The Notary) | done — shipped to main 2026-06-20 (cue-packet template + state pointer + model-policy role + protocol doc + completed persona + orchestrator wiring + battle-test matrix; Promotion to canon: yes) |
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
