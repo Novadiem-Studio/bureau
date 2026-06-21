@@ -179,6 +179,25 @@ the Design-Model Summary.
   than Bundle 04 (≈4 prompts-stage HOLD rounds + three pre-Challenger design holds + a
   workflow-ownership rewrite). If loop count doesn't drop, the gates didn't earn their place.
 
+## Carried from Bundle 03 close-out (planning-decision-quality-gates)
+
+Two follow-ups deferred at Bundle 03's close-out, recorded here — its direct successor bundle —
+so they land with this work rather than being lost when the Bundle 03 run dir is archived:
+
+- **Analyst↔Challenger trigger asymmetry (Bundle 03 W4).** The greenfield-assumption-table
+  trigger is stated asymmetrically across the two surfaces Bundle 03 edited: `agents/analyst.md`
+  defaults to including the table "whenever there is no existing codebase referenced," while
+  `agents/critic.md`'s FR 11 Blocker keys on the **explicit Mode declaration** (Mode-declaration
+  absence). Bundle 03 `spec.md § EC 3` names the Mode declaration as the canonical *primary*
+  trigger ("Architecture proposes technology choices" is corroborating-only). Tighten the
+  `analyst.md` trigger to the same Mode-declaration basis so producer (Analyst) and checker
+  (Challenger) fire on identical conditions. Small additive persona edit; verified still live in
+  shipped canon at archive time (2026-06-21).
+- **4b verification routing (Bundle 03 W3).** A persona re-edit prompted by a Prompt-4b
+  (planning-verification) finding must route back to the owning Phase-1/2/3 prompt, not be
+  silently patched inside the 4b prompt — keep the fix with its owner so the change stays
+  reviewable in place.
+
 ## Relationship to other bundles
 
 - **Bundle 03** (planning decision quality gates) — this is its direct follow-up: same surface
