@@ -66,3 +66,9 @@ failure-signature: 12-bsd-grep-mid-dollar-mismatch
 artifact-patched: output/runs/20260620-principal-delegate/regression/{05,09,12}-*.md (use grep -F for literal-$ patterns)
 status: promoted — BSD grep / literal-$ rule added to docs/conventions.md § Regression fixture file format
 note: macOS/BSD grep BRE/ERE mishandles a `$` in the MIDDLE of a pattern, so `grep 'add-dir "$CTX"'` fails to match the literal text while `grep -F` matches it. Use grep -F (fixed-string) for any fixture/guard pattern containing a literal `$`. Confirmed twice this run.
+
+run: 20260621-fixture-promotion-lifecycle
+failure-signature: 03-fixture-heredoc-col0-awk-truncation
+artifact-patched: docs/conventions.md § Regression fixture file format (nested-heredoc indentation authoring rule)
+status: promoted — nested-heredoc indentation rule added to docs/conventions.md § Regression fixture file format
+note: A `command: |` fixture that embeds a heredoc (`cat <<'EOF'`) whose body sits at COLUMN 0 false-passes when run via `.bureau/regression/run.sh`: the runner's awk captures the command block only while lines stay indented and STOPS at the first column-0 line, truncating the command to the setup + an unterminated heredoc opener — which exits 0 vacuously without invoking the code under test. Rule: indent the ENTIRE command block ≥2 spaces (heredoc bodies + the closing delimiter at exactly 2 spaces) so the 2-space strip lands the heredoc body at col 0 and the delimiter closes correctly. ALWAYS verify a fixture THROUGH run.sh's extraction, never by running the raw `command:` body (the raw body masks the truncation). Caught by the Conductor mid-build; the dogfood fixtures 16–21 were re-authored and re-verified through the extraction path before promotion.
