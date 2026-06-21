@@ -173,6 +173,49 @@ Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
 
 ---
 
+# Fixture promotion (`promote-fixtures.sh`)
+
+Deterministic mechanical core of Bureau regression fixture promotion. Run at execute-plan
+close-out (step 7) after the integration branch merge, before the commit. Full lifecycle:
+`docs/conventions.md § Regression fixture file format`. Wiring: `workflows/execute-plan.md § step 7`.
+
+```bash
+# Dry-run first (report decisions, write nothing, run no suite):
+sh scripts/promote-fixtures.sh \
+  --src "$RUN_DIR/regression" \
+  --repo /path/to/target/repo \
+  --only slug1,slug2
+
+# Then apply:
+sh scripts/promote-fixtures.sh \
+  --src "$RUN_DIR/regression" \
+  --repo /path/to/target/repo \
+  --only slug1,slug2 \
+  --apply
+```
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `--src <dir>` | Required | Scratch fixture dir for this run (`RUN_DIR/regression/`). |
+| `--repo <dir>` | Required | Target repo root whose `.bureau/regression/` is the promoted home. |
+| `--only <slug,...>` | Optional | Comma-separated fixture slugs (without `.md`) to process. Omit to process all `NN-*.md` in `--src`. |
+| `--apply` | Optional | Without it: dry-run (report decisions, write nothing, run no suite). |
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Survivors copied and suite green (or dry-run with no clash). |
+| `2` | Setup error: bad args, `--src` or `--repo` missing or not a dir, no `run.sh` in target repo. |
+| `3` | Dedupe content clash (same slug, different `command:`/`expected:`) — `[CHECKPOINT]`; nothing copied past the clash; Conductor resolves. Report names every already-copied slug. |
+| `4` | Suite non-green after copy; Conductor must NOT commit; investigate failing fixture. |
+
+**Hard constraints (these never change):**
+- DOES NOT mutation-test (mutation-test is an authoring-convention obligation, not a script gate).
+- DOES NOT repath (repo-relative is an authoring-time guarantee per `docs/conventions.md`).
+- NEVER commits (commit is a Conductor action gated on exit 0).
+- NEVER pushes (push is past the production boundary; always the human's call).
+
+---
+
 ## ChatGPT flat export
 
 `sync-chatgpt-export.sh` copies canon visual docs + locked `reference/` assets into
