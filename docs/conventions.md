@@ -365,6 +365,10 @@ strip "$SCRIPT" | grep -q 'load-bearing-token'
 
 Any fixture pattern containing a literal `$` character MUST use `grep -F` (fixed-string). BSD/macOS grep BRE/ERE mishandles a `$` in the middle of a pattern, so `grep 'add-dir "$CTX"'` silently fails to match the literal text while `grep -F` matches it.
 
+**Nested-heredoc indentation rule (malformed-fixture condition)**
+
+A `command: |` fixture that embeds a heredoc (e.g. `cat <<'EOF'` writing test input to a temp file) MUST indent the **entire** command block by at least 2 spaces — including the heredoc body lines AND the closing delimiter, with the closing delimiter at *exactly* 2 spaces. The runner (`run.sh`) extracts a `command: |` block by capturing lines only while they stay indented, stripping 2 leading spaces, and it STOPS at the first column-0 line. A heredoc body authored at column 0 truncates the command there: the runner then executes only the setup plus an unterminated heredoc opener and exits 0 **vacuously** — a false pass that tests nothing. After the 2-space strip, a 2-space-indented heredoc body lands at column 0 and the closing delimiter closes correctly. Always verify such a fixture by running it **through `run.sh`'s extraction path**, never by executing the raw `command:` body — the raw body closes the column-0 heredoc fine and hides the truncation.
+
 No other section in the framework re-documents this format. Workflow and persona files reference this section by name.
 
 ---
