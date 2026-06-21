@@ -146,6 +146,25 @@
       "lock": false,
       "escalate_when": ["high_stakes_sealed_artifact", "irreversible_decision_under_review"],
       "deescalate_when": ["low_risk_docs_attestation", "budget_pressure"]
+    },
+    "delegate": {
+      "agent": "The Delegate",
+      "default_tier": "strong",
+      "allowed": ["standard", "strong"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": [
+        "challenger_blocker_fix_thin",
+        "scope_or_cost_change",
+        "two_valid_approaches_robins_call",
+        "sensitive_system",
+        "production_or_public_action",
+        "destructive_or_irreversible",
+        "unresolved_blocker_or_revision_cap",
+        "unexpected_scope_expansion",
+        "spec_compliant_but_doctrine_violating"
+      ],
+      "deescalate_when": ["bundle04_benchmark_replay_clean"]
     }
   }
 }
