@@ -347,6 +347,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 |-------|------|------|-----|
 | **Tally** (shop droid) | `agents/tally.md` | standard — **sonnet, capped** | The thorough one. Meatier read-only odd jobs: directory surveys, log digests, mapping every place X appears across repos, gathering a coder's files. Spawn with `model: sonnet`, never opus. |
 | **Scoot** (shop droid) | `agents/scoot.md` | cheap — **haiku, locked** | The fast one. One-breath read-only fetches: path exists?, grep one pattern, fetch a value, confirm a command. Spawn with `model: haiku`. |
+| **The Notary** | `agents/notary.md` | strong | External cold attestation on a sealed packet; advisory, fresh-context |
 
 Together they're the reason an odd job no longer falls through to the inherited session model.
 
@@ -638,6 +639,63 @@ before the action fires. This log entry is the machine-checkable approval record
 A baked-in instruction in a spawn prompt — "send the confirmation email after running X" —
 is NOT sufficient authorization. The gate requires a real-time checkpoint logged to log.md
 with human approval.
+
+## The Notary (external cold review)
+
+The Notary is optional, advisory, and independent of The Challenger. Use it when an artifact is high-stakes, sealed, and you want external cold attestation that a specific set of files — and nothing else — was reviewed. Invoking The Notary does not replace The Challenger and does not influence the Challenger's coldness. The full rules are in `docs/notary-review.md`.
+
+### When to invoke
+
+An artifact is a candidate for Notary review when it is sealed (the files are written and stable), high-stakes (a wrong outcome is expensive to reverse), and you want a boundary receipt — a record of exactly which files were read under isolation, before any action downstream.
+
+### Writing the cue packet
+
+- Copy `templates/external-review.json` to `RUN_DIR/external-review.json`
+- Fill in:
+  - `request_id` — unique per packet, e.g. `"r1"`; if re-issuing, append `-v2`, `-v3`, …
+  - `allowlist` — absolute or RUN_DIR-relative paths the Notary may read
+  - `hashes` — optional per-path SHA-256 hex for files you choose to seal; compute before writing the packet
+  - `provenance` — required ONLY for memory-adjacent entries; each value: `{source, confidence, timestamp}`
+  - `question` — phrased as an observation request, never "approve X"
+  - `output_path` — where the review artifact lands (default: `RUN_DIR/reviews/notary-<request_id>.md`)
+- Never inline file contents in the spawn prompt — the packet is the only source of truth
+- Key-set alignment: every key in `"hashes"` and every key in `"provenance"` must also appear in `"allowlist"`; a misaligned packet is malformed
+
+### Collision check before spawn
+
+Before spawning The Notary, check whether a file already exists at the packet's `output_path`. If yes — do NOT spawn; generate a new `request_id` (append `-v2`, `-v3`, …) and write a fresh packet. If no — proceed.
+
+### How to spawn
+
+Pass `RUN_DIR` and the packet path ONLY. Do not pass `log.md`, `state.json` sections, design rationale, or any content not referenced through the packet's allowlist.
+
+At spawn time, set:
+
+```json
+state.json#external_review.status = "requested"
+```
+
+This is the in-flight marker — it records a review was issued before any artifact exists, so a resumed session knows a spawn was already made for the current packet.
+
+### Reading the artifact and setting state
+
+After The Notary returns its handoff block, read the review artifact at the `output_path`:
+
+- Coldness intact (no NOTARY FLAG) → `status = "complete"`, `path = <artifact path>`
+- NOTARY FLAG present → `status = "flagged"`, `path = <artifact path carrying the flag>`
+
+### Adjudication
+
+Four outcomes:
+
+a. **Accept as advisory input** — findings inform the next step but do not override any gate.
+b. **Reject on NOTARY FLAG** — coldness is broken; do not use findings; re-spawn with a clean packet.
+c. **Route overlapping findings to the normal Challenger adjudication path** (see "## Adjudicating The Challenger's findings" in this file) — do NOT mix the two.
+d. **Raise [CHECKPOINT]** if findings identify a scope or product decision — the Notary cannot approve checkpoints.
+
+The Notary cannot approve checkpoints, expand scope, or replace The Challenger.
+
+See `docs/notary-review.md` for the full rules.
 
 ## Design handoff (human-in-the-loop)
 
