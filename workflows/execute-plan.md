@@ -98,6 +98,21 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 
    No new script is required — the Conductor reads each fixture file and runs its `command:` field directly against the worktree or target directory. See `docs/conventions.md § Regression fixture file format` for the fixture format.
 
+   **Standing-suite gate (when `.bureau/regression/` exists):** Before any coder dispatch,
+   if the target repo has a `<target-repo>/.bureau/regression/` directory, the gate also
+   reads that directory's committed suite in addition to `RUN_DIR/regression/`. The standing
+   suite is read by **shelling the one runner** — `sh <target-repo>/.bureau/regression/run.sh`
+   — NOT by a second re-implemented per-fixture loop. The Conductor maps the runner's
+   per-fixture `PASS` / `FAIL` / `SKIP` lines onto the same per-fixture re-run-gate log
+   lines (pass / skip-Warning / fail-Blocker) so both sets feed one merged re-run log. The
+   identical per-file skip rules (`retired:` / `slow:` / `<none>`) apply to both sets; a
+   failure in either set blocks dispatch. (The scratch set in `RUN_DIR/regression/` keeps the
+   existing per-file loop — there is no committed `run.sh` over it; the standing set, which
+   has a committed `run.sh`, is read through that runner. One mechanism per set, no two
+   competing mechanisms over the same dir.) When the target repo IS the agent-framework,
+   `.bureau/regression/` always exists and is read on every dispatch. See
+   `docs/conventions.md § Regression fixture file format` for the fixture format and lifecycle.
+
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
    Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
@@ -237,6 +252,63 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    the run to `RUN_DIR/log.md`, and move the plan doc out of `todo/` (or mark done). The run
    ends at **dev-verified**; taking anything past dev is a separate, human-initiated action
    (see "Production boundary").
+
+   **Fixture promotion (close-out step, after merge).** Promote accepted fixtures from
+   `RUN_DIR/regression/` into the repo's standing suite at `<repo>/.bureau/regression/`.
+   This is an explicit Conductor action — it is NOT silent, NOT automatic on merge.
+
+   1. **Select which fixtures to promote** — review `RUN_DIR/regression/` and select the
+      fixtures worth standing in the committed suite (default: all accepted fixtures whose
+      mutation-test note is in `log.md`). Exclude any that are clearly run-local. This is a
+      judgment call; the script does not make it.
+
+   2. **Confirm mutation-test notes** — each selected fixture must have a mutation-test
+      confirmation note in `log.md` (per `docs/conventions.md § Regression fixture file format`
+      — mutation-test requirement). A selected fixture with no mutation-test note is a
+      **Blocker** — fix or deselect before invoking the script. The script cannot verify
+      mutation-test generically.
+
+   3. **Invoke the promotion script** (dry-run first, then with `--apply`):
+      ```sh
+      # Dry-run first (no writes, no suite run):
+      sh <FRAMEWORK>/scripts/promote-fixtures.sh \
+        --src "$RUN_DIR/regression" \
+        --repo <target-repo> \
+        --only <selected-slugs>
+
+      # Then apply:
+      sh <FRAMEWORK>/scripts/promote-fixtures.sh \
+        --src "$RUN_DIR/regression" \
+        --repo <target-repo> \
+        --only <selected-slugs> \
+        --apply
+      ```
+      The script: skips `<none>` fixtures (logs as non-promoted) → refuses non-repo-relative
+      fixtures (reports `SKIP not-repo-relative`, logs as non-promoted, does NOT rewrite) →
+      dedupes by slug + `command:`/`expected:` content (skip-if-identical / exit 3
+      `[CHECKPOINT]` if different content) → copies survivors verbatim into
+      `<repo>/.bureau/regression/` → runs `.bureau/regression/run.sh` and requires green.
+      No repath step — repo-relative is an authoring-time guarantee (FR 13,
+      `docs/conventions.md § Regression fixture file format`).
+
+   4. **Handle exit code:**
+      - **0** — survivors copied, suite green → proceed to commit.
+      - **3** — content clash (`[CHECKPOINT]`) — decide supersede-vs-retire for the named
+        slug, then re-invoke. The script names every slug already copied before the clash so
+        you can resume or `git checkout -- .bureau/regression/` to discard precisely.
+      - **4** — suite non-green after copy → investigate the failing fixture, do NOT commit.
+      - **2** — setup error (bad args / missing dir / no `run.sh`) → fix setup and re-invoke.
+
+   5. **Commit** — after exit 0, commit the new and updated fixtures on the integration branch
+      only (never a release/prod branch). The script does not commit and never pushes — push
+      is past the production boundary, always the human's call.
+
+   6. **Log** the script's per-fixture report (promoted / skipped / clashed) into `log.md`.
+
+   **Non-framework target repos:** if the target repo is not the agent-framework itself,
+   verify `.bureau/regression/` is not already owned for another purpose before writing to it.
+   If a conflicting `.bureau/` exists, `[CHECKPOINT]` before proceeding (EC 3,
+   `docs/conventions.md § Regression fixture file format`).
 
    **Run accounting last.** As the *final* close-out action — after the merge, package install,
    summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
