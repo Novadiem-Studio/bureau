@@ -82,6 +82,8 @@ reference and scope each agent to the right sub-app, while building within the c
 | The Mage (Frontend) | `agents/frontend.md` | Builds one vetted prompt on the client: types, redux, UI. |
 | The Systemsmith (Backend) | `agents/backend.md` | Builds one vetted prompt on the backend: data, APIs, the contract. |
 | The Mechanic (Sysadmin) | `agents/sysadmin.md` | Runs one vetted ops step: builds, deploys, infra. |
+| **Utility spawns** (on demand) | | |
+| The Notary | `agents/notary.md` | External cold attestation on a sealed artifact packet (advisory; Bundle 05). |
 
 ## Output
 

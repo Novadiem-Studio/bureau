@@ -10,6 +10,7 @@ at-a-glance view.
 
 | Idea | Run | Detail |
 |------|-----|--------|
+| **Upwork MCP Tools** — 6 job-management tools on `mcp.rheo.ca/mol`; MOT at `mcp.rheo.ca/mot`; unified key | `20260620-upwork-mcp-tools` (complete) | `done/upwork-mcp-tools.md` |
 | **Ministry of Flow** — local dashboard across all installs and runs, Bureau cast avatars, checkpoint status | `20260612-society-desk` (complete) | `done/society-desk.md` |
 | **Workflow Registry Visualizer** — Ministry of Flow feature showing each workflow's pipeline structure, agent tiers, checkpoints | `20260613-society-desk-workflow-viz` (complete) | `done/society-desk-workflow-viz.md` |
 | **Provider-neutral model routing** — tier-based routing (standard/strong/frontier) across Claude, Codex, Hermes, OpenRouter | Implemented via foundation-contracts batch; `config/runtimes/` + `model-policy.v2.json` exist | `done/provider-neutral-model-routing-plan.md` |
@@ -35,5 +36,4 @@ at-a-glance view.
 | **Agent framework improvements** | [`agent-framework/index.md`](agent-framework/index.md) | Consolidated execution roadmap for Bureau improvements, including the Rheo memory framework-integration track. |
 | **Novadiem Vault** | [`not-started/novadiem-vault.md`](not-started/novadiem-vault.md) | Self-hosted MCP secrets vault — encrypted SQLite + macOS Keychain master key, replaces iCloud key files, Claude reads/writes via MCP tools. |
 | **YouTube Channel Digest** | [`not-started/youtube-channel-digest.md`](not-started/youtube-channel-digest.md) | Grouped YouTube channel monitoring (RSS) → per-group `claude -p` analysis → 2×/day Telegram digest, on the rheo.ca box. First launch: the trading group (Chart Hackers + MooninPapa + 100x Club) → Blofin trading-setup extraction (Chart Hackers is the proven prompt). Future **M.O.I. adapter** (files M.O.T. tickets via the spine's chosen on-box interface) — ties into `20260617-moi-spine-reconcile`. Blocker: datacenter-IP transcript fetch needs a home relay. Spec: `rheo.ca/docs/youtube-channel-digest.md`. |
-| **Upwork MCP Tools** | [`not-started/upwork-mcp-tools.md`](not-started/upwork-mcp-tools.md) | Expand `api.rheo.ca/mcp` with 6 job-management tools (list, get, update status, dismiss, draft proposal, update draft) so `claude -p rheo` Telegram bot can work the job pipeline conversationally. Wire up `mcp.rheo.ca` vhost. |
 | **Other** | [`not-started/`](not-started/) | All other not-started ideas. One numbered file per idea. Promote one at a time; run `feature` or the indicated workflow. |

@@ -172,8 +172,9 @@ visible in the artifact. Otherwise memory becomes a new form of hidden assumptio
 
 ## Cold Review Stays Cold
 
-The roadmap also includes an outside cold-review sidecar: an optional advisory reviewer that
-can read a bounded set of artifacts and write a review back into the run.
+The roadmap also includes **The Notary** (Bundle 05): an optional external cold reviewer that
+can read a bounded sealed packet of artifacts, attest what it read, and write a review back into
+the run.
 
 Memory is denied by default.
 

@@ -111,7 +111,7 @@ These rules connect the remote memory track to the local Bureau roadmap:
   confidence, timestamp, and stale-sensitivity.
 - **Bundle 04:** run accounting should track memory retrieval count, writes proposed/accepted,
   conflicts flagged, digest freshness, and memory preflight status when applicable.
-- **Bundle 05:** outside cold review gets no memory by default. Any memory excerpt must be
+- **Bundle 05:** external notary review (The Notary) gets no memory by default. Any memory excerpt must be
   explicitly allowlisted with provenance.
 - **Bundle 06:** local runtime is allowed to experiment with digesting and candidate extraction
   only after remote memory accounting proves the workload and quality bar.

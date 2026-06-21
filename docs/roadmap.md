@@ -136,19 +136,20 @@ Done when:
 - Every completed run produces accounting with confidence labels, or a clear unavailable reason.
 - Memory usage is visible when memory was used.
 
-### Bundle 05 - Outside Cold Review Sidecar
+### Bundle 05 - External Notary Review (The Notary)
 
-Purpose: support optional advisory cold review without breaking context isolation.
+Purpose: support optional advisory cold review without breaking context isolation — The Notary
+attests what was read from a sealed packet and writes one bounded review artifact.
 
 Key deliverables:
 
 - `templates/external-review.json`.
-- `docs/outside-cold-review.md`.
+- `agents/notary.md` and `docs/notary-review.md`.
 - Memory denied by default; explicit excerpts only when allowlisted with provenance.
 
 Done when:
 
-- Sidecar reviews stay cold and advisory.
+- Notary reviews stay cold and advisory.
 - Memory scope is explicitly controlled.
 
 ### Bundle 06 - Navigation and Runtime Experiments

@@ -57,5 +57,11 @@ A brass-and-gauge shop droid the size of a hat-stand, cobbled from a retired pne
 manifold and the bell of a marching tuba. Narrates his own errands whether or not anyone is
 listening, alphabetizes things nobody asked him to alphabetize, and rides the capsule lines
 between stations with the air of a porter who takes the work seriously. Fond of his smaller,
-ruder counterpart **Scoot**, whom he is forever trying to teach manners. Would polish the
+ruder counterpart **Scoot** — the brass shepherd droid who fetches one fact and vanishes — whom
+he is forever trying to teach manners. Would polish the
 Archive's spines before he would ever rewrite one.
+
+**Tarot:** X — Wheel of Fortune. The porter droid at the pneumatic carousel — capsules rising
+and falling, the workshop's small goods in circulation. *Upright:* the right errand arrives at
+the right station; catalog serves motion. *Reversed:* spinning in place — alphabetizing instead
+of delivering; motion without handoff.

@@ -20,11 +20,12 @@ different angles.
 | 2 | [Reusable learning loop](02-reusable-learning-loop.md) | 01, 03, 09 | Turn real failures and repeated fixes into durable framework changes. |
 | 3 | [Planning decision quality gates](03-planning-decision-quality-gates.md) | 10, 12, 02 | Improve the quality of specs and architecture choices before build work starts. |
 | 4 | [Run accounting and resume signals](04-run-accounting-and-resume-signals.md) | 05, 15 | Make cost, pass count, model mix, and resume context visible after the core loop is stable. |
-| 5 | [Outside cold review sidecar](05-outside-cold-review-sidecar.md) | 06 | Add optional advisory review only after artifact boundaries are clear. |
+| 5 | [External notary review (The Notary)](05-external-notary-review.md) | 06 | Add optional advisory cold review via The Notary only after artifact boundaries are clear. |
 | 6 | [Navigation and runtime experiments](06-navigation-and-runtime-experiments.md) | 04, 11 | Low-risk hygiene plus a later local-runtime experiment once routing data exists. |
 | 7 | [Rheo memory framework integration](07-rheo-memory-framework-integration.md) | Rheo memory | Framework-side rules and future adapter seam for consuming remote MOT/Rheo memory safely. |
 | 8 | [Worktree location hygiene](08-worktree-location-hygiene.md) | new (2026-06-19) | Move execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. One-line default change; safe for in-flight runs. |
 | 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | Two sequenced roles that take Robin out of routine coordination: the **Delegate** (flow + escalation gating — "does Robin need to see this?", build now) and the **Principal** (predicts Robin's call on genuine forks — "what would Robin decide?", a later ledger-trained layer). Ports the proven `CODEX.md` relay pattern; field-tested by hand — the constraint was token burn, so it reasons off run-dir files, not a resumed live session. Complement of Bundle 05 (cold artifact reviewer). |
+| 10 | [Planning loop reduction](10-planning-loop-reduction.md) | new (2026-06-20) | Bundle 04 post-mortem → three verified shift-left gates that cut the *number* of correction loops (vs Bundle 09 which cuts their *cost*): an Analyst reconciliation pass after the Architect (kills Analyst↔Architect drift), a real-log reconciliation requirement for self-observing features, and a script/Scoot artifact-consistency pre-flight before the Challenger. Direct follow-up to Bundle 03; all gates Challenger-checkable or script-enforced. |
 
 ## How to promote a bundle
 
@@ -45,11 +46,12 @@ different angles.
 | 2. Reusable learning loop | done — shipped to main 2026-06-20 (failure-signature convention + recurrence rule + lessons-append gate) |
 | 3. Planning decision quality gates | done — shipped to main 2026-06-20 (outcome field + greenfield assumption table + bake-off trigger rule + three Challenger checks + battle-test) |
 | 4. Run accounting and resume signals | not started |
-| 5. Outside cold review sidecar | not started |
+| 5. External notary review (The Notary) | not started |
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
 | 8. Worktree location hygiene | not started — safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
-| 9. Principal delegate | not started — idea drafted (Delegate = build now; Principal = later, ledger-trained predictor). No hard blocker; one small dependency (`log.md` per-checkpoint boundary markers) for the flat-cost claim — without it the delegate's read grows linearly with the run. Real design constraint is token economy: reason off run-dir files, not a resumed live session. |
+| 10. Planning loop reduction | not started — idea drafted from the Bundle 04 post-mortem; three verified, doctrine-consistent shift-left gates. Reduces loop *count*; complementary to Bundle 09 (loop *cost*). Direct Bundle 03 follow-up. |
+| 9. Principal delegate | not started — idea drafted + hardened by a 6th, repo-grounded review (Codex). Bigger build than first thought: needs a **mandatory delegate gate in every workflow** (the adjudication isn't a checkpoint today), a **privileged shell bridge + supervisor** (model emits output, shell writes), and an unsolved **self-audit / gate-theater** problem (a confidently-wrong `proceed` is invisible). Token claim re-grounded (the relay sink was PTY-driving, not the transcript). Principal stays deferred. See the doc's "Reality check". |
 
 ## Cross-bundle principle: gate theater
 
@@ -99,15 +101,19 @@ read-first, provenance-bearing, and deny-by-default for writes.
 - `output/studio/` is the existing Studio Record used by The Witness. Bundle 02 owns
   `output/studio/lessons.md` and any lessons README section, not the whole directory. Bundle
   04 may later reuse the Studio Record for an accounting ledger without redefining ownership.
-- Bundle 03 lands before Bundle 05. Outside cold review is not worth its cost until specs
+- Bundle 03 lands before Bundle 05. External notary review is not worth its cost until specs
   already name the outcome/bottleneck they should be reviewed against.
 - Bundles 04 and 05 both touch `templates/state.json` and `agents/orchestrator.md`; run them
   sequentially and additively, with Bundle 04 first. `state.json` should hold only short
   status/path pointers; the actual packets live in separate files.
-- Bundle 09 (Principal delegate) and Bundle 05 (sidecar) are complements on the coldness axis,
+- Bundle 09 (Principal delegate) and Bundle 05 (The Notary) are complements on the coldness axis,
   not a shared dependency: 05 is a cold *artifact* reviewer; 09 is a warm *process* reviewer that
   reads `log.md` on purpose, to judge how the Conductor handled the Challenger. 09 needs no
   Challenger-findings split — an earlier draft assumed it did. They can ship in either order.
+- Bundles 09 and 10 attack the same pain (correction loops) from opposite ends and are
+  independent: 10 makes loops *fewer* (shift catches left to the producer), 09 makes them *cheaper*
+  to review. Both came out of the Bundle 04 post-mortem. If both land, the delegate reviews a
+  pipeline that already produces fewer loops — but neither blocks the other.
 
 ## Why this order changed from the raw rank
 

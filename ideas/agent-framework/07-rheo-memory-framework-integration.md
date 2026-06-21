@@ -43,7 +43,7 @@ the Bureau roadmap as Rheo memory becomes real.
 | Memory cannot promote framework canon by itself | [02-reusable-learning-loop.md](02-reusable-learning-loop.md) |
 | Memory-used assumptions need source/confidence/timestamp/staleness | [03-planning-decision-quality-gates.md](03-planning-decision-quality-gates.md) |
 | Accounting should include memory signals when memory is used | [04-run-accounting-and-resume-signals.md](04-run-accounting-and-resume-signals.md) |
-| Outside cold review denies memory by default | [05-outside-cold-review-sidecar.md](05-outside-cold-review-sidecar.md) |
+| External notary review (The Notary) denies memory by default | [05-external-notary-review.md](05-external-notary-review.md) |
 | Digesting/candidate extraction may be future local-runtime candidates | [06-navigation-and-runtime-experiments.md](06-navigation-and-runtime-experiments.md) |
 | Memory regression/evaluation harness | [rheo-persistent-memory.md](../in-progress/rheo-persistent-memory.md) |
 
@@ -93,11 +93,11 @@ These are not done until the named framework artifact exists and passes review.
 - [ ] Decide whether memory receipts consumed by a local framework run live in `RUN_DIR/`,
   `output/studio/`, or both.
 
-### Bundle 05 / outside cold review
+### Bundle 05 / external notary review (The Notary)
 
-- [ ] Encode memory-deny-by-default in the outside-review allowlist contract.
-- [ ] Any memory excerpt supplied to a sidecar must be explicit, allowlisted, and provenance-bearing.
-- [ ] The sidecar cannot browse remote memory to become "more helpful."
+- [ ] Encode memory-deny-by-default in the external-review allowlist contract.
+- [ ] Any memory excerpt supplied to The Notary must be explicit, allowlisted, and provenance-bearing.
+- [ ] The Notary cannot browse remote memory to become "more helpful."
 
 ### Bundle 06 / runtime experiments
 
