@@ -484,7 +484,7 @@ Same Sacred Instrument palette and TVA × Art Deco × World's Fair Futurism.
 | Deliverable | Use |
 |---|---|
 | **Solo portrait** | Lock species before compositing into ENGINE |
-| **Tarot deck** | Thirteen solo cards — tarot never on poster-family pieces |
+| **Tarot deck** | Fifteen solo cards assigned (target 22) — tarot never on poster-family pieces |
 | **Annotated roster** | Optional member blurbs on workshop ENGINE (`VISUAL-CANON.md` § Member blurbs) |
 | **Build Party sheet** | `execute-plan` workflow — companion to THE CURRENT, not yet a trilogy member |
 

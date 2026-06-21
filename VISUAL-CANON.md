@@ -43,7 +43,7 @@ These remain valid for **character locks** and reference. Combining them in one 
 | **THE ENGINE — monument** *(variation)* | Vertical civic machine — specialists as forces in tiers — **locked ref** `the-engine-creation-v1.png` | **No** |
 | **Annotated roster** | Workshop scene + per-member blurbs (see *Member blurbs*) — optional copy layer on workshop ENGINE | **No** |
 | **Solo portrait** | One member, waist-up or full | Optional — use tarot table below |
-| **Tarot deck** | Thirteen solo cards (Visionary + cast + Witness + Coupler); Tally/Scoot not in deck | **Yes** — one card per tarot member |
+| **Tarot deck** | Fifteen solo cards assigned (target 22); shop droids included | **Yes** — one card per assigned member |
 
 **Hub / Current rule:** Specialists as **icons, sigils, or small abstract busts** only — no full species art.
 
@@ -401,10 +401,14 @@ Do **not** put roman numerals on the ensemble grid or process poster.
 | 0 | The Fool | The Visionary |
 | I | The Magician | The Conductor |
 | II | The High Priestess | Analizer 2000 |
+| III | The Empress | The Witness |
 | IV | The Emperor | The Systemsmith |
 | V | The Hierophant | The Cleric |
+| VI | The Lovers | The Coupler |
 | VII | The Chariot | The Spellwright |
+| VIII | Strength | Scoot |
 | IX | The Hermit | The Mechanic |
+| X | Wheel of Fortune | Tally |
 | XIV | Temperance | The Counselor |
 | XV | The Devil | The Challenger |
 | XVII | The Star | The Architect |
@@ -821,6 +825,38 @@ ranger. Wingless. Different face/hair from reference.
 **Reference vibe:** The quiet fixer in the corner of the engine room — station engineer, not creature.
 
 **Tarot (solo):** IX — The Hermit
+
+---
+
+## SHOP DROIDS (utility spawns — tarot assigned)
+
+Workshop background characters; may appear in ENGINE workshop scenes at the pneumatic-tube bay.
+**Solo tarot:** VIII (Scoot), X (Tally).
+
+### SCOOT — VIII · Strength
+
+**Species lock:** Knee-high **brass shepherd dog** — working-collie silhouette, clearly mechanical
+(brass plate ribs, gauge eyes, visible seams, capsule-tube runners on sprung paws). One wide lens
+for an eye; tail a coiled pneumatic hose. **Not** a real animal, **not** cute plush — fast shop
+droid that fetches one fact and leaves.
+
+**Vibe:** Fetch, drop, gone. Whir or clipped beep — no full bark.
+
+**Tarot (solo):** VIII — Strength. Shepherd at the tube mouth; one fact on a short leash — gentle
+control, no bite.
+
+**Drift watch:** Real border collie · lens-on-wheels robot with no dog shape · oversized wolf ·
+cartoon puppy · lion taming (wrong card — that's the metaphor, not a second lion).
+
+### TALLY — X · Wheel of Fortune
+
+**Species lock:** Brass-and-gauge shop droid, hat-stand scale — pneumatic-tube manifold, tuba-bell
+chest, porter fussiness. Larger counterpart to Scoot; forever trying to civilize the shepherd.
+
+**Tarot (solo):** X — Wheel of Fortune. Porter at the capsule carousel — brass wheel, rising and
+falling tube-capsules, catalog labels on the rim.
+
+**Drift watch:** Casino wheel · literal fortune teller · human porter without brass seams.
 
 ---
 
