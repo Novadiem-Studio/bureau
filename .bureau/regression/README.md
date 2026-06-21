@@ -31,13 +31,14 @@ the `mkdir` lock + dead-PID reclaim (EC3), skip-existing-verdict (FR38), await-v
 guard (EC1/EC8), no-preference-modeling (FR44), and launcher robustness — plus the model-policy
 role and verdict-schema contracts.
 
-## Status (prototype)
+## Lifecycle
 
-This directory is a **prototype** of the "fixtures graduate from run-artifact to committed
-canon" pattern. The full lifecycle — auto-promote on execute-plan close-out, and have a future
-run's re-run gate read this dir as its baseline — is not yet wired into `workflows/execute-plan.md`
-or `docs/conventions.md`. That formalization is a pending bundle. For now, run it by hand or from
-a pre-push / CI hook.
+The scratch → promote → standing lifecycle is now canonical. During an execute-plan build,
+fixtures are authored in `RUN_DIR/regression/` (gitignored). At close-out, the Conductor
+promotes selected fixtures here via `scripts/promote-fixtures.sh`, commits them on the
+integration branch, and verifies the suite is green. On the next run, `workflows/execute-plan.md`
+step 6 shells this `run.sh` as part of its prior-fixture re-run gate.
 
-Provenance: copied from `output/runs/20260620-principal-delegate/regression/`, repointed to
-repo-relative paths.
+Full lifecycle definition: `docs/conventions.md § Regression fixture file format`.
+Promotion script contract: `scripts/README.md § promote-fixtures.sh`.
+Wiring into execute-plan close-out: `workflows/execute-plan.md § step 7`.
