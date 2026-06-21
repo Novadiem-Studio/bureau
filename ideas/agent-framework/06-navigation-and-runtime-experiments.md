@@ -71,3 +71,17 @@ quality/cost data to prove local routing will not degrade recall or pollute memo
 - Local runtime can save money while quietly reducing quality. Default to fallback and opt-in.
 - Maintaining a capability profile is ongoing work; do not add it unless accounting shows a
   real utility workload.
+
+## Carried from Bundle 1a close-out (validation-safety-damage-preventers)
+
+A visualizer-navigability follow-up deferred at Bundle 1a's close-out, recorded here so it
+survives archiving the run dir:
+
+- **society-desk: recognize `Preflight` as a control keyword.** Bundle 1a added preflight steps
+  to `execute-plan` (step 5c) and `operational-build` (step 2b). The society-desk workflow parser
+  (`lib/workflow-parser.ts`) has a closed control-keyword allowlist (bracket marker / **Gate** /
+  **Worktree** only), so preflight steps had to lead with **The Conductor** to render as a
+  resolving node instead of a dark, agent-less one. Adding `Preflight` to the parser's
+  control-keyword allowlist would let preflight steps be true control nodes. This is a change in
+  the **separate society-desk repo**, made via its governed workflow-improvements change path —
+  out of framework scope, low value, cosmetic. (Bundle 1a carried_item #8.)
