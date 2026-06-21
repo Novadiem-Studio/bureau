@@ -1,0 +1,11 @@
+{
+  "_comment": "templates/external-review.json — the Notary cue packet. The Conductor copies this to RUN_DIR/external-review.json and fills it per request. Plain JSON (jq-parseable); the _comment keys are teaching notes and are NOT reproduced in a real emitted packet. The allowlist is the ONLY gate: a file absent from the allowlist is denied, no opt-out needed. See docs/notary-review.md.",
+
+  "request_id": "r1",
+  "allowlist": [],
+  "denylist": [],
+  "hashes": {},
+  "provenance": {},
+  "question": "",
+  "output_path": "RUN_DIR/reviews/notary-r1.md"
+}

@@ -591,8 +591,7 @@ one bounded review artifact · declare denied inputs explicitly · hand back wit
 
 **Summons:** on demand when the Conductor or Delegate requests external cold attestation on a
 high-stakes artifact. Spawn via the external-review cue (`RUN_DIR/external-review.json`).
-Provider-neutral — any runtime fed only the packet. Writes `RUN_DIR/reviews/notary-review.md`
-(or the path named in the cue).
+Provider-neutral — any runtime fed only the packet. Writes `RUN_DIR/reviews/notary-<request_id>.md` (the path named in the cue).
 
 *Upright:* attestation keeps trust honest. *Reversed:* stamp without reading the packet.
 

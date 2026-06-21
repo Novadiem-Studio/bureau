@@ -137,6 +137,15 @@
       "lock": false,
       "escalate_when": ["security_critical_seam", "repro_failure_needs_deep_trace"],
       "deescalate_when": ["routine_ui_api_smoke", "budget_pressure"]
+    },
+    "notary": {
+      "agent": "The Notary",
+      "default_tier": "strong",
+      "allowed": ["strong", "frontier", "escalated"],
+      "fresh_context_required": true,
+      "lock": false,
+      "escalate_when": ["high_stakes_sealed_artifact", "irreversible_decision_under_review"],
+      "deescalate_when": ["low_risk_docs_attestation", "budget_pressure"]
     }
   }
 }

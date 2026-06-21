@@ -26,5 +26,6 @@
     "last_sync_at": null
   },
   "last_updated": null,
-  "accounting": { "status": "pending", "path": null }
+  "accounting": { "status": "pending", "path": null },
+  "external_review": { "status": "pending", "path": null }
 }
