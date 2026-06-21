@@ -207,7 +207,13 @@ done < "$_sorted_tmp"
 # ── 5. Run the suite (only under --apply, after all survivors are copied) ────
 
 if [ "$APPLY" -eq 1 ]; then
-  if [ -s "$_copied_tmp" ]; then
+  # Run the suite whenever the destination already has at least one fixture,
+  # regardless of whether THIS invocation copied anything (idempotent rerun).
+  _dest_has_fixtures=0
+  for _df in "$DEST"/[0-9][0-9]-*.md; do
+    [ -f "$_df" ] && _dest_has_fixtures=1 && break
+  done
+  if [ "$_dest_has_fixtures" -eq 1 ]; then
     printf 'promote-fixtures: running suite: sh %s\n' "$RUNNER"
     if sh "$RUNNER"; then
       printf 'promote-fixtures: suite green — exit 0\n'
@@ -216,7 +222,7 @@ if [ "$APPLY" -eq 1 ]; then
       exit 4
     fi
   else
-    printf 'promote-fixtures: no new fixtures copied; skipping suite run\n'
+    printf 'promote-fixtures: no fixtures in destination; skipping suite run\n'
   fi
 fi
 
