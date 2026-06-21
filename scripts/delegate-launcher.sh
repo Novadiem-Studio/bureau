@@ -71,10 +71,12 @@ while [ "$#" -gt 0 ]; do
       ;;
     --max-usd)
       shift
-      if [ -z "$1" ]; then
-        echo "delegate-launcher: --max-usd requires a value" >&2
-        exit 1
-      fi
+      case "$1" in
+        '' | *[!0-9.]* | *.*.*)
+          echo "delegate-launcher: --max-usd requires a non-negative number (e.g. 0.50), got: '$1'" >&2
+          exit 1
+          ;;
+      esac
       max_usd="$1"
       shift
       ;;
@@ -114,14 +116,13 @@ fi
 # ── set and export environment ───────────────────────────────────────────────
 
 export RUN_DIR="$run_dir_arg"
-# ROOT defaults to the canonical install path. Override by pre-setting ROOT
-# in the environment (e.g. for smoke tests against a worktree) — the default
-# is authoritative for all production invocations.
-export ROOT="${ROOT:-/Users/robin/Code/novadiem/agent-framework}"
+# ROOT: derived from this script's own location (scripts/ -> parent = framework root)
+# so the launcher always drives the same checkout it lives in. Override by pre-setting
+# ROOT in the environment (e.g. for smoke tests against a specific worktree).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export ROOT="${ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 export REVISION_CAP="$revision_cap"
 export DELEGATE_MAX_USD="$max_usd"
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── create checkpoints dir ───────────────────────────────────────────────────
 
@@ -131,6 +132,10 @@ mkdir -p "$RUN_DIR/checkpoints"
 
 "$ROOT/scripts/watcher.sh" "$RUN_DIR" &
 WATCHER_PID=$!
+# W3: arm teardown immediately so no signal between here and the later `trap` line
+# can orphan the watcher. The teardown function is defined below; the trap references
+# it by name, which is resolved at signal-delivery time (POSIX sh defers lookup).
+trap teardown TERM INT
 echo "delegate-launcher: watcher started (pid $WATCHER_PID)" >&2
 
 # ── write the Conductor brief to disk (Notary F8) ────────────────────────────
@@ -209,14 +214,13 @@ python3 -c "import json; json.load(open('$RUN_DIR/delegate-session.json'))" \
   && echo "delegate-launcher: delegate-session.json written and valid" >&2 \
   || { echo "delegate-launcher: ERROR — delegate-session.json failed JSON validation" >&2; exit 1; }
 
-# ── teardown trap ────────────────────────────────────────────────────────────
-# On SIGTERM or SIGINT: kill the watcher (and the Conductor if it was started
-# as a background process), generate the run-end summary if the ledger exists,
-# then exit cleanly.
+# ── teardown helpers ─────────────────────────────────────────────────────────
+# do_teardown: shared logic called from both the signal trap and the inline
+# post-wait path. Never calls exit itself — callers decide the exit path.
+# W5: factored out so summary-gen runs at most once regardless of which path
+# reaches it first.
 
-teardown() {
-  echo "delegate-launcher: teardown signal received" >&2
-
+do_teardown() {
   # Kill the watcher.
   if [ -n "$WATCHER_PID" ] && kill -0 "$WATCHER_PID" 2>/dev/null; then
     echo "delegate-launcher: killing watcher (pid $WATCHER_PID)" >&2
@@ -224,7 +228,8 @@ teardown() {
   fi
 
   # Kill the Conductor if it was started as a background process (non-zero PID).
-  if [ "$CONDUCTOR_PID" -ne 0 ] && kill -0 "$CONDUCTOR_PID" 2>/dev/null; then
+  # W4: guard both non-empty and non-zero before the arithmetic test.
+  if [ -n "$CONDUCTOR_PID" ] && [ "$CONDUCTOR_PID" -ne 0 ] && kill -0 "$CONDUCTOR_PID" 2>/dev/null; then
     echo "delegate-launcher: killing conductor (pid $CONDUCTOR_PID)" >&2
     kill "$CONDUCTOR_PID" 2>/dev/null || true
   fi
@@ -241,11 +246,20 @@ teardown() {
   else
     echo "Teardown complete. Summary: $RUN_DIR/delegate-summary.md"
   fi
+}
 
+# teardown: signal trap handler. Disarms itself first (W5) so a second signal
+# during teardown cannot re-enter and run summary-gen twice.
+teardown() {
+  trap - TERM INT
+  echo "delegate-launcher: teardown signal received" >&2
+  do_teardown
   exit 0
 }
 
-trap teardown TERM INT
+# (The early trap TERM INT referencing teardown by name was armed above, right
+# after WATCHER_PID=$! — that trap is still in effect here and points at this
+# function. No second `trap teardown TERM INT` needed.)
 
 # ── wait for watcher ─────────────────────────────────────────────────────────
 # Block here until the watcher exits or until SIGTERM/SIGINT fires the teardown
@@ -259,13 +273,9 @@ WATCHER_EXIT=$?
 echo "delegate-launcher: watcher exited (status $WATCHER_EXIT)" >&2
 
 # Run teardown inline (the trap won't fire if the watcher exited naturally).
-if [ -f "$RUN_DIR/delegate-decisions.md" ]; then
-  sh "$ROOT/scripts/summary-gen.sh" \
-    "$RUN_DIR/delegate-decisions.md" \
-    "$RUN_DIR/delegate-summary.md" || true
-  echo "Teardown complete. Summary: $RUN_DIR/delegate-summary.md"
-else
-  echo "Teardown complete. Summary: $RUN_DIR/delegate-summary.md"
-fi
+# W5: disarm the trap first so a SIGTERM arriving here cannot also invoke
+# teardown() and run summary-gen a second time.
+trap - TERM INT
+do_teardown
 
 exit 0
