@@ -28,6 +28,23 @@ composition (THE CURRENT · THE HUB · THE ENGINE · proposed THE FRONTIER) live
 `VISUAL-SYSTEM.md`; character appearance locks live in `VISUAL-CANON.md`. When lore and mechanics disagree, the
 mechanics win and this file gets fixed.
 
+## Influences
+
+The Bureau's fiction and look are deliberate pastiche — not one dystopia, but a stack
+that keeps the machine **hopeful, absurd, and procedurally honest**:
+
+| Source | What we borrow |
+|---|---|
+| **TVA** (*Loki*) · Art Deco · 1939 World's Fair | Monumental civic optimism — brass, enamel, infrastructure as cathedral. The workshop *could* build a better future. Visual canon: `VISUAL-CANON.md` § Workshop environment. |
+| ***Brazil*** (Gilliam) | Fat pneumatic ducts, forms that outrank people, comedy inside dread, tubes that whoosh. Scoot and Tally's capsule lines; the ducting that connects every station. |
+| **Orwell** | Ministry names and faceless domains — inverted: the org chart is solemn fiction, but the queues and ledgers *work*. See `ideas/ministry-system.md`. |
+| **Kafka** | Absurd procedure, the trial that outlasts understanding, clerks who outlive their purpose. Gate theater, recurrence rules, checkpoints whose reason you forgot — the machine continues until the paperwork is right. |
+| **The Adjustment Bureau** | Hidden routing at decision points — fate as triage, not magic. The Conductor's workflow rail, `[CHECKPOINT]`, and (when built) the Delegate layer that nudges paths without replacing the Visionary. |
+
+The tone that survives the blend: *it can look like oppression, but the imp with the red
+stamp is on your side.* Sacred civic optimism inside a Gilliam duct-maze, run on charts
+that mean nothing personally and procedure that means everything mechanically.
+
 ## The cast, mapped to the machinery
 
 | Bureau name | Title | Role | File |
