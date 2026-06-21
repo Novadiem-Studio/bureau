@@ -45,7 +45,7 @@ different angles.
 | 1b. Validation and safety - process gates | done — shipped to main 2026-06-18 (regression-fixture convention + battle-test promotion gate) |
 | 2. Reusable learning loop | done — shipped to main 2026-06-20 (failure-signature convention + recurrence rule + lessons-append gate) |
 | 3. Planning decision quality gates | done — shipped to main 2026-06-20 (outcome field + greenfield assumption table + bake-off trigger rule + three Challenger checks + battle-test) |
-| 4. Run accounting and resume signals | not started |
+| 4. Run accounting and resume signals | done — shipped to main 2026-06-20 (`scripts/account-run.sh` + `templates/accounting.json` schema + SPAWN-EVENT close-out convention in `orchestrator.md` + accounting pointers in all terminal workflows). Hardened against an external (Codex) review. Follow-up: committed regression suite → [idea 11](11-account-run-committed-regression-suite.md). |
 | 5. External notary review (The Notary) | not started |
 | 6. Navigation and runtime experiments | not started |
 | 7. Rheo memory framework integration | not started |
