@@ -88,8 +88,14 @@ borderline = [r for r in records if field(r, "borderline").lower() == "yes"]
 
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+def esc(s):
+    # Escape `|` so a rationale (or path) containing a pipe can't break Markdown
+    # table/list rendering. Same escaping the All-decisions table applies via
+    # truncate(); the list sections route through here too.
+    return s.replace("|", "\\|")
+
 def truncate(s, n=80):
-    s = s.replace("|", "\\|")
+    s = esc(s)
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 out = []
@@ -107,10 +113,10 @@ if not escalate:
 else:
     for r in escalate:
         out.append("### %s — %s" % (field(r, "label"), field(r, "timestamp")))
-        out.append("- artifact: %s" % field(r, "artifact", "unknown"))
-        out.append("- rationale: %s" % field(r, "rationale"))
+        out.append("- artifact: %s" % esc(field(r, "artifact", "unknown")))
+        out.append("- rationale: %s" % esc(field(r, "rationale")))
         rc = field(r, "robin's call")
-        out.append("- Robin's call: %s" % (rc if rc else "(unresolved)"))
+        out.append("- Robin's call: %s" % (esc(rc) if rc else "(unresolved)"))
         out.append("")
     out.pop()  # drop the trailing blank line
 out.append("")
@@ -125,7 +131,7 @@ else:
         out.append("- %s (%s): %s"
                    % (field(r, "label"),
                       field(r, "decision"),
-                      field(r, "rationale")))
+                      esc(field(r, "rationale"))))
 out.append("")
 
 # ── All decisions ────────────────────────────────────────────────────────────

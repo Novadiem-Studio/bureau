@@ -63,6 +63,13 @@ fi
 
 DELEGATE_MAX_USD="${DELEGATE_MAX_USD:-0.50}"
 REVISION_CAP="${REVISION_CAP:-2}"
+# Per-checkpoint spawn-failure ceiling (money-safety). --max-budget-usd caps the
+# spend of ONE spawn but NOT the number of spawns. If the Delegate persistently
+# emits invalid/empty JSON, verdict-write.sh fails closed (no verdict) and the
+# poll loop would otherwise re-spawn `claude` every poll forever — unbounded
+# spend. After this many consecutive failed spawns for one NN, give up on that
+# request: escalate, mark it failed, and stop re-spawning.
+MAX_SPAWN_FAILURES="${MAX_SPAWN_FAILURES:-3}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CHECKPOINTS_DIR="$RUN_DIR/checkpoints"
@@ -161,6 +168,8 @@ process_request() {
 
   verdict_file="$CHECKPOINTS_DIR/$NN-verdict.md"
   lock_dir="$CHECKPOINTS_DIR/$NN.lock"
+  failcount_file="$CHECKPOINTS_DIR/$NN.failcount"
+  failed_marker="$CHECKPOINTS_DIR/$NN.failed"
 
   # Skip a request that already has a verdict (FR 38). The 'verdict.md' token
   # here is also the static guard fixture 05 greps for.
@@ -168,15 +177,40 @@ process_request() {
     return 0
   fi
 
+  # Skip a request that has been given up on (W1 poison marker): the Delegate
+  # failed to produce a valid verdict MAX_SPAWN_FAILURES times in a row, so we
+  # stopped re-spawning to bound spend. Attended intervention is needed.
+  if [ -f "$failed_marker" ]; then
+    return 0
+  fi
+
   # If a lock already exists, honour it unless its PID is dead (crashed watcher).
+  # Reclaim a dead-PID lock by atomic steal-by-rename (EC3 race close): `mv` of a
+  # dir is atomic on the same filesystem, so exactly one racing watcher wins the
+  # rename and owns the reclaim. A loser's `mv` fails (source already gone) and it
+  # skips. The winner verifies the moved lock's PID is still dead, removes it, and
+  # falls through to the normal atomic mkdir claim below.
   if [ -d "$lock_dir" ]; then
     lock_pid=""
     [ -f "$lock_dir/pid" ] && lock_pid="$(cat "$lock_dir/pid" 2>/dev/null)"
     if pid_alive "$lock_pid"; then
       return 0
     fi
-    echo "watcher: clearing dead lock (pid '${lock_pid:-none}') for $NN" >&2
-    rm -rf "$lock_dir"
+    reclaiming="$lock_dir.reclaiming.$$"
+    if ! mv "$lock_dir" "$reclaiming" 2>/dev/null; then
+      # Another watcher stole the dead lock first — skip this pass.
+      return 0
+    fi
+    # We own the reclaim. Re-confirm the moved lock's PID is still dead; if it has
+    # somehow come back alive, restore the lock and yield to it.
+    moved_pid=""
+    [ -f "$reclaiming/pid" ] && moved_pid="$(cat "$reclaiming/pid" 2>/dev/null)"
+    if pid_alive "$moved_pid"; then
+      mv "$reclaiming" "$lock_dir" 2>/dev/null || rm -rf "$reclaiming"
+      return 0
+    fi
+    echo "watcher: reclaimed dead lock (pid '${lock_pid:-none}') for $NN" >&2
+    rm -rf "$reclaiming"
   fi
 
   # Atomic claim: mkdir succeeds for exactly one caller. If it fails, another
@@ -206,6 +240,19 @@ process_request() {
     rm -rf "$lock_dir"
     return 0
   fi
+
+  # W3 collision guard: if the artifact's basename is literally log.md, the EC8
+  # "remove log.md from CTX" assertion below would silently strip the artifact and
+  # the Delegate would review an empty read set. Refuse to stage — escalate, warn,
+  # release, and skip. (A guard, not a rename: we do not silently relocate it.)
+  if [ "$(basename "$REQ_ARTIFACT")" = "log.md" ]; then
+    echo "watcher: request $NN artifact basename collides with log.md — cannot stage safely, escalating" >&2
+    sh "$SCRIPT_DIR/notify-escalation.sh" "$NN" "$RUN_DIR" \
+      "artifact basename collides with log.md — cannot stage safely" || true
+    rm -rf "$lock_dir"
+    return 0
+  fi
+
   if [ -z "$REQ_LOG_SLICE" ] || [ ! -f "$REQ_LOG_SLICE" ]; then
     echo "watcher: request $NN log-slice missing or unreadable: '$REQ_LOG_SLICE' — releasing" >&2
     rm -rf "$lock_dir"
@@ -266,14 +313,38 @@ process_request() {
 
   # ── on claude exit: validate + write the verdict + append ledger ───────────
   # verdict-write.sh owns every durable write; the Delegate never writes the repo.
-  sh "$SCRIPT_DIR/verdict-write.sh" \
+  if sh "$SCRIPT_DIR/verdict-write.sh" \
     "$out_json" \
     "$request_file" \
     "$verdict_file" \
     "$RUN_DIR/delegate-decisions.md" \
     "$RUN_DIR" \
-    "$REVISION_CAP" \
-    || echo "watcher: verdict-write.sh reported a validation failure for $NN (held; no verdict written)" >&2
+    "$REVISION_CAP"
+  then
+    # Success: a verdict was written. Clear any prior failcount for this NN.
+    rm -f "$failcount_file"
+  else
+    # Failure: no verdict written. Bound total spend by counting consecutive
+    # spawn failures per NN (W1). --max-budget-usd caps each spawn but NOT the
+    # count, so without this the loop would re-spawn `claude` every poll forever.
+    echo "watcher: verdict-write.sh reported a validation failure for $NN (held; no verdict written)" >&2
+    failcount=0
+    [ -f "$failcount_file" ] && failcount="$(cat "$failcount_file" 2>/dev/null)"
+    case "$failcount" in *[!0-9]* | '') failcount=0 ;; esac
+    failcount=$((failcount + 1))
+    printf '%s' "$failcount" > "$failcount_file"
+
+    if [ "$failcount" -ge "$MAX_SPAWN_FAILURES" ]; then
+      # Ceiling hit: stop re-spawning this request. Escalate, poison-mark it so
+      # later poll passes skip it, drop the failcount, and move on.
+      echo "watcher: delegate spawn failed $failcount times for $NN — giving up (attended intervention needed)" >&2
+      sh "$SCRIPT_DIR/notify-escalation.sh" "$NN" "$RUN_DIR" \
+        "delegate spawn failed $MAX_SPAWN_FAILURES times for checkpoint $NN — giving up, attended intervention needed" \
+        || true
+      : > "$failed_marker"
+      rm -f "$failcount_file"
+    fi
+  fi
 
   # ── teardown: drop the throwaway context dir and release the lock ──────────
   rm -rf "$CTX"
