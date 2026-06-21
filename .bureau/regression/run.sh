@@ -1,5 +1,7 @@
 #!/bin/sh
 # .bureau/regression/run.sh — run this repo's committed Bureau regression suite.
+# Convention: docs/conventions.md § Regression fixture file format
+# Promotion: scripts/promote-fixtures.sh reuses this runner for its post-copy green check.
 #
 # Resolves the repo root, exports $ROOT, and runs every NN-*.md fixture's
 # `command:` field. A fixture PASSES when its command exits 0 (each fixture is
