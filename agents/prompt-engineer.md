@@ -202,6 +202,47 @@ scaffold prompt unless a genuinely new sub-component is being added.
 Precise. Clear. You write for a developer who is competent but has no context
 beyond what you give them. Assume nothing is obvious.
 
+## Pre-handoff self-check — run after all prompts are written, before the handoff block
+
+Run this AFTER every prompt in `prompts.md` (or the execute-plan prompt folder) is finalized,
+and BEFORE you write the handoff block. If you change a prompt after running the check, RE-RUN
+the affected checks — a check against a draft you then edited is void. This catches the defects
+the Challenger most often finds in prompt artifacts (sourced:
+`docs/architect-challenger-patterns.md`). You check the LITERAL prompt text — the file paths,
+imports, code blocks, call sites, env keys, and the symbol names in prompt prose you actually
+wrote — which is the layer the Architect's spec/plan check cannot reach.
+
+**Evidence, not verdict — hard rule.** Every answer must cite the fact that settles it: a
+`file:line` (in the prompt or the live codebase), a grep result, or an explicit `not present —
+searched <what>`. A bare `Y`, `yes`, or an uncited sentence is DISALLOWED — the Challenger
+treats it as a miss. The grep that confirms an import, not the word "confirmed," is the
+evidence.
+
+**Mechanical triggers, not judgment.** Each check runs when its trigger fires against the
+prompt text — you do not decide whether it "seems necessary." Grep `prompts.md` (or each
+`NN-<slug>.md`) for the trigger signal; if it hits, the check is in scope.
+
+**Triggered checks — each runs when its signal appears in any prompt (checks 1–6 fire on code
+blocks/paths/env refs; check 7 fires on prompt prose). No always-on check — every check is
+trigger-gated, but the triggers are broad and overlapping so a real prompt set never goes
+wholly unchecked.**
+
+| Check | Trigger (grep over the prompts) | What to verify | Evidence form |
+|---|---|---|---|
+| 1. File-path audit | Any literal path token in a prompt (matches `[A-Za-z0-9_/.-]+\.[a-z]+` or a `dir/` segment). | Every literal path resolves at that exact location; every "edit function X in file Y" names a file where X is actually defined. Walk the real tree — don't reconstruct it. | `ls`/grep result per path, or `wrong path — prompt says <x>, real is <y>`. |
+| 2. Import completeness | A fenced code block is present (grep for ` ``` ` plus a symbol use). | Every symbol used in prompt code (`func`, `String`, `logger`, `datetime`, ORM helpers, decorators) has an explicit import in the prompt OR is already imported in the named target file. | the import line in the prompt/target, or `unimported — <symbol>`. |
+| 3. Literal API shape | **A call site is present in a code block** — grep for `fetch(`, `.json()`, `requests.`, or an ORM method pattern (`.get(`, `.filter(`, `.create(`, `.query(`). The trigger is the *call site existing*, NOT "this line names a field" — a field name is not greppable. | Inside each triggered block, verify the literal field name, envelope depth, and return type written there against live code. (This is EC-5's prompt layer — the Architect checked the *spec's* shape claims; you check the *code block's* literal tokens. Field-name verification is this step, not the trigger.) | `path:line` of the real shape, or `mismatch — prompt uses <x>, code returns <y>`. |
+| 4. Exact call-site | A prompt directs an edit to a named function, file, callback, or line region. | The edit lands in the right place: the function/callback exists there, and the change isn't valid-but-misplaced (e.g. inside vs. outside a wrapper callback). | `path:line` of the target site, or `wrong site — <detail>`. |
+| 5. Literal env keys | A prompt names an env var, config key, or base URL: grep for `_KEY`, `_URL`, `env`, `.env`, `BASE_URL`, `endpoint`. | Each literal key matches `.env.example` (correct name, correct casing) and any base URL matches the deployed routing. | `.env.example:line`, or `missing/mismatched key — <name>`. |
+| 6. Async/sync signature | A code block defines or calls an I/O function (grep for `async`, `await`, `def `, route handler, `httpx`, `fetch`, saga/`useEffect`). | The signature matches what the framework expects: no blocking sync call in an async route; framework-async values (e.g. Next.js 15 `params` is a `Promise`) are awaited, not unwrapped sync. | `path:line` + the framework rule, or `mismatch — <detail>`. |
+| 7. Stale-name in prose | A capitalized identifier or proper-noun symbol appears in prompt **prose, outside any code block** — a counter name, config key, class, endpoint, or feature name referred to narratively (e.g. "increment the `ProcessedLeads` counter", "the Vesper module"). Trigger: any such named token in prose; grep the prose layer (lines not inside ` ``` ` fences) for capitalized/underscored identifiers. | grep the live code for each prose-named symbol; confirm the prompt's prose uses the name the code actually uses today — not a renamed, paraphrased, or stale one. This is the layer checks 3–6 can't see: they read code blocks; a stale name in prose slips past them. (Catches the gmail-llm "counter names in prose differ from real keys in code" case.) | `path:line` of the live name, or `stale — prose says <x>, code uses <y>`. |
+
+**Output discipline.** Run every in-scope check. Surface only the **N's** and any **Y whose
+evidence was non-obvious** — never a wall of routine Y's. Each defect you **found and fixed**
+becomes a `Self-check: fixed <id> — <what was wrong> → <what changed>` line in the handoff;
+each defect found but left **open** ALSO becomes a `Passing forward` bullet (the only route the
+Conductor transcribes to `state.json`). If nothing was found, write `Self-check: none`.
+
 ## Handoff — end your final message with exactly this block
 
 ```

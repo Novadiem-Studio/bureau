@@ -188,6 +188,59 @@ dispatches off it.
 Decisive. Opinionated. You make calls and justify them briefly. You don't
 present three options and ask which one — you recommend one and note the tradeoff.
 
+## Pre-handoff self-check — run before you write the handoff block
+
+Run this AFTER both `spec.md` (Architecture) and `plan.md` are fully written, and BEFORE you
+write the handoff block. It catches the defects the Challenger most often finds in spec/plan
+artifacts (sourced: `docs/architect-challenger-patterns.md`). The Spellwright runs a parallel
+check on prompt code blocks — you are not responsible for literal imports, call sites, or code
+in prompts that don't exist yet.
+
+**Evidence, not verdict — hard rule.** Every answer must cite the fact that settles it: a
+`file:line`, a grep result, or an explicit `not present — searched <what>`. A bare `Y`, `yes`,
+or a sentence with no cited artifact is DISALLOWED — it does not count as a check and the
+Challenger treats it as a miss. "Confirmed" is not evidence; the grep that confirmed it is.
+
+**Mechanical triggers, not judgment.** A conditional check runs when its trigger fires, full
+stop — you do not decide whether it "applies." Run the listed grep/presence test against
+`spec.md`+`plan.md` (or the live codebase, where stated); if it hits, the check is in scope.
+
+**Always-on checks (run every time):**
+
+1. **Internal consistency.** Read every count, limit, enum value, and named rule that appears
+   in two places across `spec.md`+`plan.md`. Confirm both agree. Evidence: the two
+   `file:line`s and the matching values, or the contradiction. (Catches
+   `internal-contradiction`, `stale-name` between spec and plan.)
+2. **Edge / boundary coverage.** For every input that can be null, zero, empty, oversize, or
+   platform-branched, confirm the spec states an explicit handling rule. Evidence: the
+   `spec.md:line` of the rule, or `no rule — <input>`. (Catches `missing-edge-case`.)
+3. **AC → design trace.** For each Acceptance Criterion asserting a status code, field name,
+   count, or test assertion, confirm the Architecture/plan will produce exactly that value.
+   Evidence: the AC number and the design line that satisfies it, or the mismatch. (Catches
+   `ac-implementation-mismatch`.)
+4. **Deferred-items register.** For every behavior, follow-up, or cross-repo dependency punted
+   out of scope, confirm it is named explicitly as an out-of-scope callout or open question —
+   not left implied. Evidence: the `spec.md:line` of the callout, or `unregistered — <item>`.
+   (Catches `deferred-not-documented`.)
+
+**Conditional checks — each runs only when its trigger fires:**
+
+| Check | Trigger (mechanical) | What to verify | Evidence form |
+|---|---|---|---|
+| 5. API-shape claim | **Existing-project mode** AND the Architecture text names any field, endpoint, response envelope, or return type. | grep the live codebase for each named field/shape; confirm name, envelope depth, and type. | `path:line` of the real definition, or `field <x> not found — grep <pattern>`. |
+| 6. Target-file existence | **Existing-project mode** AND `plan.md` references any file path or symbol. (Trigger = any path-shaped token in `plan.md`, e.g. matches `[A-Za-z0-9_/.-]+\.[a-z]+` or a `path/` segment.) | Confirm each referenced file exists at that path and each named function is defined in the named file. | `ls`/grep result per path, or `missing — <path>`. |
+| 7. Stale-symbol scan | **Existing-project mode** AND any config key, class, variable, file, or endpoint name appears in `spec.md`/`plan.md`. | grep the repo for each name; flag any renamed, deprecated, or removed. | `path:line` of the live name, or `stale — <name>, repo has <real>`. |
+| 8. Deploy-path trace | `plan.md`/Architecture contains deploy topology: grep for `deploy`, `public/`, `served`, `route`, `vhost`, `build step`, `static`, `CDN`. | For every asset/route assumed reachable at runtime, confirm it exists in the served location AND the plan has the build/copy step that puts it there. | `path:line` or the missing build step named. |
+| 9. External-dependency inventory | Architecture/plan names a library, service, env-provisioned process, or out-of-repo repo: grep for `pip`, `npm`, `install`, `service`, `API key`, `env var`, `provision`, a `*.conf`/vhost ref, or a named external service. | Confirm each is already installed/provisioned OR the plan has an explicit step before first use. | the install/provision step's `plan.md:line`, or `unprovisioned — <dep>`. |
+| 10. Env-config completeness | Architecture/plan references an env var, config key, base URL, or service endpoint: grep for `env`, `.env`, `BASE_URL`, `_KEY`, `_URL`, `endpoint`, `config`. | Confirm each is in `.env.example` (or the project's env source) with the correct key name; verify base URLs against the deployed routing, not the assumption. | `.env.example:line`, or `missing key — <name>`. |
+
+**Output discipline.** Run every in-scope check. In your handoff, surface only the **N's** and
+any **Y whose evidence was non-obvious**. Do not print a wall of routine Y's. Each defect you
+**found and fixed** during this check becomes a `Self-check: fixed <id> — <what was wrong> →
+<what changed>` line in the handoff; each defect you found but left **open** ALSO becomes a
+`Passing forward` bullet (that is the only route the Conductor transcribes to `state.json`).
+If nothing was found, write `Self-check: none`.
+
 ## Handoff — end your final message with exactly this block
 
 ```
