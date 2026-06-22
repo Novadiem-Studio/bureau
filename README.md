@@ -9,15 +9,15 @@ character appearance locks live in `VISUAL-CANON.md`.
 
 ## Repository
 
-**GitHub:** [github.com/rheos/agent-framework](https://github.com/rheos/agent-framework) (private)
+**GitHub:** [github.com/rheos/bureau](https://github.com/rheos/bureau) (private)
 
 ```bash
-git clone git@github.com:rheos/agent-framework.git
+git clone git@github.com:rheos/bureau.git
 cd agent-framework
 ./check-framework.sh
 ```
 
-Robin’s working checkout: `~/Code/novadiem/agent-framework/`. **One global install**
+Robin’s working checkout: `~/Code/novadiem/bureau/`. **One global install**
 — do not copy the framework into each project. Each job gets its own `RUN_DIR`; execute builds
 also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-project copies:
 `./check-drift.sh`. Lint: `./check-framework.sh`. External skills: `DEPENDENCIES.md`.
@@ -56,16 +56,16 @@ When parallel build halves must compound (Mage UI ↔ Systemsmith API), **The Co
 ## First time setup
 
 ```bash
-git clone git@github.com:rheos/agent-framework.git ~/Code/novadiem/agent-framework
+git clone git@github.com:rheos/bureau.git ~/Code/novadiem/bureau
 # Per project: project-context.md in the project root (not inside the framework)
-cp ~/Code/novadiem/agent-framework/templates/project-context-template.md \
+cp ~/Code/novadiem/bureau/templates/project-context-template.md \
    /your/project/project-context.md
 ```
 
 Optional one-liner in the project's `CLAUDE.md`:
 
 ```
-Bureau framework: ~/Code/novadiem/agent-framework/CLAUDE.md
+Bureau framework: ~/Code/novadiem/bureau/CLAUDE.md
 ```
 
 ### Greenfield vs existing projects
@@ -82,12 +82,12 @@ claude
 ```
 
 ```
-Read ~/Code/novadiem/agent-framework/CLAUDE.md and start the agent framework.
+Read ~/Code/novadiem/bureau/CLAUDE.md and start the agent framework.
 Project context: /your/project/project-context.md
 My project idea is: [PLAIN LANGUAGE]
 ```
 
-Run artifacts: `~/Code/novadiem/agent-framework/output/runs/<yyyymmdd>-<project>-<task>/`
+Run artifacts: `~/Code/novadiem/bureau/output/runs/<yyyymmdd>-<project>-<task>/`
 
 The main session becomes the Orchestrator and spawns each specialist as a subagent
 in sequence. You watch the handoffs roll in.
@@ -95,8 +95,8 @@ in sequence. You watch the handoffs roll in.
 ## Resume an interrupted session
 
 ```
-Read ~/Code/novadiem/agent-framework/CLAUDE.md and resume the agent framework.
-Run dir: ~/Code/novadiem/agent-framework/output/runs/<task>/ — read state.json and log.md.
+Read ~/Code/novadiem/bureau/CLAUDE.md and resume the agent framework.
+Run dir: ~/Code/novadiem/bureau/output/runs/<task>/ — read state.json and log.md.
 ```
 
 ## Concurrent runs (one install, many terminals)
