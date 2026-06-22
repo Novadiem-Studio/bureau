@@ -1,7 +1,7 @@
 # Rheo — Persistent Chat Memory
 
 Date: 2026-06-15
-Status: in progress — Layer 0 + Layer 4 v1 built out of band; framework review/deploy pending.
+Status: Track 1 shipped 2026-06-17. Track 2 (the Recallatron) shipped 2026-06-22 — run `20260620-rheo-memory-track2`. Track 3 + 4 idea docs: `not-started/rheo-memory-track3-curation.md`, `not-started/rheo-memory-track4-synthesis.md`.
 
 Framework-side integration checklist: [Rheo memory framework integration](../agent-framework/07-rheo-memory-framework-integration.md).
 

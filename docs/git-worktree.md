@@ -15,7 +15,7 @@ global framework install; code changes happen only inside the worktree.
 
 ## One global framework install
 
-Clone once: `git@github.com:rheos/agent-framework.git`. Run from any project:
+Clone once: `git@github.com:rheos/bureau.git`. Run from any project:
 
 ```bash
 cd ~/Code/novadiem/oriva          # target repo workspace — not the framework
@@ -23,9 +23,9 @@ claude
 ```
 
 ```
-Read ~/Code/novadiem/agent-framework/CLAUDE.md and start the agent framework.
+Read ~/Code/novadiem/bureau/CLAUDE.md and start the agent framework.
 Project context: /Users/robin/Code/novadiem/oriva/project-context.md
-Run dir: ~/Code/novadiem/agent-framework/output/runs/20260612-oriva-auth/
+Run dir: ~/Code/novadiem/bureau/output/runs/20260612-oriva-auth/
 ```
 
 ## Project config
@@ -45,7 +45,7 @@ In `project-context.md`:
 ### Before build (after step 5 gate)
 
 ```bash
-FRAMEWORK=~/Code/novadiem/agent-framework
+FRAMEWORK=~/Code/novadiem/bureau
 $FRAMEWORK/scripts/run-worktree.sh create \
   --run-dir "$RUN_DIR" \
   --repo /path/to/target/repo \
