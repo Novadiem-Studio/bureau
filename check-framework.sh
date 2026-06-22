@@ -6,8 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 errors=0
+warnings=0
 
-err() { echo "ERROR: $*" >&2; errors=$((errors + 1)); }
+err()  { echo "ERROR: $*" >&2; errors=$((errors + 1)); }
+warn() { echo "WARN: $*";     warnings=$((warnings + 1)); }
 
 echo "== workflow registry"
 for wf in workflows/*.md; do
