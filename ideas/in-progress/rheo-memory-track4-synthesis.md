@@ -1,7 +1,8 @@
 # Rheo Memory Track 4 — Synthesis & Proactive Recall
 
 Date: 2026-06-22
-Status: not started
+Status: planned — spec + plan + 10 scoped prompts delivered 2026-06-23 (Bureau feature run). Build pending (gated execute-plan).
+Run dir: /Users/robin/Code/novadiem/mot/.bureau/runs/20260622-rheo-memory-track4/ (spec.md · plan.md · prompts.md)
 Depends on: Track 3 shipped (entity confirmation + graph quality)
 
 ---

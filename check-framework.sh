@@ -277,6 +277,24 @@ done
 
 echo "== name lint: ${warnings} warnings"
 
+# Usage-poller install drift (budget-feed health). The poller is an optional launchd agent
+# installed OUTSIDE the repo; if its plist points at a script path that no longer resolves
+# (e.g. after the framework was relocated), the budget snapshot silently freezes. This bit us
+# 2026-06-22: the plist still pointed at a retired AI_skills/ path, so the feed was dead ~19h
+# undetected and a run reported a stale budget as live. Warn, never fail — it is an
+# environment/install concern, not a repo defect.
+POLLER_PLIST="$HOME/Library/LaunchAgents/com.novadiem.usage-snapshot.plist"
+if [[ -f "$POLLER_PLIST" ]]; then
+  poller_script="$(grep -m1 -o '<string>[^<]*poll-usage-snapshot\.sh</string>' "$POLLER_PLIST" 2>/dev/null | sed -E 's#</?string>##g')" || poller_script=""
+  if [[ -z "$poller_script" ]]; then
+    warn "usage-poller plist present but lists no poll-usage-snapshot.sh path: $POLLER_PLIST"
+  elif [[ ! -f "$poller_script" ]]; then
+    warn "usage-poller plist points at a missing script ($poller_script) — budget snapshot is frozen; re-run scripts/install-usage-poller.sh"
+  elif [[ "$poller_script" != "$ROOT/scripts/poll-usage-snapshot.sh" ]]; then
+    warn "usage-poller plist points at $poller_script, not this install ($ROOT/scripts/poll-usage-snapshot.sh) — likely a relocated framework; re-run scripts/install-usage-poller.sh"
+  fi
+fi
+
 if [[ "$errors" -gt 0 ]]; then
   echo "== $errors check(s) failed" >&2
   exit 1
