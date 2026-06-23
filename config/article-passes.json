@@ -1,0 +1,10 @@
+{
+  "passes": [
+    {
+      "id": "grok",
+      "model": "openrouter:x-ai/grok-4.3",
+      "instruction": "config/passes/improve-grok.md",
+      "enabled": true
+    }
+  ]
+}

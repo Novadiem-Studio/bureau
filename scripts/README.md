@@ -232,6 +232,51 @@ sh scripts/promote-fixtures.sh \
 
 ---
 
+# Cross-model pass (`model-pass.sh`)
+
+One deterministic "improve this draft" call to a non-Claude model, for the
+`write-article` workflow's cross-model stage. Routes by a provider-prefixed
+`<model-spec>` (v1 ships the `openrouter:` arm only). The caller supplies everything;
+the script makes no routing decisions and promotes nothing — it writes a **candidate**
+out-file that the workflow's Scribe step reconciles. Full design: `plan-write-article-workflow.md §1`.
+
+```bash
+scripts/model-pass.sh \
+  openrouter:x-ai/grok-4.3 \
+  "$RUN_DIR/draft.md" \
+  config/passes/improve-grok.md \
+  "$RUN_DIR/passes/01-grok.md" \
+  --run-dir "$RUN_DIR"
+```
+
+**Fail-closed:** the out-file is written ONLY when every integrity check passes — HTTP 2xx,
+no `.error`, non-empty content, `finish_reason` exactly `"stop"`, and output within 50%-300%
+of the input byte count. On any failure it writes nothing, errors to stderr, and exits
+non-zero (the candidate is built at a temp path and `mv`'d into place only after all checks
+pass, so "out-file exists" means "this candidate cleared"). Use it from a workflow action
+step, never speculatively — each call spends real money on a third-party API.
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `<model-spec>` | Required | Provider-prefixed model id, e.g. `openrouter:x-ai/grok-4.3`. Only `openrouter:` is routable in v1. |
+| `<draft-file>` | Required | Absolute path to the draft markdown to improve (must exist, non-empty). |
+| `<instruction-file>` | Required | Absolute path to the pass instruction file (must exist, non-empty). |
+| `<out-file>` | Required | Absolute path for the candidate; parent dir must exist. Written only on full success. |
+| `--run-dir <RUN_DIR>` | Optional | Append one `[EXTERNAL-ACTION]` audit line (model, bytes in/out, `finish_reason`, status, exit) to `RUN_DIR/log.md`. |
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Candidate written to `<out-file>`. |
+| `1` | Bad arguments or missing input files (before any network call). |
+| `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response). |
+| `3` | Integrity check failed (`finish_reason` != `stop`, empty content, or length-delta out of range). |
+| `4` | Keystore key missing (`~/Documents/novadiem/keys/novadiem/openrouter.env` absent or `OPENROUTER_API_KEY` empty). |
+
+The request body is built with `jq -n` (the draft is arbitrary markdown — never
+string-interpolated). The key is sourced from the keystore; it is never echoed.
+
+---
+
 ## ChatGPT flat export
 
 `sync-chatgpt-export.sh` copies canon visual docs + locked `reference/` assets into
