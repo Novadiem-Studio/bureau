@@ -222,6 +222,7 @@ from the workflow.
 | `coupler.md` | The Coupler |
 | `witness.md` | The Witness (Archive) |
 | `scoot.md` | Scoot (shop droid) — EXEMPT |
+| `scribe.md` | The Scribe |
 | `tally.md` | Tally (shop droid) — EXEMPT |
 
 ---
@@ -229,7 +230,7 @@ from the workflow.
 ## Workflow step-line spec
 
 Every numbered step in a `workflows/*.md` file has a **leading line** that the Ministry of Flow (aka Logistics)
-parser (`society-desk/lib/workflow-parser.ts`) and a human skimmer both read for three things:
+parser (`mof/lib/workflow-parser.ts`) and a human skimmer both read for three things:
 the agent, the tier, and the output. Author every step line to this shape so it is
 self-describing for free.
 

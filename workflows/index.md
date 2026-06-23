@@ -32,6 +32,7 @@ this folder with the full step definition.
 | [docs-reconcile](docs-reconcile.md) | Plan/status docs drifted from code ground truth (direct commits, reverts, renumbered migrations); deliverable is updated docs, not code | mixed | Survey agent re-derives ground truth from the repo → Reconcile agent edits docs → The Challenger re-verifies cold against the repo → Conductor adjudicates, user-gated commit |
 | [studio-briefing](studio-briefing.md) | Studio-wide status: what's running, blocked, stale; executive summary or digest of run logs across installs | mixed | Spawn The Witness (read-only) → `output/studio/briefing.md` / `resume.md` / digests — narrative layer above Ministry of Flow (aka Logistics) |
 | [operational-build](operational-build.md) | A defined, runbook-driven build/ops task — iOS build, container image, release prep — where a skill/runbook already holds the steps and the job is to run them under a gate | execute | The Conductor loads the runbook → gate → The Mechanic runs it (stops at the production boundary) → The Conductor closes out with a build/deploy record |
+| [write-article](write-article.md) | Robin wants a long-form article for devweb.org through the full pipeline: angle → outline → draft → cross-model improvement passes → humanizer → staged MDX | mixed | The Counselor frames the angle → The Scribe outlines + drafts + revises → figure-grounding → `[EXTERNAL-ACTION CHECKPOINT]` → cross-model passes (`model-pass.sh`) → Scribe promotion authority → Counselor humanizer ×2 → Scribe MDX format → publish gate → write to devweb + `npm run build` |
 
 > Add a row here whenever a workflow is defined. This table is the single source of truth
 > for triage — every workflow file must have a row.
@@ -54,6 +55,7 @@ different workflow — match the criteria, not the closest-looking row.
 | Migration numbers in a `plans/todo/` README are wrong after a revert | `docs-reconcile` |
 | What's running, blocked, or stale across all active runs this morning? | `studio-briefing` |
 | Run an iOS archive build from the existing release runbook | `operational-build` |
+| Write an article about Rust async runtimes for devweb | `write-article` |
 
 ## Types
 

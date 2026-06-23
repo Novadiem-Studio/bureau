@@ -84,6 +84,15 @@
       "escalate_when": ["sensitive_audience", "legal_medical_political_copy"],
       "deescalate_when": ["routine_copy_review", "budget_pressure"]
     },
+    "scribe": {
+      "agent": "The Scribe",
+      "default_tier": "standard",
+      "allowed": ["standard", "strong"],
+      "fresh_context_required": false,
+      "lock": false,
+      "escalate_when": ["long_draft", "complex_revision", "promotion_authority_step"],
+      "deescalate_when": ["outline_only", "format_only"]
+    },
     "systemsmith": {
       "agent": "The Systemsmith",
       "default_tier": "strong",
