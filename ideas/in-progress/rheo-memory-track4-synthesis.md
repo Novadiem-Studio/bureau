@@ -1,8 +1,8 @@
 # Rheo Memory Track 4 — Synthesis & Proactive Recall
 
 Date: 2026-06-22
-Status: planned — spec + plan + 10 scoped prompts delivered 2026-06-23 (Bureau feature run). Build pending (gated execute-plan).
-Run dir: /Users/robin/Code/novadiem/mot/.bureau/runs/20260622-rheo-memory-track4/ (spec.md · plan.md · prompts.md)
+Status: BUILT + merged to main 2026-06-23 (Bureau feature→execute-plan run; merge 869d773). All 10 prompts shipped: typecheck clean, 77 unit + 9 e2e + 7 regression green, zero new deps, model-free (OQ-1=b). NOT deployed. Post-ship follow-ups: rheo-bot bot.py:818 allowlist; verify Track-2 activation date for backfill --before; UX confirm (thread-click auto-load).
+Run dir: /Users/robin/Code/novadiem/mot/.bureau/runs/20260622-rheo-memory-track4/ (spec.md · plan.md · prompts.md · log.md · accounting.json)
 Depends on: Track 3 shipped (entity confirmation + graph quality)
 
 ---
