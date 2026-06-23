@@ -3,7 +3,7 @@
 A working list of where the workflow layer can get stronger, written 2026-06-14 after a
 read-through of the then-registered workflows (`workflows/*.md`), the orchestrator protocol
 (`agents/orchestrator.md`), and the registry parser the new Ministry of Flow (aka Logistics) Workflows tab runs
-on (`society-desk/lib/workflow-parser.ts`).
+on (`mof/lib/workflow-parser.ts`).
 
 Scope is the **workflows themselves** — coverage, structure, handoffs, triage — not the
 visualizer. Each item names the file it comes from and proposes a concrete change. The
