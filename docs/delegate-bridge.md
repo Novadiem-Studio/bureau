@@ -28,7 +28,58 @@ artifact:      <path>
 artifact-hash: <sha256>
 log-slice:     <path>  # path to THIS checkpoint's log.md slice only
 question:      <one line>
+checkpoint-type:  integration | routine
+                  # Required for all new requests. Legacy / absent ⇒ treat as `routine`.
+worktree-path:    <abs-path> | (none)
+                  # Required when checkpoint-type: integration.
+                  # Single flat line. Source: state.json#git.worktree_path.
+base-ref:         <git-ref>
+                  # Required when checkpoint-type: integration.
+                  # Single flat line. Source: state.json#git.base_branch
+                  # (template default: "devel" — NOT the literal string "main").
+claimed-gates:    [{"name":"<n>","command":"<cmd>","result":"green|red","pre-existing":true|false|null}, …]
+                  # Required when checkpoint-type: integration.
+                  # SINGLE LINE carrying an inline JSON array. The bridge's req_field
+                  # parser (watcher.sh:92-98) does head -n 1, so this MUST be one line.
+                  # The executor parses it with python3 json.loads().
+                  # Cross-check input ONLY — NOT the gate set the watcher executes.
+known-flaky-gates: [{"name":"<n>"}]
+                  # Optional. Single-line inline JSON array.
+                  # If present, the watcher demotes a re-run fail on a named gate to
+                  # Uncertainties rather than a blocking revise. Absent ⇒ every re-run
+                  # red blocks (the conservative default).
 ```
+
+**Integration request fields — notes:**
+
+1. `claimed-gates` is a cross-check input only. The canonical gate set (standing regression
+   runner + project manifest gates, resolved fresh in the worktree at checkpoint time) governs
+   what the watcher executes — the build's claims do NOT select or modify that set
+   (FR-B14-3, FR-B14-14).
+
+2. A routine request that happens to carry these fields is still treated as routine
+   (FR-B14-10). The watcher reads `checkpoint-type` and falls through to the existing path
+   when the value is `routine` or absent.
+
+3. `worktree-path` is sourced verbatim from state.json#git.worktree_path (the field already
+   exists in templates/state.json at line 20 as `"worktree_path": null`).
+
+4. `base-ref` is sourced from state.json#git.base_branch (template default "devel", line 18).
+   Never assume "main". The configured base, not a hard-coded ref.
+
+**`state.json#scope` block — field rules** (JSON carries no comments, so the rules live here):
+
+- `allowed_paths`: glob list of files in scope. The Delegate flags any file in
+  `git diff base-ref...HEAD --name-only` that matches NO glob as out-of-scope.
+- `cut_symbols`: exact symbol strings explicitly cut at a design checkpoint.
+  The Delegate greps the committed diff for each; a hit is a scope violation.
+- `declared_at`/`declared_by`: provenance — which planning checkpoint set the boundary
+  and who authored it (always "conductor"). Written once at the design-model checkpoint;
+  treated as frozen and immutable to the build thereafter.
+- Absent/null `scope` ⇒ uncertainty, not blocking violation (EC-B14-6).
+- Immutability is structural: state.json lives in RUN_DIR (Conductor-only writes);
+  the build works in a separate git worktree. No runtime tamper-guard is added or needed
+  (see spec Architecture Data Models §2, A6 ruling).
 
 **`attempt` vs. `revise-count` — why both exist:**
 

@@ -28,5 +28,11 @@
   },
   "last_updated": null,
   "accounting": { "status": "pending", "path": null },
-  "external_review": { "status": "pending", "path": null }
+  "external_review": { "status": "pending", "path": null },
+  "scope": {
+    "allowed_paths": [],
+    "cut_symbols":   [],
+    "declared_at":   null,
+    "declared_by":   null
+  }
 }
