@@ -167,9 +167,25 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
 | `remove` | Drop worktree; delete branch if already merged |
 
 **create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
-`--worktree-dir` (default: `REPO/.bureau-worktrees/SLUG`).
+`--worktree-dir` (default: `$HOME/.bureau/worktrees/REPO_BASENAME/SLUG`; override with `BUREAU_WORKTREE_ROOT` env var).
 
 Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
+
+---
+
+# Gitignore enforcement (`ensure-bureau-ignored.sh`)
+
+Idempotent helper that ensures `.bureau/runs/` and `.bureau/archive/` are in a repo's
+`.gitignore` before Bureau writes there. Called by the Conductor at run start for every
+new targeted run.
+
+```bash
+./scripts/ensure-bureau-ignored.sh /path/to/target/repo
+```
+
+Appends exactly `.bureau/runs/` and `.bureau/archive/` (two scoped entries) — never a blanket
+`.bureau/` entry, which would silently un-track `.bureau/regression/`. Safe to run multiple
+times; idempotent, no lock.
 
 ---
 

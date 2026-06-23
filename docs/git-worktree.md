@@ -25,7 +25,7 @@ claude
 ```
 Read ~/Code/novadiem/bureau/CLAUDE.md and start the agent framework.
 Project context: /Users/robin/Code/novadiem/oriva/project-context.md
-Run dir: ~/Code/novadiem/bureau/output/runs/20260612-oriva-auth/
+Run dir: /Users/robin/Code/novadiem/oriva/.bureau/runs/20260612-oriva-auth/
 ```
 
 ## Project config
@@ -35,7 +35,7 @@ In `project-context.md`:
 ```markdown
 ## Git integration
 - **Integration branch:** `devel`
-- **Worktree parent:** `.bureau-worktrees/` (under target repo; add to `.gitignore` if desired)
+- **Worktree parent:** `$HOME/.bureau/worktrees/<repo-basename>/` (outside the target repo — no `.gitignore` entry needed; override with `BUREAU_WORKTREE_ROOT`)
 ```
 
 `integration_branch` defaults to `devel` when omitted.
@@ -100,7 +100,7 @@ one worktree. Stagger test DB / docker steps if both hit shared infra.
     "repo": "/path/to/repo",
     "base_branch": "devel",
     "branch": "bureau/20260612-oriva-auth",
-    "worktree_path": "/path/to/repo/.bureau-worktrees/20260612-oriva-auth",
+    "worktree_path": "/Users/robin/.bureau/worktrees/oriva/20260612-oriva-auth",
     "merge_policy": "end_of_job",
     "run_slug": "20260612-oriva-auth",
     "prompts_merged": [],

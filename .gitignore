@@ -1,4 +1,10 @@
 .DS_Store
 output/*
 !output/studio
+# The cross-run run-index is regenerable runtime cache (per-run pointers with machine-local
+# absolute paths), NOT part of the committed Studio Record — keep it out of git.
+output/studio/runs-index/
+output/studio/runs-snapshot.json
 .bureau-worktrees/
+.bureau/runs/
+.bureau/archive/
