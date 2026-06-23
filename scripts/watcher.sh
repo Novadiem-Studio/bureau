@@ -380,17 +380,22 @@ PY
       # Read gates list; run each command in the worktree; capture exit codes.
       GATE_RESULTS_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$CANON_GATES_JSON" <<'PY'
 import json, subprocess, sys
-worktree, canon_raw = sys.argv[1], sys.argv[2]
-canon = json.loads(canon_raw)
+# FIX 2: never let a parse/subprocess failure print nothing and empty this var.
+# Always print a JSON array (possibly empty); a parse failure yields [].
 results = []
-for g in canon["gates"]:
-    ret = subprocess.run(g["command"], shell=True, cwd=worktree)
-    results.append({
-        "name": g["name"],
-        "command": g["command"],
-        "exit_code_branch": ret.returncode,
-        "result": "green" if ret.returncode == 0 else "red"
-    })
+try:
+    worktree, canon_raw = sys.argv[1], sys.argv[2]
+    canon = json.loads(canon_raw)
+    for g in canon.get("gates", []):
+        ret = subprocess.run(g["command"], shell=True, cwd=worktree)
+        results.append({
+            "name": g["name"],
+            "command": g["command"],
+            "exit_code_branch": ret.returncode,
+            "result": "green" if ret.returncode == 0 else "red"
+        })
+except Exception:
+    results = []
 print(json.dumps(results))
 PY
 )"
@@ -440,46 +445,78 @@ PY
       # BASE-REF EXECUTION — correct approach only:
       # Do NOT git checkout or git stash in the main worktree (that would alter
       # the branch under review). Instead, create a temporary separate git worktree
-      # at the base ref, run the gate command there, then remove it.
-      #   git -C "$REQ_WORKTREE_PATH" worktree add "$TMPDIR_BASE" "$REQ_BASE_REF"
+      # at the base ref (DETACHED — see FIX 1 below), run the gate command there,
+      # then remove it.
+      #   git -C "$REQ_WORKTREE_PATH" worktree add --detach "$TMPDIR_BASE" "$REQ_BASE_REF"
       #   <run command in $TMPDIR_BASE>
       #   git -C "$REQ_WORKTREE_PATH" worktree remove --force "$TMPDIR_BASE"
+      #
+      # FIX 1 — `--detach`: when base-ref is a branch already checked out elsewhere
+      # (the common case: base-ref `main` with `main` checked out in the main repo),
+      # a plain `worktree add <dir> <branch>` FAILS ("already checked out"). A
+      # detached add checks out the ref's commit at a detached HEAD, which works even
+      # when the branch is checked out elsewhere — and is correct here (we only read).
+      #
+      # FIX 2 — every fallible step (worktree add, gate subprocesses, JSON parse) is
+      # wrapped so a failure yields a SAFE value (empty pre_existing list + an
+      # errors[] note) instead of an uncaught exception that prints nothing and
+      # empties this variable — which would crash the final json.loads and leave NO
+      # integration-results.json staged. This script ALWAYS prints a JSON object
+      # {"results": [...], "errors": [...]}; downstream reads .results / .errors.
       PRE_EXISTING_JSON="$(python3 - \
         "$REQ_WORKTREE_PATH" \
         "$REQ_BASE_REF" \
         "$CLAIMED_GATES_JSON" <<'PY'
 import json, os, subprocess, sys, tempfile
-worktree, base_ref, claimed_raw = sys.argv[1], sys.argv[2], sys.argv[3]
-claimed_data = json.loads(claimed_raw)
-claimed = claimed_data.get("gates", [])
-pre_existing_claimed = [g for g in claimed
-                        if g.get("result") == "red" and g.get("pre-existing") is True]
 results = []
-if pre_existing_claimed:
-    tmpdir = tempfile.mkdtemp(prefix="bureau-base-")
-    try:
-        subprocess.run(
-            ["git", "-C", worktree, "worktree", "add", tmpdir, base_ref],
-            check=True, capture_output=True
-        )
-        for g in pre_existing_claimed:
-            ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree)
-            ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir)
-            results.append({
-                "name": g["name"],
-                "command": g["command"],
-                "exit_code_branch": ret_branch.returncode,
-                "exit_code_base": ret_base.returncode,
-                "confirmed_pre_existing": ret_base.returncode != 0
-            })
-    finally:
-        subprocess.run(
-            ["git", "-C", worktree, "worktree", "remove", "--force", tmpdir],
-            capture_output=True
-        )
-        if os.path.exists(tmpdir):
-            import shutil; shutil.rmtree(tmpdir, ignore_errors=True)
-print(json.dumps(results))
+errors = []
+try:
+    worktree, base_ref, claimed_raw = sys.argv[1], sys.argv[2], sys.argv[3]
+    claimed_data = json.loads(claimed_raw)
+    claimed = claimed_data.get("gates", [])
+    pre_existing_claimed = [g for g in claimed
+                            if g.get("result") == "red" and g.get("pre-existing") is True]
+    if pre_existing_claimed:
+        tmpdir = tempfile.mkdtemp(prefix="bureau-base-")
+        added = False
+        try:
+            # FIX 1: --detach so a checked-out base branch does not fail the add.
+            add = subprocess.run(
+                ["git", "-C", worktree, "worktree", "add", "--detach", tmpdir, base_ref],
+                capture_output=True, text=True
+            )
+            if add.returncode != 0:
+                # FIX 2: do not raise — record the failure and fall through to a
+                # safe (empty) result. The final write still happens; if this
+                # leaves the overall executor unable to validate, the guarded
+                # final write below escalates rather than crashing.
+                errors.append("base-ref worktree add failed: %s"
+                              % (add.stderr.strip() or "unknown error"))
+            else:
+                added = True
+                for g in pre_existing_claimed:
+                    ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree)
+                    ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir)
+                    results.append({
+                        "name": g["name"],
+                        "command": g["command"],
+                        "exit_code_branch": ret_branch.returncode,
+                        "exit_code_base": ret_base.returncode,
+                        "confirmed_pre_existing": ret_base.returncode != 0
+                    })
+        finally:
+            if added:
+                subprocess.run(
+                    ["git", "-C", worktree, "worktree", "remove", "--force", tmpdir],
+                    capture_output=True
+                )
+            if os.path.exists(tmpdir):
+                import shutil; shutil.rmtree(tmpdir, ignore_errors=True)
+except Exception as e:
+    # Any unexpected failure yields a safe value (empty results) plus a note,
+    # never an uncaught exception that empties this variable downstream.
+    errors.append("pre-existing validation failed: %s" % e)
+print(json.dumps({"results": results, "errors": errors}))
 PY
 )"
 
@@ -490,15 +527,19 @@ PY
         "$GATE_RESULTS_JSON" \
         "$CLAIMED_GATES_JSON" <<'PY'
 import json, sys
-gate_results = json.loads(sys.argv[1])
-claimed_data = json.loads(sys.argv[2])
-claimed = claimed_data.get("gates", [])
-claimed_names = {g.get("name", "") for g in claimed}
-claimed_cmds  = {g.get("command", "") for g in claimed}
+# FIX 2: guarded — always prints a JSON array (empty on any failure).
 under = []
-for g in gate_results:
-    if g["name"] not in claimed_names and g["command"] not in claimed_cmds:
-        under.append(g)
+try:
+    gate_results = json.loads(sys.argv[1])
+    claimed_data = json.loads(sys.argv[2])
+    claimed = claimed_data.get("gates", [])
+    claimed_names = {g.get("name", "") for g in claimed}
+    claimed_cmds  = {g.get("command", "") for g in claimed}
+    for g in gate_results:
+        if g["name"] not in claimed_names and g["command"] not in claimed_cmds:
+            under.append(g)
+except Exception:
+    under = []
 print(json.dumps(under))
 PY
 )"
@@ -509,52 +550,58 @@ PY
         "$REQ_BASE_REF" \
         "$RUN_DIR/state.json" <<'PY'
 import json, subprocess, sys
-worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
+# FIX 2: the whole step is guarded — a git/parse failure prints a valid
+# "indeterminate" scope object (scope_diff_clean: null), never nothing.
+NEUTRAL = {
+    "diff_files": [], "allowed_paths": [], "violations": [],
+    "cut_symbol_hits": [], "scope_diff_clean": None
+}
 try:
-    with open(state_path) as fh:
-        state = json.load(fh)
-    scope_block = state.get("scope") or {}
-    allowed_paths = scope_block.get("allowed_paths") or []
-    cut_symbols = scope_block.get("cut_symbols") or []
-except Exception:
-    scope_block = None
-    allowed_paths = []
-    cut_symbols = []
+    worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    try:
+        with open(state_path) as fh:
+            state = json.load(fh)
+        scope_block = state.get("scope") or {}
+        allowed_paths = scope_block.get("allowed_paths") or []
+        cut_symbols = scope_block.get("cut_symbols") or []
+    except Exception:
+        scope_block = None
+        allowed_paths = []
+        cut_symbols = []
 
-if scope_block is None:
+    if scope_block is None:
+        print(json.dumps(NEUTRAL))
+        sys.exit(0)
+
+    r = subprocess.run(
+        ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
+        cwd=worktree, capture_output=True, text=True
+    )
+    diff_files = [l for l in r.stdout.splitlines() if l.strip()]
+
+    import fnmatch
+    violations = []
+    if allowed_paths:
+        for f in diff_files:
+            if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
+                violations.append(f)
+
+    # grep the full diff for each cut symbol
+    r2 = subprocess.run(
+        ["git", "diff", "%s...HEAD" % base_ref],
+        cwd=worktree, capture_output=True, text=True
+    )
+    full_diff = r2.stdout
+    cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
+
+    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
     print(json.dumps({
-        "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "scope_diff_clean": None
+        "diff_files": diff_files, "allowed_paths": allowed_paths,
+        "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+        "scope_diff_clean": scope_diff_clean
     }))
-    sys.exit(0)
-
-r = subprocess.run(
-    ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
-    cwd=worktree, capture_output=True, text=True
-)
-diff_files = [l for l in r.stdout.splitlines() if l.strip()]
-
-import fnmatch
-violations = []
-if allowed_paths:
-    for f in diff_files:
-        if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
-            violations.append(f)
-
-# grep the full diff for each cut symbol
-r2 = subprocess.run(
-    ["git", "diff", "%s...HEAD" % base_ref],
-    cwd=worktree, capture_output=True, text=True
-)
-full_diff = r2.stdout
-cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
-
-scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
-print(json.dumps({
-    "diff_files": diff_files, "allowed_paths": allowed_paths,
-    "violations": violations, "cut_symbol_hits": cut_symbol_hits,
-    "scope_diff_clean": scope_diff_clean
-}))
+except Exception:
+    print(json.dumps(NEUTRAL))
 PY
 )"
 
@@ -588,24 +635,48 @@ PY
       # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
       GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
 import json, sys
-gates = json.loads(sys.argv[1])
-flaky_names = set(json.loads(sys.argv[2]))
-for g in gates:
-    if g.get("result") == "red" and g.get("name") in flaky_names:
-        g["flaky"] = True
-print(json.dumps(gates))
+# FIX 2: guarded — on any failure, echo arg1 through unchanged (or [] if that
+# too is unparseable) so this never empties GATE_RESULTS_JSON downstream.
+try:
+    gates = json.loads(sys.argv[1])
+    flaky_names = set(json.loads(sys.argv[2]))
+    for g in gates:
+        if g.get("result") == "red" and g.get("name") in flaky_names:
+            g["flaky"] = True
+    print(json.dumps(gates))
+except Exception:
+    try:
+        print(json.dumps(json.loads(sys.argv[1])))
+    except Exception:
+        print("[]")
 PY
 )"
 
       # ── WRITE integration-results.json to $CTX ────────────────────────────
-      CLAIMED_ERROR="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error',''))" "$CLAIMED_GATES_JSON" 2>/dev/null || echo "")"
-      ERRORS_JSON="[]"
-      if [ -n "$CLAIMED_ERROR" ]; then
-        ERRORS_JSON="[\"$CLAIMED_ERROR\"]"
-      fi
+      # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
+      # a quote/newline in the claimed-gates parse error can no longer produce
+      # malformed JSON. This is only the SEED list; the final python step appends
+      # any pre-existing-validation errors it finds in $PRE_EXISTING_JSON.
+      ERRORS_JSON="$(python3 -c 'import json,sys
+try:
+    err = json.loads(sys.argv[1]).get("error", "")
+except Exception:
+    err = ""
+print(json.dumps([err] if err else []))' "$CLAIMED_GATES_JSON" 2>/dev/null || echo "[]")"
 
       CANON_SOURCE="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('canonical_source','regression-only'))" "$CANON_GATES_JSON" 2>/dev/null || echo "regression-only")"
 
+      # ── GUARDED FINAL WRITE — the invariant lives here ─────────────────────
+      # FIX 2: this is the ONLY exit from the integration path, and it ALWAYS
+      # writes a well-formed $CTX/integration-results.json. Each intermediate JSON
+      # is parsed defensively; if any one is empty/garbage (an upstream step that
+      # somehow failed despite its own guard), this step writes the SKELETAL
+      # ESCALATE-MARKER file — same shape as the INTEGRATION_ESCALATE branch above:
+      # escalate_marker set with the reason, empty arrays, fast_forward_ok /
+      # conflicts_clean false — so the Delegate reads a valid file and escalates
+      # (surfacing the failure to a human) rather than silently falling through.
+      # There is no code path between "$CTX exists" and here that can leave the
+      # file unwritten: any exception is caught and converted to an escalate file.
       python3 - \
         "$CTX/integration-results.json" \
         "$REQ_WORKTREE_PATH" \
@@ -620,28 +691,97 @@ PY
         "$CONFLICTS_CLEAN" \
         "$ERRORS_JSON" <<'PY'
 import json, sys
+
 (path, worktree_path, base_ref, branch_tip, canonical_source,
  gates_raw, pre_raw, under_raw, scope_raw,
  ff_ok, conflicts_clean, errors_raw) = sys.argv[1:13]
-data = {
-    "schema_version": 1,
-    "checkpoint_type": "integration",
-    "worktree_path": worktree_path,
-    "base_ref": base_ref,
-    "branch_tip": branch_tip,
-    "escalate_marker": "",
-    "canonical_source": canonical_source,
-    "gates": json.loads(gates_raw),
-    "pre_existing": json.loads(pre_raw),
-    "under_declaration": json.loads(under_raw),
-    "scope": json.loads(scope_raw),
-    "fast_forward_ok": ff_ok == "true",
-    "conflicts_clean": conflicts_clean == "true",
-    "errors": json.loads(errors_raw)
+
+NEUTRAL_SCOPE = {
+    "diff_files": [], "allowed_paths": [], "violations": [],
+    "cut_symbol_hits": [], "scope_diff_clean": None
 }
-with open(path, "w") as fh:
-    json.dump(data, fh, indent=2)
-sys.exit(0)
+
+
+def write_escalate(reason, errors):
+    """Skeletal escalate-marker — identical shape to the INTEGRATION_ESCALATE
+    branch — so the Delegate always reads a well-formed file and escalates."""
+    data = {
+        "schema_version": 1,
+        "checkpoint_type": "integration",
+        "escalate_marker": reason,
+        "canonical_source": "none",
+        "gates": [],
+        "pre_existing": [],
+        "under_declaration": [],
+        "scope": dict(NEUTRAL_SCOPE),
+        "fast_forward_ok": False,
+        "conflicts_clean": False,
+        "errors": errors,
+    }
+    with open(path, "w") as fh:
+        json.dump(data, fh, indent=2)
+
+
+try:
+    errors = json.loads(errors_raw) if errors_raw.strip() else []
+    if not isinstance(errors, list):
+        errors = []
+
+    # pre_raw is now {"results": [...], "errors": [...]}; tolerate a bare list
+    # or empty/garbage. Any failure here demotes to the escalate path below.
+    try:
+        pre_parsed = json.loads(pre_raw) if pre_raw.strip() else {"results": [], "errors": []}
+    except Exception:
+        pre_parsed = {"results": [], "errors": []}
+    if isinstance(pre_parsed, dict):
+        pre_existing = pre_parsed.get("results", []) or []
+        errors.extend(pre_parsed.get("errors", []) or [])
+    elif isinstance(pre_parsed, list):
+        pre_existing = pre_parsed
+    else:
+        pre_existing = []
+
+    def safe(raw, default):
+        try:
+            return json.loads(raw) if raw.strip() else default
+        except Exception:
+            errors.append("malformed intermediate JSON; result coerced to safe default")
+            return default
+
+    gates = safe(gates_raw, [])
+    under = safe(under_raw, [])
+    scope = safe(scope_raw, dict(NEUTRAL_SCOPE))
+
+    data = {
+        "schema_version": 1,
+        "checkpoint_type": "integration",
+        "worktree_path": worktree_path,
+        "base_ref": base_ref,
+        "branch_tip": branch_tip,
+        "escalate_marker": "",
+        "canonical_source": canonical_source or "regression-only",
+        "gates": gates,
+        "pre_existing": pre_existing,
+        "under_declaration": under,
+        "scope": scope,
+        "fast_forward_ok": ff_ok == "true",
+        "conflicts_clean": conflicts_clean == "true",
+        "errors": errors,
+    }
+    with open(path, "w") as fh:
+        json.dump(data, fh, indent=2)
+except Exception as e:
+    # Last-resort guard: anything unexpected still yields a well-formed escalate
+    # file. The invariant holds — a file is ALWAYS on disk for an integration cp.
+    try:
+        write_escalate(
+            "integration executor failed to assemble results: %s; escalated for human review" % e,
+            ["integration executor exception: %s" % e],
+        )
+    except Exception:
+        # Filesystem-level failure (e.g. $CTX gone) — re-raise so the watcher's
+        # own error handling surfaces it; there is nothing safe left to write.
+        raise
 PY
 
     fi   # end if INTEGRATION_ESCALATE
