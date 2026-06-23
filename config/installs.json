@@ -1,17 +1,19 @@
 {
-  "description": "Framework installs The Witness and Ministry of Flow (aka Logistics) scan. Extend as legacy copies are retired.",
+  "description": "Framework installs The Witness and Ministry of Flow (aka Logistics) scan. Per install: read `index_glob` (per-run index entries) first; fall back to `runs_glob` for unindexed legacy runs (EC 14). Extend as legacy copies are retired.",
   "studio_root": "~/Code/novadiem/agent-framework",
   "installs": [
     {
       "id": "canonical",
       "name": "Agent Framework (canonical)",
       "path": "~/Code/novadiem/agent-framework",
+      "index_glob": "output/studio/runs-index/*.json",
       "runs_glob": "output/runs/*"
     },
     {
       "id": "growoperative",
       "name": "GrowOperative",
       "path": "~/Code/foaftech/Growoperative/agent-framework",
+      "index_glob": "output/studio/runs-index/*.json",
       "runs_glob": "output/runs/*",
       "legacy": true
     },
@@ -19,6 +21,7 @@
       "id": "oriva",
       "name": "Oriva",
       "path": "~/Code/novadiem/oriva/agent-framework",
+      "index_glob": "output/studio/runs-index/*.json",
       "runs_glob": "output/runs/*",
       "legacy": true
     }

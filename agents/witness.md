@@ -25,7 +25,7 @@ You were spawned by the Conductor with a fresh context. You are **not** scoped t
 
 - **`STUDIO_ROOT`** — absolute path to the canonical framework install (usually
   `~/Code/novadiem/agent-framework`)
-- **`INSTALL_PATHS`** — list of framework install roots to scan (each has `output/runs/`)
+- **`INSTALL_PATHS`** — list of framework install roots to scan; per install, read `output/studio/runs-index/*.json` (or the `runs-snapshot.json` rollup) and follow each `run_dir` pointer to its `state.json`/`log.md`; additionally glob the install's own `output/runs/*` for unindexed legacy runs (EC 14)
 - **`MODE`** — `briefing` (default), `digest`, or `resume`
 - **`TARGET_RUN`** — required for `digest` mode: absolute path to one run directory
 
@@ -50,7 +50,7 @@ Convention: docs/conventions.md
 
 | Source | Use |
 |--------|-----|
-| `state.json` per run | Phase, status, open questions, checkpoints, phases_complete |
+| `output/studio/runs-index/*.json` (or rollup) per install | Slug, repo, run_dir, status, phase, last_updated — index-first scan; fall back to `output/runs/*/state.json` for unindexed legacy runs |
 | Tail of `log.md` per run | Last 80–120 lines — recent decisions and spawns; not full history unless `digest` |
 | `spec.md` title / first heading | Run name when `state.json` project field is thin |
 | Legacy `output/` layouts | Note install path; do not assume global layout |
@@ -66,7 +66,7 @@ All outputs go under **`STUDIO_ROOT/output/studio/`** (create if missing):
 | File | When |
 |------|------|
 | `briefing.md` | `briefing` mode — full studio executive summary |
-| `runs-snapshot.json` | `briefing` mode — machine-readable index (optional but preferred) |
+| `runs-snapshot.json` | `briefing` mode — derived rollup of the now-required per-run index (`runs-index/*.json`), written by the Conductor per run and regenerable by `scripts/build-runs-snapshot.sh`; the Witness reads it (fast path) and falls back to globbing `runs-index/` |
 | `digests/<run-slug>.md` | `digest` mode — one run's narrative digest |
 | `resume.md` | `resume` mode — one screen: active runs only |
 
@@ -85,7 +85,7 @@ Produce a Visionary-facing executive summary:
 4. **Recently finished** — complete runs in the last 7 days (one line each).
 5. **Carried / stale** — open questions that survived multiple phases; runs with
    `in_progress` but no log movement in 48h+.
-6. **Install health** — missing paths, parse errors on `state.json`, legacy install notes.
+6. **Install health** — missing paths, parse errors on `state.json`, legacy install notes. Also: `dangling: <slug> → <run_dir> (path missing)` for any index entry whose `run_dir` no longer exists on disk (EC 11 — path-test before reading; report, do not error, do not silently drop); `unindexed (legacy): <slug>` for any run found in `output/runs/*` with no `runs-index/<slug>.json` entry (EC 14).
 
 Tone: direct, terse, no hype. Name absolute paths so the Visionary can click or `cd`.
 

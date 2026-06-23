@@ -138,7 +138,7 @@ for the roles the host-policy table marks opus. If you catch yourself spawning w
 stop and add it.
 
 Let `<ROOT>` be the absolute path to this `agent-framework/` folder. Let `<RUN_DIR>` be the
-absolute path to this run's directory (`output/runs/<yyyymmdd>-<task-slug>/`). Pass a
+absolute path to this run's directory (`<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` when a target is resolved, or `output/runs/<yyyymmdd>-<task-slug>/` for the no-target fallback). Pass a
 prompt of this shape:
 
 ```
@@ -399,6 +399,8 @@ Before spawning agents, build a frame of reference so you can route work correct
    for each relevant repo/sub-app — name, path, purpose, stack, and where its local
    CLAUDE.md/conventions live. Name the **target** of this work: which sub-app(s)/dir(s) the
    change touches.
+
+`RUN_DIR/workspace-map.md` documents the target for the human frame of reference. It is written INTO RUN_DIR *after* creation and is **NOT** the source of the RUN_DIR location — that source is `state.json#target_repo`, resolved at run start (before creation). Call `scripts/ensure-bureau-ignored.sh R` before the first artifact write to `R/.bureau/`. If a pre-existing `.bureau/` in `R` looks foreign (no Bureau `state.json` shape in its `runs/`), `[CHECKPOINT]` before writing — same pattern as `execute-plan.md:308-311`.
 
 This map is your frame of reference across repos. Keep it current; it persists across sessions.
 
@@ -719,15 +721,19 @@ write the manifest, then continue to the Prompt Engineer. If it's empty, re-show
 
 ## Run directory (`RUN_DIR`) — one per task, concurrency-safe
 
-Every run owns its own output directory: `output/runs/<yyyymmdd>-<task-slug>/` (the **run
-dir**, always passed to spawned agents as **`RUN_DIR`**). `state.json`, `log.md`, `spec.md`,
-`plan.md`, `prompts.md`, and `design/` all live there. Create it at start; copy
-`templates/state.json` into the run dir; initialize `log.md`. Persona files name artifacts
-relative to `RUN_DIR` — pass their **absolute** paths in every spawn prompt.
+The canonical RUN_DIR is `<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` when `target_repo` is a real path (including self-run where the install IS the target repo). The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-target)"`.
 
-This is what makes concurrent runs safe on ONE global install: two sessions each own their
-`RUN_DIR` and never write each other's artifacts. The `agents/` and `workflows/` files are
-read-only at runtime and shared freely.
+**Creation order (required — AC 5, AC 17):**
+- **(0) Resume gate** — if an existing run dir was named or found (via the resume snippet's `Run dir:` line, or a slug already present at `output/runs/<slug>/`), use it **verbatim** — whether it lives at `output/runs/` or `.bureau/runs/`. Skip steps (1)–(3). An existing run dir is sticky and is never relocated or migrated.
+- **(1) NEW run: resolve `target_repo`** — walk the target-resolution precedence (see `CLAUDE.md` "On start"), write the resolved value to `state.json#target_repo`.
+- **(2) Create RUN_DIR from the resolved target** — `mkdir -p R/.bureau/runs/<slug>/` for a real `R`, or `output/runs/<slug>/` for `"(no-target)"`.
+- **(3) Copy `templates/state.json` + init `log.md`.** Pass the resolved absolute path as **`RUN_DIR`** in every spawn prompt.
+
+Two runs on repo `R` use distinct slugs — `R/.bureau/runs/<slug-A>/` vs `R/.bureau/runs/<slug-B>/` — so they never collide (FR 13, AC 12).
+
+`state.json`, `log.md`, `spec.md`, `plan.md`, `prompts.md`, and `design/` all live under `RUN_DIR`. Persona files name artifacts relative to `RUN_DIR` — pass their **absolute** paths in every spawn prompt.
+
+This is what makes concurrent runs safe on ONE global install: two sessions each own their `RUN_DIR` and never write each other's artifacts. The `agents/` and `workflows/` files are read-only at runtime and shared freely.
 
 **Git worktrees** (execute build stage) isolate code per run — see `docs/git-worktree.md`.
 Create with `scripts/run-worktree.sh create` before step 6; merge/remove at close-out or per
@@ -740,9 +746,7 @@ Concurrency rules:
   one worktree or edit the integration branch directly during an open run.
 - Shared infrastructure (a dev DB, docker test containers) can still contend across runs —
   if both tasks run the same test database, stagger the test-running steps.
-- Legacy: an old install may still have a top-level `output/state.json` from before run dirs.
-  Finish that run in place; don't migrate it mid-run. New runs always get a `RUN_DIR`. See
-  `output/README.md`.
+- Legacy: an old install may still have a top-level `output/state.json` from before run dirs, or runs from before this change that live at `output/runs/<slug>/`. Finish those runs in place; don't migrate them mid-run. New runs always get a `RUN_DIR`. See `output/README.md`.
 
 ## State management
 
@@ -751,6 +755,7 @@ After each phase, update the run dir's `state.json`:
 ```json
 {
   "project": "Project name",
+  "target_repo": "/path/to/target/repo",
   "phase": "current phase name — a SHORT label, not a paragraph",
   "phase_status": "complete | in_progress | blocked",
   "phases_complete": ["analyst", "architect"],
@@ -765,8 +770,8 @@ After each phase, update the run dir's `state.json`:
     "enabled": true,
     "repo": "/path/to/target/repo",
     "base_branch": "devel",
-    "branch": "society/20260612-task-slug",
-    "worktree_path": "/path/to/repo/.society-worktrees/20260612-task-slug",
+    "branch": "bureau/20260612-task-slug",
+    "worktree_path": "/Users/robin/.bureau/worktrees/target-repo/20260612-task-slug",
     "merge_policy": "end_of_job",
     "status": "active",
     "prompts_merged": []
@@ -774,6 +779,8 @@ After each phase, update the run dir's `state.json`:
   "last_updated": "ISO timestamp"
 }
 ```
+
+`target_repo`: set by the Conductor at run start (before RUN_DIR creation) from the target-repo resolution step; an absolute path or the literal `"(no-target)"` sentinel. Independent of the execute-only `git` block (which stays `enabled: false` on planning runs).
 
 `git` block: set by `scripts/run-worktree.sh create`; omit or `enabled: false` for planning-only
 runs. Full schema: `templates/state.json`, `docs/git-worktree.md`.
@@ -797,6 +804,34 @@ State discipline — all three of these have bitten real runs:
   `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`
   If you re-set a key, find and remove the old occurrence — never append a second copy.
 
+**Index write (same cadence as `state.json`):** After every `state.json` write and its validation, project the run's current state into `output/studio/runs-index/<slug>.json`:
+
+```json
+{
+  "slug": "<slug>",
+  "repo": "<state.json#target_repo>",
+  "run_dir": "<absolute RUN_DIR>",
+  "status": "<derived — see run-level status derivation below>",
+  "phase": "<state.json#phase>",
+  "last_updated": "<state.json#last_updated>",
+  "workflow": "<state.json#workflow>"
+}
+```
+
+Six fields copied verbatim from `state.json` (using `target_repo` for `repo` — NOT `git.repo`, which is `null` on planning runs); one field derived (`status`, per the derivation table below). Before the first index write in a session, run `mkdir -p output/studio/runs-index/ && mkdir -p output/studio/runs-index/archive/` — the directory is not created by any prior framework step and does not exist in a fresh install. Write atomically: temp `.<slug>.json.tmp` then `mv`. Validate the entry file the same way as `state.json`. Per-run files are the concurrency mechanism — no lock needed (EC 13).
+
+> **Not committed.** `output/studio/runs-index/` and the derived `output/studio/runs-snapshot.json` are **gitignored** local runtime cache — per-run pointers carrying machine-local absolute `run_dir` paths, rewritten every phase and regenerable by `scripts/build-runs-snapshot.sh`. They are NOT part of the committed Studio Record (`briefing.md`, `lessons.md`); do not track them. Each install builds its own index from its own runs.
+
+**Run-level `status` derivation** (the index `status` is NOT `phase_status` verbatim):
+
+| Run condition | index `status` |
+|---|---|
+| Template default (`phase_status: "pending"`, `phases_complete: []`) | `"not_started"` |
+| `phase_status == "blocked"` | `"blocked"` |
+| Phase `in_progress`, OR phase `complete` but more phases remain (not terminal close-out) | `"in_progress"` |
+| Terminal close-out (not yet archived) | `"complete"` |
+| Post-archive | `"archived"` |
+
 ## Log format
 
 Append to `RUN_DIR/log.md` after every spawn and every decision:
@@ -816,6 +851,14 @@ A run's accounting answers a flat question: which roles ran, on which model, how
 and to what end. `scripts/account-run.sh <RUN_DIR>` builds `accounting.json` from the run's
 artifacts. This section is the convention that makes that build correct and that fires it on
 every terminal exit. It is a terminal-workflow step, not initial setup.
+
+**Index close-out:** At terminal close-out (before archive), write the entry with `status: "complete"` (or `"blocked"`) — entry stays in `output/studio/runs-index/` (live set).
+
+**Index archive (at the same time as the run-dir `mv`):** When archiving a run (moving `R/.bureau/runs/<slug>/` → `R/.bureau/archive/<slug>/` or `output/runs/<slug>/` → `output/archive/<slug>/`):
+1. Set `status: "archived"` and update `run_dir` to the archive path in the entry file.
+2. Move the entry: `output/studio/runs-index/<slug>.json` → `output/studio/runs-index/archive/<slug>.json` (W5 retention — keeps the live index bounded by active runs; archived entries remain available under `archive/`).
+
+These writes happen in the same step as the archive `mv` — not after. A stale `in_progress` entry after archive is a Conductor write-discipline failure (EC 12).
 
 ### A. The SPAWN-EVENT obligation
 

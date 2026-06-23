@@ -649,7 +649,7 @@ The Witness does not write into any run's Archive; output goes to the **Studio R
 | BRIEFING | Executive studio summary | `output/studio/briefing.md` |
 | RESUME | Short active-run card | `output/studio/resume.md` |
 | DIGEST | One run's narrative compression | `output/studio/digests/<slug>.md` |
-| SNAPSHOT | Machine index (optional) | `output/studio/runs-snapshot.json` |
+| SNAPSHOT | Per-run index rollup (derived from `runs-index/*.json`, written by Conductor each run) | `output/studio/runs-snapshot.json` |
 
 Ministry of Flow (aka Logistics) displays mechanical run status; The Witness writes the narrative layer above it.
 

@@ -12,7 +12,7 @@
 #   --base BRANCH          default: devel
 #   --slug SLUG            default: basename of RUN_DIR
 #   --merge-policy POLICY  end_of_job | per_prompt | checkpoint (default: end_of_job)
-#   --worktree-dir PATH    default: REPO/.bureau-worktrees/SLUG
+#   --worktree-dir PATH    default: $HOME/.bureau/worktrees/REPO_BASENAME/SLUG (override: BUREAU_WORKTREE_ROOT)
 
 set -euo pipefail
 
@@ -103,7 +103,7 @@ cmd_create() {
 
   local branch="bureau/${SLUG}"
   if [[ -z "$WORKTREE_DIR" ]]; then
-    WORKTREE_DIR="$REPO/.bureau-worktrees/$SLUG"
+    WORKTREE_DIR="${BUREAU_WORKTREE_ROOT:-$HOME/.bureau/worktrees}/$(basename "$REPO")/$SLUG"
   fi
   mkdir -p "$(dirname "$WORKTREE_DIR")"
 
