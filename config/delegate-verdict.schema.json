@@ -41,6 +41,37 @@
     "Ledger": {
       "type": "string",
       "minLength": 1
+    },
+    "Integration-evidence": {
+      "type": "object",
+      "properties": {
+        "Gates-checked": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "Pre-existing-validated": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "Under-declaration": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "Scope-diff-clean": {
+          "type": ["boolean", "null"]
+        },
+        "Scope-violations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "Fast-forward-ok": {
+          "type": "boolean"
+        },
+        "Conflicts-clean": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

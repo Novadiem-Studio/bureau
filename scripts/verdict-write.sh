@@ -145,6 +145,57 @@ for line in $PARSED; do
   eval "$var=\$val"
 done
 
+# ── step 2b: integration-evidence guard (fired only for integration checkpoints) ──
+# The flat-field path (step 1+2 above) decodes seven FLAT string fields and never
+# walks a nested object. The integration guards require inspecting a nested object
+# (Integration-evidence) and an array inside it (Pre-existing-validated[]). This is
+# NEW validation logic — not a reuse of the flat path — routed through the EXISTING
+# fail() rejection mechanism. It fires ONLY when the matching NN-request.md carries
+# `checkpoint-type: integration`; the routine path never enters this block (FR-B14-10,
+# AC-11). req_field is defined below (step 3), so the grep is duplicated inline here.
+# $REQUEST_FILE existence/readability is asserted in step 3; this read tolerates absence
+# (grep on a missing file ⇒ empty ⇒ not "integration" ⇒ block skipped). $RAW_JSON was
+# confirmed present above (the `[ -f "$RAW_JSON" ]` guard before step 1+2).
+
+CHECKPOINT_TYPE="$(grep -E '^checkpoint-type:[[:space:]]*' "$REQUEST_FILE" 2>/dev/null \
+  | head -n 1 \
+  | sed -E 's/^checkpoint-type:[[:space:]]*//' \
+  | sed -E 's/[[:space:]]+$//')"
+
+if [ "$CHECKPOINT_TYPE" = "integration" ]; then
+  python3 - "$RAW_JSON" <<'PY' || fail "integration-evidence guard failed (see stderr above)"
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path) as fh:
+        data = json.load(fh)
+except Exception as e:
+    sys.stderr.write("bad JSON: %s\n" % e)
+    sys.exit(1)
+# Guard 1: Integration-evidence must be present and must be an object (EC-B14-11, AC-8).
+ie = data.get("Integration-evidence")
+if not isinstance(ie, dict):
+    sys.stderr.write(
+        "Integration-evidence missing or not an object in integration checkpoint verdict\n"
+    )
+    sys.exit(1)
+# Guard 2: If Decision == "proceed" and any Pre-existing-validated entry has
+# confirmed-pre-existing == false, this is a mislabeled regression — reject (EC-B14-2, AC-4).
+decision = data.get("Decision", "")
+if decision == "proceed":
+    pre_existing = ie.get("Pre-existing-validated", [])
+    if isinstance(pre_existing, list):
+        for entry in pre_existing:
+            if isinstance(entry, dict) and entry.get("confirmed-pre-existing") is False:
+                sys.stderr.write(
+                    "proceed verdict rejected: Pre-existing-validated entry has "
+                    "confirmed-pre-existing: false (mislabeled regression)\n"
+                )
+                sys.exit(1)
+sys.exit(0)
+PY
+fi
+
 # ── step 3: read the request file's four keys ────────────────────────────────
 # artifact-hash:, revise-count:, checkpoint:, attempt:. The verdict file's
 # checkpoint/attempt come from the request, not the JSON.
