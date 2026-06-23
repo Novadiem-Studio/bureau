@@ -215,7 +215,7 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 | Spawn `model` | Roles |
 |---------------|-------|
 | **haiku** | Scoot only (locked) |
-| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic, Witness, Coupler, Tally (default utility) |
+| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic, Witness, Coupler, Tally (default utility), **Scribe** (default; escalate to opus for Draft/Revise) |
 | **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
 
 Provider-neutral tiers `strong` / `frontier` / `escalated` resolve to **opus** on the Claude
@@ -328,6 +328,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **The Cleric** (Designer) | `agents/designer.md` | standard | Brief-writing, manifest extraction, design review |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan — translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
+| **The Scribe** | `agents/scribe.md` | standard | Long-form drafting + revision + MDX format — escalate Draft/Revise to strong (Opus) |
 
 **Studio-level (not one `RUN_DIR`):**
 
