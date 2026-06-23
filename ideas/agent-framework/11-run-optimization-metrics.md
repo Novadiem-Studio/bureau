@@ -6,7 +6,7 @@ suggested-run-slug: run-optimization-metrics
 source: audit of the Bundle 09 run (20260620-principal-delegate) + Robin's direction, 2026-06-21
 ---
 
-# 12. Run optimization metrics (tokens, loops, wall-clock, human-wait)
+# 11. Run optimization metrics (tokens, loops, wall-clock, human-wait)
 
 ## Purpose
 
@@ -16,7 +16,7 @@ how many **tokens**, how many **loops**, how much **wall-clock**, and how much *
 (time a run sits blocked on Robin at a checkpoint). On a Claude subscription, dollars are
 irrelevant; tokens, time, and human-attention are the real budget. This bundle captures those
 four, live, into `log.md`, so a finished run reports them with one `grep` and so studio-level
-trends can show whether the loop-cost work (Bundle 09) and the loop-count work (Bundle 10) are
+trends can show whether the loop-cost work (Bundle 09) and the loop-count work (Bundle 12) are
 actually paying off.
 
 Dollars are explicitly out of scope. The cost unit is the token.
@@ -108,9 +108,9 @@ multi-session-safe.
 
 - Extends **Bundle 04** (run accounting): same `{value, confidence}` schema, same
   short-pointer-in-`state.json` rule, the actual packet in its own file.
-- Sibling of **Bundle 11** (also a Bundle 04 follow-up): 11 hardens the existing script's tests;
-  12 adds new metrics. They do not conflict.
-- Measures **Bundle 09** (cuts loop *cost*) and **Bundle 10** (cuts loop *count*). These metrics
+- Sibling of **Bundle 10** (also a Bundle 04 follow-up): 10 hardens the existing script's tests;
+  11 adds new metrics. They do not conflict.
+- Measures **Bundle 09** (cuts loop *cost*) and **Bundle 12** (cuts loop *count*). These metrics
   are how you tell either one worked. Bundle 04's stated purpose led with "what it cost"; this
   closes that gap with the cost unit that matters on a subscription.
 - Later slice (out of scope here): aggregate per-run metrics into `output/studio/` for

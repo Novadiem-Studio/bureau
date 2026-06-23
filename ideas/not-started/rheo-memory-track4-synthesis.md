@@ -38,8 +38,10 @@ Rheo can see the session list and fetch individual digests, but has no way to as
 thread/session structure; Track 4 needs the synthesis layer on top.
 
 **3. Maintenance is manual or absent.**
-- `graph.jsonl` grows forever without compaction (Track 3 adds `graph_compact`,
-  but it's manual).
+- `graph.jsonl` grows forever without compaction. No compaction exists yet — Track 4
+  builds `compactGraph()` in `lib/graph-compact.ts`, gated behind a file-size check
+  so it is a no-op until the graph is actually large (the 5 MB log-warn at
+  `graph.ts:98` is the agreed signal).
 - Unconfirmed entity and procedural note candidates pile up with no pruning.
 - Historical sessions (predating Track 2 activation) were never run through
   extraction — the entity graph and procedural memory have no knowledge of
@@ -109,9 +111,11 @@ A nightly job (extending the existing `scheduleNightly` in `lib/backup.ts`) runs
    Append a SupersessionPatch (not a deletion) for unconfirmed entity candidates
    older than 30 days with no relations and `confidence < 0.85` — mark them
    superseded by a sentinel `id: 'pruned'` so the graph stays append-only.
-3. **Compact graph** — call `compactGraph()` from `lib/graph-compact.ts`
-   (Track 3). Run after prune so pruned records don't appear in the compacted
-   file.
+3. **Compact graph** — build and call `compactGraph()` in `lib/graph-compact.ts`
+   (new in Track 4; compaction was deferred from Track 3). Gate on file size:
+   skip if `graph.jsonl` is under 5 MB (the existing `graph.ts:98` log-warn is
+   the agreed trigger — a no-op until the graph is actually large). Run after
+   prune so pruned records don't appear in the compacted output.
 
 The nightly job logs each step's outcome to `console.log` with `[MOT/nightly]`
 prefix (same pattern as other lib logging).
@@ -191,7 +195,7 @@ endpoint. No new auth surface.
 |------|------|-------|
 | `memory_context` | `q?: string, chat_id?: string, limit?: number` | Context bundle |
 | `topic_thread_summarize` | `slug: string` | On-demand synthesis; not stored |
-| `graph_compact` | none | Admin; already in Track 3 but listed here for completeness |
+| `graph_compact` | none | Admin; built in Track 4, gated by file size (deferred from Track 3) |
 
 ---
 

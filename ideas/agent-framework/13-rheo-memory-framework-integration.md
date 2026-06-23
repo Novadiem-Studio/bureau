@@ -1,5 +1,5 @@
 ---
-priority: bundle-07
+priority: bundle-13
 status: idea (consolidated)
 suggested-workflow: feature
 suggested-run-slug: rheo-memory-framework-integration
@@ -7,7 +7,7 @@ source-ideas:
   - ../in-progress/rheo-persistent-memory.md
 ---
 
-# 07. Rheo memory framework integration
+# 13. Rheo memory framework integration
 
 ## Purpose
 

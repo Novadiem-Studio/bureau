@@ -17,7 +17,7 @@ For a more public-facing explanation of the vision, see
 [The Bureau Learns to Remember](spotlight-bureau-rheo-memory.md).
 
 Rheo persistent memory is included as a boundary-respecting framework integration track
-(Bundle 07). Rheo memory itself is remote MOT/Rheo runtime work; the Bureau framework runs
+(Bundle 13). Rheo memory itself is remote MOT/Rheo runtime work; the Bureau framework runs
 from the local development workspace today. They should converge through explicit contracts
 and shared artifacts, not ambient access.
 
@@ -171,7 +171,7 @@ Done when:
 - Linting warns without breaking builds.
 - Local routing is proven safe before broad use.
 
-### Bundle 07 - Rheo Memory Framework Integration
+### Bundle 13 - Rheo Memory Framework Integration
 
 Purpose: safely consume and reason about the remote Rheo/MOT persistent memory system from
 the local Bureau framework without merging runtimes.
@@ -201,7 +201,7 @@ Integration points already reflected:
 
 Timing:
 
-- Bundle 07's rules and checklist exist now.
+- Bundle 13's rules and checklist exist now.
 - Adapter implementation waits until Rheo Layer 0/4 is Challenger-reviewed and deployed, and
   at least one digest/entity phase exists or is explicitly deferred with reason.
 
@@ -248,6 +248,8 @@ views, and temporal flows.
 - The framework remains maintainable and evolves through its own learning loop.
 
 ## Next Actions
+
+**Promoted 2026-06-22 — next after the in-flight Bundle 08:** Bundle 14 (Delegate verification gate at integration boundaries), as a `feature` run. Field-derived from the Track-3 merge, where a human had to re-execute the build's claims at the merge gate before it was safe. See `ideas/agent-framework/14-delegate-merge-gate-verification.md`.
 
 1. Complete and review Bundle 01a.
 2. Challenger-review existing Rheo Layer 0/4, route blockers, then hand deployment to The

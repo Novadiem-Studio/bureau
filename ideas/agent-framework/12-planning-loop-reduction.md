@@ -1,5 +1,5 @@
 ---
-priority: bundle-10
+priority: bundle-12
 status: idea
 suggested-workflow: feature
 suggested-run-slug: planning-loop-reduction
@@ -8,7 +8,7 @@ origin: Bundle 04 (run-accounting) post-mortem, 2026-06-20
 outcome: a comparable feature run needs measurably fewer correction loops than Bundle 04 — which took ~4 prompts-stage HOLD rounds plus three pre-Challenger design holds and a workflow-ownership rewrite
 ---
 
-# 10. Planning loop reduction — shift catches left
+# 12. Planning loop reduction — shift catches left
 
 Bundle 09 (the delegate) makes each correction loop *cheaper* to review. This bundle makes the
 loops *fewer*. The two are independent and complementary: 09 lowers the cost of a review; this

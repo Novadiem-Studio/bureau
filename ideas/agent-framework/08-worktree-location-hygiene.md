@@ -1,6 +1,9 @@
-# 08. Worktree location hygiene
+# 08. Bureau file-location hygiene
 
-Status: not started. Logged 2026-06-19.
+Status: not started. Logged 2026-06-19. **Expanded 2026-06-22** with a second, larger change —
+run-output relocation — see "## Run-output location" at the bottom. The two share one theme
+(*where Bureau puts its files relative to the target repo*) and ship in one run, but are
+independent deliverables. The original worktree fix is below, unchanged.
 
 ## Problem
 `scripts/run-worktree.sh` creates execute/bug-fix worktrees **inside** the target repo, at
@@ -89,3 +92,60 @@ running jobs is required to ship this.
 Script-enforced: the default lives in `run-worktree.sh`, so the behavior is verifiable by
 inspecting the created `worktree_path`, not left to Conductor discretion. Passes the
 cross-bundle principle.
+
+---
+
+## Run-output location (added 2026-06-22)
+
+A **second, larger** location-hygiene change, bundled with the worktree move above because they
+answer the same question — *where does Bureau put its files relative to the target repo?* — but
+the Architect should treat them as independent deliverables.
+
+**Intent (Robin, 2026-06-22):** a run's output should land in a **gitignored `.bureau/` folder
+inside the repo the run operates on**, not only in the global install's `output/runs/`. The
+artifacts then live with the project they describe — most valuable in existing-project mode.
+
+**Today:** one global install at `~/Code/novadiem/bureau/` writes every run's artifacts
+(`spec.md`, `plan.md`, `prompts.md`, `log.md`, `state.json`, `design/`) to `output/runs/<slug>/`
+*inside the install*. `output/` is gitignored there (except `output/studio/`). The execute-plan
+prompt folder already lands in the target repo (beside the plan doc); the rest of the run dir
+does not.
+
+**Proposed shape (for the Architect to design, not prescribed here):**
+- Run artifacts for a run against repo `R` end up under `R/.bureau/runs/<slug>/`.
+- `.bureau/` is gitignored in `R` — the same lesson `.bureau-worktrees/` taught us above: an
+  un-ignored Bureau dir gets swept into a commit.
+- Note the symmetry with the worktree fix: ephemeral worktrees move **out** of the repo to
+  `~/.bureau/worktrees/<repo>/<slug>/`; durable run artifacts move **into** the repo at
+  `R/.bureau/runs/<slug>/`. Both under one `.bureau` namespace (one in `$HOME`, one in the
+  repo). The Architect should make the two names coherent rather than accidental.
+
+**The one decision Robin explicitly deferred to the Analyst/Architect:** whether the run writes
+into `R/.bureau/` **from the outset** (RUN_DIR lives there for the whole run) or writes to the
+global `output/runs/` as now and is **moved/copied into `R/.bureau/` as a close-out step**.
+Both are legitimate; pick one and say why.
+
+**Open design questions the Architect must resolve:**
+- **Self-run case:** when Bureau runs *on itself* (target repo == the install, as in this very
+  bundle), `R/.bureau/` sits inside the install. Does it coexist with `output/runs/`, or replace
+  it for self-runs? Don't create two competing homes for the same artifacts.
+- **`output/studio/`** is the committed cross-run Studio Record (The Witness). It is *not*
+  per-target-repo and stays in the install. This relocation is for per-run artifacts only.
+- **Archiving** (`mv output/runs/<slug> output/archive/<slug>`) and the **resume** instructions
+  in `CLAUDE.md` both hard-code `output/runs/<task>/`; both change if RUN_DIR moves.
+- **Concurrency** is already slug-scoped (`<slug>/`), so two runs on one repo stay separate —
+  confirm that still holds under `.bureau/runs/`.
+- **Non-repo or no-target runs** (planning-only against a target that isn't a git repo, or no
+  target repo at all) still need a home — fall back to the install's `output/runs/`.
+
+**Acceptance (run-output piece):**
+- A run against repo `R` leaves its artifacts under `R/.bureau/runs/<slug>/` (timing per the
+  deferred decision), and `R/.bureau/` is gitignored so nothing is committable.
+- `CLAUDE.md` (run-dir creation, archiving, resume) and `agents/orchestrator.md` (the "Run
+  directory" section) describe the chosen location consistently — no doc still claims artifacts
+  live only in the install's `output/runs/`.
+- Setup guidance ensures a target repo gets `.bureau/` gitignored before a run writes there.
+
+This piece touches a **canon/process surface** (`agents/orchestrator.md` run-directory
+convention, `CLAUDE.md`), so the run's Challenger spawn carries the `Promotion to canon:`
+declaration per `agents/orchestrator.md`.

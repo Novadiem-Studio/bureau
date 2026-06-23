@@ -6,7 +6,7 @@ suggested-run-slug: account-run-committed-regression-suite
 source: Codex external review of the Bundle 04 build (P2#4), 2026-06-20
 ---
 
-# 11. A committed regression suite for `account-run.sh`
+# 10. A committed regression suite for `account-run.sh`
 
 ## Purpose
 
