@@ -21,8 +21,9 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
 - Optionally a per-run `RUN_DIR/article-passes.json`. If present, it **replaces**
   `config/article-passes.json` entirely for this run (not a merge — predictable and explicit).
 - `RUN_DIR` is set by the Conductor per standard convention (`output/runs/<yyyymmdd>-<task-slug>/`).
-- The OpenRouter key in the keystore (`~/Documents/novadiem/keys/novadiem/openrouter.env`),
-  consumed by `scripts/model-pass.sh`. The script loud-fails (exit 4) if absent.
+- The OpenRouter key in the keystore (`~/Documents/novadiem/keys/novadiem/openrouter.env`,
+  provisioned by the chunk-02 build step), consumed by `scripts/model-pass.sh`. The script
+  loud-fails (exit 4) if absent.
 - Out of scope: any live-web fact-check (figure-grounding is tool-free, against the draft's own
   cited sources); GPT/Gemini *direct* provider arms (v1 reaches them only via `openrouter:`);
   pushing to `main` (that is Robin's release step — this workflow stops at the dev boundary).
@@ -81,9 +82,12 @@ The run is complete when ALL hold:
 - **All cross-model passes fail.** The step-8 batch may produce zero candidates (every pass
   errored, was skipped, or failed integrity). Step 9 then runs as a Claude-only final revision
   of `draft.md`. `draft.md` is preserved throughout — `model-pass.sh` writes nothing on failure.
-- **Resume after interruption mid-batch.** Any cleared candidate already at
-  `RUN_DIR/passes/NN-<id>.md` is reused — step 8 skips that pass without re-charging the paid
-  call. The workflow re-reads the effective config and skips every pass whose candidate exists.
+- **Resume after interruption mid-batch.** Any cleared candidate already in `RUN_DIR/passes/` is
+  reused — step 8 skips that pass without re-charging the paid call. The workflow re-reads the
+  effective config and skips every pass whose candidate exists. Candidate identity is keyed on
+  the pass **`id`** (the skip predicate matches `*-<id>.md`), not on list position `NN`, so
+  reordering or disabling a pass in a per-run config between interruption and resume cannot cause
+  a paid call to be re-charged.
 - **Per-run config override.** If `RUN_DIR/article-passes.json` exists it replaces
   `config/article-passes.json` entirely (not a merge). The effective config is one or the other,
   never a blend.
@@ -186,11 +190,18 @@ Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-co
      here, immediately before this gate clears.
 
 8. **Action** — cross-model stage (post-approval)
+   **Precondition (before dispatching any pass):** the Conductor confirms `RUN_DIR/` and
+   `RUN_DIR/passes/` exist (create `passes/` if missing). `model-pass.sh` only writes its
+   `[EXTERNAL-ACTION]` audit line when `--run-dir` points at an existing dir (silent no-op
+   otherwise) — without this, a fired paid call goes unlogged and step 15's count under-reports.
    Iterate the effective passes config **in order**. For each pass with `enabled: true`, where
-   `NN` is the pass's zero-padded position in the list (`01`, `02`, …) and `<id>` is its `id`:
-   - **Resume check** — if a cleared candidate already exists at `RUN_DIR/passes/NN-<id>.md`,
-     **skip this pass** (resume-idempotent — a completed candidate is never re-charged; the file
-     existing means it cleared every integrity check).
+   `<id>` is its stable `id` and `NN` is the pass's zero-padded position in the list (`01`, `02`, …):
+   - **Resume check (keyed on the pass `id`, not list position)** — if a cleared candidate for
+     pass `<id>` already exists in `RUN_DIR/passes/` (match the glob `*-<id>.md`), **skip this
+     pass** (resume-idempotent — a completed candidate is never re-charged; the file existing
+     means it cleared every integrity check). The skip predicate keys on `<id>`, never on `NN`:
+     if a per-run config is reordered or a pass disabled between an interruption and the resume,
+     `NN` shifts but `<id>` is stable, so matching on `<id>` prevents a re-charge.
    - **Otherwise run** (the instruction path resolves relative to the bureau root):
      ```
      bash scripts/model-pass.sh <model> "$RUN_DIR/draft.md" \
