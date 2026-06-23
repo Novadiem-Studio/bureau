@@ -181,6 +181,44 @@ The `$DELEGATE_TASK_PROMPT` names the staged files by their `$CTX`-relative path
 (the artifact, `log-slice.md`, `state.json`, `conventions.md`, `delegate.md`). It
 cannot name `log.md` because `log.md` is not in scope.
 
+### Integration-mode staging additions
+
+When `checkpoint-type: integration`, the watcher also writes:
+  `$CTX/integration-results.json` — the pre-spawn ground-truth file containing
+  canonical gate execution results, pre-existing-red validation at base-ref,
+  under-declaration cross-check, scope-diff, and fast-forward/conflict results.
+
+This file is the watcher's INTERNAL channel (snake_case field names; not
+schema-validated). The Delegate re-projects its fields into the schema-PascalCase
+`Integration-evidence` keys when emitting the verdict.
+
+The `DELEGATE_TASK_PROMPT` (`watcher.sh:284`) also switches to an integration
+variant that names `integration-results.json` as a required read. The routine
+prompt is unchanged when `checkpoint-type` is routine/absent.
+
+`log.md` is still never staged in any mode. The EC8 assertion (`watcher.sh:276-279`)
+is unchanged.
+
+**OQ-B14-1 decision: option (c).** The watcher (not the Delegate) runs the canonical
+gate commands. The Delegate stays `--tools "Read"` and reads only `$CTX`. This
+preserves the § 3 hard constraints (no Bash grant; the worktree is never added to the
+Delegate's read root; no-write constraint). The watcher resolves the canonical gate
+set from the project's own runners (regression runner + manifest), never from
+`claimed-gates` (FR-B14-3, FR-B14-14) — the verified party does not define what
+gets executed.
+
+**Two-part insertion in watcher.sh:** the integration executor spans insertion point A
+(parse + short-circuit flags, before staging at line 262 — no file writes yet) and
+insertion point B (write integration-results.json + override DELEGATE_TASK_PROMPT,
+after the EC8 assertion at line ~279 — $CTX exists here). The $CTX-must-exist-before-
+write invariant is maintained: no file targeting $CTX is written before $CTX is created.
+
+**`known-flaky-gates` demotion (OQ-B14-4):** an optional `known-flaky-gates` field in
+the request lists gates whose re-run failures are known flaky. The watcher marks matching
+red gates with `flaky: true` in the staged results; the Delegate flags those entries in
+Uncertainties instead of blocking. Absent ⇒ every re-run red blocks (the conservative
+default). This is a membership test, not preference modeling (FR-44).
+
 ## Section 5: Conductor checkpoint shim (additive protocol — A3)
 
 This is the protocol the Conductor runs at each checkpoint when a Delegate is attached. It is
