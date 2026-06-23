@@ -259,6 +259,37 @@ process_request() {
     return 0
   fi
 
+  # ── integration-mode pre-spawn executor part A: parse + short-circuit flags ──
+  # Additive: only the integration path uses these. The routine path (checkpoint-type
+  # routine/absent) leaves every variable at its default and never enters the gated
+  # block below or in part B (FR-B14-10, AC-11). No file is written here — $CTX does
+  # not exist until the staging block runs (part B is where $CTX writes happen).
+  REQ_CHECKPOINT_TYPE="$(req_field 'checkpoint-type' "$request_file")"
+  REQ_WORKTREE_PATH="$(req_field 'worktree-path' "$request_file")"
+  REQ_BASE_REF="$(req_field 'base-ref' "$request_file")"
+  REQ_CLAIMED_GATES_RAW="$(req_field 'claimed-gates' "$request_file")"
+  REQ_KNOWN_FLAKY_RAW="$(req_field 'known-flaky-gates' "$request_file")"
+
+  INTEGRATION_ESCALATE=0
+  INTEGRATION_ESCALATE_REASON=""
+
+  if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
+
+    # SHORT-CIRCUIT GUARD 1 — (none)-worktree (EC-B14-1, AC-8):
+    if [ -z "$REQ_WORKTREE_PATH" ] || [ "$REQ_WORKTREE_PATH" = "(none)" ]; then
+      INTEGRATION_ESCALATE=1
+      INTEGRATION_ESCALATE_REASON="No worktree available for integration verification; re-run after providing worktree-path."
+
+    # SHORT-CIRCUIT GUARD 2 — unresolvable base-ref (EC-B14-4, AC-9):
+    elif ! git -C "$REQ_WORKTREE_PATH" rev-parse "$REQ_BASE_REF" > /dev/null 2>&1; then
+      INTEGRATION_ESCALATE=1
+      INTEGRATION_ESCALATE_REASON="base-ref not resolvable; cannot validate pre-existing claims."
+    fi
+
+  fi
+  # If REQ_CHECKPOINT_TYPE is NOT "integration": all variables remain at defaults;
+  # the integration block in part B checks REQ_CHECKPOINT_TYPE and falls through.
+
   # ── stage the per-checkpoint read set into NN-context (EC8) ────────────────
   # The staged dir is the Delegate's ONLY read root. log.md is NEVER copied in.
   CTX="$CHECKPOINTS_DIR/${NN}-context"
@@ -280,8 +311,352 @@ process_request() {
 
   artifact_base="$(basename "$REQ_ARTIFACT")"
 
+  # ── integration-mode pre-spawn executor part B: write results + task prompt ──
+  # $CTX now exists (created by the staging block above) and $artifact_base is set.
+  # All file writes targeting $CTX happen here. This block runs only when
+  # checkpoint-type: integration; the routine path skips it untouched (FR-B14-10).
+  if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
+
+    if [ "$INTEGRATION_ESCALATE" = "1" ]; then
+
+      # Write the skeletal-but-present escalate-marker block so:
+      # (a) verdict-write.sh integration-evidence presence guard is satisfied,
+      # (b) the Delegate reads a well-formed file and emits a well-formed verdict,
+      # (c) the Delegate's verifying-mode trigger (file presence) fires correctly.
+      python3 - "$CTX/integration-results.json" "$INTEGRATION_ESCALATE_REASON" <<'PY'
+import json, sys
+path, reason = sys.argv[1], sys.argv[2]
+data = {
+    "schema_version": 1,
+    "checkpoint_type": "integration",
+    "escalate_marker": reason,
+    "canonical_source": "none",
+    "gates": [],
+    "pre_existing": [],
+    "under_declaration": [],
+    "scope": {
+        "diff_files": [], "allowed_paths": [], "violations": [],
+        "cut_symbol_hits": [], "scope_diff_clean": None
+    },
+    "fast_forward_ok": False,
+    "conflicts_clean": False,
+    "errors": []
+}
+with open(path, "w") as fh:
+    json.dump(data, fh, indent=2)
+sys.exit(0)
+PY
+
+    else
+
+      # ── RESOLVE CANONICAL GATE SET (FR-B14-3, FR-B14-12, FR-B14-14) ──────────
+      # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
+      # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
+      # a parseable manifest exists in the worktree.
+      CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" <<'PY'
+import json, os, sys
+worktree = sys.argv[1]
+gates = [{"name": "regression",
+          "command": "sh %s/.bureau/regression/run.sh" % worktree}]
+manifest = os.path.join(worktree, "package.json")
+canonical_source = "regression-only"
+if os.path.isfile(manifest):
+    try:
+        with open(manifest) as fh:
+            pkg = json.load(fh)
+        scripts = pkg.get("scripts", {})
+        gate_keys = [k for k in ("build", "typecheck", "test") if k in scripts]
+        for k in gate_keys:
+            gates.append({"name": "npm-%s" % k, "command": "npm run %s" % k})
+        if gate_keys:
+            canonical_source = "regression+manifest"
+    except Exception:
+        pass
+print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
+PY
+)"
+
+      # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
+      # Read gates list; run each command in the worktree; capture exit codes.
+      GATE_RESULTS_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$CANON_GATES_JSON" <<'PY'
+import json, subprocess, sys
+worktree, canon_raw = sys.argv[1], sys.argv[2]
+canon = json.loads(canon_raw)
+results = []
+for g in canon["gates"]:
+    ret = subprocess.run(g["command"], shell=True, cwd=worktree)
+    results.append({
+        "name": g["name"],
+        "command": g["command"],
+        "exit_code_branch": ret.returncode,
+        "result": "green" if ret.returncode == 0 else "red"
+    })
+print(json.dumps(results))
+PY
+)"
+
+      # ── PARSE claimed-gates (W2) ────────────────────────────────────────────
+      # REQ_CLAIMED_GATES_RAW is a single flat line from req_field (head -n 1).
+      # Parse it as a JSON array. Unparseable or absent ⇒ empty claimed set +
+      # errors[] note (every canonical gate then becomes under-declaration).
+      CLAIMED_GATES_JSON="$(python3 - "$REQ_CLAIMED_GATES_RAW" <<'PY'
+import json, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+    parsed = json.loads(raw) if raw.strip() else []
+    if not isinstance(parsed, list):
+        raise ValueError("not a list")
+    print(json.dumps({"gates": parsed, "error": ""}))
+except Exception as e:
+    print(json.dumps({"gates": [], "error": "claimed-gates not parseable as JSON: %s" % e}))
+PY
+)"
+
+      # ── PARSE known-flaky-gates (OQ-B14-4) ────────────────────────────────
+      # Parse the optional known-flaky-gates field. When present, a canonical gate
+      # whose re-run result is red AND whose name appears in known-flaky-gates is
+      # DEMOTED: the watcher records the result but marks it flaky, and the Delegate
+      # flags it in Uncertainties rather than blocking on it (OQ-B14-4 decision).
+      # Absent or unparseable ⇒ empty list (every re-run red blocks — the
+      # conservative default). This is a membership test against a declared list,
+      # not open-ended severity reasoning (FR-44 boundary).
+      KNOWN_FLAKY_JSON="$(python3 - "$REQ_KNOWN_FLAKY_RAW" <<'PY'
+import json, sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+    parsed = json.loads(raw) if raw.strip() else []
+    names = [e.get("name", "") for e in parsed if isinstance(e, dict)]
+    print(json.dumps(names))
+except Exception:
+    print(json.dumps([]))
+PY
+)"
+
+      # ── VALIDATE claimed-pre-existing reds at base-ref (FR-B14-4) ─────────
+      # For each claimed gate with result: "red" AND pre-existing: true, re-run
+      # its command at base-ref to confirm whether the red is genuine or a
+      # mislabeled regression.
+      #
+      # BASE-REF EXECUTION — correct approach only:
+      # Do NOT git checkout or git stash in the main worktree (that would alter
+      # the branch under review). Instead, create a temporary separate git worktree
+      # at the base ref, run the gate command there, then remove it.
+      #   git -C "$REQ_WORKTREE_PATH" worktree add "$TMPDIR_BASE" "$REQ_BASE_REF"
+      #   <run command in $TMPDIR_BASE>
+      #   git -C "$REQ_WORKTREE_PATH" worktree remove --force "$TMPDIR_BASE"
+      PRE_EXISTING_JSON="$(python3 - \
+        "$REQ_WORKTREE_PATH" \
+        "$REQ_BASE_REF" \
+        "$CLAIMED_GATES_JSON" <<'PY'
+import json, os, subprocess, sys, tempfile
+worktree, base_ref, claimed_raw = sys.argv[1], sys.argv[2], sys.argv[3]
+claimed_data = json.loads(claimed_raw)
+claimed = claimed_data.get("gates", [])
+pre_existing_claimed = [g for g in claimed
+                        if g.get("result") == "red" and g.get("pre-existing") is True]
+results = []
+if pre_existing_claimed:
+    tmpdir = tempfile.mkdtemp(prefix="bureau-base-")
+    try:
+        subprocess.run(
+            ["git", "-C", worktree, "worktree", "add", tmpdir, base_ref],
+            check=True, capture_output=True
+        )
+        for g in pre_existing_claimed:
+            ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree)
+            ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir)
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": ret_branch.returncode,
+                "exit_code_base": ret_base.returncode,
+                "confirmed_pre_existing": ret_base.returncode != 0
+            })
+    finally:
+        subprocess.run(
+            ["git", "-C", worktree, "worktree", "remove", "--force", tmpdir],
+            capture_output=True
+        )
+        if os.path.exists(tmpdir):
+            import shutil; shutil.rmtree(tmpdir, ignore_errors=True)
+print(json.dumps(results))
+PY
+)"
+
+      # ── UNDER-DECLARATION cross-check (FR-B14-14) ─────────────────────────
+      # Compute canonical_gates − claimed_gates (match on name or command).
+      # Records all canonical gates the build did not declare.
+      UNDER_DECL_JSON="$(python3 - \
+        "$GATE_RESULTS_JSON" \
+        "$CLAIMED_GATES_JSON" <<'PY'
+import json, sys
+gate_results = json.loads(sys.argv[1])
+claimed_data = json.loads(sys.argv[2])
+claimed = claimed_data.get("gates", [])
+claimed_names = {g.get("name", "") for g in claimed}
+claimed_cmds  = {g.get("command", "") for g in claimed}
+under = []
+for g in gate_results:
+    if g["name"] not in claimed_names and g["command"] not in claimed_cmds:
+        under.append(g)
+print(json.dumps(under))
+PY
+)"
+
+      # ── SCOPE DIFF (FR-B14-5) ──────────────────────────────────────────────
+      SCOPE_JSON="$(python3 - \
+        "$REQ_WORKTREE_PATH" \
+        "$REQ_BASE_REF" \
+        "$RUN_DIR/state.json" <<'PY'
+import json, subprocess, sys
+worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(state_path) as fh:
+        state = json.load(fh)
+    scope_block = state.get("scope") or {}
+    allowed_paths = scope_block.get("allowed_paths") or []
+    cut_symbols = scope_block.get("cut_symbols") or []
+except Exception:
+    scope_block = None
+    allowed_paths = []
+    cut_symbols = []
+
+if scope_block is None:
+    print(json.dumps({
+        "diff_files": [], "allowed_paths": [], "violations": [],
+        "cut_symbol_hits": [], "scope_diff_clean": None
+    }))
+    sys.exit(0)
+
+r = subprocess.run(
+    ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
+    cwd=worktree, capture_output=True, text=True
+)
+diff_files = [l for l in r.stdout.splitlines() if l.strip()]
+
+import fnmatch
+violations = []
+if allowed_paths:
+    for f in diff_files:
+        if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
+            violations.append(f)
+
+# grep the full diff for each cut symbol
+r2 = subprocess.run(
+    ["git", "diff", "%s...HEAD" % base_ref],
+    cwd=worktree, capture_output=True, text=True
+)
+full_diff = r2.stdout
+cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
+
+scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
+print(json.dumps({
+    "diff_files": diff_files, "allowed_paths": allowed_paths,
+    "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+    "scope_diff_clean": scope_diff_clean
+}))
+PY
+)"
+
+      # ── FAST-FORWARD CHECK (FR-B14-6, BLOCKER 1) ──────────────────────────
+      # Command: git -C <worktree> merge-base --is-ancestor "<base-ref>" HEAD
+      # Semantics: exit 0 iff <base-ref> is an ancestor of the branch tip HEAD,
+      # i.e. the branch already contains the base ⇒ fast-forwardable.
+      # Non-zero ⇒ base is NOT an ancestor of HEAD (base has advanced/diverged)
+      # ⇒ fast_forward_ok: false ⇒ Delegate emits revise "rebase required".
+      # Operand order is "<base-ref>" HEAD — base as FIRST operand, HEAD second.
+      # DO NOT use: merge-base HEAD <base-ref> (wrong direction);
+      # DO NOT nest merge-base inside --is-ancestor (that produces the tautology).
+      if git -C "$REQ_WORKTREE_PATH" merge-base --is-ancestor "$REQ_BASE_REF" HEAD 2>/dev/null; then
+        FF_OK=true
+      else
+        FF_OK=false
+      fi
+
+      # ── CONFLICTS CHECK ────────────────────────────────────────────────────
+      if [ -z "$(git -C "$REQ_WORKTREE_PATH" status --porcelain 2>/dev/null)" ]; then
+        CONFLICTS_CLEAN=true
+      else
+        CONFLICTS_CLEAN=false
+      fi
+
+      # ── BRANCH TIP SHA ────────────────────────────────────────────────────
+      BRANCH_TIP="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
+
+      # ── APPLY known-flaky-gates demotion to GATE_RESULTS_JSON ─────────────
+      # Any gate in the known-flaky-gates list whose result is "red" gets marked
+      # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
+      GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
+import json, sys
+gates = json.loads(sys.argv[1])
+flaky_names = set(json.loads(sys.argv[2]))
+for g in gates:
+    if g.get("result") == "red" and g.get("name") in flaky_names:
+        g["flaky"] = True
+print(json.dumps(gates))
+PY
+)"
+
+      # ── WRITE integration-results.json to $CTX ────────────────────────────
+      CLAIMED_ERROR="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error',''))" "$CLAIMED_GATES_JSON" 2>/dev/null || echo "")"
+      ERRORS_JSON="[]"
+      if [ -n "$CLAIMED_ERROR" ]; then
+        ERRORS_JSON="[\"$CLAIMED_ERROR\"]"
+      fi
+
+      CANON_SOURCE="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('canonical_source','regression-only'))" "$CANON_GATES_JSON" 2>/dev/null || echo "regression-only")"
+
+      python3 - \
+        "$CTX/integration-results.json" \
+        "$REQ_WORKTREE_PATH" \
+        "$REQ_BASE_REF" \
+        "$BRANCH_TIP" \
+        "$CANON_SOURCE" \
+        "$GATE_RESULTS_JSON" \
+        "$PRE_EXISTING_JSON" \
+        "$UNDER_DECL_JSON" \
+        "$SCOPE_JSON" \
+        "$FF_OK" \
+        "$CONFLICTS_CLEAN" \
+        "$ERRORS_JSON" <<'PY'
+import json, sys
+(path, worktree_path, base_ref, branch_tip, canonical_source,
+ gates_raw, pre_raw, under_raw, scope_raw,
+ ff_ok, conflicts_clean, errors_raw) = sys.argv[1:13]
+data = {
+    "schema_version": 1,
+    "checkpoint_type": "integration",
+    "worktree_path": worktree_path,
+    "base_ref": base_ref,
+    "branch_tip": branch_tip,
+    "escalate_marker": "",
+    "canonical_source": canonical_source,
+    "gates": json.loads(gates_raw),
+    "pre_existing": json.loads(pre_raw),
+    "under_declaration": json.loads(under_raw),
+    "scope": json.loads(scope_raw),
+    "fast_forward_ok": ff_ok == "true",
+    "conflicts_clean": conflicts_clean == "true",
+    "errors": json.loads(errors_raw)
+}
+with open(path, "w") as fh:
+    json.dump(data, fh, indent=2)
+sys.exit(0)
+PY
+
+    fi   # end if INTEGRATION_ESCALATE
+
+  fi   # end if REQ_CHECKPOINT_TYPE = "integration"
+
   # ── build the task prompt (names $CTX-relative files only; never log.md) ───
   DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), and the artifact under review: ${artifact_base}. Apply the critic checklist in delegate.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+
+  # ── override the task prompt for integration checkpoints (BLOCKER 1) ───────
+  # Tell the Delegate to read integration-results.json. The routine prompt above is
+  # used unchanged when checkpoint-type is routine/absent.
+  if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
+    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), the artifact under review: ${artifact_base}, and integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in delegate.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  fi
 
   # ── system prompt: names the Delegate identity (belt-and-suspenders w/ --bare)
   DELEGATE_SYSTEM_PROMPT="You are The Delegate. Do not load CLAUDE.md. Do not act as the Conductor."
