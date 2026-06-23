@@ -1069,6 +1069,38 @@ the authority.
 
 ### Three-step shim (when watcher is active)
 
+**Step 0 — Classify the checkpoint (integration vs. routine).**
+Before writing NN-request.md, determine checkpoint-type from the checkpoint's
+declared action in state.json or the workflow's phase definition — never inferred
+from artifact content:
+
+- checkpoint-type: integration if and only if: the checkpoint is a merge to a
+  persistent branch (main, release, or a long-lived feature branch that is itself
+  the integration target). v1 implements this criterion only. Deploy-to-non-ephemeral-env
+  and canon/fixture-promotion are named deferred extensions (post-Bundle-14).
+- checkpoint-type: routine for all other checkpoints (design review, spec review,
+  plan review, phase-boundary handoff, per-prompt build/accept checkpoints).
+- Default for any unmapped phase: routine. A phase is integration only by explicit
+  declaration, not by Delegate inference (FR-B14-1, OQ-B14-3).
+
+Phase mapping for v1:
+- execute-plan close-out merge (worktree → integration branch) → integration
+- bug-fix merge-to-main → integration
+- feature runs (plan-type, no build/merge phase) → no integration checkpoints
+- deploy/promote phases → deferred (post-Bundle-14), set as routine for now
+
+When checkpoint-type: integration, also collect from state.json:
+- worktree-path:  state.json#git.worktree_path  (or "(none)" if null)
+- base-ref:       state.json#git.base_branch    (default "devel")
+- claimed-gates:  the build's self-reported gate results as a single-line inline
+                  JSON array (see docs/delegate-bridge.md § 2)
+- scope:          write the state.json#scope block at the design-model checkpoint
+                  where scope is agreed (declared_at, declared_by: "conductor");
+                  thereafter read it verbatim — do not alter it (FR-B14-14, A6).
+
+The Conductor is the mechanical enforcer of AC-1: every integration NN-request.md
+MUST carry checkpoint-type, worktree-path, base-ref, and claimed-gates.
+
 **Step 1 — Write the request file.**
 Hash the artifact: `shasum -a 256 "$ARTIFACT" | awk '{print $1}'` (fallback: `sha256sum`).
 Write `RUN_DIR/checkpoints/NN-request.md` with both `attempt` and `revise-count`:
@@ -1085,6 +1117,18 @@ Call this via the Bash tool with `run_in_background: true`. End the turn here.
 Zero model tokens are consumed while the script sleep-loops for the verdict file.
 The script exits 0 when the verdict file appears (fires the single completion notification
 that re-invokes the Conductor). It exits 2 on timeout.
+
+For a checkpoint-type: integration dispatch, pass an EXTENDED timeout:
+```
+scripts/await-verdict.sh "RUN_DIR/checkpoints/NN-verdict.md" 1800
+```
+(The watcher runs the full canonical gate set synchronously BEFORE spawning the
+Delegate. The default 600s can expire on a clean-but-slow merge → false escalation.
+1800s covers typical gate-execution time. The scripts/await-verdict.sh script already
+accepts a per-call timeout as its second argument (await-verdict.sh:33); no script
+change is needed — only this dispatch-rule change. See spec Technical Risk R4/W4.)
+
+For a checkpoint-type: routine dispatch, use the existing timeout (600s or configured).
 
 **Step 3 — On re-invocation: read the verdict and act.**
 Read `RUN_DIR/checkpoints/NN-verdict.md`:
