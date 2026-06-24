@@ -378,7 +378,7 @@ No other section in the framework re-documents this format. Workflow and persona
 
 One canonical definition of the `battle-test.md` format required before any workflow or prompt is promoted to canon. Every workflow and persona file points at this section; nothing re-documents it inline.
 
-**Location and naming:** A file named `battle-test.md`, placed alongside the workflow or prompt file being promoted to canon.
+**Location and naming:** A file named `battle-test.md`, placed alongside the artifact being promoted to canon — for a **prompt folder**, `<prompt-folder>/battle-test.md`. For a **workflow**, do NOT place it at `workflows/<name>.battle-test.md` or `workflows/battle-test.md`: every `workflows/*.md` file is scanned by the `check-framework.sh` registry lint and would be flagged as an unregistered workflow (and a bare `battle-test.md` would also collide across workflows). Instead place a workflow's matrix at `workflows/battle-test/<workflow>.md` — the registry-lint glob is non-recursive, so the subdir keeps it "alongside the workflow" without tripping the lint.
 
 **When required:** Before any canon promotion — adding a row to `workflows/index.md` (workflow) or committing a prompt folder to `plans/` as the accepted prompt set (prompt).
 
