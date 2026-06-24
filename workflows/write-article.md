@@ -25,8 +25,11 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
   provisioned by the chunk-02 build step), consumed by `scripts/model-pass.sh`. The script
   loud-fails (exit 4) if absent.
 - Out of scope: any live-web fact-check (figure-grounding is tool-free, against the draft's own
-  cited sources); GPT/Gemini *direct* provider arms (v1 reaches them only via `openrouter:`);
-  pushing to `main` (that is Robin's release step — this workflow stops at the dev boundary).
+  cited sources); GPT/Gemini *direct* provider arms (v1 reaches them only via `openrouter:`).
+- In scope (standing-authorized): the workflow publishes live — it commits and pushes to `main`
+  (production deploy to https://devweb.org) automatically once the proofreader clears and the build
+  is green. See the Automation policy below. The dev→prod boundary is crossed under Robin's recorded
+  standing authorization, gated by the proofreader, not left as a manual release step.
 
 **Outputs:**
 - `RUN_DIR/angle.md` — the angle, working title, proposed pillar.
