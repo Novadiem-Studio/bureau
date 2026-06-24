@@ -30,11 +30,19 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
 
 **Outputs:**
 - `RUN_DIR/angle.md` — the angle, working title, proposed pillar.
-- `RUN_DIR/outline.md` — section-level outline.
-- `RUN_DIR/draft.md` — the one working file; it evolves in place through steps 4, 5, 6a, 9, 10, 11.
+- `RUN_DIR/versions/NN-<stage>.md` — **the versioned article line. Every stage writes a NEW
+  immutable, zero-padded file; no stage ever overwrites another.** `NN` is creation order
+  (`00`, `01`, …); the stage name disambiguates. The "current draft" at any point is the
+  highest-numbered `versions/` file. This is what makes the run auditable end to end — diff any
+  two stages forever. Typical sequence: `00-outline.md`, `01-draft.md`, `02-revise.md`,
+  `03-grounding.md` (only if the figure gate triggers), `04-reconcile.md`, `05-humanize-1.md`,
+  `06-humanize-2.md`, `07-article.mdx`.
 - `RUN_DIR/figure-check.md` — per-claim grounding record (only if the figure gate triggers).
-- `RUN_DIR/passes/NN-<id>.md` — one durable candidate per cleared cross-model pass.
-- `RUN_DIR/article.mdx` — the formatted, frontmattered article.
+- `RUN_DIR/passes/NN-<id>.md` — one durable candidate per cleared cross-model pass (the
+  cross-model perspectives; kept in their own dir because the resume-skip predicate keys on them).
+- `RUN_DIR/manifest.md` — auto-written at close-out: one row per `versions/` stage (file, word
+  count, one-line "what changed"). The audit index.
+- `RUN_DIR/article.mdx` — a copy of the final `versions/NN-article.mdx`, for the publish step.
 - Cross-repo: `devweb/content/articles/<slug>.mdx` — written in step 14, behind the step-13 gate.
 - `RUN_DIR/log.md`, `RUN_DIR/state.json` — run narrative and close-out (step 15).
 
@@ -76,12 +84,12 @@ The run is complete when ALL hold:
 
 ## Edge cases
 
-- **Figure gate skipped (no numbers).** If `draft.md` carries no quantitative claims, step 6
-  logs `grounding: not-triggered` to `RUN_DIR/log.md` and the run continues at step 7 without
-  entering 6a. This is a branch, not a failure.
+- **Figure gate skipped (no numbers).** If the latest version carries no quantitative claims, step
+  6 logs `grounding: not-triggered` to `RUN_DIR/log.md` and the run continues at step 7 without
+  entering 6a (no `NN-grounding.md` version is created). This is a branch, not a failure.
 - **All cross-model passes fail.** The step-8 batch may produce zero candidates (every pass
-  errored, was skipped, or failed integrity). Step 9 then runs as a Claude-only final revision
-  of `draft.md`. `draft.md` is preserved throughout — `model-pass.sh` writes nothing on failure.
+  errored, was skipped, or failed integrity). Step 9 then runs as a Claude-only final revision of
+  the latest version. Every prior version is preserved — `model-pass.sh` writes nothing on failure.
 - **Resume after interruption mid-batch.** Any cleared candidate already in `RUN_DIR/passes/` is
   reused — step 8 skips that pass without re-charging the paid call. The workflow re-reads the
   effective config and skips every pass whose candidate exists. Candidate identity is keyed on
@@ -101,9 +109,10 @@ The run is complete when ALL hold:
 - If a step fails (non-zero exit, agent error), the Conductor logs the failure to `RUN_DIR/log.md`
   per `docs/conventions.md § Failure signature format` and raises a `[CHECKPOINT]`. **Do not
   auto-retry silently.**
-- The article's recoverable state at any point is the latest clean `RUN_DIR/draft.md` (or
-  `article.mdx` after step 12). The draft is never corrupted by a failed cross-model pass — the
-  script fails closed.
+- The article's recoverable state at any point is the latest clean `RUN_DIR/versions/` file. Every
+  prior stage is preserved (immutable, numbered), so a bad step never destroys earlier work — roll
+  back by reading an earlier version. The draft is never corrupted by a failed cross-model pass —
+  the script fails closed and writes only to `passes/`.
 - If config validation (step 7) fails, **stop and name the file** — never POST against a
   malformed config.
 - If `npm run build` (step 14) fails, the article is NOT staged for release; surface the build
@@ -125,9 +134,16 @@ the staged `devweb/content/articles/<slug>.mdx`.
 
 Run these as spawned subagents (see "How to spawn an agent" and "Model routing" in
 `agents/orchestrator.md`). Sequential — wait for each handoff before the next. Pass `RUN_DIR`
-as an absolute path in every spawn prompt. The spine is one working file, `RUN_DIR/draft.md`;
-each cross-model pass writes a durable candidate to `RUN_DIR/passes/NN-<id>.md`, and **only the
-Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-count auto-promote.
+as an absolute path in every spawn prompt.
+
+**Versioned spine (never overwrite).** The article advances through `RUN_DIR/versions/NN-<stage>.md`
+files. Each step READS the current draft (the highest-numbered `versions/` file) and WRITES its
+output to the NEXT number with a stage-named file — it never edits an existing version in place.
+The Conductor assigns `NN` (creation order) and passes both the input path (latest version) and the
+output path (next version) in the spawn prompt. This preserves every stage for audit: at close-out
+the `versions/` dir + `manifest.md` IS the audit trail, and any two stages can be diffed. Each
+cross-model pass still writes its candidate to `RUN_DIR/passes/NN-<id>.md` (its own dir, for the
+resume-skip predicate); step 9 reconciles those candidates into the next `versions/` file.
 
 1. **The Counselor** (Voice, **standard**, mode: frame) — angle + house framing → `angle.md`
    Reuses the Counselor **frame** mode (see `workflows/message-framing.md`) inline — spawned, not
@@ -140,32 +156,31 @@ Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-co
    Robin gives the literal `go` and confirms the pillar (one of the three — the devweb
    `lib/pillars.ts` enum). The approved title + pillar are carried forward to steps 3, 12, 13, 14.
 
-3. **The Scribe** (Outline, **standard**) → `outline.md`
+3. **The Scribe** (Outline, **standard**) → next version `NN-outline.md`
    Given `angle.md` + the approved working title + pillar. Produces a section-level outline —
    heading structure (h2/h3) in order, the key claim per section, and any figures/examples to
    gather before drafting. Outline only, no prose.
 
-4. **The Scribe** (Draft, **strong**) → `draft.md`
-   Given `outline.md`. Writes the full article body end-to-end in the house voice (loads the
-   lite voice rules from `~/.claude/CLAUDE.md`). Escalated to **strong** (Opus) — this is the
-   piece's first real prose.
+4. **The Scribe** (Draft, **strong**) — reads the outline → next version `NN-draft.md`
+   Writes the full article body end-to-end in the house voice (loads the lite voice rules from
+   `~/.claude/CLAUDE.md`). Escalated to **strong** (Opus) — this is the piece's first real prose.
 
-5. **The Scribe** (Revise, **strong**) — higher-level improvement → `draft.md`
-   Standard revision sub-mode: argument structure, evidence quality, section balance,
-   transitions. Structural work, not a line-edit. Rewrites `RUN_DIR/draft.md` in place.
+5. **The Scribe** (Revise, **strong**) — higher-level improvement → next version `NN-revise.md`
+   Reads the latest version (the draft); standard revision sub-mode: argument structure, evidence
+   quality, section balance, transitions. Structural work, not a line-edit. Writes the improved
+   article as a NEW version file — the prior draft version is preserved untouched.
 
-6. **Gate** — figure check (conditional): if `draft.md` contains real numbers or quantitative
-   claims, proceed to step 6a; else log `grounding: not-triggered` to `RUN_DIR/log.md` and skip
-   to step 7. The Conductor reads `draft.md` for quantitative claims. "Real numbers" means
-   specific figures, percentages, dates, measurements — **not** vague qualitative statements
-   ("most teams", "a lot faster").
-   - 6a. **The Scribe** (Revise, **strong**, sub-mode: ground) — figure grounding → `draft.md`, `figure-check.md`
-     Re-examine every quantitative claim against the source the draft itself cites or the run's
-     own inputs. For each number: confirm it against the cited source, correct it if the source
-     disagrees, or — if it cannot be grounded against any source the draft names or any run
-     input — mark it `[unverified]` so Robin decides. **No live-web fact-check** (out of v1; the
-     Scribe does not invent sources). Appends grounding notes to `draft.md` and writes a separate
-     `RUN_DIR/figure-check.md` listing each claim, its source, and its status.
+6. **Gate** — figure check (conditional): the Conductor reads the latest version for real numbers
+   or quantitative claims. If present, proceed to step 6a; else log `grounding: not-triggered` to
+   `RUN_DIR/log.md` and skip to step 7. "Real numbers" means specific figures, percentages, dates,
+   measurements — **not** vague qualitative statements ("most teams", "a lot faster").
+   - 6a. **The Scribe** (Revise, **strong**, sub-mode: ground) — figure grounding → next version `NN-grounding.md` + `figure-check.md`
+     Reads the latest version. Re-examine every quantitative claim against the source the draft
+     itself cites or the run's own inputs. For each number: confirm it against the cited source,
+     correct it if the source disagrees, or — if it cannot be grounded against any source the draft
+     names or any run input — mark it `[unverified]` so Robin decides. **No live-web fact-check**
+     (out of v1; the Scribe does not invent sources). Writes the grounded article as a NEW version
+     file and a separate `RUN_DIR/figure-check.md` listing each claim, its source, and its status.
 
 7. **Gate — `[EXTERNAL-ACTION CHECKPOINT]`** — cross-model stage authorization
    The cross-model stage sends Robin's draft to third-party LLM providers — an irreversible
@@ -202,9 +217,10 @@ Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-co
      means it cleared every integrity check). The skip predicate keys on `<id>`, never on `NN`:
      if a per-run config is reordered or a pass disabled between an interruption and the resume,
      `NN` shifts but `<id>` is stable, so matching on `<id>` prevents a re-charge.
-   - **Otherwise run** (the instruction path resolves relative to the bureau root):
+   - **Otherwise run** (input is the latest `versions/` file — the current draft; the instruction
+     path resolves relative to the bureau root):
      ```
-     bash scripts/model-pass.sh <model> "$RUN_DIR/draft.md" \
+     bash scripts/model-pass.sh <model> "$RUN_DIR/versions/<latest>.md" \
        "/Users/robin/Code/novadiem/bureau/<instruction>" \
        "$RUN_DIR/passes/NN-<id>.md" --run-dir "$RUN_DIR"
      ```
@@ -214,33 +230,49 @@ Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-co
      missing input · **2** provider error · **3** integrity-check failed · **4** keystore key
      missing.
    - **Partial-failure policy** — if `model-pass.sh` exits non-zero (1/2/3/4), log the failure to
-     `RUN_DIR/log.md`, **skip that pass, and continue with the next.** `draft.md` is NOT modified
-     in this step (only step 9 promotes). The batch continues with whatever cleared.
+     `RUN_DIR/log.md`, **skip that pass, and continue with the next.** No `versions/` file is
+     written in this step (candidates land only in `passes/`; step 9 writes the next version). The
+     batch continues with whatever cleared.
 
-9. **The Scribe** (Revise, **strong**, promotion authority) — final Opus revision + reconciliation → `draft.md`
-   Given the prior `RUN_DIR/draft.md` + every **cleared** candidate in `RUN_DIR/passes/` (if any).
-   The Scribe reads draft + candidates, reconciles the cross-model edits with the house voice and
-   the original argument — keeps what improves the piece, drops what drifts — and writes the
-   reconciled result to `draft.md`. **This is the corruption guard:** a candidate is read and
-   judged, never byte-count-promoted. If no candidates exist (all passes failed or were skipped),
-   the Scribe does a Claude-only final revision of `draft.md`.
+9. **The Scribe** (Revise, **strong**, generous integration) — reconcile the cross-model passes → next version `NN-reconcile.md`
+   Given the latest `versions/` file (the current draft) + every **cleared** candidate in
+   `RUN_DIR/passes/` (if any). **The point of the cross-model stage is that other models' perspectives
+   improve the piece and let it evolve — so integrate GENEROUSLY: adopt the candidates' edits by
+   default.** This is NOT a gate that defends the original wording, and it is NOT a "promotion
+   authority" with editorial veto. The Scribe reverts a candidate's change to its own prior wording
+   ONLY when one of these hard guards genuinely applies (and names which, per change):
+   - **(a) Facts** — the change breaks a grounded fact or introduces a number/claim not in the source.
+   - **(b) Known no-go framing** — the change reintroduces something the run already corrected (e.g.
+     a figure-gate fix); a corrected fact stays corrected.
+   - **(c) Voice floor** — AI-slop vocabulary, em dashes, curly quotes (the house voice baseline).
+   - **(d) Concrete specifics** — the change drops a real name or load-bearing technical detail
+     (e.g. a system name) for a vaguer word.
+   Everything else — phrasing, structure, tightening, rhythm — let the other model win where its
+   version is as good or better. Do NOT preserve the original just because it is the original or
+   because it "carries a nuance you prefer." Write the reconciled article as a NEW version file.
+   **Mechanical corruption is NOT this step's job** — truncation, refusals, and garbage are already
+   caught upstream by `model-pass.sh`'s integrity checks (only cleared candidates reach this step).
+   If no candidates exist (all passes failed or were skipped), the Scribe does a Claude-only final
+   revision of the latest version.
 
-10. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 1: AI-tells + vocabulary scrub → `draft.md`
+10. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 1: AI-tells + vocabulary scrub → next version `NN-humanize-1.md`
     Reuses the Counselor **review** mode (see `workflows/copy-review.md`) inline — spawned, not
-    nested. Loads the `humanizer` skill. Objective: strip AI tells, inflated vocabulary, chatbot
-    artifacts, banned words. Writes the cleaned `draft.md`.
+    nested. Reads the latest version. Loads the `humanizer` skill. Objective: strip AI tells,
+    inflated vocabulary, chatbot artifacts, banned words. Writes the cleaned article as a NEW
+    version file.
 
-11. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 2: read-aloud rhythm + final polish → `draft.md`
-    Reuses the Counselor **review** mode inline. Objective distinct from pass 1: sentence rhythm,
-    paragraph flow, read-aloud cadence. **Not a redundant re-run** — a different objective on the
-    now-de-slopped text. Writes the final `draft.md`.
+11. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 2: read-aloud rhythm + final polish → next version `NN-humanize-2.md`
+    Reuses the Counselor **review** mode inline; reads the latest version. Objective distinct from
+    pass 1: sentence rhythm, paragraph flow, read-aloud cadence. **Not a redundant re-run** — a
+    different objective on the now-de-slopped text. Writes the final prose as a NEW version file.
 
-12. **The Scribe** (Format, **standard**) — MDX + frontmatter → `article.mdx`
-    Given the final `draft.md` + the approved slug + pillar. A mechanical transform (no content
-    edits): emits `RUN_DIR/article.mdx` with correct frontmatter (`title`, `dek`, `date` ISO,
-    `pillar`, `slug` matching `^[a-z0-9-]+$`; optional `read` as an integer, `draft`, `run`) and
-    only the allowed MDX components — `<PullQuote>` and `<RunTable>`, the ONLY two
-    `devweb/components/mdx/index.ts` compiles. Any other JSX fails the devweb build.
+12. **The Scribe** (Format, **standard**) — MDX + frontmatter → next version `NN-article.mdx`
+    Given the latest version (the final prose) + the approved slug + pillar. A mechanical transform
+    (no content edits): emits the next version as `NN-article.mdx` with correct frontmatter
+    (`title`, `dek`, `date` ISO, `pillar`, `slug` matching `^[a-z0-9-]+$`; optional `read` as an
+    integer, `draft`, `run`) and only the allowed MDX components — `<PullQuote>` and `<RunTable>`,
+    the ONLY two `devweb/components/mdx/index.ts` compiles. Any other JSX fails the devweb build.
+    The Conductor copies this final version to `RUN_DIR/article.mdx` for the publish step.
 
 13. **Gate** — dev→prod publish checkpoint. `[CHECKPOINT]`. Show Robin the staged `article.mdx`,
     the slug, the pillar, and the target path `devweb/content/articles/<slug>.mdx`. This is the
@@ -256,12 +288,16 @@ Scribe (step 9) promotes** a reconciled result back to `draft.md` — no byte-co
     this workflow's. If the build fails, do not treat the article as shipped — surface the error
     and `[CHECKPOINT]`.
 
-15. **The Conductor** (**standard**) — close out + run accounting last → `log.md`, `state.json`
+15. **The Conductor** (**standard**) — close out + write the audit manifest + run accounting last → `manifest.md`, `log.md`, `state.json`
+    Write **`RUN_DIR/manifest.md`** — the audit index: one row per `versions/` stage in order
+    (`NN-<stage>` → word count → one-line "what changed from the prior version"), plus the
+    `passes/` cross-model candidates. This is the end-state audit: the `versions/` dir holds every
+    stage immutably and `manifest.md` is its table of contents.
     Surface the **count of paid external passes** fired this run, read back from the
     `[EXTERNAL-ACTION]` entries in `RUN_DIR/log.md`. Summarize what ran and what was staged; flag
-    anything deferred. As the **final** close-out action — after the summary and the final
-    `state.json` / `log.md` updates — run `scripts/account-run.sh <RUN_DIR>` so `accounting.json`
-    reflects the terminal state, then set `state.json#accounting` per `agents/orchestrator.md §
-    Run accounting (close-out)`. Note: `account-run.sh` has no external-API cost source — it
-    records the note; per-pass dollar capture is a registered v2 deferral, so v1 surfaces the
-    *count* of paid passes plus the `log.md` bytes-in/out lines.
+    anything deferred. As the **final** close-out action — after the manifest, the summary, and the
+    final `state.json` / `log.md` updates — run `scripts/account-run.sh <RUN_DIR>` so
+    `accounting.json` reflects the terminal state, then set `state.json#accounting` per
+    `agents/orchestrator.md § Run accounting (close-out)`. Note: `account-run.sh` has no
+    external-API cost source — it records the note; per-pass dollar capture is a registered v2
+    deferral, so v1 surfaces the *count* of paid passes plus the `log.md` bytes-in/out lines.
