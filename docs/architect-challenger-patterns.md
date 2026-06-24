@@ -3,6 +3,11 @@
 Synthesized from 9 Challenger passes across 8 bureau runs (2026-06-14 → 2026-06-22).
 Each finding was tagged by artifact (where it lived) and pattern (what kind of problem it was).
 
+Validated and extended against a 10th run (`20260623-push-notifications-review`, 5 Challenger
+passes) — the taxonomy and the top-of-table ordering reproduced almost exactly, and one new
+high-severity pattern (`false-reuse`) surfaced that the original 17 did not name. See
+**§ Validation — run 20260623** at the bottom.
+
 ---
 
 ## Pattern Frequency Table
@@ -24,8 +29,13 @@ Each finding was tagged by artifact (where it lived) and pattern (what kind of p
 | test-coverage-gap | 4 |
 | async-sync-mismatch | 3 |
 | reuse-missed | 2 |
+| false-reuse | 2 † |
 | false-positive-risk | 1 |
 | caller-cant-supply | 1 |
+
+† `false-reuse` was identified in the 2026-06-23 validation pass, not the original 8-run synthesis;
+the count is from that run alone (both instances were Blockers). The original 8 runs were not
+re-coded for it, so its true historical frequency is almost certainly higher than 2.
 
 ---
 
@@ -50,6 +60,10 @@ Example: `dynamics module path unnamed in spec` — the feature was listed but t
 **wrong-call-site (12)**
 A prompt directs an edit to the wrong file, function, or code location. The change is valid in isolation but lands in the wrong place in the actual codebase. Recurs whenever multi-file refactors were planned from spec-reasoning rather than from a live file-tree walk.
 Example: `InviteScreen.tsx path wrong in every prompt` — every prompt in the set had the wrong directory.
+
+**false-reuse (2 †, identified 2026-06-23)**
+The plan asserts something is *already built* — "reuses the existing routing," "no new logic is needed," "already wired" — when the thing it names is net-new or exists only at a different call level than assumed. The inverse of `reuse-missed`, and more expensive: it converts a week of net-new infrastructure into an estimate of "wire-up," and the under-scoped work reaches the Challenger as a Blocker. Its signature is a reuse claim that *names no symbol* — a hand-wave like "already built" has no `symbol@path` to grep, so the symbol-triggered checks (API-shape, target-file, stale-symbol) never fire on it and it sails through the Architect's self-check. The fix lives on the authoring side: a reuse claim with no named `symbol@path` is itself the defect. The same discipline guards the opposite failure (declaring something net-new that already exists → duplicate code) — both directions require the grep that names what was searched.
+Example: `"navigates using the routing already built" — no cold-launch handler exists at all` and `"no new routing logic is needed" — the callbacks live inside NotificationFlow.tsx, not at the provider level the spec assumed`. Both were Blockers.
 
 **deployment-path-gap (9)**
 The plan assumes a file, route, or asset is reachable in the deployed environment but the path doesn't exist there, wasn't created by any build step, or is served from a different location.
@@ -104,6 +118,8 @@ Run this before handing off to Spellwright.
 11. **Async/sync discipline.** For every function touching I/O, confirm whether the framework expects async or sync and that the prompt's signature matches. Check especially: Next.js route params (Promise in v15+), Python httpx sync inside async routes, async saga vs useEffect navigation.
 
 12. **Env config completeness.** For every environment variable, config key, base URL, or service endpoint referenced in spec or prompts, confirm it is in .env.example with the correct key name. Verify base URLs against the deployed service's actual routing config, not the spec's assumption about it.
+
+13. **Reuse-claim audit.** For every claim that something is already built, already wired, reused, or needs no new logic, confirm the claim names the exact symbol *and the call level it must exist at* (a provider prop is not the same as a function nested inside the same file). grep live code to confirm it exists there. A reuse claim that names no `symbol@path` is itself the defect — rewrite it to name one, or drop it and scope the work as net-new. Run the inverse too: before the plan declares something net-new, grep to confirm it is genuinely absent so the build doesn't duplicate existing code. This is the check that the symbol-triggered items (2, 3, 5) cannot perform, because a hand-wave names no symbol for them to grep.
 
 ---
 
@@ -246,3 +262,42 @@ Run this before handing off to Spellwright.
 | nav-runtime | WARNING | "9 workflows" is ambiguous against 10-file directory | ACKNOWLEDGED | spec-body | internal-contradiction |
 | nav-runtime | WARNING | macOS ships bash 3.2; no mapfile/declare -A/readarray | ACKNOWLEDGED | architecture-section | external-dependency-unstated |
 | nav-runtime | WARNING | Allowlist purpose is "insurance" yet still requires maintenance | ACKNOWLEDGED | spec-body | internal-contradiction |
+
+---
+
+## Validation — run 20260623-push-notifications-review
+
+A 10th run, out-of-sample (this doc was synthesized through 2026-06-22; the run is the 23rd).
+It ran the Challenger **5 times** — idea-review, round-1 (spec/plan), round-2 (prompts),
+backend build-diff, client build-diff — so on its own it is more than half the pass-count of
+the original 8-run corpus. Three things came out of it.
+
+**1. The taxonomy generalizes.** Nearly every pattern recurred, and the top-of-table ordering
+reproduced: `missing-edge-case` dominated again (born-resolved over-fire, zero-token recipients,
+device_id collision, invalid-platform 500, warm-tap drain gap, lock-screen PII), with
+`internal-contradiction`, `under-specified`, `wrong-api-shape`, and `external-dependency-unstated`
+close behind. `false-positive-risk` even recurred cleanly (a reviewer ran `git diff master`
+against the wrong base, flagged scope-bleed, and self-corrected). Only `caller-cant-supply`
+(n=1 originally) did not appear. The frequency table predicts; it is not an artifact of those
+8 runs.
+
+**2. A new pattern: `false-reuse`.** The single highest-severity finding at *both* the idea
+and the spec stage was the same shape — the plan claimed routing was "already built" / "no new
+logic needed" when it was net-new. Added to the table and described above. Root cause is
+authoring-side: the claim named no symbol, so the symbol-triggered self-checks could not see it.
+Fixed by the new authoring rule (checklist 13 / Architect self-check 11 / Challenger
+existing-project rule).
+
+**3. The checklist's limit — encoded, but it did not pre-empt.** This checklist is already
+encoded into the Architect persona's pre-handoff self-check (`agents/architect.md`). It did not
+stop the round-1 Blockers: the FR14/AC15 self-contradiction (checklist 1 + 7) and the
+false-reuse routing claim (would be checklist 2/3 *if the claim had named a symbol*) both
+reached the Challenger anyway. Lesson: a self-check that triggers on named symbols is blind to
+hand-waves that name none, and a checklist nobody is forced to evidence does not fire. The
+round-2-onward "0 Blockers" is partly real (the cold round-2 reviewer independently re-derived
+the B1 fix and found 7 net-new prompt issues; the client pass found the warm-tap drain bug no
+earlier pass caught) and partly an artifact (later passes review a target already hardened
+against the known failures, and one genuine go-live bug — warm-tap drain — was filed as a
+Warning, not a Blocker, which flatters the count). Two open levers: make the Architect *state
+which self-checks it ran with evidence* before the Challenger spawns, and tighten Warning-vs-
+Blocker severity when a finding means "will not work when the feature goes live."

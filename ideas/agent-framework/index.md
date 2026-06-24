@@ -13,8 +13,6 @@ different angles.
 
 ## Recommended execution order
 
-> **Priority override (2026-06-22):** Bundle 14 (Delegate verification gate) is the next promotion, immediately after the in-flight Bundle 08 lands. Field-derived from the Track-3 merge, where a human had to re-execute the build's claims at the integration gate before it was safe to merge. Build it as the next `feature` run after 08.
-
 | Order | Bundle | Source ideas | Why here |
 |---:|---|---|---|
 | 1a | [Validation and safety — damage preventers](01a-validation-safety-damage-preventers.md) | 13, 07 | External-action gate + `scripts/preflight.sh`; reduces blast radius on the very next run. |
@@ -24,13 +22,13 @@ different angles.
 | 4 | [Run accounting and resume signals](04-run-accounting-and-resume-signals.md) | 05, 15 | Make cost, pass count, model mix, and resume context visible after the core loop is stable. |
 | 5 | [External notary review (The Notary)](05-external-notary-review.md) | 06 | Add optional advisory cold review via The Notary only after artifact boundaries are clear. |
 | 6 | [Navigation and runtime experiments](06-navigation-and-runtime-experiments.md) | 04, 11 | Low-risk hygiene plus a later local-runtime experiment once routing data exists. |
-| 8 | [Worktree location hygiene](08-worktree-location-hygiene.md) | new (2026-06-19) | **In progress** (run `20260622-bureau-file-location-hygiene`). Move execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. One-line default change; safe for in-flight runs. |
+| 8 | [Worktree location hygiene](done/08-worktree-location-hygiene.md) | new (2026-06-19) | **Done** (shipped to main 2026-06-22). Moved execute/bug-fix worktrees outside the target repo so editors and indexers stop choking on a nested worktree. |
 | 9 | [Principal delegate](09-principal-delegate.md) | new (2026-06-20) | Two sequenced roles that take Robin out of routine coordination: the **Delegate** (flow + escalation gating — "does Robin need to see this?", build now) and the **Principal** (predicts Robin's call on genuine forks — "what would Robin decide?", a later ledger-trained layer). Ports the proven `CODEX.md` relay pattern; field-tested by hand — the constraint was token burn, so it reasons off run-dir files, not a resumed live session. Complement of Bundle 05 (cold artifact reviewer). |
 | 10 | [A committed regression suite for `account-run.sh`](10-account-run-committed-regression-suite.md) | Bundle 04 follow-up | Relocate `account-run.sh`'s 17-case battle-test out of gitignored `output/` into a committed runner (`scripts/tests/account-run/`) so the script carries its own regression coverage. |
 | 11 | [Run optimization metrics](11-run-optimization-metrics.md) | Bundle 04 follow-up | Capture tokens / loops / wall-clock / human-wait live into `log.md` via `SubagentStop`+`Stop` hooks. The instrument that tells whether the loop-*cost* (09) and loop-*count* (12) work paid off. |
 | 12 | [Planning loop reduction](12-planning-loop-reduction.md) | new (2026-06-20) | Bundle 04 post-mortem → shift-left gates that cut the *number* of correction loops (vs Bundle 09 which cuts their *cost*): an Analyst reconciliation pass after the Architect, a real-log reconciliation requirement for self-observing features, and a script/Scoot artifact-consistency pre-flight before the Challenger. Direct follow-up to Bundle 03; scope against the now-shipped pre-handoff self-checks. |
 | 13 | [Rheo memory framework integration](13-rheo-memory-framework-integration.md) | Rheo memory | Framework-side rules + a future read-only adapter seam for consuming remote MOT/Rheo memory safely. Largely gated on remote Rheo/MOT maturity; do the rules/spec slice now, defer the rest. |
-| 14 | [Delegate verification gate at integration boundaries](14-delegate-merge-gate-verification.md) | Bundle 09 follow-up (2026-06-22) | **Next up — promoted 2026-06-22, immediately after the in-flight 08.** Give the shipped Delegate a verifying mode at merge/deploy/promote gates: re-run the claimed gates, scope-diff base...branch, and reproduce any "pre-existing" red at the merge base instead of trusting the build's self-report. Pure mechanical verification (no preference-modeling, stays in FR-44). Tiered so the expensive re-execution runs only at the ~once-per-run integration boundary, resolving 09's token-burn constraint. Field-derived from the 2026-06-22 Track-3 merge, where re-execution (not the build's report) is what actually cleared the gate. |
+| 14 | [Delegate verification gate at integration boundaries](done/14-delegate-merge-gate-verification.md) | Bundle 09 follow-up (2026-06-22) | **Done** (shipped to main 2026-06-23). Gave the shipped Delegate a verifying mode at merge/deploy/promote gates: re-run the claimed gates, scope-diff base...branch, and reproduce any "pre-existing" red at the merge base instead of trusting the build's self-report. Pure mechanical verification (no preference-modeling, stays in FR-44). Tiered so the expensive re-execution runs only at the ~once-per-run integration boundary, resolving 09's token-burn constraint. |
 
 ## How to promote a bundle
 
@@ -52,13 +50,14 @@ different angles.
 | 3. Planning decision quality gates | done — shipped to main 2026-06-20 (outcome field + greenfield assumption table + bake-off trigger rule + three Challenger checks + battle-test) |
 | 4. Run accounting and resume signals | done — shipped to main 2026-06-20 (`scripts/account-run.sh` + `templates/accounting.json` schema + SPAWN-EVENT close-out convention in `orchestrator.md` + accounting pointers in all terminal workflows). Hardened against an external (Codex) review. Follow-ups: committed regression suite → [idea 10](10-account-run-committed-regression-suite.md); optimization metrics (tokens/loops/wall-clock/human-wait, captured live into `log.md`) → [idea 11](11-run-optimization-metrics.md). |
 | 5. External notary review (The Notary) | done — shipped to main 2026-06-20 (cue-packet template + state pointer + model-policy role + protocol doc + completed persona + orchestrator wiring + battle-test matrix; Promotion to canon: yes) |
-| 6. Navigation and runtime experiments | not started |
-| 8. Worktree location hygiene | not started — **next up**; safe to ship anytime (only affects newly created worktrees, not in-flight runs) |
-| 10. A committed regression suite for `account-run.sh` | not started — Bundle 04 follow-up; relocate the 17-case suite from gitignored `output/` into a committed runner |
+| 6. Navigation and runtime experiments | done — name-lint hygiene slice shipped to main 2026-06-22 (`check-framework.sh` name lint); local-runtime experiment deferred until accounting shows a real utility workload |
+| 8. Worktree location hygiene | done — shipped to main 2026-06-22 (worktrees moved out to `~/.bureau/worktrees/`; run output into `<target>/.bureau/runs/`; cross-run index) |
+| 10. A committed regression suite for `account-run.sh` | not started — **next up**; Bundle 04 follow-up (execute-plan); relocate the 17-case suite from gitignored `output/` into a committed runner |
 | 11. Run optimization metrics | not started — Bundle 04 follow-up; tokens/loops/wall-clock/human-wait captured live into `log.md` (needs SubagentStop+Stop hooks). Ship before Bundle 12 so its loop-count reduction is measurable. |
 | 12. Planning loop reduction | not started — idea drafted from the Bundle 04 post-mortem; doctrine-consistent shift-left gates. Reduces loop *count*; complementary to Bundle 09 (loop *cost*). Direct Bundle 03 follow-up. Scope against the now-shipped pre-handoff self-checks. |
 | 13. Rheo memory framework integration | not started — largely gated on remote Rheo/MOT maturity; do the read-only adapter spec + framework rules now, defer the rest. |
 | 9. Principal delegate | done — spec + plan + scoped prompts shipped 2026-06-20 (agents/delegate.md persona + docs/delegate-bridge.md neutral authority doc + CLAUDE.md three-role contrast table + model-policy.v2.json delegate entry + 7 bridge scripts + 12 regression fixtures). v1 = manual attended path; v2 = autonomous loop; v3 self-audit gate deferred. Principal role explicitly deferred. |
+| 14. Delegate verification gate at integration boundaries | done — shipped to main 2026-06-23 (Delegate verifying mode at integration gates: P1 request/scope contracts → P5 Track-3 regression fixture, promoted to the standing suite). Bundle 09 follow-up; satisfied the 2026-06-22 priority override |
 
 ## Cross-bundle principle: gate theater
 
