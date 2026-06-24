@@ -42,8 +42,10 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
   cross-model perspectives; kept in their own dir because the resume-skip predicate keys on them).
 - `RUN_DIR/manifest.md` — auto-written at close-out: one row per `versions/` stage (file, word
   count, one-line "what changed"). The audit index.
+- `RUN_DIR/proofread.md` — the step-13 proofreader verdict (`CLEAR` | `HOLD`) + any concerns.
 - `RUN_DIR/article.mdx` — a copy of the final `versions/NN-article.mdx`, for the publish step.
-- Cross-repo: `devweb/content/articles/<slug>.mdx` — written in step 14, behind the step-13 gate.
+- Cross-repo: `devweb/content/articles/<slug>.mdx` — written + committed + pushed live in step 14,
+  automatically when the step-13 proofreader returns `CLEAR` and the build is green.
 - `RUN_DIR/log.md`, `RUN_DIR/state.json` — run narrative and close-out (step 15).
 
 **Leans on skills:** `humanizer` and `spiral-dynamics` — both loaded by The Counselor in its
@@ -56,31 +58,43 @@ Conductor spawns The Counselor in the named mode and that mode IS the mechanism.
 workflow-nesting primitive in the Bureau — steps 1, 10, and 11 do NOT nest the other workflows
 as sub-workflows; they reuse the same Counselor mode the other workflow runs.
 
-**One-time data-custody / disclosure decision** `[CHECKPOINT]` — **resolve before the first
-real run; this is not an implementer default.** The cross-model stage (step 8) sends Robin's
-*unpublished* draft out of the Bureau's custody to third-party LLM providers (xAI via
-OpenRouter, and any model the config adds). Two questions need an explicit answer, recorded
-here in the header once decided:
-- **(a) Retention/training terms** — is sending pre-publication drafts to OpenRouter/xAI
-  acceptable under their data-retention and training terms? (Resolve before the first batch fires.)
-- **(b) Disclosure** — does the *published* article disclose that it was materially shaped by
-  non-Claude models? For a site about AI, that disclosure is plausibly wanted — or explicitly
-  waived. Record the decision; don't let the build assume it.
-- On the **first** real run, raise this `[CHECKPOINT]` immediately before step 7. Once Robin
-  resolves it, write the decision into this header so later runs inherit it.
+**Automation policy — RESOLVED standing authorizations (Robin, 2026-06-24).** "Write an article"
+runs to completion **autonomously and ships live** — it is automation, not a relay of approval
+gates. The only thing that halts a run is a *real problem*, never a preference:
+- **Cross-model spend — standing-authorized.** The cross-model stage (step 6) fires the configured
+  passes automatically; no per-run `[EXTERNAL-ACTION CHECKPOINT]`. Each call is still logged to
+  `RUN_DIR/log.md` with an `[EXTERNAL-ACTION]` line (model, bytes, cost-signal, exit) for audit —
+  the principal pre-authorized the *class* (Grok/OpenRouter passes on his own drafts), every firing
+  is logged. This is how a recurring gated action is automated legitimately; it is NOT an un-gated
+  external action.
+- **Data custody / disclosure — resolved.** (a) Sending pre-publication drafts to OpenRouter/xAI is
+  accepted. (b) The published article does **NOT** disclose cross-model editing.
+- **Live publish — standing-authorized.** The run commits and pushes to `main` (a production deploy
+  to live https://devweb.org via Vercel) automatically once the **proofreader clears** and the build
+  is green. This is an explicit, recorded standing authorization to cross the dev→prod boundary FOR
+  THIS WORKFLOW ON THIS LOW-STAKES SITE — not a silent boundary breach. Safeguards: the proofreader
+  step (a cold automated check that HOLDS on any real concern), the green-build gate, and easy
+  reversibility (Vercel instant rollback / `git revert` + push).
+- **The only stops are problems, not preferences:** (1) the **proofreader** finds a ship-blocking
+  concern → hold just before commit + alert Robin; (2) `npm run build` fails → hold + surface;
+  (3) config validation fails → hold + name the file. Nothing else waits for a human.
 
 ## Done criteria
 
-The run is complete when ALL hold:
+The run is complete when ALL hold (the success path — proofreader `CLEAR`):
 - `RUN_DIR/article.mdx` exists with valid frontmatter (the devweb Zod schema would accept it).
+- The step-13 proofreader returned `CLEAR` (`RUN_DIR/proofread.md`).
 - `npm run build` in devweb exits 0 with the route table all-static (every route `○` or `●`,
   **no `ƒ`**) — see step 14.
-- The article file is staged at `devweb/content/articles/<slug>.mdx` and the workflow **stopped
-  there** — no push to `main`.
-- `RUN_DIR/log.md` carries: the figure-gate decision; the step-7 batch authorization; one
-  `[EXTERNAL-ACTION]` line per cross-model call that actually fired; and the step-15 close-out
-  with the count of paid passes.
+- The article is committed and **pushed to `main`** — live on https://devweb.org (step 14c).
+- `RUN_DIR/log.md` carries: the figure-gate decision; the logged cross-model pass list; one
+  `[EXTERNAL-ACTION]` line per cross-model call that actually fired; the proofreader verdict; the
+  push; and the step-15 close-out with the count of paid passes.
 - `RUN_DIR/state.json#accounting` is set (status `available` or, on failure, `unavailable`).
+
+**Held (not complete):** if the proofreader returned `HOLD`, the run is paused just before commit
+with Robin alerted (nothing written to devweb, nothing pushed) — resolve the named concerns, then
+re-run from step 13. A build failure (14b) halts the same way.
 
 ## Edge cases
 
@@ -122,13 +136,17 @@ The run is complete when ALL hold:
 
 Everything that spends money or branches is logged to `RUN_DIR/log.md`:
 - Every cross-model call (step 8) writes an `[EXTERNAL-ACTION]` line (model, bytes in/out,
-  `finish_reason`, status, exit) — written by `model-pass.sh --run-dir`.
-- The step-7 batch authorization (the explicit `go`) is logged before any POST.
+  `finish_reason`, status, exit) — written by `model-pass.sh --run-dir`. These audit lines, not a
+  per-run human `go`, are the control on the standing-authorized spend.
+- The planned cross-model pass list (step 7) is logged before any POST (no `go` awaited).
 - The figure-gate decision (`grounding: not-triggered`, or the 6a grounding record) is logged.
+- The proofreader verdict (step 13: `CLEAR` / `HOLD` + concerns) is logged; a `HOLD` also fires an
+  alert to Robin and logs the hold.
+- The publish (step 14c): the commit + push to `main` is logged.
 - The step-15 close-out surfaces the count of paid passes fired this run, read back from the
   `[EXTERNAL-ACTION]` lines.
-A human inspects the run by reading `RUN_DIR/log.md`, the `RUN_DIR/passes/` candidate files, and
-the staged `devweb/content/articles/<slug>.mdx`.
+A human inspects the run by reading `RUN_DIR/log.md`, `RUN_DIR/proofread.md`, the
+`RUN_DIR/versions/` + `RUN_DIR/passes/` files, and the published article on devweb.
 
 ## Steps
 
@@ -151,10 +169,11 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    angle and working title in the house voice, and proposes a pillar. Writes the angle, working
    title, and proposed pillar to `RUN_DIR/angle.md` for Robin's approval at the next gate.
 
-2. **Gate** — approve angle, working title, and **pillar** (`frameworks` | `memory` |
-   `engineering`). `[CHECKPOINT]`. The Conductor shows Robin `angle.md`; nothing proceeds until
-   Robin gives the literal `go` and confirms the pillar (one of the three — the devweb
-   `lib/pillars.ts` enum). The approved title + pillar are carried forward to steps 3, 12, 13, 14.
+2. **Action** — proceed automatically (no approval wait). The Counselor's `angle.md` records the
+   chosen angle, working title, and pillar (`frameworks` | `memory` | `engineering` — the devweb
+   `lib/pillars.ts` enum) for visibility, but the run does **not** stop for sign-off. The title +
+   pillar carry forward to the format/publish steps. (If the angle is wrong, Robin redirects after
+   seeing the result — cheap to redo; not a reason to hold the pipeline.)
 
 3. **The Scribe** (Outline, **standard**) → next version `NN-outline.md`
    Given `angle.md` + the approved working title + pillar. Produces a section-level outline —
@@ -182,27 +201,23 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
      (out of v1; the Scribe does not invent sources). Writes the grounded article as a NEW version
      file and a separate `RUN_DIR/figure-check.md` listing each claim, its source, and its status.
 
-7. **Gate — `[EXTERNAL-ACTION CHECKPOINT]`** — cross-model stage authorization
-   The cross-model stage sends Robin's draft to third-party LLM providers — an irreversible
-   billing side effect (`docs/external-action-boundary.md` category: outbound HTTP to a non-local
-   URL with a side effect). Before any POST:
-   - **Validate the effective config** (the per-run `RUN_DIR/article-passes.json` if present, else
-     `config/article-passes.json`). Run these `jq -e` guards (the pattern mirrors `account-run.sh`
-     and `scripts/model-pass.sh`'s contract); **on any failure, stop and name the file** — never
-     POST against a malformed config:
-     - `jq -e '.passes | type == "array"' <config>` — `.passes` is an array.
-     - `jq -e '[.passes[] | select(.enabled == true) | .model | startswith("openrouter:")] | all' <config>`
-       — every **enabled** pass's `model` carries the routable `openrouter:` provider prefix (v1's
-       only arm). A non-`openrouter:` enabled pass fails loud — it is never silently skipped.
-     - For each enabled pass, confirm its `instruction` path resolves to a real file under the
-       bureau root (`/Users/robin/Code/novadiem/bureau/`): `test -f "<bureau-root>/<instruction>"`.
-       A missing instruction file fails **before** the API call, not as an empty-instruction POST.
-   - **Show Robin** the ordered list of enabled passes from the effective config: model IDs +
-     estimated call count (one POST per enabled pass that has no cleared candidate yet).
-   - **Get one explicit `go`.** A baked-in config is NOT authorization. Log the approval to
-     `RUN_DIR/log.md`. One `go` authorizes the whole configured batch for this run.
-   - On the first real run, the data-custody/disclosure `[CHECKPOINT]` (see header) is resolved
-     here, immediately before this gate clears.
+7. **Action** — cross-model stage prep (standing-authorized — NO human stop)
+   The cross-model spend is pre-authorized (see Automation policy). Do NOT raise a per-run
+   `[EXTERNAL-ACTION CHECKPOINT]`; the run proceeds straight into the passes. The only check here is
+   **config validation, which IS a hard error-stop** — never POST against a malformed config.
+   **Validate the effective config** (the per-run `RUN_DIR/article-passes.json` if present, else
+   `config/article-passes.json`) with these `jq -e` guards (pattern mirrors `account-run.sh` and
+   `scripts/model-pass.sh`'s contract); **on any failure, halt and name the file:**
+   - `jq -e '.passes | type == "array"' <config>` — `.passes` is an array.
+   - `jq -e '[.passes[] | select(.enabled == true) | .model | startswith("openrouter:")] | all' <config>`
+     — every **enabled** pass's `model` carries the routable `openrouter:` provider prefix (v1's
+     only arm). A non-`openrouter:` enabled pass fails loud — it is never silently skipped.
+   - For each enabled pass, confirm its `instruction` path resolves to a real file under the bureau
+     root (`/Users/robin/Code/novadiem/bureau/`): `test -f "<bureau-root>/<instruction>"`. A missing
+     instruction file fails **before** the API call, not as an empty-instruction POST.
+   Log the ordered enabled-pass list (model IDs + planned call count) to `RUN_DIR/log.md` for the
+   record, then proceed to step 8. (No `go` is awaited — the standing authorization + the per-call
+   `[EXTERNAL-ACTION]` audit lines are the control.)
 
 8. **Action** — cross-model stage (post-approval)
    **Precondition (before dispatching any pass):** the Conductor confirms `RUN_DIR/` and
@@ -274,19 +289,40 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     the ONLY two `devweb/components/mdx/index.ts` compiles. Any other JSX fails the devweb build.
     The Conductor copies this final version to `RUN_DIR/article.mdx` for the publish step.
 
-13. **Gate** — dev→prod publish checkpoint. `[CHECKPOINT]`. Show Robin the staged `article.mdx`,
-    the slug, the pillar, and the target path `devweb/content/articles/<slug>.mdx`. This is the
-    last human gate before the article reaches the repo. Nothing is written into devweb until
-    Robin gives the literal `go`.
+13. **The Challenger** (Critic, **strong**, fresh context — proofreader / publish-concern) — the safety gate → `proofread.md`, verdict `CLEAR` | `HOLD`
+    Reads ONLY the final `article.mdx` (the thing about to ship), cold. This is **not** a style or
+    voice review (the humanizer already owns that) — it scans for **ship-blocking concerns** that
+    would make publishing this to a public site a mistake:
+    - **Sensitive / non-public material** — secrets, credentials, internal-only system details,
+      private information about real people or clients, security-exploitable specifics.
+    - **Factual / legal / reputational risk** — claims that are wrong or unsupportable, defamation,
+      unverified accusations, anything that could embarrass or expose Robin / Novadiem.
+    - **Catastrophic failures** — a broken or self-contradictory thesis, an obvious howler, a number
+      the figure-gate missed.
+    It returns **`CLEAR`** (nothing ship-blocking — proceed to publish) or **`HOLD`** with the
+    named concerns. Nitpicks and preferences are NOT `HOLD`s — only a real concern holds. Writes
+    `RUN_DIR/proofread.md` (the verdict + any concerns).
+    - **`CLEAR`** → continue to step 14 automatically; no human stop.
+    - **`HOLD`** → **the run stops here, just before commit, and alerts Robin.** The Conductor fires
+      an alert (`scripts/notify-escalation.sh`, or the `notify_robin` MCP tool) with the named
+      concerns, logs the hold to `RUN_DIR/log.md`, and waits. Nothing is written into devweb and
+      nothing is pushed until Robin resolves it. This is the ONE concern-driven stop in the workflow.
 
-14. **Action** — write article into devweb + build verify
-    Copy `RUN_DIR/article.mdx` to `/Users/robin/Code/novadiem/devweb/content/articles/<slug>.mdx`.
-    Then run `npm run build` in `/Users/robin/Code/novadiem/devweb/` — the Zod schema validates
-    the frontmatter, and the build must stay **all-static** (every route `○` or `●`, no `ƒ` on
-    content / OG / sitemap / robots routes). **STOP at dev — do NOT push to `main`.** Pushing to
-    `main` is a production deploy to live https://devweb.org and is **Robin's release step**, not
-    this workflow's. If the build fails, do not treat the article as shipped — surface the error
-    and `[CHECKPOINT]`.
+14. **Action** — publish (write → build → commit → push live). Runs automatically only when step 13
+    returned `CLEAR`.
+    a. Copy `RUN_DIR/article.mdx` → `/Users/robin/Code/novadiem/devweb/content/articles/<slug>.mdx`.
+    b. Run `npm run build` in `/Users/robin/Code/novadiem/devweb/`. The Zod schema validates the
+       frontmatter; the build must stay **all-static** (every route `○` or `●`, no `ƒ`). **If the
+       build fails, HALT** — surface the error and hold (do not commit). A broken build is an
+       error-stop, not a preference.
+    c. On a green build, **commit and push to `main`** (standing-authorized live publish — see
+       Automation policy):
+       ```
+       git add content/articles/<slug>.mdx
+       git commit -m "content: add '<title>' (<pillar> pillar)"
+       git push origin main      # → live on https://devweb.org (Vercel auto-deploy)
+       ```
+       The article is now live. (Reversible via Vercel rollback / `git revert` + push if needed.)
 
 15. **The Conductor** (**standard**) — close out + write the audit manifest + run accounting last → `manifest.md`, `log.md`, `state.json`
     Write **`RUN_DIR/manifest.md`** — the audit index: one row per `versions/` stage in order
