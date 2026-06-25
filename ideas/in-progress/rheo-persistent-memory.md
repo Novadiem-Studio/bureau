@@ -1,7 +1,7 @@
 # Rheo — Persistent Chat Memory
 
 Date: 2026-06-15
-Status: Track 1 shipped 2026-06-17. Track 2 (the Recallatron) shipped 2026-06-22 — run `20260620-rheo-memory-track2`. Track 3 + 4 idea docs: `not-started/rheo-memory-track3-curation.md`, `not-started/rheo-memory-track4-synthesis.md`.
+Status: Tracks 1–4 shipped. Track 1 (session digests/memory): 2026-06-17. Track 2 (Recallatron entity/topic/procedural graph): 2026-06-22. Track 3 (entity curation + graph backup): 2026-06-22. Track 4 (memory_context + nightly maintenance + UI browsers + backfill): 2026-06-23, deployed + prod backfill run.
 
 Framework-side integration checklist: [Rheo memory framework integration](../agent-framework/07-rheo-memory-framework-integration.md).
 
@@ -37,67 +37,68 @@ ownership:
 This is the longer production track that absorbs the useful framework/memory concepts while
 keeping local framework and remote agent runtime separate.
 
-### Track 0 - Stabilize what already exists
+### Track 1 — Session digests and safe writes (SHIPPED 2026-06-17)
 
-Layer 0 + Layer 4 v1 already exist out of band. Before any new memory layer is added:
+First compressed episodic layer and write discipline:
 
-1. Cold Challenger review of the MOT diff.
-2. Route blockers to the correct coder.
-3. Mechanic runs remote build and service restart steps under the production/external-action
-   boundary.
-4. Capture deploy record and memory smoke results.
-5. Add a battle-test matrix for the current tools:
-   - `chat_log_turn` records a user/assistant turn.
-   - `chat_recent` returns the expected recent turns by chat/session.
-   - `chat_search` finds exact text through FTS.
-   - restart does not lose recall.
-
-### Track 1 - Session digests and safe writes
-
-Add the first compressed episodic layer and write discipline:
-
-1. `session_digests` table or equivalent storage.
-2. Digest pass at session boundary or on demand.
-3. `summarize_and_archive` and basic `write_memory` tool.
-4. Candidate extraction for entities and procedural notes, but candidates stay reviewable.
-5. Memory receipts for writes: source turn/session, confidence, timestamp, and write reason.
+1. `session_digest` table — `session_id`, `chat_id`, `summary`, `ts`, `topics`, `entity_draft`, `procedural_raw`, `parse_error`, `turn_count`.
+2. Digest pass at session boundary or on demand via `summarize_and_archive`.
+3. `write_memory` tool for explicit memory commits.
+4. Candidate extraction for entities and procedural notes; candidates stay reviewable.
+5. Memory receipts for writes: source turn/session, confidence, timestamp, write reason.
 6. Conflict behavior for high-risk writes: version, flag, or require review; no silent overwrite.
 
-### Track 2 - Topics, graph skeleton, and procedural memory
+MCP tools delivered: `chat_log_turn`, `chat_recent`, `chat_search`, `summarize_and_archive`, `write_memory`, `memory_recent`.
+
+### Track 2 — Topics, graph skeleton, and procedural memory (SHIPPED 2026-06-22)
 
 Once digests are reliable:
 
-1. Topic threads with canonical slugs.
-2. JSONL entity graph for Person, Project, Deadline, Preference, and Fact.
+1. Topic threads (`topic_thread` table with `slug / title / notes / created_at / last_active_at`, plus `topic_thread_session` join table).
+2. JSONL entity graph (`ontology/graph.jsonl`) for Person, Project, Deadline, Preference, and Fact.
 3. Basic graph traversal tools: `entity_get`, `entity_search`, `entity_related`.
-4. Procedural notes as first-class memory, not just buried digest text.
+4. Procedural notes as first-class memory (`procedural_notes` table).
 5. Session-boundary automation with a conservative prompt and confidence thresholds.
+6. Post-digest extraction pass: `lib/extraction.ts` populates entity draft and procedural candidates from each new digest.
 
-### Track 3 - Production graph and review surface
+MCP tools delivered: `topic_threads`, `topic_thread_create`, `topic_thread_link`, `entity_get`, `entity_search`, `entity_related`.
 
-When query volume and conflict handling justify it:
+### Track 3 — Entity curation + graph backup (SHIPPED 2026-06-22)
 
-1. Migrate JSONL graph to SQLite adjacency tables.
-2. Add sqlite-vec for semantic retrieval, keeping FTS5 for exact recall.
-3. Add hybrid retrieval (`fts` + vector + graph expansion).
-4. Add a MOT review surface for conflicts, stale facts, candidate entities, and procedural notes.
-5. Add decay/maintenance routines for stale-sensitive facts.
-6. Integrate memory retrieval into planning and bug-fix workflows through cited excerpts only.
+When conflict handling justifies it:
 
-### Track 4 - Optimization and convergence
+1. `entity_confirm` and `entity_supersede` curation tools (the real curation surface — `edit_fact` and `consolidate_entities` are NOT built).
+2. `ConfirmPatch` shape appended to `ontology/graph.jsonl` — append-only, never rewritten in place.
+3. `probable_duplicate_of` dedup signal + Levenshtein utility.
+4. `backupGraph()` in nightly cron.
 
-Only after the production graph is stable:
+MCP tools delivered: `entity_confirm`, `entity_supersede`.
 
-1. Proactive surfacing for dated entities and recurring obligations.
-2. Cross-channel ingestion, such as Gmail routines, through the same write contract.
-3. Evals and benchmarks for recall accuracy, false writes, conflict handling, and digest quality.
-4. Local-runtime experiments for digesting or candidate extraction only after accounting shows
-   cost/quality data.
-5. A narrow framework-facing memory adapter: read-first, provenance-bearing, and deny-by-default
-   for writes.
-6. Archive and visual-canon representation once the system is real enough to depict: memory
-   conduits into the Archive, entity graph views, and temporal flows. Poster updates are a
-   visual follow-up, not a production blocker.
+### Track 4 — Memory context bundle + nightly maintenance + UI browsers (SHIPPED 2026-06-23)
+
+1. `memory_context` boot bundle — one-call `{ topics, entities, procedural, recent_memory }` with optional relevance filtering.
+2. `graph_compact` MCP tool — on-demand compaction.
+3. `topic_thread_summarize` MCP tool — structured, model-free thread summary.
+4. Nightly maintenance (02:00 cron): SQLite VACUUM backup, graph JSONL backup, procedural prune, entity prune, conditional graph compaction (only if ≥5 MB).
+5. Historical backfill script (`scripts/backfill-extraction.ts` / `npm run backfill`) — idempotent, ran in production.
+6. Session-authed REST routes: `/api/memory/entities`, `/api/memory/procedural/confirm`, `/api/memory/topics/[slug]/summarize`.
+7. UI browser pages: `/memory/entities`, `/memory/procedural`, `/memory/topics` (session-gated).
+
+MCP tools delivered: `memory_context`, `graph_compact`, `topic_thread_summarize`.
+
+### Future — not yet tracked
+
+The following capabilities are genuinely future and have no code yet:
+
+- **Vector / semantic retrieval**: sqlite-vec, embedding column, hybrid `fts + vector + graph` search. All search today is FTS5 keyword or substring — no `embedding` column exists anywhere.
+- **Full SQLite adjacency tables for the graph**: JSONL stays until query volume warrants migration.
+- **Proactive surfacing**: Rheo noticing dated entities and surfacing them unprompted.
+- **Cross-channel ingestion**: Gmail routines → entity graph.
+- **Decay/staleness scoring**: confidence decay on time-sensitive facts.
+- **Evals and benchmarks**: recall accuracy, false-write rate, conflict-handling quality.
+- **Framework memory adapter**: local Bureau write authority, narrowly scoped and deny-by-default.
+
+Do NOT invent a "Track 5" — these items are future work without assigned track numbers.
 
 ## Framework integration rules
 
@@ -126,7 +127,7 @@ Layer 0 + Layer 4 (v1) was built directly in the main session before this job wa
 queued. The new session inherits it. What's already done, untested by the framework:
 
 - `mot/db/schema.ts` — `conversation` table added (6 cols, 2 indexes)
-- `mot/db/migrations/0003_conversation.sql` — Drizzle-generated DDL
+- `mot/db/migrations/0003_conversation.sql` — hand-written DDL
 - `mot/db/migrations/0003_conversation_fts.sql` — FTS5 virtual table + insert trigger
 - `mot/db/client.ts` — `0003_conversation_fts.sql` registered in `HAND_WRITTEN_MIGRATIONS`
 - `mot/lib/conversation.ts` — `logTurn`, `getRecentTurns`, `searchTurns` with 2h session gap detection
@@ -135,8 +136,7 @@ queued. The new session inherits it. What's already done, untested by the framew
 - `mot/bot/bot.py` — in-memory deque replaced with `fetch_history()` / `log_turn()` calls to MOT
 
 TypeScript type-check and full test suite (91 tests) pass. Code rsynced to server.
-**Not done:** server build (`npm ci && NEXT_PUBLIC_BASE_PATH=/mot npm run build`) and service
-restarts (`mot.service`, `telegram-bot.service`) have not been run. No Challenger review.
+**Not done at time of writing:** server build and service restarts had not been run.
 
 The framework session should: run The Challenger on the diff, route any blockers, then hand
 the deploy to The Mechanic.
@@ -177,9 +177,9 @@ Three types, borrowed from cognitive science and adapted to this domain:
 
 | Type | What it stores | Storage home | Retrieval |
 |------|---------------|--------------|-----------|
-| **Episodic** | Raw turns + session digests — what happened, when | `conversations` + `session_digests` tables | Recency, keyword FTS, vector similarity |
-| **Semantic** | Facts about the world — people, projects, deadlines, preferences | Entity graph (`ontology/graph.jsonl` or a dedicated table) | Graph traversal + vector |
-| **Procedural** | Recurring patterns — how Robin likes things done, templates, preferences, routines | `procedural_notes` table or semantic layer | Keyword or category lookup |
+| **Episodic** | Raw turns + session digests — what happened, when | `conversation` + `session_digest` tables | Recency, FTS5 keyword |
+| **Semantic** | Facts about the world — people, projects, deadlines, preferences | Entity graph (`ontology/graph.jsonl`) + `memory_items` SQL table | Substring search, graph traversal; vector/semantic is future |
+| **Procedural** | Recurring patterns — how Robin likes things done, templates, preferences, routines | `procedural_notes` table | Keyword or category lookup |
 
 These are not separate systems — they're three query modes over related data. A single
 conversation turn may generate an episodic record, update a semantic entity, and refine a
@@ -203,25 +203,20 @@ Layer 4 — MCP Surface     tools Rheo calls to read and write all of the above
 
 ### Layer 0 — Ledger (episodic raw store)
 
-Drizzle table in MOT's SQLite (`~/Code/novadiem/mot/db/schema.ts`). Append-only; no
-row is ever deleted or updated in place.
+Append-only SQLite table in MOT's database. No row is ever deleted or updated in place.
 
-```ts
-export const conversation = sqliteTable('conversation', {
-  id:         integer('id').primaryKey({ autoIncrement: true }),
-  chat_id:    text('chat_id').notNull(),
-  role:       text('role').notNull(),         // "user" | "assistant"
-  content:    text('content').notNull(),
-  ts:         text('ts').notNull(),           // ISO datetime
-  session_id: text('session_id'),
-  ticket_id:  text('ticket_id').references(() => ticket.id),
-  embedding:  blob('embedding'),              // sqlite-vec blob — null until v2
-});
-// FTS5 virtual table + triggers in a hand-written migration (same pattern as ticket_fts)
+```
+id          integer   primary key, autoincrement
+chat_id     text      Telegram chat ID (identifies the user/conversation)
+session_id  text      groups turns within a continuous session
+role        text      'user' | 'rheo'
+content     text      full message text, no truncation
+ts          text      ISO 8601 datetime
 ```
 
-The `embedding` column is nullable — the FTS5 layer handles v1 search; embeddings drop in
-without a schema change when vector search is added.
+FTS5 virtual table `conversation_fts` + AFTER INSERT trigger (append-only; no update/delete trigger).
+
+Note: there is NO `embedding` or `ticket_id` column in the real migration (`0003_conversation.sql`). Vector search is not built.
 
 ### Layer 1 — Session Digests (episodic compressed)
 
@@ -229,178 +224,134 @@ At each session boundary (detected by a >2h gap or explicit signal), a digest pa
 
 - One `claude -p` call over the session's raw turns.
 - Output: 3–5 sentence summary + extracted candidate entities/relations + procedural notes.
-- Stored in `session_digests`; candidates fed into the entity graph (Layer 3) pending
-  review.
+- Stored in `session_digest`; candidates fed into the entity graph (Layer 3) pending review.
 
-```ts
-export const sessionDigest = sqliteTable('session_digest', {
-  id:             integer('id').primaryKey({ autoIncrement: true }),
-  session_id:     text('session_id').notNull().unique(),
-  summary:        text('summary').notNull(),
-  ts:             text('ts').notNull(),
-  topics:         text('topics'),         // comma-separated: "school,upwork,nutrifax"
-  entity_draft:   text('entity_draft'),   // JSON — candidate entities before commit
-  procedural_raw: text('procedural_raw'), // JSON — candidate procedural notes
-});
+Real schema (from `0003_complex_roxanne_simpson.sql`):
+
+```
+id              integer   primary key, autoincrement
+session_id      text      unique
+chat_id         text
+summary         text
+ts              text
+topics          text      (nullable)
+entity_draft    text      (nullable) — JSON blob for entity extraction input
+procedural_raw  text      (nullable) — JSON blob for procedural extraction input
+parse_error     integer   default false
+turn_count      integer
 ```
 
-The digest prompt should explicitly ask for three outputs: (1) the human-readable summary,
-(2) candidate entity updates ("Arowyn has a report card due 2026-06-20"), (3) candidate
-procedural notes ("Robin prefers short bullet replies when asking for ticket lists"). These
-are candidates — the agent or Robin confirms before they're committed to the graph.
+The `summarize_and_archive` MCP tool triggers this pass on demand. Reading digests is via the REST route `GET /api/conversation/digests` — there is no `session_digests` MCP tool.
 
 ### Layer 2 — Topic Threads (episodic indexed)
 
-Recurring concerns extracted from digest topics and linked to sessions. Acts as an index
-for episodic retrieval: "find all sessions that touched arowyn-school" → their digests →
-raw turns if needed.
+Recurring concerns extracted from digest topics and linked to sessions. Real schema (from `0004_topic_threads.sql`):
 
-```ts
-export const topicThread = sqliteTable('topic_thread', {
-  id:          integer('id').primaryKey({ autoIncrement: true }),
-  label:       text('label').notNull(),    // "arowyn-school", "nutrifax-bounces"
-  description: text('description'),
-  last_seen:   text('last_seen').notNull(),
-  session_ids: text('session_ids'),        // comma-separated
-});
+```
+slug            text   primary key
+title           text
+notes           text   (nullable)
+created_at      text
+last_active_at  text
 ```
 
-Labels are canonical slugs, not free text. A small fixed taxonomy is better than open
-labels early on — prevents "arowyn_school" / "Arowyn school" / "school-arowyn" drift.
-Rheo should suggest new labels; Robin confirms them.
+Plus join table `topic_thread_session` (`slug`, `session_id`, `added_at`). Labels are canonical slugs. The `topic_thread_summarize` tool/route returns structured JSON — model-free.
+
+Note: the earlier planning doc showed `id / label / description / last_seen / session_ids`. The real schema uses `slug` as PK and a join table, not a comma-separated `session_ids` column.
 
 ### Layer 3 — Entity Knowledge Graph (semantic + temporal)
 
-People, projects, deadlines, preferences — facts with provenance, confidence, and temporal
-validity. Backed by the ontology skill's JSONL format initially; migrates to a dedicated
-SQLite table when query volume warrants it.
+Two distinct semantic stores:
 
-Entity types in scope:
-- `Person` — Arowyn, teachers, clients, vendors, government contacts
-- `Project` — Nutrifax, GrowOperative, CryptoWatchTools, specific Upwork leads
-- `Deadline` — named deadlines with due dates and recurrence
-- `Preference` — how Robin likes things done (procedural memory, stored here as entities)
-- `Fact` — one-off truths that don't fit elsewhere ("ICBC renewal is September")
+**1. `memory_items` SQL table** (Track 1) — typed facts written via `write_memory`, with `type`, `label`, `label_norm`, `confidence`, `reason`, `superseded_by`. Conflict detection is label-normalized only. FTS5 index (`memory_items_fts`) for keyword search.
 
-Relations carry temporal edges and provenance:
-
-```jsonl
-{"op":"create","entity":{"id":"e_arowyn","type":"Person","properties":{"name":"Arowyn","relation_to_robin":"daughter"}}}
-{"op":"create","entity":{"id":"e_crawford_bay_school","type":"Organization","properties":{"name":"Crawford Bay School"}}}
-{"op":"relate","from":"e_arowyn","rel":"attends","to":"e_crawford_bay_school","properties":{"since":"2024-09","confidence":1.0,"source":"conversation:2026-06-10"}}
-{"op":"create","entity":{"id":"e_report_card","type":"Deadline","properties":{"label":"Arowyn report card","due":"2026-06-20","source_session":"sess_20260615"}}}
-{"op":"relate","from":"e_arowyn","rel":"has_deadline","to":"e_report_card"}
+**2. Entity graph JSONL** (`ontology/graph.jsonl`, Track 2+) — append-only, gitignored. Entity record shape:
+```json
+{
+  "id": "e_arowyn",
+  "type": "Person",
+  "label": "Arowyn",
+  "properties": { "relations": [] },
+  "valid_from": "2026-06-17T00:00:00Z",
+  "valid_until": null,
+  "confidence": 0.95,
+  "source": "session:sess_20260617",
+  "superseded_by": null,
+  "confirmed": false
+}
 ```
+Entity types: `Person | Project | Deadline | Preference | Fact`. Relations live at `properties.relations[]` as `{rel, target_id}` — not a separate edge table. Patch records (`op: 'supersede'` and `op: 'confirm'`) share the same file.
 
-Key graph properties on relations:
-- `valid_from` / `valid_until` — temporal edges (a relationship that ended)
-- `confidence` — 0.0–1.0; facts extracted from conversation start at 0.8, manually
-  confirmed facts at 1.0
-- `source` — `conversation:{id}` or `session:{id}` or `manual`
-- `superseded_by` — points to a newer version of the same fact; old version preserved
+Note: the earlier planning doc showed an `op:create/relate` edge model and separate edge records. The real format is entity records + patch records only — no `op:create`, no separate edge records. Relations are embedded in entity properties and are currently sparsely populated.
 
-Conflict handling: when a new fact contradicts an existing one (same entity + relation,
-different value), both versions are kept. The older one gets `superseded_by` pointing to
-the new one, and a flag is set for review if the confidence delta is large. The agent does
-not silently overwrite. Minor wording changes (same meaning) can be consolidated quietly;
-anything substantive goes to Robin.
+Conflict handling: versioned, not overwritten. Every fact carries `source` and optionally `superseded_by`. The curation tools are `entity_confirm` and `entity_supersede` — NOT `edit_fact`, `consolidate_entities`, or `flag_conflict` (those don't exist).
 
 ### Layer 4 — MCP Surface (agent-managed)
 
-Tools exposed at `https://rheo.ca/mot/api/mcp` that Rheo calls as an active agent, not
-just a passive consumer. The key shift: Rheo decides what to retrieve and what to write
-during the conversation, rather than the bot mechanically injecting a fixed context block.
+26 MCP tools at `POST /api/mcp` (Streamable HTTP JSON-RPC, Bearer-auth or session cookie). Rheo calls these to read and write all layers above.
 
-**Retrieval tools:**
+**Retrieval tools (built):**
 
 ```
-chat_recent(n: int)
-  → last N turns from the ledger
-
-session_digests(n: int)
-  → last N session digests; lightweight boot context
-
-chat_search(q: string, mode?: "fts" | "vector" | "hybrid")
-  → keyword and/or semantic search over raw turns and digests
-
-topic_threads(label?: string)
-  → list threads, or get sessions linked to a specific topic
-
-entity_get(id: string)
-  → fetch one entity with all its relations
-
-entity_search(q: string, type?: string)
-  → search the graph by name or property
-
-entity_related(id: string, rel?: string, hops?: int)
-  → graph traversal — find entities reachable from this one
+chat_recent            last N turns from the ledger
+chat_search            FTS5 keyword search — one mode only (no vector/hybrid)
+topic_threads          list threads or get sessions linked to a specific topic
+entity_get             fetch one entity with all its properties
+entity_search          case-insensitive substring search
+entity_related         graph traversal from a seed entity
+memory_context         boot bundle: { topics, entities, procedural, recent_memory }
+topic_thread_summarize structured, model-free summary of a thread's linked sessions
 ```
 
-**Memory management tools (agent-driven):**
+**Memory management tools (built):**
 
 ```
-write_memory(type: "fact"|"preference"|"deadline"|"person", content: object)
-  → Rheo commits a new entity or relation to the graph
-
-edit_fact(entity_id: string, property: string, new_value: any, reason: string)
-  → update a fact; old version preserved with superseded_by
-
-consolidate_entities(ids: string[], canonical_id: string)
-  → merge duplicate entities; relations redirected to canonical
-
-summarize_and_archive(session_id: string)
-  → manually trigger a digest pass on a session
-
-flag_conflict(entity_id: string, note: string)
-  → surface a contradiction for Robin to resolve
+chat_log_turn          append a turn to the ledger
+write_memory           commit a new memory item
+summarize_and_archive  trigger a digest pass on a session
+entity_confirm         confirm a pending entity
+entity_supersede       mark one entity superseded by another
+graph_compact          trigger graph compaction
+topic_thread_create    create a new topic thread
+topic_thread_link      link a session to a thread
+procedural_notes_list  list procedural notes by category
+procedural_note_confirm confirm a procedural candidate
+memory_recent          return recent or keyword-searched memory items
+notify_robin           send a push notification
 ```
 
-These tools let Rheo actively say "I should remember this" mid-conversation, rather than
-waiting for the next digest pass to catch it. This is the MemGPT/Letta pattern: the agent
-manages its own memory page-in/page-out, not just reads from a fixed injected window.
+**NOT built — remove from any planning doc that still lists them:**
+- `edit_fact` — ABSENT everywhere in the codebase
+- `consolidate_entities` — ABSENT
+- `flag_conflict` — ABSENT
+- `session_digests` as an MCP tool — ABSENT (the REST route `GET /api/conversation/digests` covers this read)
+- `chat_search` vector/hybrid mode — ABSENT (FTS5 only)
+
+**Hybrid retrieval (future):** vector search requires sqlite-vec, an `embedding` column in at least one table, and a new `chat_search` mode. None of this is built. Keep it as a clearly-labeled future capability.
 
 ---
 
-## Hybrid Retrieval Strategy
+## Hybrid Retrieval Strategy (FUTURE — NOT BUILT)
 
-Three retrieval modes, each suited to different query shapes:
+Three retrieval modes are envisioned for the future:
 
 | Mode | When to use | Implementation |
 |------|-------------|----------------|
-| **Keyword (FTS5)** | Exact phrases, names, ticket IDs | SQLite FTS5 on `conversations` + `session_digests` |
-| **Vector (semantic)** | "what did we talk about re: cash flow?" | sqlite-vec on `conversations.embedding`; embed at write time |
-| **Graph traversal** | "what deadlines does Arowyn have?" | Walk entity graph: `e_arowyn` → `has_deadline` → results |
+| **Keyword (FTS5)** | Exact phrases, names, ticket IDs | Built: SQLite FTS5 on `conversation` + `memory_items` |
+| **Vector (semantic)** | "what did we talk about re: cash flow?" | Future: sqlite-vec; requires embedding column and embed-at-write pipeline |
+| **Graph traversal** | "what deadlines does Arowyn have?" | Built: walk entity graph via `entity_related` |
 
-**Hybrid search** (GraphRAG-style): run FTS + vector in parallel, merge results by score,
-then optionally expand via graph traversal on the entity IDs that surface. Return a ranked,
-deduped list. The MCP tool `chat_search(mode: "hybrid")` triggers this path.
-
-**Retrieval order for a conversation turn (what Rheo should do, not what the bot injects):**
-
-1. Bot injects: last 3–5 session digests + current open MOT tickets (lightweight, always-on)
-2. Rheo decides to call `entity_search` or `chat_search` when the question warrants it
-3. If a specific person/project/deadline is referenced, Rheo calls `entity_related` for
-   graph context
-4. Rheo calls `write_memory` or `edit_fact` at the end of a turn if something worth
-   remembering surfaced
-
-This means the "context window" for any given turn is dynamic — Rheo assembles it via tool
-calls rather than the bot front-loading everything.
+**Hybrid search** (FTS + vector + graph expansion) is future. `chat_search(mode: "vector")` and `chat_search(mode: "hybrid")` are not implemented.
 
 ---
 
 ## Boot Context
 
-On bot startup, inject only:
-- **3–5 session digests** (~10–15 lines) — not raw turns
+On bot startup (or per-turn via `memory_context`), inject only:
+- **`memory_context` result** — 3 topics, 5 entities, all confirmed procedural notes, 10 recent memory items, optionally relevance-filtered by query
 - **Open MOT tickets** (already in place)
 
-That's it. Rheo calls memory tools on demand for everything else. This keeps boot injection
-cheap regardless of how much history accumulates.
-
-Session boundary detection: a gap of >2h between turns triggers a new `session_id`. The
-digest pass runs lazily — either at the start of the next session (background thread) or
-when Rheo explicitly calls `summarize_and_archive`.
+That's it. Rheo calls memory tools on demand for everything else.
 
 ---
 
@@ -412,28 +363,24 @@ Versioned, not overwritten. Every fact carries `source` and optionally `supersed
 |--------------|--------|
 | Same fact, minor wording change | Agent consolidates quietly, logs in entity history |
 | Same fact, different value (e.g. deadline date changed) | Keep both, old gets `superseded_by`, confidence on new set to 0.8 |
-| Directly contradictory facts (high confidence, opposing claims) | Both kept, `flag_conflict` called, surfaces to Robin |
-| Robin explicitly corrects something | `edit_fact` called, old version preserved, confidence on new set to 1.0 |
+| Directly contradictory facts (high confidence, opposing claims) | Both kept, flagged for review — use `entity_supersede` or a note in entity properties |
+| Robin explicitly corrects something | `entity_supersede` called, old version preserved, confidence on new set to 1.0 |
 
 The agent never auto-resolves a high-confidence contradiction. Low-confidence candidates
 (extracted from conversations, not manually confirmed) can be quietly revised.
 
 ## Regression and evaluation harness
 
-Memory needs a lasting harness, not one-off smoke checks:
+Memory needs a lasting harness, not one-off smoke checks. Regression fixtures live in `.bureau/regression/` (tracked in git):
 
-- **Recall checks:** known phrase, known person, known deadline, known project, and known
-  preference can be retrieved after restart.
-- **Digest checks:** a sample session produces summary, entity candidates, and procedural
-  candidates without inventing facts.
-- **Conflict checks:** changed deadline preserves the old value with provenance and flags when
-  confidence requires review.
+- `01-migrations.md`, `02-graph.md`, `03-topics.md`, `04-extraction.md`, `05-mcp-tools.md`, `06-entity-curation.md`, `07-graph-backup.md`
+
+Future eval targets:
+- **Recall checks:** known phrase, known person, known deadline, known project, and known preference can be retrieved after restart.
+- **Digest checks:** a sample session produces summary, entity candidates, and procedural candidates without inventing facts.
+- **Conflict checks:** changed deadline preserves the old value with provenance.
 - **Noise checks:** pleasantries and speculation do not create memory writes.
-- **Staleness checks:** stale-sensitive facts are marked for review instead of treated as live
-  forever.
-
-Accepted checks should become fixtures on the memory track and feed Bundle 01b's regression
-fixture convention when the framework phase lands.
+- **Staleness checks:** stale-sensitive facts are marked for review instead of treated as live forever.
 
 ---
 
@@ -476,25 +423,21 @@ Rheo should NOT write:
 **sqlite-vec vs pgvector**
 sqlite-vec keeps everything in one SQLite file (simpler ops); pgvector requires Postgres
 but is already on the Oriva stack. If MOT ever migrates to Postgres, pgvector is the
-natural choice. For now, sqlite-vec is the right call.
+natural choice. For now, sqlite-vec is the right call when/if vector retrieval ships.
 
 **Who runs the digest pass?**
-Options: (a) bot background thread on session boundary, (b) Claude.ai routine on a
-schedule, (c) Rheo calls `summarize_and_archive` explicitly. Option (b) is cleanest for
-reliability — a routine that runs every 2h, checks for undigested sessions, and processes
-them. Option (a) is simpler to build first.
+Currently: Rheo calls `summarize_and_archive` explicitly, or the post-digest extraction pass
+in `lib/extraction.ts` runs after each new digest. A Claude.ai routine on a schedule is
+also viable for reliability.
 
 **How does Rheo know when to write memory vs. when to just answer?**
 System prompt instruction + examples. The pattern from MemGPT: after every assistant turn,
-there's an implicit "should I update memory?" check. In practice this means the system
-prompt tells Rheo to call `write_memory` when specific conditions are met (new entity, stated
-fact, confirmed preference) and skip it otherwise. Too aggressive and memory fills with noise;
-too conservative and it's useless.
+there's an implicit "should I update memory?" check.
 
 **Ontology JSONL vs dedicated SQLite table**
 JSONL is fine while the graph is small (<1,000 entities) and query patterns are simple.
-Once graph traversal becomes a hot path, migrate to a proper adjacency table in SQLite.
-The JSONL format preserves history; migration is a one-time import.
+The 5 MB size guard and nightly compaction keep it manageable. Migration to a SQLite
+adjacency table is a future option when traversal becomes a hot path.
 
 **Privacy**
 All memory is local (MOT's SQLite on rheo.ca). No external service sees it. The bot and
@@ -503,9 +446,19 @@ No special handling needed beyond what's already in place.
 
 **Memory rot**
 Facts become stale. A "Nutrifax has 3 paying customers" fact from six months ago may be
-wrong today. Mitigation: `confidence` decays on time-sensitive facts (deadlines, counts,
-states) after a configurable interval. The digest pass flags time-sensitive entities for
-review when they're older than their expected shelf life.
+wrong today. Mitigation: nightly prune drops stale unconfirmed low-confidence entities.
+Explicit staleness-decay on time-sensitive facts is future.
+
+---
+
+## Stack
+
+- **Next.js 14** (`^14.2.35`) — not 15
+- **better-sqlite3** `^11.10.0` + Drizzle ORM `^0.29.5` + FTS5 (SQLite built-in)
+- **Single process, single SQLite file** (`mot.db`, WAL mode)
+- **Auth:** API key (Bearer, argon2-hashed) OR session cookie (iron-session)
+- **Cron:** node-cron `^4.2.1`
+- **Bot:** separate repo `rheos/rheo-bot`, deployed at `/opt/rheo-bot` on rheo.ca Lightsail, systemd service `telegram-bot`, webhook `tg.rheo.ca/telegram` — NOT inside the mot repo
 
 ---
 
@@ -528,12 +481,11 @@ review when they're older than their expected shelf life.
 
 - **MemGPT / Letta** — agent-managed memory paging; the model explicitly calls memory tools
   to page context in and out. Direct inspiration for the MCP tool approach.
-- **Mem0** — fact extraction + consolidation from conversations; the `write_memory` +
-  `consolidate_entities` pattern.
+- **Mem0** — fact extraction + consolidation from conversations; the `write_memory` pattern.
 - **Zep / Graphiti** — temporal knowledge graph over conversation history; the
   `valid_from`/`valid_until` edge model and graph traversal.
 - **GraphRAG** — hybrid retrieval combining vector search with graph traversal for
-  multi-hop reasoning.
+  multi-hop reasoning. (Future for Rheo.)
 - **Oriva memoir memory** (`oriva/future-research/memoir-memory-storage-strategies.md`) —
   summary hierarchies (the digest layer), hybrid relational + vector approach, thematic
   thread entities, conflict-as-versioning rather than overwrite.
@@ -546,9 +498,10 @@ review when they're older than their expected shelf life.
   that's 3 months away" without being asked, by running a background check on dated entities.
 - **Cross-channel memory** — ingest signals from Gmail routines into the same entity graph,
   so Rheo's graph includes facts from email, not just Telegram conversations.
-- **Book editor / memory review UI** — a view in MOT's admin where Robin can browse, confirm,
-  or delete candidate entities and procedural notes before they're committed.
-- **Routine as memory writer** — the hourly Gmail routine also calls `write_memory` when it
-  finds something worth persisting (a confirmed deadline, a new vendor contact).
-- **Voice anchors** — Robin's communication patterns (Oriva's `voiceAnchors` concept) stored
-  as procedural memory, referenced when Rheo drafts longer responses.
+- **Vector / semantic retrieval** — sqlite-vec, embedding column, hybrid FTS + vector + graph.
+- **Advanced evals** — recall accuracy, false-write rate, conflict handling quality (LongMemEval,
+  LoCoMo benchmarks).
+- **Framework memory adapter** — narrow read-first access for Bureau workflows, with a write
+  contract, conflict behavior, and audit trail.
+- **Visual canon representation** — memory conduits into The Archive, entity graph holograms,
+  temporal flows. Poster updates are a visual follow-up, not a production blocker.

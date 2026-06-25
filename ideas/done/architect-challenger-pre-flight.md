@@ -16,7 +16,7 @@ self-check before declaring complete — without adding a full extra agent spawn
 3. A forcing function that makes the Architect verify live codebase facts rather than
    reason from spec memory.
 
-The playbook lives at `docs/architect-challenger-patterns.md` (written 2026-06-22,
+The playbook lives at `docs/evaluation/architect-challenger-patterns.md` (written 2026-06-22,
 synthesized from runs 20260614–20260622).
 
 ## How it would work
@@ -111,13 +111,13 @@ in a single Mechanic prompt with no migration or schema change.
 
 ## Source data
 
-`docs/architect-challenger-patterns.md` — full findings table, frequency breakdown,
+`docs/evaluation/architect-challenger-patterns.md` — full findings table, frequency breakdown,
 and the 12-check checklist. Read before authoring the architect.md edit so the prompt
 cites the right check numbers and examples.
 
 ## Related
 
 - `ideas/not-started/` — this idea
-- `docs/architect-challenger-patterns.md` — the evidence base
+- `docs/evaluation/architect-challenger-patterns.md` — the evidence base
 - `agents/architect.md` — the target file
 - `agents/critic.md` — has a similar self-check concept for the Challenger's own blind spots

@@ -1,7 +1,7 @@
 # Challenger pattern analysis: method and output format
 
 How to mine the run logs for recurring Challenger findings, tag them consistently, and produce a
-comparable patterns report. The output of this method is `docs/architect-challenger-patterns.md`.
+comparable patterns report. The output of this method is `docs/evaluation/architect-challenger-patterns.md`.
 
 The point of writing the method down is **comparability**. The patterns report is only useful as a
 trend if every refresh uses the same taxonomy and the same output shape. If a future pass invents
@@ -79,7 +79,7 @@ it in the report's changelog. Do not stretch an existing tag.
 
 ## Output file format
 
-`docs/architect-challenger-patterns.md`. Required sections, in this order. Keep column order and
+`docs/evaluation/architect-challenger-patterns.md`. Required sections, in this order. Keep column order and
 sort order fixed so two refreshes diff cleanly.
 
 1. **Title.**
@@ -118,12 +118,12 @@ findings count from the metadata block (the texture).
 
 ## Outputs and naming
 
-- Method (this file): `docs/challenger-pattern-analysis.md`.
-- Report: `docs/architect-challenger-patterns.md` (overwritten each refresh; history lives in its
+- Method (this file): `docs/evaluation/challenger-pattern-analysis.md`.
+- Report: `docs/evaluation/architect-challenger-patterns.md` (overwritten each refresh; history lives in its
   changelog section and in git).
 
 ## Related
 
-- `docs/architect-challenger-patterns.md` — the report this method produces
+- `docs/evaluation/architect-challenger-patterns.md` — the report this method produces
 - `ideas/not-started/architect-challenger-pre-flight-v2.md` — the intervention this measures
 - `agents/critic.md` — the Challenger, source of the findings

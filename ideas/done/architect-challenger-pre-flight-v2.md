@@ -167,7 +167,7 @@ mechanical-trigger greps are a handful of lines each. Buildable in one or two Me
 
 ## Source data
 
-`docs/architect-challenger-patterns.md` — full 130-row findings table, frequency breakdown, and the
+`docs/evaluation/architect-challenger-patterns.md` — full 130-row findings table, frequency breakdown, and the
 per-pattern examples. Read before authoring the two agent edits so each check cites the right
 pattern and a real example. That doc's checklist is the original single-owner version; this idea
 supersedes it with the two-owner split.
@@ -175,7 +175,7 @@ supersedes it with the two-owner split.
 ## Related
 
 - `architect-challenger-pre-flight.md` — v1 (single-owner; kept for history, superseded by this)
-- `docs/architect-challenger-patterns.md` — the evidence base
+- `docs/evaluation/architect-challenger-patterns.md` — the evidence base
 - `agents/architect.md`, `agents/prompt-engineer.md` — the two target files
 - `agents/critic.md` — the Challenger; its findings are the data this is built from
 - `project-framework-optimization-metrics` (memory) — rework ratio as the key metric

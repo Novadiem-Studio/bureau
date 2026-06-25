@@ -121,6 +121,19 @@ Write the resolved value to `state.json#target_repo`: an absolute path, or the l
 | The Notary | `agents/notary.md` | External cold attestation on a sealed artifact packet (advisory; Bundle 05). |
 | The Delegate | `agents/delegate.md` | Per-checkpoint automated gating verdict — flow-and-gating role, not a preference model; runs attended until the v3 self-audit gate (Bundle 09). |
 
+## Framework evaluation & self-improvement
+
+`docs/evaluation/` is the framework's memory of how it has been evaluated and changed over time.
+**Read it before you evaluate a run against the framework, edit a persona, or change the
+review process** — so you start from what prior passes found, not from zero.
+
+- `docs/evaluation/framework-evaluation-log.md` — the **ledger**: dated entries, what each
+  evaluation pass found, what we changed in response, and open levers. Start here; append newest-on-top.
+- `docs/evaluation/architect-challenger-patterns.md` — the **synthesis**: the current
+  Architect→Challenger pattern taxonomy + the pre-flight checklist (encoded into `agents/architect.md`).
+- `docs/evaluation/challenger-pattern-analysis.md` — the **method**: how to mine run logs into
+  the synthesis, with a frozen taxonomy (extend by appending tags, never rename).
+
 ## Output
 
 Everything for one run lands in its run dir — `<target-repo>/.bureau/runs/<task>/` for a targeted run, or `output/runs/<task>/` for a no-target fallback run:
