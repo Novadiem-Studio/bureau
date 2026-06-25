@@ -192,7 +192,7 @@ present three options and ask which one — you recommend one and note the trade
 
 Run this AFTER both `spec.md` (Architecture) and `plan.md` are fully written, and BEFORE you
 write the handoff block. It catches the defects the Challenger most often finds in spec/plan
-artifacts (sourced: `docs/architect-challenger-patterns.md`). The Spellwright runs a parallel
+artifacts (sourced: `docs/evaluation/architect-challenger-patterns.md`). The Spellwright runs a parallel
 check on prompt code blocks — you are not responsible for literal imports, call sites, or code
 in prompts that don't exist yet.
 

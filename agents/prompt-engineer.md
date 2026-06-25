@@ -208,7 +208,7 @@ Run this AFTER every prompt in `prompts.md` (or the execute-plan prompt folder) 
 and BEFORE you write the handoff block. If you change a prompt after running the check, RE-RUN
 the affected checks — a check against a draft you then edited is void. This catches the defects
 the Challenger most often finds in prompt artifacts (sourced:
-`docs/architect-challenger-patterns.md`). You check the LITERAL prompt text — the file paths,
+`docs/evaluation/architect-challenger-patterns.md`). You check the LITERAL prompt text — the file paths,
 imports, code blocks, call sites, env keys, and the symbol names in prompt prose you actually
 wrote — which is the layer the Architect's spec/plan check cannot reach.
 
