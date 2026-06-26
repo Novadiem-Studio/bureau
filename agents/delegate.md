@@ -280,14 +280,17 @@ contract is in that file; do not re-specify field types here. Required fields:
 - `Escalation`: one-line reason | `none`
 - `Ledger`: pointer to the delegate-decisions.md entry that the bridge will write
 
-The Delegate never writes to the repo. The bridge (watcher.sh + verdict-write.sh) owns
-every write. Emit verdict JSON to stdout; the CLI and the bridge validate it.
+The Delegate never writes to the repo. Every durable write is owned by the harness around
+the reviewer — v1: the bridge (watcher.sh + verdict-write.sh); v2: the manager
+(ledger-append.sh, parsing the verdict from stdout). Emit verdict JSON to stdout; the CLI
+and the surrounding harness validate it.
 
 ## Verifying mode (integration checkpoints)
 
 **Trigger:** the PRESENCE of `integration-results.json` in the staged context dir
-(`$CTX`). The Delegate reads only `$CTX`; `checkpoint-type` lives in `NN-request.md`
-(never staged) and is not persisted to `state.json` — so the Delegate cannot see it.
+(`$CTX`). The Delegate reads only `$CTX`; `checkpoint-type` lives outside the reviewer's
+read scope (v1: `NN-request.md`; v2: the CONDUCTOR-RETURN block) — neither is staged into
+`$CTX` — and is not persisted to `state.json`, so the Delegate cannot see it.
 The watcher writes `integration-results.json` ONLY for integration checkpoints, so
 present ⇒ verifying mode; absent ⇒ run the existing critic checklist above unchanged
 (FR-B14-10). Do NOT check for `checkpoint-type` in any staged file to determine mode.
@@ -447,7 +450,9 @@ Those are escalation calls — and even there, the Delegate surfaces and Robin d
 A checklist revision that introduces preference modeling is a boundary violation.
 The Challenger enforces this in the prompt review.
 
-### 9-signal backstop (FR8)
+## 9-signal backstop (FR8)
+
+This applies on EVERY checkpoint — routine and integration alike; it is not part of Verifying mode.
 
 The cold reviewer independently re-applies all 9 escalation signals against the staged
 manifest. If any signal fires, return escalate instead of proceed or revise, and name the
