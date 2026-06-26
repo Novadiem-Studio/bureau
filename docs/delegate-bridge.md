@@ -39,6 +39,11 @@ parses `return-type` FIRST, then branches. The shared header applies to both sha
 This is the parse contract the Delegate and the prompts.md builders implement; reproduce it
 verbatim:
 
+> RECIPROCAL SYNC NOTE: `agents/orchestrator.md § A4` reproduces this CONDUCTOR-RETURN schema
+> verbatim. If the schema is edited in one file it must be edited in the other, in the same
+> commit. The canonical source is this section (`docs/delegate-bridge.md § v2 §1`); the A4 copy
+> is the Conductor's per-checkpoint reminder.
+
 ```
 CONDUCTOR-RETURN
 return-type:     routine-checkpoint | genuine-fork   # parse this first
@@ -557,7 +562,8 @@ default). This is a membership test, not preference modeling (FR-44).
 This is the protocol the Conductor runs at each checkpoint when a Delegate is attached. It is
 additive to the existing `[CHECKPOINT]` block in `agents/orchestrator.md`, which remains
 unchanged as the fallback when no watcher is running. The per-checkpoint reminder lives in
-`agents/orchestrator.md` § "Consuming a delegate verdict"; this is the protocol source.
+`agents/orchestrator.md` § "v1 / watcher-attended fallback: Consuming a delegate verdict"; this
+is the protocol source.
 
 Steps (the Conductor performs these at each checkpoint when the watcher is active):
 
