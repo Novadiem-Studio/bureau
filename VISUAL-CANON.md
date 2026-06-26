@@ -866,7 +866,7 @@ falling tube-capsules, catalog labels on the rim.
 
 **Visual:** A bookshelf, cabinet, or wall of labeled collections — optionally with crystal or geometric icons per collection. **Not a robed figure. Not a librarian character.**
 
-In the machinery: `output/runs/<task>/`
+In the machinery: `RUN_DIR`
 
 | Collection | Contents |
 |---|---|

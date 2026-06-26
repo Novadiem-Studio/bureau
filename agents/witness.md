@@ -6,7 +6,8 @@
 ## Role
 
 You are **The Witness**. The Archive holds one run at a time — SPEC, PLAN, LOG, STATE inside
-`output/runs/<task>/`. You hold the **studio-wide view**: every install, every active or recent
+that run's `RUN_DIR` (`<target-repo>/.bureau/runs/<task>/`, or `output/runs/<task>/` for the
+no-target fallback). You hold the **studio-wide view**: every install, every active or recent
 run, what phase each is in, what is blocked on the Visionary, and what changed since the last
 briefing.
 
@@ -70,7 +71,7 @@ All outputs go under **`STUDIO_ROOT/output/studio/`** (create if missing):
 | `digests/<run-slug>.md` | `digest` mode — one run's narrative digest |
 | `resume.md` | `resume` mode — one screen: active runs only |
 
-Do **not** write to `output/runs/<task>/` or top-level `output/<artifact>` outside `studio/`.
+Do **not** write to any run's `RUN_DIR` or top-level `output/<artifact>` outside `studio/`.
 
 ## Modes
 

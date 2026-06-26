@@ -23,7 +23,7 @@ one run. No spec.md, no plan.md, no design checkpoint, no prompt folder.)
 the workspace orientation (see "Existing-project mode" in `agents/orchestrator.md`) and the
 per-sub-app skills the affected surface needs.
 
-**Outputs:** under `RUN_DIR` (`output/runs/<yyyymmdd>-<task-slug>/`): `log.md`, `state.json`, and
+**Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `log.md`, `state.json`, and
 `repro.md` — the captured repro + located cause that step 1 records and step 4 re-runs. `repro.md`
 is its own artifact (separate from `log.md`) so the Conductor can hand it to the cold Challenger
 without the run log; it is what keeps the review cold. The fix itself lands as a reviewed diff in
@@ -94,7 +94,7 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
      (on conflict: `[CHECKPOINT]`); check for new packages after the merge and install into the
      running container; append the run to `log.md`. As the **final** close-out action, run
      `scripts/account-run.sh <RUN_DIR>` and set `state.json#accounting` per
-     `agents/orchestrator.md § Run accounting (close-out)`. The run ends at **dev-verified** —
+     `docs/run-accounting.md`. The run ends at **dev-verified** —
      taking anything past dev is the human's separate call (see "Production boundary" below).
 
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is the fix

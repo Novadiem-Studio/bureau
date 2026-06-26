@@ -20,7 +20,7 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
 - A topic description — Robin provides it inline in the spawn or as a file path.
 - Optionally a per-run `RUN_DIR/article-passes.json`. If present, it **replaces**
   `config/article-passes.json` entirely for this run (not a merge — predictable and explicit).
-- `RUN_DIR` is set by the Conductor per standard convention (`output/runs/<yyyymmdd>-<task-slug>/`).
+- `RUN_DIR` is set by the Conductor per `docs/run-protocol.md`.
 - The OpenRouter key in the keystore (`~/Documents/novadiem/keys/novadiem/openrouter.env`,
   provisioned by the chunk-02 build step), consumed by `scripts/model-pass.sh`. The script
   loud-fails (exit 4) if absent.
@@ -351,6 +351,6 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     anything deferred. As the **final** close-out action — after the manifest, the summary, and the
     final `state.json` / `log.md` updates — run `scripts/account-run.sh <RUN_DIR>` so
     `accounting.json` reflects the terminal state, then set `state.json#accounting` per
-    `agents/orchestrator.md § Run accounting (close-out)`. Note: `account-run.sh` has no
+    `docs/run-accounting.md`. Note: `account-run.sh` has no
     external-API cost source — it records the note; per-pass dollar capture is a registered v2
     deferral, so v1 surfaces the *count* of paid passes plus the `log.md` bytes-in/out lines.

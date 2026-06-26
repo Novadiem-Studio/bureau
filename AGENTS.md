@@ -54,11 +54,12 @@ reference and scope each agent to the right sub-app, while building within the c
 
 1. Read `agents/orchestrator.md` in full.
 2. If `project-context.md` exists in the project root, read it.
-3. Create this run's **run dir** — `output/runs/<yyyymmdd>-<task-slug>/` — and initialize
-   `state.json` (from `templates/state.json`) + `log.md` inside it. Pass its absolute path as
-   **`RUN_DIR`** in every spawn prompt (see "Run directory" in `agents/orchestrator.md`).
-   Legacy in-flight runs with a top-level `output/state.json` finish in place — see
-   `output/README.md`.
+3. Create this run's **run dir** per `docs/run-protocol.md`: use
+   `<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` for a real target repo, or
+   `<install>/output/runs/<yyyymmdd>-<task-slug>/` only for the `"(no-target)"` fallback.
+   Initialize `state.json` (from `templates/state.json`) + `log.md` inside it. Pass its
+   absolute path as **`RUN_DIR`** in every spawn prompt. Legacy in-flight runs with a
+   top-level `output/state.json` finish in place — see `output/README.md`.
 4. Run `scripts/resolve-model-routing.sh`; copy `~/.novadiem/resolved-model-routing.json` to
    `RUN_DIR/model-routing.json`. Spawn using resolved role routing. Legacy Claude-only installs
    may finish in place with `scripts/resolve-model-tiers.sh` and `RUN_DIR/model-tiers.json`.
@@ -87,7 +88,7 @@ reference and scope each agent to the right sub-app, while building within the c
 
 ## Output
 
-Everything for one run lands in its run dir, `output/runs/<task>/`:
+Everything for one run lands in its `RUN_DIR`:
 - `spec.md` — requirements + architecture
 - `plan.md` — phased development plan
 - `prompts.md` — scoped prompts, ready to execute in sequence
@@ -102,7 +103,7 @@ repo, not in the run dir.)
 In a new session:
 ```
 Read agent-framework/AGENTS.md and resume the agent framework.
-Run dir: agent-framework/output/runs/<task>/ — read its state.json and log.md for context.
+Run dir: <absolute RUN_DIR> — read its state.json and log.md for context.
 ```
 
 ## Checkpoints

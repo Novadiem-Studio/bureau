@@ -665,8 +665,7 @@ Provider-neutral — any runtime fed only the packet. Writes `RUN_DIR/reviews/no
 
 The shared memory of Novadiem Studio. The Archive is the only pathway through which
 specialists exchange knowledge. All collaboration occurs through artifacts stored
-within it. In the machinery, the Archive is the run directory
-(`output/runs/<task>/`).
+within it. In the machinery, the Archive is `RUN_DIR`.
 
 ### Collections
 

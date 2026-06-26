@@ -42,7 +42,7 @@ sonnet. See `agents/orchestrator.md` § Host policy.
 
 ## Studio-wide status (The Witness)
 
-The **Archive** is per run (`output/runs/<task>/`). **The Witness** (`agents/witness.md`)
+The **Archive** is per run (`RUN_DIR`). **The Witness** (`agents/witness.md`)
 holds the cross-run view: executive briefings and log digests in `output/studio/`. Workflow:
 `workflows/studio-briefing.md`. Ministry of Flow (aka Logistics) shows counts; The Witness writes the narrative.
 Install list: `config/installs.json`.
@@ -87,7 +87,9 @@ Project context: /your/project/project-context.md
 My project idea is: [PLAIN LANGUAGE]
 ```
 
-Run artifacts: `~/Code/novadiem/bureau/output/runs/<yyyymmdd>-<project>-<task>/`
+Run artifacts: `<target-repo>/.bureau/runs/<yyyymmdd>-<project>-<task>/` for targeted
+runs, or `~/Code/novadiem/bureau/output/runs/<yyyymmdd>-<project>-<task>/` for the
+no-target fallback.
 
 The main session becomes the Orchestrator and spawns each specialist as a subagent
 in sequence. You watch the handoffs roll in.
@@ -96,7 +98,7 @@ in sequence. You watch the handoffs roll in.
 
 ```
 Read ~/Code/novadiem/bureau/CLAUDE.md and resume the agent framework.
-Run dir: ~/Code/novadiem/bureau/output/runs/<task>/ — read state.json and log.md.
+Run dir: <absolute RUN_DIR> — read state.json and log.md.
 ```
 
 ## Concurrent runs (one install, many terminals)
@@ -142,7 +144,7 @@ follows it.
 
 ## Output files
 
-All inside the run's directory, `output/runs/<task>/`:
+All inside the run's `RUN_DIR`:
 
 | File | Contents |
 |------|----------|

@@ -5,7 +5,7 @@ management, `log.md` format, and the runs-index. It was extracted from
 `agents/orchestrator.md` so orchestrator.md can stay focused on routing, adjudication, and
 workflow execution. The rules here apply on every run, every workflow.
 
-**Pointer back:** `agents/orchestrator.md § Run directory, state, and log — protocol`
+**Pointer back:** `agents/orchestrator.md § Run directory, state management, and log format`
 
 ---
 

@@ -51,7 +51,7 @@ skill and follow it; do not duplicate its steps here.
    **Run accounting last.** As the *final* close-out action — after the summary and the final
    `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>` so `accounting.json`
    reflects the run's terminal state, then set `state.json#accounting` per
-   `agents/orchestrator.md § Run accounting (close-out)` (on failure: `status: unavailable`,
+   `docs/run-accounting.md` (on failure: `status: unavailable`,
    `path: null`). On an abnormal/interrupted exit, attempt accounting anyway per that convention.
 
    **Close-out gates (Conductor-owned).** Before accepting the run, the Conductor runs both of

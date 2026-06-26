@@ -32,6 +32,36 @@ done < <(rg -n 'output/(spec|plan|prompts|log|design|state)\.' agents workflows 
   | grep -v 'run dir' \
   || true)
 
+echo "== run-dir documentation drift"
+# Normal runs now write to RUN_DIR. Keep no-target fallback examples in the files
+# that define startup/resume behavior, but flag older Archive/output phrasing elsewhere.
+while IFS= read -r line; do
+  err "stale RUN_DIR doc: $line"
+done < <(rg -n 'output/runs/<task>/|agent-framework/output/runs|~/Code/novadiem/bureau/output/runs|In the machinery: `output/runs' . \
+  -g '*.md' \
+  -g '!output/runs/**' \
+  -g '!ideas/**' \
+  -g '!AGENTS.md' \
+  -g '!CLAUDE.md' \
+  -g '!README.md' \
+  -g '!agents/orchestrator.md' \
+  -g '!agents/witness.md' \
+  -g '!docs/run-protocol.md' \
+  2>/dev/null || true)
+
+echo "== extracted-doc anchors"
+grep -Fq '## Run directory, state management, and log format' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing run-protocol pointer heading"
+grep -Fq '## Run accounting (close-out)' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing run-accounting pointer heading"
+grep -Fq '### Checkpoint type classification' docs/delegate-bridge.md \
+  || err "docs/delegate-bridge.md missing checkpoint type classification anchor"
+grep -Fq 'docs/delegate-bridge.md § Checkpoint type classification' agents/orchestrator.md \
+  || err "agents/orchestrator.md should link to docs/delegate-bridge.md § Checkpoint type classification"
+if rg -n 'docs/delegate-bridge\.md § checkpoint types' . -g '*.md' -g '!output/runs/**' >/dev/null 2>&1; then
+  err "stale delegate-bridge checkpoint-types anchor reference"
+fi
+
 echo "== model routing policy"
 [[ -f config/model-policy.json ]] || err "missing legacy config/model-policy.json"
 [[ -f config/model-policy.v2.json ]] || err "missing config/model-policy.v2.json"
