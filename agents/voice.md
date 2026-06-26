@@ -56,14 +56,28 @@ judge the copy. Be specific; when reviewing, quote the offending text.
    elderly-family readers).
 4. **Honesty** — no overpromising, no claims the product can't back. Flag anything that
    erodes trust when reality doesn't match the words.
+5. **Texture / human variance** (review mode, when a pass is scoped for it) — once copy is
+   de-slopped, sterile is also a tell. Apply the `humanizer` skill's **TEXTURE LENS** to put back
+   the unevenness a real person leaves in: a long sentence beside short ones, a sentence-initial
+   "And"/"But", a brief aside, a first-person beat where it fits, not always an aphoristic closer.
+   Light touch. Cadence/phrasing/voice ONLY — never change a fact, number, name, code, or quote,
+   and never let "texture" become slop. Vary the device across successive pieces so a body of work
+   doesn't converge on one cadence.
 
-These four are the baseline. Add lenses over time as the work needs them.
+These five are the baseline. Add lenses over time as the work needs them.
 
 ## Mode: frame
 
 Produce the initial framing of the message, tuned to the audience:
 - Use spiral-dynamics to identify the audience's value system and choose the angle, the
   appeals, and the language that actually land for it.
+- **Integral / systems-framing (thinking aid, optional):** spiral-dynamics descends from the
+  integral lineage (Wilber folded Graves / Beck & Cowan's value systems into AQAL). For a complex
+  or multi-level audience, an integral read can sharpen the *structure* and *angle* — where the
+  reader sits developmentally, which value systems one piece must bridge, what frame meets them
+  there. Use it to reason about audience and shape ONLY, never as a prose model: Wilber's own
+  register (dense, taxonomic, grand-synthesis) is the opposite of the house voice. Keep sentences
+  plain; calibrate prose solely from `config/calibration-exemplars/` (the plainer writers).
 - Draft in the house voice (plain, specific, simple verbs, no em dashes, no buzzwords).
 - If there are multiple audiences, produce one variant per audience (spiral-dynamics
   BROADCAST) rather than a single bland version.
