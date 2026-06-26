@@ -72,10 +72,21 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# ── routine short-circuit: a routine checkpoint is a true no-op ──────────────
+# watcher.sh's `if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]` guard skipped the
+# whole executor for routine/absent — no integration-results.json, no $CTX needed.
+# This runs BEFORE the --out check so a routine call is a pure no-op (exit 0) that
+# requires no --out, matching watcher.sh's behavior (FR-B14-10) and the README
+# contract ("routine => no-op, exit 0, no file").
+if [ "$REQ_CHECKPOINT_TYPE" != "integration" ]; then
+  exit 0
+fi
+
 # ── validate the caller-owned --out dir (the $CTX exists-before-write invariant) ──
-# The caller stages $CTX first; this script writes into it but never creates it.
+# Integration checkpoints only. The caller stages $CTX first; this script writes
+# into it but never creates it.
 if [ -z "$OUT" ]; then
-  echo "integration-gate: --out is required" >&2
+  echo "integration-gate: --out is required for an integration checkpoint" >&2
   exit 2
 fi
 if [ ! -d "$OUT" ]; then
@@ -84,13 +95,7 @@ if [ ! -d "$OUT" ]; then
 fi
 
 # ── integration-mode pre-spawn executor part A: parse + short-circuit flags ──
-# Relocated here (it ran before staging in watcher.sh). The routine path
-# (checkpoint-type routine/absent) writes NO integration-results.json, exactly as
-# watcher.sh's `if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]` guard did (FR-B14-10).
-if [ "$REQ_CHECKPOINT_TYPE" != "integration" ]; then
-  exit 0
-fi
-
+# Relocated here (it ran before staging in watcher.sh). Logic unchanged.
 INTEGRATION_ESCALATE=0
 INTEGRATION_ESCALATE_REASON=""
 
