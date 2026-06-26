@@ -434,11 +434,11 @@ A verdict whose `artifact-hash` does not match the request's `artifact-hash` is 
 
 ## Section 3: The load-bearing spawn invocation (identity isolation — EC1/EC8)
 
-The spawn invocation that the watcher uses is exactly:
+The spawn invocation that the watcher uses is exactly (Phase 4 / Prompt 4 refactor —
+`--bare` dropped, CWD pinned to `$CTX`; this matches the v2 §3 single-source recipe):
 
 ```sh
-claude -p \
-  --bare \
+cd "$CTX" && claude -p \
   --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
   --model "$DELEGATE_MODEL" \
   --output-format json \
@@ -451,32 +451,41 @@ claude -p \
   "$DELEGATE_TASK_PROMPT"
 ```
 
-Where `$CTX` = `RUN_DIR/checkpoints/NN-context/` (the staged per-checkpoint read scope).
+Where `$CTX` = `RUN_DIR/checkpoints/NN-context/` (the staged per-checkpoint read scope). The
+watcher runs `cd "$CTX" && claude -p …` inside a scoped subshell and keeps the
+`> "$out_json" 2> "$err_log"` redirects OUTSIDE it, so the CWD change touches neither the
+watcher's own working directory nor where the output files land.
 
 Each flag's load-bearing job:
 
-- `--bare`: disables CLAUDE.md auto-discovery at the harness level. The "you are the
-  Conductor" CLAUDE.md rule can never fire. This is the primary EC1 guard.
 - `--system-prompt "$DELEGATE_SYSTEM_PROMPT"`: sets the full system prompt to:
   "You are The Delegate. Do not load CLAUDE.md. Do not act as the Conductor."
-  This names the Delegate identity explicitly (FR 33). Belt-and-suspenders with `--bare`.
+  This names the Delegate identity explicitly (FR 33). It is one half of the identity guard;
+  `--setting-sources ""` (below) is the other half.
 - `--tools "Read"`: the Delegate has no write access to the repo. Every write is owned by
   the bridge scripts. This is a hard constraint, not a convention.
-- `--add-dir "$CTX"`: the ONLY read root is the staged context dir. The Delegate cannot
-  read `$RUN_DIR`, `log.md`, the rest of the repo, or any other run. EC8 is a filesystem-
-  level exclusion, not a prompt instruction.
-- `--setting-sources ""`: suppresses user/project/local `settings.json` so no settings file
-  can re-inject a Conductor identity, tool grant, or hook. W1 is RESOLVED: this flag is
-  parser-legal (exit 0) and non-redundant with `--bare` — `--bare`'s documented scope is
-  CLAUDE.md auto-discovery, which does not cover `settings.json` sources, so this flag closes
-  a distinct hole. It stays in the load-bearing flag set: `--bare --system-prompt <…>
-  --setting-sources "" --tools "Read" --add-dir NN-context …`.
+- `--add-dir "$CTX"` + CWD = `$CTX`: the ONLY read root is the staged context dir. The
+  Delegate cannot read `$RUN_DIR`, `log.md`, the rest of the repo, or any other run. EC8 is a
+  filesystem-level exclusion, not a prompt instruction. NOTE `--add-dir` sandboxes the Read
+  TOOL only — see the next bullet for why that alone does not buy identity coldness.
+- `--setting-sources ""`: REQUIRED for identity coldness, and it ALONE buys it (no `--bare`).
+  CLAUDE.md auto-discovery is a SEPARATE startup mechanism that walks up from CWD to the repo
+  root and loads `$ROOT/CLAUDE.md` (which makes the reviewer identify as "the Orchestrator")
+  AND the global `~/.claude/CLAUDE.md`; `--add-dir` does NOT cover it. `--setting-sources ""`
+  suppresses that discovery (project + global) AND user/project/local `settings.json`, while
+  KEEPING auth. Phase-0 TEST 3 proved the recipe WITHOUT this flag loaded `$ROOT/CLAUDE.md`
+  and broke coldness; with it, `claude_md_loaded: false` and the identity probe returns
+  `NONE`. (Same finding as the v2 §3 single source.)
 - `--no-session-persistence`: no session to resume; each checkpoint is transcript-free.
 - `--max-budget-usd "$DELEGATE_MAX_USD"`: per-checkpoint spend ceiling (default 0.50).
 
-The `--bare` + `--system-prompt` PAIR is the load-bearing identity guard. `--bare` removes
-the CLAUDE.md path; `--system-prompt` installs the Delegate identity in its place. If either
-is changed, the other must still be present — document any change to this pair here.
+`--bare` was DROPPED. It would also suppress CLAUDE.md auto-discovery, but Phase-0 TEST 4 (R6)
+confirmed it breaks auth ("Not logged in · Please run /login") on the current claude (2.1.187).
+The load-bearing identity guard is therefore `--system-prompt` + `--setting-sources ""` +
+CWD = `$CTX`: `--setting-sources ""` removes the CLAUDE.md path (and settings re-injection),
+`--system-prompt` installs the Delegate identity in its place, and the CWD pin keeps the read
+root confined. If any of the three changes, the others must still be present — document any
+change to this set here.
 
 ## Section 4: Staging (the per-checkpoint read-scope assembly — EC8 fix)
 

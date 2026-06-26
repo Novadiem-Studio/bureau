@@ -8,8 +8,11 @@
 # + ledger append). It then tears down the context dir and the lock.
 #
 # Three invariants are gated at review and must not regress:
-#   1. Identity isolation (EC1): the spawn uses --bare + --system-prompt naming
-#      The Delegate, so the "you are the Conductor" CLAUDE.md rule can never fire.
+#   1. Identity isolation (EC1): the spawn uses --setting-sources "" (suppresses
+#      CLAUDE.md auto-discovery — project + global — a separate startup mechanism
+#      --add-dir does NOT cover) + --system-prompt naming The Delegate + CWD=$CTX,
+#      so the "you are the Conductor" CLAUDE.md rule can never fire. --bare was
+#      dropped: R6 (Phase-0 TEST 4) found it breaks auth on claude 2.1.187.
 #   2. Log isolation (EC8): the spawn reads ONLY the staged context dir via
 #      --add-dir "$CTX" — never the whole run dir. log.md is never copied into
 #      $CTX, and after staging we assert log.md is absent from it.
@@ -259,36 +262,19 @@ process_request() {
     return 0
   fi
 
-  # ── integration-mode pre-spawn executor part A: parse + short-circuit flags ──
+  # ── integration-mode request fields (parsed for the gate call + task prompt) ──
   # Additive: only the integration path uses these. The routine path (checkpoint-type
-  # routine/absent) leaves every variable at its default and never enters the gated
-  # block below or in part B (FR-B14-10, AC-11). No file is written here — $CTX does
-  # not exist until the staging block runs (part B is where $CTX writes happen).
+  # routine/absent) leaves every variable at its default and never calls the gate
+  # below (FR-B14-10, AC-11). No file is written here. The short-circuit guards
+  # ((none)-worktree / unresolvable base-ref) and the whole executor body were
+  # extracted to scripts/integration-gate.sh (Bundle 15 P4, FR14 single-source);
+  # watcher.sh now parses these fields only to build that gate's CLI flags and the
+  # integration task-prompt override further down.
   REQ_CHECKPOINT_TYPE="$(req_field 'checkpoint-type' "$request_file")"
   REQ_WORKTREE_PATH="$(req_field 'worktree-path' "$request_file")"
   REQ_BASE_REF="$(req_field 'base-ref' "$request_file")"
   REQ_CLAIMED_GATES_RAW="$(req_field 'claimed-gates' "$request_file")"
   REQ_KNOWN_FLAKY_RAW="$(req_field 'known-flaky-gates' "$request_file")"
-
-  INTEGRATION_ESCALATE=0
-  INTEGRATION_ESCALATE_REASON=""
-
-  if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-
-    # SHORT-CIRCUIT GUARD 1 — (none)-worktree (EC-B14-1, AC-8):
-    if [ -z "$REQ_WORKTREE_PATH" ] || [ "$REQ_WORKTREE_PATH" = "(none)" ]; then
-      INTEGRATION_ESCALATE=1
-      INTEGRATION_ESCALATE_REASON="No worktree available for integration verification; re-run after providing worktree-path."
-
-    # SHORT-CIRCUIT GUARD 2 — unresolvable base-ref (EC-B14-4, AC-9):
-    elif ! git -C "$REQ_WORKTREE_PATH" rev-parse "$REQ_BASE_REF" > /dev/null 2>&1; then
-      INTEGRATION_ESCALATE=1
-      INTEGRATION_ESCALATE_REASON="base-ref not resolvable; cannot validate pre-existing claims."
-    fi
-
-  fi
-  # If REQ_CHECKPOINT_TYPE is NOT "integration": all variables remain at defaults;
-  # the integration block in part B checks REQ_CHECKPOINT_TYPE and falls through.
 
   # ── stage the per-checkpoint read set into NN-context (EC8) ────────────────
   # The staged dir is the Delegate's ONLY read root. log.md is NEVER copied in.
@@ -299,7 +285,14 @@ process_request() {
   cp "$REQ_LOG_SLICE"              "$CTX/log-slice.md"
   cp "$RUN_DIR/state.json"         "$CTX/"
   cp "$ROOT/docs/conventions.md"   "$CTX/"
-  cp "$ROOT/agents/delegate.md"    "$CTX/"
+  # Stage ONLY the cold-reviewer-mode SECTION of agents/delegate.md (W-d / W7).
+  # The full dual-mode file grants manager-mode Bash/Write/spawn capabilities a
+  # read-only reviewer must never read as its own; the awk slice extracts just the
+  # COLD-REVIEWER-MODE:BEGIN/END block into delegate-reviewer.md (bridge v2 §4).
+  # NOTE: those markers are written into agents/delegate.md by Bundle 15 P5 (Phase
+  # 3); until P5 lands this slice is EMPTY — wire it now, the slice fills then.
+  awk '/^# COLD-REVIEWER-MODE:BEGIN/,/^# COLD-REVIEWER-MODE:END/' \
+    "$ROOT/agents/delegate.md" > "$CTX/delegate-reviewer.md"
 
   # EC8 assertion: log.md must never be in the staged context dir. If a copy ever
   # included it (e.g. the artifact itself was named log.md, or a future edit
@@ -311,494 +304,37 @@ process_request() {
 
   artifact_base="$(basename "$REQ_ARTIFACT")"
 
-  # ── integration-mode pre-spawn executor part B: write results + task prompt ──
-  # $CTX now exists (created by the staging block above) and $artifact_base is set.
-  # All file writes targeting $CTX happen here. This block runs only when
-  # checkpoint-type: integration; the routine path skips it untouched (FR-B14-10).
+  # ── integration-mode gate: the single shared executor (FR14 / OQ1) ─────────
+  # The inline integration executor (part A short-circuit guards + part B body)
+  # was extracted to scripts/integration-gate.sh in Bundle 15 P4 — one copy, two
+  # callers (this watcher + the v2 Delegate), no duplicate to drift (bridge v2 §5).
+  # $CTX is staged ABOVE this call, so the $CTX-exists-before-write invariant holds:
+  # integration-gate.sh writes integration-results.json INTO the already-staged
+  # $CTX, exactly as the inline body did. A routine/absent checkpoint-type is a
+  # no-op inside the gate (exit 0, no file); the guard here keeps the routine path
+  # from spawning the subprocess at all, preserving v1 behavior.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-
-    if [ "$INTEGRATION_ESCALATE" = "1" ]; then
-
-      # Write the skeletal-but-present escalate-marker block so:
-      # (a) verdict-write.sh integration-evidence presence guard is satisfied,
-      # (b) the Delegate reads a well-formed file and emits a well-formed verdict,
-      # (c) the Delegate's verifying-mode trigger (file presence) fires correctly.
-      python3 - "$CTX/integration-results.json" "$INTEGRATION_ESCALATE_REASON" <<'PY'
-import json, sys
-path, reason = sys.argv[1], sys.argv[2]
-data = {
-    "schema_version": 1,
-    "checkpoint_type": "integration",
-    "escalate_marker": reason,
-    "canonical_source": "none",
-    "gates": [],
-    "pre_existing": [],
-    "under_declaration": [],
-    "scope": {
-        "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "scope_diff_clean": None
-    },
-    "fast_forward_ok": False,
-    "conflicts_clean": False,
-    "errors": []
-}
-with open(path, "w") as fh:
-    json.dump(data, fh, indent=2)
-sys.exit(0)
-PY
-
-    else
-
-      # ── RESOLVE CANONICAL GATE SET (FR-B14-3, FR-B14-12, FR-B14-14) ──────────
-      # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
-      # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
-      # a parseable manifest exists in the worktree.
-      CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" <<'PY'
-import json, os, sys
-worktree = sys.argv[1]
-gates = [{"name": "regression",
-          "command": "sh %s/.bureau/regression/run.sh" % worktree}]
-manifest = os.path.join(worktree, "package.json")
-canonical_source = "regression-only"
-if os.path.isfile(manifest):
-    try:
-        with open(manifest) as fh:
-            pkg = json.load(fh)
-        scripts = pkg.get("scripts", {})
-        gate_keys = [k for k in ("build", "typecheck", "test") if k in scripts]
-        for k in gate_keys:
-            gates.append({"name": "npm-%s" % k, "command": "npm run %s" % k})
-        if gate_keys:
-            canonical_source = "regression+manifest"
-    except Exception:
-        pass
-print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
-PY
-)"
-
-      # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
-      # Read gates list; run each command in the worktree; capture exit codes.
-      GATE_RESULTS_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$CANON_GATES_JSON" <<'PY'
-import json, subprocess, sys
-# FIX 2: never let a parse/subprocess failure print nothing and empty this var.
-# Always print a JSON array (possibly empty); a parse failure yields [].
-results = []
-try:
-    worktree, canon_raw = sys.argv[1], sys.argv[2]
-    canon = json.loads(canon_raw)
-    for g in canon.get("gates", []):
-        ret = subprocess.run(g["command"], shell=True, cwd=worktree)
-        results.append({
-            "name": g["name"],
-            "command": g["command"],
-            "exit_code_branch": ret.returncode,
-            "result": "green" if ret.returncode == 0 else "red"
-        })
-except Exception:
-    results = []
-print(json.dumps(results))
-PY
-)"
-
-      # ── PARSE claimed-gates (W2) ────────────────────────────────────────────
-      # REQ_CLAIMED_GATES_RAW is a single flat line from req_field (head -n 1).
-      # Parse it as a JSON array. Unparseable or absent ⇒ empty claimed set +
-      # errors[] note (every canonical gate then becomes under-declaration).
-      CLAIMED_GATES_JSON="$(python3 - "$REQ_CLAIMED_GATES_RAW" <<'PY'
-import json, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
-try:
-    parsed = json.loads(raw) if raw.strip() else []
-    if not isinstance(parsed, list):
-        raise ValueError("not a list")
-    print(json.dumps({"gates": parsed, "error": ""}))
-except Exception as e:
-    print(json.dumps({"gates": [], "error": "claimed-gates not parseable as JSON: %s" % e}))
-PY
-)"
-
-      # ── PARSE known-flaky-gates (OQ-B14-4) ────────────────────────────────
-      # Parse the optional known-flaky-gates field. When present, a canonical gate
-      # whose re-run result is red AND whose name appears in known-flaky-gates is
-      # DEMOTED: the watcher records the result but marks it flaky, and the Delegate
-      # flags it in Uncertainties rather than blocking on it (OQ-B14-4 decision).
-      # Absent or unparseable ⇒ empty list (every re-run red blocks — the
-      # conservative default). This is a membership test against a declared list,
-      # not open-ended severity reasoning (FR-44 boundary).
-      KNOWN_FLAKY_JSON="$(python3 - "$REQ_KNOWN_FLAKY_RAW" <<'PY'
-import json, sys
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
-try:
-    parsed = json.loads(raw) if raw.strip() else []
-    names = [e.get("name", "") for e in parsed if isinstance(e, dict)]
-    print(json.dumps(names))
-except Exception:
-    print(json.dumps([]))
-PY
-)"
-
-      # ── VALIDATE claimed-pre-existing reds at base-ref (FR-B14-4) ─────────
-      # For each claimed gate with result: "red" AND pre-existing: true, re-run
-      # its command at base-ref to confirm whether the red is genuine or a
-      # mislabeled regression.
-      #
-      # BASE-REF EXECUTION — correct approach only:
-      # Do NOT git checkout or git stash in the main worktree (that would alter
-      # the branch under review). Instead, create a temporary separate git worktree
-      # at the base ref (DETACHED — see FIX 1 below), run the gate command there,
-      # then remove it.
-      #   git -C "$REQ_WORKTREE_PATH" worktree add --detach "$TMPDIR_BASE" "$REQ_BASE_REF"
-      #   <run command in $TMPDIR_BASE>
-      #   git -C "$REQ_WORKTREE_PATH" worktree remove --force "$TMPDIR_BASE"
-      #
-      # FIX 1 — `--detach`: when base-ref is a branch already checked out elsewhere
-      # (the common case: base-ref `main` with `main` checked out in the main repo),
-      # a plain `worktree add <dir> <branch>` FAILS ("already checked out"). A
-      # detached add checks out the ref's commit at a detached HEAD, which works even
-      # when the branch is checked out elsewhere — and is correct here (we only read).
-      #
-      # FIX 2 — every fallible step (worktree add, gate subprocesses, JSON parse) is
-      # wrapped so a failure yields a SAFE value (empty pre_existing list + an
-      # errors[] note) instead of an uncaught exception that prints nothing and
-      # empties this variable — which would crash the final json.loads and leave NO
-      # integration-results.json staged. This script ALWAYS prints a JSON object
-      # {"results": [...], "errors": [...]}; downstream reads .results / .errors.
-      PRE_EXISTING_JSON="$(python3 - \
-        "$REQ_WORKTREE_PATH" \
-        "$REQ_BASE_REF" \
-        "$CLAIMED_GATES_JSON" <<'PY'
-import json, os, subprocess, sys, tempfile
-results = []
-errors = []
-try:
-    worktree, base_ref, claimed_raw = sys.argv[1], sys.argv[2], sys.argv[3]
-    claimed_data = json.loads(claimed_raw)
-    claimed = claimed_data.get("gates", [])
-    pre_existing_claimed = [g for g in claimed
-                            if g.get("result") == "red" and g.get("pre-existing") is True]
-    if pre_existing_claimed:
-        tmpdir = tempfile.mkdtemp(prefix="bureau-base-")
-        added = False
-        try:
-            # FIX 1: --detach so a checked-out base branch does not fail the add.
-            add = subprocess.run(
-                ["git", "-C", worktree, "worktree", "add", "--detach", tmpdir, base_ref],
-                capture_output=True, text=True
-            )
-            if add.returncode != 0:
-                # FIX 2: do not raise — record the failure and fall through to a
-                # safe (empty) result. The final write still happens; if this
-                # leaves the overall executor unable to validate, the guarded
-                # final write below escalates rather than crashing.
-                errors.append("base-ref worktree add failed: %s"
-                              % (add.stderr.strip() or "unknown error"))
-            else:
-                added = True
-                for g in pre_existing_claimed:
-                    ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree)
-                    ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir)
-                    results.append({
-                        "name": g["name"],
-                        "command": g["command"],
-                        "exit_code_branch": ret_branch.returncode,
-                        "exit_code_base": ret_base.returncode,
-                        "confirmed_pre_existing": ret_base.returncode != 0
-                    })
-        finally:
-            if added:
-                subprocess.run(
-                    ["git", "-C", worktree, "worktree", "remove", "--force", tmpdir],
-                    capture_output=True
-                )
-            if os.path.exists(tmpdir):
-                import shutil; shutil.rmtree(tmpdir, ignore_errors=True)
-except Exception as e:
-    # Any unexpected failure yields a safe value (empty results) plus a note,
-    # never an uncaught exception that empties this variable downstream.
-    errors.append("pre-existing validation failed: %s" % e)
-print(json.dumps({"results": results, "errors": errors}))
-PY
-)"
-
-      # ── UNDER-DECLARATION cross-check (FR-B14-14) ─────────────────────────
-      # Compute canonical_gates − claimed_gates (match on name or command).
-      # Records all canonical gates the build did not declare.
-      UNDER_DECL_JSON="$(python3 - \
-        "$GATE_RESULTS_JSON" \
-        "$CLAIMED_GATES_JSON" <<'PY'
-import json, sys
-# FIX 2: guarded — always prints a JSON array (empty on any failure).
-under = []
-try:
-    gate_results = json.loads(sys.argv[1])
-    claimed_data = json.loads(sys.argv[2])
-    claimed = claimed_data.get("gates", [])
-    claimed_names = {g.get("name", "") for g in claimed}
-    claimed_cmds  = {g.get("command", "") for g in claimed}
-    for g in gate_results:
-        if g["name"] not in claimed_names and g["command"] not in claimed_cmds:
-            under.append(g)
-except Exception:
-    under = []
-print(json.dumps(under))
-PY
-)"
-
-      # ── SCOPE DIFF (FR-B14-5) ──────────────────────────────────────────────
-      SCOPE_JSON="$(python3 - \
-        "$REQ_WORKTREE_PATH" \
-        "$REQ_BASE_REF" \
-        "$RUN_DIR/state.json" <<'PY'
-import json, subprocess, sys
-# FIX 2: the whole step is guarded — a git/parse failure prints a valid
-# "indeterminate" scope object (scope_diff_clean: null), never nothing.
-NEUTRAL = {
-    "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
-}
-try:
-    worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
-    try:
-        with open(state_path) as fh:
-            state = json.load(fh)
-        scope_block = state.get("scope") or {}
-        allowed_paths = scope_block.get("allowed_paths") or []
-        cut_symbols = scope_block.get("cut_symbols") or []
-    except Exception:
-        scope_block = None
-        allowed_paths = []
-        cut_symbols = []
-
-    if scope_block is None:
-        print(json.dumps(NEUTRAL))
-        sys.exit(0)
-
-    r = subprocess.run(
-        ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
-        cwd=worktree, capture_output=True, text=True
-    )
-    diff_files = [l for l in r.stdout.splitlines() if l.strip()]
-
-    import fnmatch
-    violations = []
-    if allowed_paths:
-        for f in diff_files:
-            if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
-                violations.append(f)
-
-    # grep the full diff for each cut symbol
-    r2 = subprocess.run(
-        ["git", "diff", "%s...HEAD" % base_ref],
-        cwd=worktree, capture_output=True, text=True
-    )
-    full_diff = r2.stdout
-    cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
-
-    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
-    print(json.dumps({
-        "diff_files": diff_files, "allowed_paths": allowed_paths,
-        "violations": violations, "cut_symbol_hits": cut_symbol_hits,
-        "scope_diff_clean": scope_diff_clean
-    }))
-except Exception:
-    print(json.dumps(NEUTRAL))
-PY
-)"
-
-      # ── FAST-FORWARD CHECK (FR-B14-6, BLOCKER 1) ──────────────────────────
-      # Command: git -C <worktree> merge-base --is-ancestor "<base-ref>" HEAD
-      # Semantics: exit 0 iff <base-ref> is an ancestor of the branch tip HEAD,
-      # i.e. the branch already contains the base ⇒ fast-forwardable.
-      # Non-zero ⇒ base is NOT an ancestor of HEAD (base has advanced/diverged)
-      # ⇒ fast_forward_ok: false ⇒ Delegate emits revise "rebase required".
-      # Operand order is "<base-ref>" HEAD — base as FIRST operand, HEAD second.
-      # DO NOT use: merge-base HEAD <base-ref> (wrong direction);
-      # DO NOT nest merge-base inside --is-ancestor (that produces the tautology).
-      if git -C "$REQ_WORKTREE_PATH" merge-base --is-ancestor "$REQ_BASE_REF" HEAD 2>/dev/null; then
-        FF_OK=true
-      else
-        FF_OK=false
-      fi
-
-      # ── CONFLICTS CHECK ────────────────────────────────────────────────────
-      if [ -z "$(git -C "$REQ_WORKTREE_PATH" status --porcelain 2>/dev/null)" ]; then
-        CONFLICTS_CLEAN=true
-      else
-        CONFLICTS_CLEAN=false
-      fi
-
-      # ── BRANCH TIP SHA ────────────────────────────────────────────────────
-      BRANCH_TIP="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
-
-      # ── APPLY known-flaky-gates demotion to GATE_RESULTS_JSON ─────────────
-      # Any gate in the known-flaky-gates list whose result is "red" gets marked
-      # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
-      GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
-import json, sys
-# FIX 2: guarded — on any failure, echo arg1 through unchanged (or [] if that
-# too is unparseable) so this never empties GATE_RESULTS_JSON downstream.
-try:
-    gates = json.loads(sys.argv[1])
-    flaky_names = set(json.loads(sys.argv[2]))
-    for g in gates:
-        if g.get("result") == "red" and g.get("name") in flaky_names:
-            g["flaky"] = True
-    print(json.dumps(gates))
-except Exception:
-    try:
-        print(json.dumps(json.loads(sys.argv[1])))
-    except Exception:
-        print("[]")
-PY
-)"
-
-      # ── WRITE integration-results.json to $CTX ────────────────────────────
-      # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
-      # a quote/newline in the claimed-gates parse error can no longer produce
-      # malformed JSON. This is only the SEED list; the final python step appends
-      # any pre-existing-validation errors it finds in $PRE_EXISTING_JSON.
-      ERRORS_JSON="$(python3 -c 'import json,sys
-try:
-    err = json.loads(sys.argv[1]).get("error", "")
-except Exception:
-    err = ""
-print(json.dumps([err] if err else []))' "$CLAIMED_GATES_JSON" 2>/dev/null || echo "[]")"
-
-      CANON_SOURCE="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('canonical_source','regression-only'))" "$CANON_GATES_JSON" 2>/dev/null || echo "regression-only")"
-
-      # ── GUARDED FINAL WRITE — the invariant lives here ─────────────────────
-      # FIX 2: this is the ONLY exit from the integration path, and it ALWAYS
-      # writes a well-formed $CTX/integration-results.json. Each intermediate JSON
-      # is parsed defensively; if any one is empty/garbage (an upstream step that
-      # somehow failed despite its own guard), this step writes the SKELETAL
-      # ESCALATE-MARKER file — same shape as the INTEGRATION_ESCALATE branch above:
-      # escalate_marker set with the reason, empty arrays, fast_forward_ok /
-      # conflicts_clean false — so the Delegate reads a valid file and escalates
-      # (surfacing the failure to a human) rather than silently falling through.
-      # There is no code path between "$CTX exists" and here that can leave the
-      # file unwritten: any exception is caught and converted to an escalate file.
-      python3 - \
-        "$CTX/integration-results.json" \
-        "$REQ_WORKTREE_PATH" \
-        "$REQ_BASE_REF" \
-        "$BRANCH_TIP" \
-        "$CANON_SOURCE" \
-        "$GATE_RESULTS_JSON" \
-        "$PRE_EXISTING_JSON" \
-        "$UNDER_DECL_JSON" \
-        "$SCOPE_JSON" \
-        "$FF_OK" \
-        "$CONFLICTS_CLEAN" \
-        "$ERRORS_JSON" <<'PY'
-import json, sys
-
-(path, worktree_path, base_ref, branch_tip, canonical_source,
- gates_raw, pre_raw, under_raw, scope_raw,
- ff_ok, conflicts_clean, errors_raw) = sys.argv[1:13]
-
-NEUTRAL_SCOPE = {
-    "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
-}
-
-
-def write_escalate(reason, errors):
-    """Skeletal escalate-marker — identical shape to the INTEGRATION_ESCALATE
-    branch — so the Delegate always reads a well-formed file and escalates."""
-    data = {
-        "schema_version": 1,
-        "checkpoint_type": "integration",
-        "escalate_marker": reason,
-        "canonical_source": "none",
-        "gates": [],
-        "pre_existing": [],
-        "under_declaration": [],
-        "scope": dict(NEUTRAL_SCOPE),
-        "fast_forward_ok": False,
-        "conflicts_clean": False,
-        "errors": errors,
-    }
-    with open(path, "w") as fh:
-        json.dump(data, fh, indent=2)
-
-
-try:
-    errors = json.loads(errors_raw) if errors_raw.strip() else []
-    if not isinstance(errors, list):
-        errors = []
-
-    # pre_raw is now {"results": [...], "errors": [...]}; tolerate a bare list
-    # or empty/garbage. Any failure here demotes to the escalate path below.
-    try:
-        pre_parsed = json.loads(pre_raw) if pre_raw.strip() else {"results": [], "errors": []}
-    except Exception:
-        pre_parsed = {"results": [], "errors": []}
-    if isinstance(pre_parsed, dict):
-        pre_existing = pre_parsed.get("results", []) or []
-        errors.extend(pre_parsed.get("errors", []) or [])
-    elif isinstance(pre_parsed, list):
-        pre_existing = pre_parsed
-    else:
-        pre_existing = []
-
-    def safe(raw, default):
-        try:
-            return json.loads(raw) if raw.strip() else default
-        except Exception:
-            errors.append("malformed intermediate JSON; result coerced to safe default")
-            return default
-
-    gates = safe(gates_raw, [])
-    under = safe(under_raw, [])
-    scope = safe(scope_raw, dict(NEUTRAL_SCOPE))
-
-    data = {
-        "schema_version": 1,
-        "checkpoint_type": "integration",
-        "worktree_path": worktree_path,
-        "base_ref": base_ref,
-        "branch_tip": branch_tip,
-        "escalate_marker": "",
-        "canonical_source": canonical_source or "regression-only",
-        "gates": gates,
-        "pre_existing": pre_existing,
-        "under_declaration": under,
-        "scope": scope,
-        "fast_forward_ok": ff_ok == "true",
-        "conflicts_clean": conflicts_clean == "true",
-        "errors": errors,
-    }
-    with open(path, "w") as fh:
-        json.dump(data, fh, indent=2)
-except Exception as e:
-    # Last-resort guard: anything unexpected still yields a well-formed escalate
-    # file. The invariant holds — a file is ALWAYS on disk for an integration cp.
-    try:
-        write_escalate(
-            "integration executor failed to assemble results: %s; escalated for human review" % e,
-            ["integration executor exception: %s" % e],
-        )
-    except Exception:
-        # Filesystem-level failure (e.g. $CTX gone) — re-raise so the watcher's
-        # own error handling surfaces it; there is nothing safe left to write.
-        raise
-PY
-
-    fi   # end if INTEGRATION_ESCALATE
-
-  fi   # end if REQ_CHECKPOINT_TYPE = "integration"
+    sh "$SCRIPT_DIR/integration-gate.sh" \
+      --checkpoint-type   "$REQ_CHECKPOINT_TYPE" \
+      --worktree-path     "$REQ_WORKTREE_PATH" \
+      --base-ref          "$REQ_BASE_REF" \
+      --claimed-gates     "$REQ_CLAIMED_GATES_RAW" \
+      --known-flaky-gates "$REQ_KNOWN_FLAKY_RAW" \
+      --state-json        "$RUN_DIR/state.json" \
+      --out               "$CTX"
+  fi
 
   # ── build the task prompt (names $CTX-relative files only; never log.md) ───
-  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), and the artifact under review: ${artifact_base}. Apply the critic checklist in delegate.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate-reviewer.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), and the artifact under review: ${artifact_base}. Apply the critic checklist in delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
 
   # ── override the task prompt for integration checkpoints (BLOCKER 1) ───────
   # Tell the Delegate to read integration-results.json. The routine prompt above is
   # used unchanged when checkpoint-type is routine/absent.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), the artifact under review: ${artifact_base}, and integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in delegate.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate-reviewer.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), the artifact under review: ${artifact_base}, and integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
   fi
 
-  # ── system prompt: names the Delegate identity (belt-and-suspenders w/ --bare)
+  # ── system prompt: names the Delegate identity (paired with --setting-sources "")
   DELEGATE_SYSTEM_PROMPT="You are The Delegate. Do not load CLAUDE.md. Do not act as the Conductor."
 
   DELEGATE_MODEL="$(resolve_delegate_model)"
@@ -806,12 +342,15 @@ PY
   out_json="$CHECKPOINTS_DIR/$NN.delegate-out.json"
   err_log="$CHECKPOINTS_DIR/$NN.delegate-err.log"
 
-  # ── spawn the Delegate headless (exact invocation: bridge § 3) ─────────────
+  # ── spawn the Delegate headless (single-source recipe: bridge v2 § 3) ───────
   # The ONLY read root is the staged NN-context dir ($CTX) — never the whole run
   # dir. EC8 is a filesystem-level exclusion, not a prompt-level instruction.
   # The --add-dir flag below therefore points at the per-checkpoint context dir.
-  claude -p \
-    --bare \
+  # CWD is pinned to $CTX (the OQ3 canonical recipe is CWD-pinned) via a SCOPED
+  # subshell, so the watcher's CWD for the rest of the loop is unchanged. The
+  # redirects sit OUTSIDE the subshell, so $out_json/$err_log resolve in the
+  # watcher's CWD exactly as before (they derive from RUN_DIR/CHECKPOINTS_DIR).
+  ( cd "$CTX" && claude -p \
     --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
     --model "$DELEGATE_MODEL" \
     --output-format json \
@@ -821,10 +360,12 @@ PY
     --setting-sources "" \
     --no-session-persistence \
     --max-budget-usd "$DELEGATE_MAX_USD" \
-    "$DELEGATE_TASK_PROMPT" \
+    "$DELEGATE_TASK_PROMPT" ) \
     > "$out_json" \
     2> "$err_log"
-  # --setting-sources "" — W1-verified: suppresses user/project/local settings.json, not covered by --bare
+  # --setting-sources "" — Phase-0 TEST 3: suppresses CLAUDE.md auto-discovery
+  # (project + global) AND settings.json while keeping auth; it is the load-bearing
+  # CLAUDE.md guard now that --bare is dropped (R6 — --bare breaks auth on 2.1.187).
 
   # ── on claude exit: validate + write the verdict + append ledger ───────────
   # verdict-write.sh owns every durable write; the Delegate never writes the repo.
