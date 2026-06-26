@@ -171,6 +171,12 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    nested. The Counselor classifies the audience's value system (`spiral-dynamics`), chooses the
    angle and working title in the house voice, and proposes a pillar. Writes the angle, working
    title, and proposed pillar to `RUN_DIR/angle.md` for Robin's approval at the next gate.
+   **Voice calibration (anti-homogenization):** from the audience read here, the Conductor selects
+   the voice-calibration exemplar from `config/calibration-exemplars/index.md` — match the bucket to
+   the Counselor's value-system read, rotate within the bucket across runs — and passes that
+   exemplar's PATH to the Scribe at steps 3-4 and the Counselor review at steps 10-11. Do NOT
+   hardcode one calibration article for every run; a single fixed exemplar is the main source of
+   cross-article uniformity and feeds a self-imitation loop.
 
 2. **Action** — proceed automatically (no approval wait). The Counselor's `angle.md` records the
    chosen angle, working title, and pillar (`frameworks` | `memory` | `engineering` — the devweb
@@ -279,10 +285,18 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     inflated vocabulary, chatbot artifacts, banned words. Writes the cleaned article as a NEW
     version file.
 
-11. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 2: read-aloud rhythm + final polish → next version `NN-humanize-2.md`
-    Reuses the Counselor **review** mode inline; reads the latest version. Objective distinct from
-    pass 1: sentence rhythm, paragraph flow, read-aloud cadence. **Not a redundant re-run** — a
-    different objective on the now-de-slopped text. Writes the final prose as a NEW version file.
+11. **The Counselor** (Voice, **standard**, mode: review) — humanizer pass 2: read-aloud rhythm + human texture → next version `NN-humanize-2.md`
+    Reuses the Counselor **review** mode inline; reads the latest version. Two objectives, both
+    distinct from pass 1's de-slop: (a) sentence rhythm, paragraph flow, read-aloud cadence; and
+    (b) **human texture** — apply the `humanizer` skill's **TEXTURE LENS** to put back the
+    unevenness a single thoughtful person leaves in (a long sentence beside short ones, a
+    sentence-initial conjunction, a brief aside, not always an aphoristic closer), and vary the
+    texture device from recent articles so the corpus does not converge on one cadence. **Light
+    touch: a few real moves, not a rewrite.** Hard scope: texture touches cadence/phrasing/voice
+    ONLY, never a fact, number, date, name, code, quote, or figure-grounded claim, and it never
+    reintroduces slop (pass 1's de-slop floor still holds). A different objective on the
+    now-de-slopped text, not a redundant re-run. Writes the final prose as a NEW version file.
+    (The cold proofreader at step 13 still gates everything that follows.)
 
 12. **The Scribe** (Format, **standard**) — MDX + frontmatter → next version `NN-article.mdx`
     Given the latest version (the final prose) + the approved slug + pillar. A mechanical transform

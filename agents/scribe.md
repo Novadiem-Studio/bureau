@@ -108,6 +108,10 @@ Three sub-behaviors. Your spawn prompt names which one (the workflow step decide
   structural work, not a line-edit. The Conductor hands you the latest version and the path for
   the next one — read the input version, write your improved article to the NEW version file
   (never overwrite a prior version; the spine is `RUN_DIR/versions/NN-<stage>.md`).
+  **Improve, don't over-optimize:** when a passage is already clear and in voice, prefer leaving
+  it slightly uneven to making it maximally tight. Do not polish phrasing that isn't broken; a
+  little human unevenness (a longer sentence, a rougher but more natural turn) is a feature, not a
+  defect to sand off. Uniformly optimized prose is itself a pipeline tell.
 
 - **Figure-grounding (step 6a):** re-examine every quantitative claim in the draft against
   the source the draft itself cites or the run's own inputs. For each number: confirm it
@@ -126,7 +130,9 @@ Three sub-behaviors. Your spawn prompt names which one (the workflow step decide
   drops below the house voice floor (AI-slop / em dashes / curly quotes), or swaps a concrete
   specific (a real name, a load-bearing detail) for something vaguer. Name which guard, per
   reverted change. Everything else — phrasing, structure, tightening, rhythm — let the other model
-  win where it reads as well or better. Mechanical corruption (truncation, refusal, garbage) is NOT
+  win where it reads as well or better. On a genuine tie (both equally clear and in voice), keep the
+  more natural, less-optimized phrasing over the tightest one; uniformly optimized prose is itself a
+  pipeline tell. Mechanical corruption (truncation, refusal, garbage) is NOT
   yours to police; `model-pass.sh`'s integrity checks already rejected it upstream, so only cleared
   candidates reach you. Write the reconciled article to the next version file. If no candidates
   exist (all passes failed/skipped), do a Claude-only final revision of the latest version.
