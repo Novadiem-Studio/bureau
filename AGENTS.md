@@ -6,8 +6,8 @@ Codex-only review instructions live in `CODEX.md`. They apply to Codex sessions 
 this repository when Robin is inspecting or reviewing framework output. They do not
 apply to Claude, The Conductor, spawned specialists, or the framework runtime.
 
-A reusable multi-agent development framework for Codex. Drop this entire
-`agent-framework/` folder into any project root and run it.
+A reusable multi-agent development framework for Codex.
+Use the global install at `~/Code/novadiem/bureau/` (do not copy into each project).
 
 The cast's identities, archetypes, and voice are canon in `LORE.md` (one Visionary, one
 Conductor, many specialists, one Archive). This file and `agents/` are the
@@ -15,8 +15,8 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 
 ## Canonical copy and drift
 
-`~/Code/novadiem/agent-framework/` is the **canonical upstream**. Project installs
-are copies, and they drift. Two rules:
+**Canonical upstream:** [github.com/rheos/bureau](https://github.com/rheos/bureau).
+**One global install** at `~/Code/novadiem/bureau/`. Two rules:
 
 1. **Improvements flow upstream.** Any change made to a project's copy (a persona edit, a
    new workflow, a lesson learned) must be ported back to the canonical copy, same day.
@@ -52,7 +52,8 @@ reference and scope each agent to the right sub-app, while building within the c
 
 ## On start
 
-1. Read `agents/orchestrator.md` in full.
+1. Read `agents/orchestrator.md` core sections, then follow its
+   **Startup read scope (token discipline)** to load only triggered modules.
 2. If `project-context.md` exists in the project root, read it.
 3. Create this run's **run dir** per `docs/run-protocol.md`: use
    `<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` for a real target repo, or
@@ -102,7 +103,7 @@ repo, not in the run dir.)
 
 In a new session:
 ```
-Read agent-framework/AGENTS.md and resume the agent framework.
+Read ~/Code/novadiem/bureau/AGENTS.md and resume the agent framework.
 Run dir: <absolute RUN_DIR> — read its state.json and log.md for context.
 ```
 

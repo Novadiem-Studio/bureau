@@ -54,12 +54,23 @@ grep -Fq '## Run directory, state management, and log format' agents/orchestrato
   || err "agents/orchestrator.md missing run-protocol pointer heading"
 grep -Fq '## Run accounting (close-out)' agents/orchestrator.md \
   || err "agents/orchestrator.md missing run-accounting pointer heading"
+grep -Fq '## Startup read scope (token discipline)' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing startup read-scope heading"
+grep -Fq 'docs/model-routing-and-cast.md' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing model-routing module pointer"
+grep -Fq 'docs/existing-project-mode.md' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing existing-project module pointer"
+grep -Fq 'docs/conductor-gates.md' agents/orchestrator.md \
+  || err "agents/orchestrator.md missing conductor-gates module pointer"
 grep -Fq '### Checkpoint type classification' docs/delegate-bridge.md \
   || err "docs/delegate-bridge.md missing checkpoint type classification anchor"
 grep -Fq 'docs/delegate-bridge.md § Checkpoint type classification' agents/orchestrator.md \
   || err "agents/orchestrator.md should link to docs/delegate-bridge.md § Checkpoint type classification"
 if rg -n 'docs/delegate-bridge\.md § checkpoint types' . -g '*.md' -g '!output/runs/**' >/dev/null 2>&1; then
   err "stale delegate-bridge checkpoint-types anchor reference"
+fi
+if grep -n 'Read `agents/orchestrator.md` in full\.' AGENTS.md CLAUDE.md >/dev/null 2>&1; then
+  err "startup docs still say to read orchestrator in full; use startup read-scope policy"
 fi
 
 echo "== model routing policy"
