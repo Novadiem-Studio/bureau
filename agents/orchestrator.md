@@ -720,274 +720,49 @@ Resuming after the handoff: when the human returns (same session or a new one), 
 write the manifest, then continue to the Prompt Engineer. If it's empty, re-show the
 `[DESIGN HANDOFF]` checkpoint.
 
-## Run directory (`RUN_DIR`) — one per task, concurrency-safe
+## Run directory, state management, and log format
 
-The canonical RUN_DIR is `<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` when `target_repo` is a real path (including self-run where the install IS the target repo). The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-target)"`.
+> **Full protocol:** `docs/run-protocol.md`
+> Read it once at run start. This section is the summary.
 
-**Creation order (required — AC 5, AC 17):**
-- **(0) Resume gate** — if an existing run dir was named or found (via the resume snippet's `Run dir:` line, or a slug already present at `output/runs/<slug>/`), use it **verbatim** — whether it lives at `output/runs/` or `.bureau/runs/`. Skip steps (1)–(3). An existing run dir is sticky and is never relocated or migrated.
-- **(1) NEW run: resolve `target_repo`** — walk the target-resolution precedence (see `CLAUDE.md` "On start"), write the resolved value to `state.json#target_repo`.
-- **(2) Create RUN_DIR from the resolved target** — `mkdir -p R/.bureau/runs/<slug>/` for a real `R`, or `output/runs/<slug>/` for `"(no-target)"`.
-- **(3) Copy `templates/state.json` + init `log.md`.** Pass the resolved absolute path as **`RUN_DIR`** in every spawn prompt.
+**RUN_DIR location:** `<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` for a real target;
+`<install>/output/runs/<slug>/` for `"(no-target)"`.
 
-Two runs on repo `R` use distinct slugs — `R/.bureau/runs/<slug-A>/` vs `R/.bureau/runs/<slug-B>/` — so they never collide (FR 13, AC 12).
+**Creation (resume gate first):** If an existing run dir was named in the resume snippet or
+found at `output/runs/<slug>/`, use it verbatim — never relocate. For new runs: resolve
+`target_repo` → create RUN_DIR → copy `templates/state.json` + init `log.md`. Pass the
+absolute RUN_DIR path in every spawn prompt.
 
-`state.json`, `log.md`, `spec.md`, `plan.md`, `prompts.md`, and `design/` all live under `RUN_DIR`. Persona files name artifacts relative to `RUN_DIR` — pass their **absolute** paths in every spawn prompt.
+**State discipline:** `state.json` holds short labels and decisions — prose goes in `log.md`.
+Validate after every write: `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`.
+After each `state.json` update, write the same-cadence index entry to
+`output/studio/runs-index/<slug>.json` (atomic temp-then-mv; schema and status-derivation
+table in `docs/run-protocol.md § State management`).
 
-This is what makes concurrent runs safe on ONE global install: two sessions each own their `RUN_DIR` and never write each other's artifacts. The `agents/` and `workflows/` files are read-only at runtime and shared freely.
-
-**Git worktrees** (execute build stage) isolate code per run — see `docs/git-worktree.md`.
-Create with `scripts/run-worktree.sh create` before step 6; merge/remove at close-out or per
-policy. Build-party spawns get `WORKTREE:`; all commits land in the worktree branch, not
-`devel` directly.
-
-Concurrency rules:
-- One Conductor per run; never write outside your `RUN_DIR` + your run's worktree (if any).
-- Two runs on the **same repo** are OK when each has its own worktree + `RUN_DIR`. Do not share
-  one worktree or edit the integration branch directly during an open run.
-- Shared infrastructure (a dev DB, docker test containers) can still contend across runs —
-  if both tasks run the same test database, stagger the test-running steps.
-- Legacy: an old install may still have a top-level `output/state.json` from before run dirs, or runs from before this change that live at `output/runs/<slug>/`. Finish those runs in place; don't migrate them mid-run. New runs always get a `RUN_DIR`. See `output/README.md`.
-
-## State management
-
-After each phase, update the run dir's `state.json`:
-
-```json
-{
-  "project": "Project name",
-  "target_repo": "/path/to/target/repo",
-  "phase": "current phase name — a SHORT label, not a paragraph",
-  "phase_status": "complete | in_progress | blocked",
-  "phases_complete": ["analyst", "architect"],
-  "critic_loops": { "analyst": 0, "architect": 1, "prompts": 0 },
-  "design": { "needed": null, "status": "pending | awaiting_design | ingested | not_needed" },
-  "open_questions": [],
-  "carried_items": ["things to confirm before executing prompts — OQs, caveats, known nits"],
-  "checkpoints": [],
-  "decisions": {},
-  "accounting": { "status": "pending", "path": null },
-  "git": {
-    "enabled": true,
-    "repo": "/path/to/target/repo",
-    "base_branch": "devel",
-    "branch": "bureau/20260612-task-slug",
-    "worktree_path": "/Users/robin/.bureau/worktrees/target-repo/20260612-task-slug",
-    "merge_policy": "end_of_job",
-    "status": "active",
-    "prompts_merged": []
-  },
-  "last_updated": "ISO timestamp"
-}
-```
-
-`target_repo`: set by the Conductor at run start (before RUN_DIR creation) from the target-repo resolution step; an absolute path or the literal `"(no-target)"` sentinel. Independent of the execute-only `git` block (which stays `enabled: false` on planning runs).
-
-`git` block: set by `scripts/run-worktree.sh create`; omit or `enabled: false` for planning-only
-runs. Full schema: `templates/state.json`, `docs/git-worktree.md`.
-
-`accounting` block: part of `templates/state.json`; the close-out step sets its `status` and
-`path` (see "Run accounting (close-out)" below). `memory` is an optional Conductor-written key,
-added to `state.json` only if Rheo/MOT memory was consulted this run — it is NOT part of
-`templates/state.json` and is NOT written by `scripts/account-run.sh`. See "Run accounting
-(close-out)" for its sub-fields and the absent-when-unused rule.
-
-State discipline — all three of these have bitten real runs:
-
-- **state.json is state, not prose.** Values are short labels, lists, and decisions. Anything
-  that needs a paragraph (a migration pattern, a design rationale, a build narrative) goes in
-  `log.md`; state.json may hold a one-line pointer to it.
-- **Carried items get their own key.** Open questions, caveats, and confirm-before-build
-  notes go in `carried_items` — never appended to the `phase` string.
-- `carried_items` is populated 1:1 from each agent's `Passing forward` footer bullets — copy them, don't author a parallel list (`docs/conventions.md`).
-- **Validate after every write.** Duplicate keys silently shadow each other and stale values
-  survive. After each update run:
-  `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`
-  If you re-set a key, find and remove the old occurrence — never append a second copy.
-
-**Index write (same cadence as `state.json`):** After every `state.json` write and its validation, project the run's current state into `output/studio/runs-index/<slug>.json`:
-
-```json
-{
-  "slug": "<slug>",
-  "repo": "<state.json#target_repo>",
-  "run_dir": "<absolute RUN_DIR>",
-  "status": "<derived — see run-level status derivation below>",
-  "phase": "<state.json#phase>",
-  "last_updated": "<state.json#last_updated>",
-  "workflow": "<state.json#workflow>"
-}
-```
-
-Six fields copied verbatim from `state.json` (using `target_repo` for `repo` — NOT `git.repo`, which is `null` on planning runs); one field derived (`status`, per the derivation table below). Before the first index write in a session, run `mkdir -p output/studio/runs-index/ && mkdir -p output/studio/runs-index/archive/` — the directory is not created by any prior framework step and does not exist in a fresh install. Write atomically: temp `.<slug>.json.tmp` then `mv`. Validate the entry file the same way as `state.json`. Per-run files are the concurrency mechanism — no lock needed (EC 13).
-
-> **Not committed.** `output/studio/runs-index/` and the derived `output/studio/runs-snapshot.json` are **gitignored** local runtime cache — per-run pointers carrying machine-local absolute `run_dir` paths, rewritten every phase and regenerable by `scripts/build-runs-snapshot.sh`. They are NOT part of the committed Studio Record (`briefing.md`, `lessons.md`); do not track them. Each install builds its own index from its own runs.
-
-**Run-level `status` derivation** (the index `status` is NOT `phase_status` verbatim):
-
-| Run condition | index `status` |
-|---|---|
-| Template default (`phase_status: "pending"`, `phases_complete: []`) | `"not_started"` |
-| `phase_status == "blocked"` | `"blocked"` |
-| Phase `in_progress`, OR phase `complete` but more phases remain (not terminal close-out) | `"in_progress"` |
-| Terminal close-out (not yet archived) | `"complete"` |
-| Post-archive | `"archived"` |
-
-## Log format
-
-Append to `RUN_DIR/log.md` after every spawn and every decision:
-
-```markdown
-## [TIMESTAMP] — Spawned Analyst → complete
-Handoff: <paste the agent's returned block>
-
-## [TIMESTAMP] — The Challenger round 1 → 2 blockers, 1 warning
-The Conductor's call: blocker 1 (architecture) → fix; blocker 2 → fix; warning → noted, proceed.
-Re-spawning The Architect (loop 1/2) with the two blockers.
-```
+**Log format:** append to `RUN_DIR/log.md` after every spawn and decision — each entry is a
+`## [TIMESTAMP] — <what happened>` heading followed by the handoff block or decision rationale.
+SPAWN-EVENT machine-readable lines (see `docs/run-accounting.md § A`) go on the same append
+— they are separate from the heading, not a replacement.
 
 ## Run accounting (close-out)
 
-A run's accounting answers a flat question: which roles ran, on which model, how many times,
-and to what end. `scripts/account-run.sh <RUN_DIR>` builds `accounting.json` from the run's
-artifacts. This section is the convention that makes that build correct and that fires it on
-every terminal exit. It is a terminal-workflow step, not initial setup.
+> **Full protocol:** `docs/run-accounting.md`
+> Read it at close-out time. This section is the reminder.
 
-**Index close-out:** At terminal close-out (before archive), write the entry with `status: "complete"` (or `"blocked"`) — entry stays in `output/studio/runs-index/` (live set).
+**Rule: attempt always.** Run `scripts/account-run.sh <RUN_DIR>` on EVERY terminal exit —
+success, blocked, abandoned, or early termination. Accounting is the *final* action on normal
+close-out (after merge, summary, and state/log updates).
 
-**Index archive (at the same time as the run-dir `mv`):** When archiving a run (moving `R/.bureau/runs/<slug>/` → `R/.bureau/archive/<slug>/` or `output/runs/<slug>/` → `output/archive/<slug>/`):
-1. Set `status: "archived"` and update `run_dir` to the archive path in the entry file.
-2. Move the entry: `output/studio/runs-index/<slug>.json` → `output/studio/runs-index/archive/<slug>.json` (W5 retention — keeps the live index bounded by active runs; archived entries remain available under `archive/`).
+**SPAWN-EVENT lines** — emit to `RUN_DIR/log.md` twice per spawn (started + terminal status).
+Seven required keys: `role`, `agent`, `configured_model`, `actual_model`, `attempt`,
+`attempt_id`, `status`. `attempt_id` = `"<role>-<attempt>"`. Legal statuses:
+`started | complete | no-handoff | failed | terminated`. Full validation rules and
+`accounting.json` build details in `docs/run-accounting.md § A`.
 
-These writes happen in the same step as the archive `mv` — not after. A stale `in_progress` entry after archive is a Conductor write-discipline failure (EC 12).
-
-### A. The SPAWN-EVENT obligation
-
-Each time you spawn a specialist agent, AND again when that specialist terminates, you MUST
-emit a structured **SPAWN-EVENT** record in `RUN_DIR/log.md`. The canonical form is a single
-line: the literal prefix `SPAWN-EVENT: ` followed by compact JSON.
-
-```
-SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started"}
-SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete"}
-```
-
-All **seven** keys are required on every event — `role`, `agent`, `configured_model`,
-`actual_model`, `attempt`, `attempt_id`, `status`. There are no optional keys.
-
-An event **fails validation** (and the script skips-and-notes it, so it falls out of
-accounting) if ANY of these hold:
-
-- a required key is **missing**;
-- a required key has the **wrong JSON type** (`role`/`agent`/`configured_model`/`actual_model`/
-  `attempt_id`/`status` must be strings — `actual_model` may also be JSON `null`; `attempt` must
-  be an integer ≥ 1);
-- a required string key is **empty** (`role`, `agent`, `configured_model`, `attempt_id` must be
-  non-empty);
-- `attempt_id` does not equal the composite `"<role>-<attempt>"`;
-- `status` is not one of the five legal values.
-
-Also rejected before parsing keys: a line whose payload is not exactly one JSON value, or is a
-JSON value that is not an object. Every rejection is noted in the accounting output, never
-silently dropped.
-
-`attempt_id` is the deterministic composite `"<role>-<attempt>"` — e.g. `"architect-1"`, and
-`"architect-2"` for a re-spawn. No UUID, no external state; it is built from `role` and `attempt`
-so the started/terminated pair always share the same id.
-
-The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
-
-The Conductor never emits a SPAWN-EVENT for itself: it runs in the main session, is never
-"spawned," so a `role:conductor` event is excluded from `specialist_spawns[]` (the script drops
-it with a note).
-
-The event is emitted **twice per spawn**: `status:started` when you spawn, and one of
-`complete` / `no-handoff` / `failed` / `terminated` when the specialist terminates — both with
-the same `attempt_id`. `no-handoff` and `terminated` exist so a spawn that produced no usable
-handoff does not vanish from accounting; those spawns still cost tokens and must be recorded,
-not dropped.
-
-If a spawn logs `status:started` but no terminal event ever follows — the run died or was
-interrupted before that specialist returned — the script keeps the attempt in
-`specialist_spawns[]` with `reported_status: started`. It is **not** dropped. That is exactly
-how an interrupted run's work-shape is captured (it pairs with the §B "attempt always on all
-terminal exits" rule below — both exist so partial runs still account for what they spent).
-
-This SPAWN-EVENT line is SEPARATE from and ADDITIONAL to the existing narrative log heading
-(`## [TIMESTAMP] — Spawned ...`). Write both: the SPAWN-EVENT line is the machine-readable
-record, the heading is the human one.
-
-The script parses ONLY the `SPAWN-EVENT:` lines — never the narrative headings. It reads them
-in a per-line guarded loop, parsing each payload with
-`jq -cs 'if length == 1 then .[0] else error(...) end'` (NOT the bare `jq -c '.'`, NOT `jq -e`),
-so a malformed or multi-object line is rejected rather than silently misread. `specialist_spawns[]`
-in `accounting.json` is built from these lines, so emitting them accurately is what makes role
-accounting correct.
-
-### B. Close-out applies on ALL terminal exits
-
-The rule is **attempt always**: you MUST attempt `scripts/account-run.sh <RUN_DIR>` on every
-terminal exit of a run, not only on success. At minimum these four count as terminal exits:
-
-- (a) successful completion after the workflow's final Challenger pass
-- (b) a run blocked at a `[CHECKPOINT]` you cannot resolve
-- (c) an abandoned run
-- (d) a run terminated before the final Challenger pass
-
-**Run accounting LAST.** On a normal close-out, accounting is the *final* action — run it after
-the merge, package install, summary, and the final `state.json`/`log.md` updates, so
-`accounting.json` reflects the run's terminal state, not a mid-close-out snapshot, and so a
-close-out step that fails *after* accounting can't leave a falsely-current file. (On an abnormal
-exit — b, c, d — you still attempt it; the partial state it captures is the point.)
-
-On success (accounting ran and emitted `accounting.json`):
-- set `state.json#accounting.status` to `"complete"`
-- set `state.json#accounting.path` to `"accounting.json"`
-
-If the script cannot run (missing `state.json`, unreadable `RUN_DIR`, non-zero exit):
-- set `state.json#accounting.status` to `"unavailable"`
-- set `state.json#accounting.path` to `null` — never leave it pointing at a stale `accounting.json`
-  from an earlier successful run
-- write a one-line reason to `RUN_DIR/log.md`
-
-`accounting.status` is one of `pending | complete | unavailable` (matching
-`templates/state.json`). `pending` is the template default, before any close-out attempt.
-The value reflects **the accounting attempt's outcome, not the run's**: if `account-run.sh`
-runs cleanly and emits `accounting.json`, set `.status` to `"complete"` even when the run
-itself was blocked, abandoned, or terminated (exit cases b–d). The run's incompleteness is
-captured *inside* `accounting.json` — via the partial `specialist_spawns[]` (e.g. an attempt
-left at `reported_status: started`) and the `phases` block — not by demoting `.status`.
-`"unavailable"` is reserved for the failure write above, when accounting could not be produced
-at all.
-
-Attempting accounting on partial or early exits captures the work-shape of an interrupted run
-instead of losing it. Only a missing `RUN_DIR` itself is fatal.
-
-### C. The optional state.json#memory key
-
-Write a `"memory"` object into `state.json` during the run **if and only if** Rheo/MOT memory was
-consulted. The script reads this key; the script never writes it. The six sub-fields:
-
-- `retrieval_count` — integer ≥ 0
-- `writes_proposed` — integer ≥ 0
-- `writes_accepted` — integer ≥ 0
-- `conflicts_flagged` — integer ≥ 0
-- `digest_freshness` — string: an ISO-8601 duration or a staleness label
-- `memory_preflight_passed` — boolean
-
-If memory was NOT used, the key MUST be absent. A block of null/unavailable values would falsely
-imply memory was consulted — omit the key entirely instead.
-
-### D. State-management example
-
-The `accounting` key and the optional `memory` note are reflected in the State-management JSON
-example above (see "State management"). The `accounting` key ships in `templates/state.json`;
-`memory` does not and is added only when memory was used.
-
-### E. Commit-message guidance
-
-Commit-message guidance for execute workflows lives in `workflows/execute-plan.md` at the
-close-out step (step 7). It is advisory (SHOULD), not a hard gate.
+**Index close-out:** write `status: "complete"` (or `"blocked"`) to
+`output/studio/runs-index/<slug>.json` at terminal close-out; move to
+`output/studio/runs-index/archive/<slug>.json` (with `status: "archived"`) in the same step
+as the archive `mv` (EC 12).
 
 ## Checkpoint format
 
@@ -1063,44 +838,19 @@ Delegate is attached (i.e., when `delegate-launcher.sh` has started the watcher)
 NOT replace or edit the existing `[CHECKPOINT]` block above — that block remains unchanged
 as the fallback when no watcher is running.
 
-For the full protocol (request/verdict schemas, the `attempt` vs. `revise-count` distinction,
-the staging-dir assembly, the revision cap, and bridge failure modes), see
-`docs/delegate-bridge.md`. This section is the per-checkpoint reminder; the bridge doc is
-the authority.
+For the full protocol (request/verdict schemas, checkpoint-type classification, the
+`attempt` vs. `revise-count` distinction, the staging-dir assembly, the revision cap, and
+bridge failure modes), see `docs/delegate-bridge.md`. This section is the per-checkpoint
+reminder; the bridge doc is the authority.
 
 ### Three-step shim (when watcher is active)
 
-**Step 0 — Classify the checkpoint (integration vs. routine).**
-Before writing NN-request.md, determine checkpoint-type from the checkpoint's
-declared action in state.json or the workflow's phase definition — never inferred
-from artifact content:
-
-- checkpoint-type: integration if and only if: the checkpoint is a merge to a
-  persistent branch (main, release, or a long-lived feature branch that is itself
-  the integration target). v1 implements this criterion only. Deploy-to-non-ephemeral-env
-  and canon/fixture-promotion are named deferred extensions (post-Bundle-14).
-- checkpoint-type: routine for all other checkpoints (design review, spec review,
-  plan review, phase-boundary handoff, per-prompt build/accept checkpoints).
-- Default for any unmapped phase: routine. A phase is integration only by explicit
-  declaration, not by Delegate inference (FR-B14-1, OQ-B14-3).
-
-Phase mapping for v1:
-- execute-plan close-out merge (worktree → integration branch) → integration
-- bug-fix merge-to-main → integration
-- feature runs (plan-type, no build/merge phase) → no integration checkpoints
-- deploy/promote phases → deferred (post-Bundle-14), set as routine for now
-
-When checkpoint-type: integration, also collect from state.json:
-- worktree-path:  state.json#git.worktree_path  (or "(none)" if null)
-- base-ref:       state.json#git.base_branch    (default "devel")
-- claimed-gates:  the build's self-reported gate results as a single-line inline
-                  JSON array (see docs/delegate-bridge.md § 2)
-- scope:          write the state.json#scope block at the design-model checkpoint
-                  where scope is agreed (declared_at, declared_by: "conductor");
-                  thereafter read it verbatim — do not alter it (FR-B14-14, A6).
-
-The Conductor is the mechanical enforcer of AC-1: every integration NN-request.md
-MUST carry checkpoint-type, worktree-path, base-ref, and claimed-gates.
+**Step 0 — Classify the checkpoint.** Determine `checkpoint-type` (integration vs. routine)
+from the checkpoint's declared action in `state.json` or the workflow's phase definition —
+never inferred from artifact content. See `docs/delegate-bridge.md § checkpoint types` for
+the full classification rules and phase mapping. For integration checkpoints, collect
+`worktree-path`, `base-ref`, `claimed-gates`, and `scope` from `state.json` — every
+integration `NN-request.md` MUST carry all four (AC-1).
 
 **Step 1 — Write the request file.**
 Hash the artifact: `shasum -a 256 "$ARTIFACT" | awk '{print $1}'` (fallback: `sha256sum`).
@@ -1108,28 +858,16 @@ Write `RUN_DIR/checkpoints/NN-request.md` with both `attempt` and `revise-count`
 - First issue: `attempt: 1`, `revise-count: 0`.
 - On a `revise` re-issue: `attempt + 1`, `revise-count + 1`.
 - On a hash-rebind (artifact changed mid-checkpoint, not a revise): `attempt + 1`,
-  `revise-count unchanged`. See `docs/delegate-bridge.md` § 2 for the full increment rules.
+  `revise-count unchanged`. See `docs/delegate-bridge.md § 2` for the full increment rules.
 
 **Step 2 — Fire `await-verdict.sh` via `run_in_background` and end the turn.**
 ```
 scripts/await-verdict.sh "RUN_DIR/checkpoints/NN-verdict.md" <timeout_seconds>
 ```
-Call this via the Bash tool with `run_in_background: true`. End the turn here.
-Zero model tokens are consumed while the script sleep-loops for the verdict file.
-The script exits 0 when the verdict file appears (fires the single completion notification
-that re-invokes the Conductor). It exits 2 on timeout.
-
-For a checkpoint-type: integration dispatch, pass an EXTENDED timeout:
-```
-scripts/await-verdict.sh "RUN_DIR/checkpoints/NN-verdict.md" 1800
-```
-(The watcher runs the full canonical gate set synchronously BEFORE spawning the
-Delegate. The default 600s can expire on a clean-but-slow merge → false escalation.
-1800s covers typical gate-execution time. The scripts/await-verdict.sh script already
-accepts a per-call timeout as its second argument (await-verdict.sh:33); no script
-change is needed — only this dispatch-rule change. See spec Technical Risk R4/W4.)
-
-For a checkpoint-type: routine dispatch, use the existing timeout (600s or configured).
+Call via the Bash tool with `run_in_background: true`. End the turn here — zero tokens
+consumed while the script sleep-loops. Exit 0 when verdict appears; exit 2 on timeout.
+Use 1800s for integration checkpoints (gate-set is slow; 600s risks false escalation);
+600s for routine checkpoints.
 
 **Step 3 — On re-invocation: read the verdict and act.**
 Read `RUN_DIR/checkpoints/NN-verdict.md`:
