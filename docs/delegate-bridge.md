@@ -308,6 +308,32 @@ Delegate coordinate at each checkpoint, without meeting in the same context.
 **Naming:** `RUN_DIR/checkpoints/NN-request.md`, `RUN_DIR/checkpoints/NN-verdict.md`,
 `RUN_DIR/checkpoints/NN-robin.md` (escalation response). NN is a zero-padded ordinal.
 
+### Checkpoint type classification
+
+Before writing `NN-request.md`, determine `checkpoint-type` from the checkpoint's declared
+action in `state.json` or the workflow's phase definition — never inferred from artifact
+content.
+
+- `integration` iff the checkpoint is a merge to a persistent branch (`main`, `release`, or a
+  long-lived feature branch that is itself the integration target). v1 implements this criterion
+  only. Deploy-to-non-ephemeral-env and canon/fixture-promotion are deferred extensions.
+- `routine` for all other checkpoints: design review, spec review, plan review, phase-boundary
+  handoff, and per-prompt build/accept checkpoints.
+- Default for any unmapped phase: `routine`. A phase is integration only by explicit
+  declaration, not by Delegate inference.
+
+Phase mapping for v1:
+
+- `execute-plan` close-out merge (worktree to integration branch) → `integration`
+- `bug-fix` merge to main / integration branch → `integration`
+- `feature` runs (plan-type, no build/merge phase) → no integration checkpoints
+- deploy/promote phases → deferred; set as `routine` for now
+
+For `integration`, the request must also carry `worktree-path`, `base-ref`, and
+`claimed-gates`; `scope` is read from `state.json#scope` when present. The Conductor writes
+`state.json#scope` at the design-model checkpoint where scope is agreed
+(`declared_at`, `declared_by: "conductor"`) and thereafter reads it verbatim.
+
 **Request file schema** (written by the Conductor):
 
 ```

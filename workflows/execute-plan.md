@@ -313,8 +313,8 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    **Run accounting last.** As the *final* close-out action — after the merge, package install,
    summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
    so `accounting.json` reflects the run's terminal state (not a mid-close-out snapshot), then set
-   `state.json#accounting.status` and `.path` per `agents/orchestrator.md § Run accounting
-   (close-out)` (on failure: `status: unavailable`, `path: null`). On an abnormal/interrupted exit,
+   `state.json#accounting.status` and `.path` per `docs/run-accounting.md`
+   (on failure: `status: unavailable`, `path: null`). On an abnormal/interrupted exit,
    attempt accounting anyway per that convention.
 
    **Close-out gates (Conductor-owned, not Challenger checks).** Before accepting the run, the

@@ -420,63 +420,10 @@ explicitly if so.
 
 ## The `feature` workflow (sequence)
 
-This is the heaviest workflow and the default for new features and greenfield projects.
-It's registered in `workflows/feature.md`. Other workflows do far less. The full sequence:
-
-```
-START
-  │
-  ▼
-[Analizer 2000] — requirements, scope, unknowns       → writes spec.md (Requirements)
-  │
-  ▼
-[The Architect] — system design + plan                 → writes spec.md (Architecture), plan.md
-  │
-  ▼
-[DESIGN-MODEL CHECKPOINT] — mandatory: show the human the Architect's summary, wait for go
-  │
-  ▼
-[The Challenger, round 1] — reviews spec + plan cold → writes log.md, returns findings
-  │
-  ├─ blockers? ──► The Conductor judges, routes the fix back (max 2x) or CHECKPOINT
-  │
-  ▼
-[The Cleric — brief] — is there a UI surface? → writes design brief, or "NOT NEEDED"
-  │
-  ├─ NOT NEEDED ──► skip straight to The Spellwright
-  │
-  ▼
-[DESIGN HANDOFF] — checkpoint: human designs in Claude Design, drops the bundle, resumes
-  │
-  ▼
-[The Cleric — ingest] — reads the handoff bundle → writes design manifest
-  │
-  ▼
-[The Spellwright] — approved spec+plan (+ manifest) → scoped prompts → writes prompts.md
-  │
-  ▼
-[The Challenger, round 2] — reviews prompts.md only → writes log.md, returns findings
-  │
-  ▼
-DONE — all output files complete
-```
-
-## Spawning order and I/O
-
-| Phase | Spawn | Reads | Writes | Returns |
-|-------|-------|-------|--------|---------|
-| 1 | Analizer 2000 (Analyst) | idea, project-context.md | spec.md (Requirements) | ANALYST COMPLETE block |
-| 2 | The Architect | spec.md | spec.md (Architecture), plan.md | ARCHITECT COMPLETE block |
-| — | DESIGN-MODEL CHECKPOINT (human reads the summary, gives the go) | — | log.md | (resume) |
-| 3 | The Challenger (Critic), round 1 | spec.md, plan.md | log.md | FINDINGS block |
-| 4 | (loop, if REVISE) re-spawn routed agent + blockers | spec.md / plan.md | same | next agent's block |
-| 5 | The Cleric (Designer), brief | spec.md, plan.md, project-context.md | design/brief.md | DESIGN: NEEDED / NOT NEEDED |
-| — | DESIGN HANDOFF checkpoint (human → Claude Design → handoff bundle) | — | design/handoff/ | (resume) |
-| 6 | The Cleric (Designer), ingest | design/handoff/ | design/manifest.md | DESIGN INGEST COMPLETE |
-| 7 | The Spellwright (Prompt Engineer) | spec.md, plan.md, design/manifest.md | prompts.md | PROMPT ENGINEER COMPLETE block |
-| 8 | The Challenger (Critic), round 2 | prompts.md | log.md | FINDINGS block |
-
-Phases 5 and 6 are skipped entirely if The Cleric returns `DESIGN: NOT NEEDED`.
+This is the heaviest workflow and the default for new features and greenfield projects. The
+sequence, inputs, and outputs live in `workflows/feature.md`; run that file exactly. This
+section only carries Conductor-owned details that the workflow references: the design-model
+checkpoint, Challenger adjudication, and the design handoff checkpoint.
 
 ## Design-model checkpoint (mandatory, after the Architect)
 
@@ -645,60 +592,18 @@ with human approval.
 
 ## The Notary (external cold review)
 
-The Notary is optional, advisory, and independent of The Challenger. Use it when an artifact is high-stakes, sealed, and you want external cold attestation that a specific set of files — and nothing else — was reviewed. Invoking The Notary does not replace The Challenger and does not influence the Challenger's coldness. The full rules are in `docs/notary-review.md`.
+The Notary is optional, advisory, and independent of The Challenger. Use it for high-stakes,
+sealed artifacts when you need a boundary receipt for exactly which files were reviewed under
+isolation. Full packet schema, collision handling, spawn rules, state transitions, and
+adjudication rules live in `docs/notary-review.md`.
 
-### When to invoke
-
-An artifact is a candidate for Notary review when it is sealed (the files are written and stable), high-stakes (a wrong outcome is expensive to reverse), and you want a boundary receipt — a record of exactly which files were read under isolation, before any action downstream.
-
-### Writing the cue packet
-
-- Copy `templates/external-review.json` to `RUN_DIR/external-review.json`
-- Fill in:
-  - `request_id` — unique per packet, e.g. `"r1"`; if re-issuing, append `-v2`, `-v3`, …
-  - `allowlist` — absolute or RUN_DIR-relative paths the Notary may read
-  - `hashes` — optional per-path SHA-256 hex for files you choose to seal; compute before writing the packet
-  - `provenance` — required ONLY for memory-adjacent entries; each value: `{source, confidence, timestamp}`
-  - `question` — phrased as an observation request, never "approve X"
-  - `output_path` — where the review artifact lands (default: `RUN_DIR/reviews/notary-<request_id>.md`)
-- Never inline file contents in the spawn prompt — the packet is the only source of truth
-- Key-set alignment: every key in `"hashes"` and every key in `"provenance"` must also appear in `"allowlist"`; a misaligned packet is malformed
-
-### Collision check before spawn
-
-Before spawning The Notary, check whether a file already exists at the packet's `output_path`. If yes — do NOT spawn; generate a new `request_id` (append `-v2`, `-v3`, …) and write a fresh packet. If no — proceed.
-
-### How to spawn
-
-Pass `RUN_DIR` and the packet path ONLY. Do not pass `log.md`, `state.json` sections, design rationale, or any content not referenced through the packet's allowlist.
-
-At spawn time, set:
-
-```json
-state.json#external_review.status = "requested"
-```
-
-This is the in-flight marker — it records a review was issued before any artifact exists, so a resumed session knows a spawn was already made for the current packet.
-
-### Reading the artifact and setting state
-
-After The Notary returns its handoff block, read the review artifact at the `output_path`:
-
-- Coldness intact (no NOTARY FLAG) → `status = "complete"`, `path = <artifact path>`
-- NOTARY FLAG present → `status = "flagged"`, `path = <artifact path carrying the flag>`
-
-### Adjudication
-
-Four outcomes:
-
-a. **Accept as advisory input** — findings inform the next step but do not override any gate.
-b. **Reject on NOTARY FLAG** — coldness is broken; do not use findings; re-spawn with a clean packet.
-c. **Route overlapping findings to the normal Challenger adjudication path** (see "## Adjudicating The Challenger's findings" in this file) — do NOT mix the two.
-d. **Raise [CHECKPOINT]** if findings identify a scope or product decision — the Notary cannot approve checkpoints.
-
-The Notary cannot approve checkpoints, expand scope, or replace The Challenger.
-
-See `docs/notary-review.md` for the full rules.
+Conductor reminders:
+- Invoke only after the reviewed files are stable.
+- Spawn with `RUN_DIR` and the packet path only; never inline artifact content.
+- Mark `state.json#external_review.status = "requested"` before spawn.
+- Treat `NOTARY FLAG` as broken coldness; discard findings and re-issue cleanly.
+- Route overlapping findings through normal Challenger adjudication.
+- Never let Notary approve checkpoints, expand scope, or replace The Challenger.
 
 ## Design handoff (human-in-the-loop)
 
@@ -847,7 +752,7 @@ reminder; the bridge doc is the authority.
 
 **Step 0 — Classify the checkpoint.** Determine `checkpoint-type` (integration vs. routine)
 from the checkpoint's declared action in `state.json` or the workflow's phase definition —
-never inferred from artifact content. See `docs/delegate-bridge.md § checkpoint types` for
+never inferred from artifact content. See `docs/delegate-bridge.md § Checkpoint type classification` for
 the full classification rules and phase mapping. For integration checkpoints, collect
 `worktree-path`, `base-ref`, `claimed-gates`, and `scope` from `state.json` — every
 integration `NN-request.md` MUST carry all four (AC-1).

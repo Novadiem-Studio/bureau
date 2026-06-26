@@ -15,8 +15,8 @@ the user asked for a verification pass. It does not edit code by default.)
 **Inputs:** target repo/path; base branch or PR URL if supplied; the diff/branch/uncommitted
 changes to review; local project context (`CLAUDE.md` / `AGENTS.md` / relevant skills).
 
-**Outputs:** under `RUN_DIR` (`output/runs/<yyyymmdd>-<task-slug>/`): `review-target.md`,
-`review.md`, `log.md`, `state.json`.
+**Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `review-target.md`, `review.md`,
+`log.md`, `state.json`.
 
 **Leans on skills:** **novadiem-engineering** plus the target sub-app's local context and testing
 skill/runbook. Review against project standards, not a generic prompt.

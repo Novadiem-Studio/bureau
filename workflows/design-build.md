@@ -20,7 +20,7 @@ ships. See `execute-plan` § Production boundary.)
 per-sub-app skills the target surfaces need. If no bundle path is supplied, `[CHECKPOINT]` and
 ask for it — this workflow does not start without a handoff.
 
-**Outputs:** under `RUN_DIR` (`output/runs/<yyyymmdd>-<task-slug>/`): `design/manifest.md`,
+**Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `design/manifest.md`,
 `plan.md` (the build map), `prompts/` (`00-index.md` + `NN-<slug>.md`), `log.md`, `state.json`;
 then — once gated — built code in an isolated worktree, merged to the **integration branch only**.
 
@@ -84,8 +84,8 @@ and is run by reference, not re-documented here.
    §§ 5b–7 for the full machinery (preflight, fixture gates, coupling, close-out gates); do not
    duplicate it here.
 
-DONE — close-out per `execute-plan` step 7 (run `scripts/account-run.sh <RUN_DIR>` last; satisfy
-the `docs-sync-needed` and `lessons-append` gates). If the run stopped at the step-6 gate
+DONE — close-out per `execute-plan` step 7 (run `scripts/account-run.sh <RUN_DIR>` last per
+`docs/run-accounting.md`; satisfy the `docs-sync-needed` and `lessons-append` gates). If the run stopped at the step-6 gate
 (prompts only, no build), close out as a plan workflow — no commit-message or worktree guidance
 applies.
 

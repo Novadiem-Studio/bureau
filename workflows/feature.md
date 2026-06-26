@@ -11,8 +11,8 @@ projects. NOT for one-line bug fixes or operational builds — those get lighter
 **Inputs:** the project idea or task brief; `project-context.md` if present; in existing
 projects, the workspace orientation (see "Existing-project mode" in `agents/orchestrator.md`).
 
-**Outputs:** under `RUN_DIR` (`output/runs/<yyyymmdd>-<task-slug>/`): `spec.md`, `plan.md`,
-`prompts.md`, `log.md`, `state.json`, plus `design/` artifacts if a UI is involved.
+**Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `spec.md`, `plan.md`, `prompts.md`,
+`log.md`, `state.json`, plus `design/` artifacts if a UI is involved.
 
 **Leans on skills:** **novadiem-engineering** (the cross-project coding standards) — loaded by
 The Architect, The Challenger, and The Spellwright so design, review, and prompts hold the
@@ -38,9 +38,8 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model routing" 
 7. **The Spellwright** (Prompt Engineer, **standard**) — approved spec/plan (+ manifest) → `prompts.md`
 8. **The Challenger** (Critic, round 2, **strong**, fresh context required) — review the prompts → `log.md`, findings (The Conductor adjudicates)
 
-DONE — close-out: run `scripts/account-run.sh <RUN_DIR>` per
-`agents/orchestrator.md § Run accounting (close-out)`. (Feature is a plan workflow — no
-commit-message guidance applies here.)
+DONE — close-out: run `scripts/account-run.sh <RUN_DIR>` per `docs/run-accounting.md`.
+(Feature is a plan workflow — no commit-message guidance applies here.)
 
 The full agent specs, verdict format, and checkpoint formats live in `agents/orchestrator.md`
 and the per-agent files in `agents/`. This file just names the sequence; it doesn't
