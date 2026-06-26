@@ -435,7 +435,11 @@ A verdict whose `artifact-hash` does not match the request's `artifact-hash` is 
 ## Section 3: The load-bearing spawn invocation (identity isolation — EC1/EC8)
 
 The spawn invocation that the watcher uses is exactly (Phase 4 / Prompt 4 refactor —
-`--bare` dropped, CWD pinned to `$CTX`; this matches the v2 §3 single-source recipe):
+`--bare` dropped, CWD pinned to `$CTX`; it shares the same COLDNESS MECHANISM as the v2 §3
+single-source recipe — no `--bare`, `--setting-sources ""` for CLAUDE.md suppression, and
+CWD=$CTX — but is not byte-identical to it: this v1 watcher invocation additionally carries
+`--no-session-persistence` and the other watcher-loop flags, where v2 §3 closes stdin with
+`< /dev/null` and orders its flags differently):
 
 ```sh
 cd "$CTX" && claude -p \
