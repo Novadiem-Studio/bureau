@@ -277,6 +277,101 @@ string-interpolated). The key is sourced from the keystore; it is never echoed.
 
 ---
 
+# Integration gate (`integration-gate.sh`)
+
+The **single shared integration-checkpoint gate executor** (Delegate v2, spec OQ1 / FR14).
+It is the one copy of the gate logic, extracted from `watcher.sh`'s inline executor so there
+is no duplicate to drift. Two callers run it: the **v2 Delegate** (manager mode) before it
+spawns the cold reviewer at an integration checkpoint, and the **refactored v1 watcher**
+(in place of its inline body). "The build cannot grade its own homework" (FR14): the caller,
+never the Conductor/build, runs it; the canonical gate set is resolved from the project's own
+runners/manifest, **never** from `claimed-gates`.
+
+```bash
+scripts/integration-gate.sh \
+  --checkpoint-type integration \
+  --worktree-path "$WORKTREE" \
+  --base-ref devel \
+  --claimed-gates '[{"name":"unit","command":"…","result":"red","pre-existing":true}]' \
+  --known-flaky-gates '[]' \
+  --state-json "$RUN_DIR/state.json" \
+  --out "$CTX"
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--checkpoint-type` | yes | `integration` runs the gate; `routine` is a no-op (exit 0, no file). |
+| `--worktree-path` | yes (integration) | Abs path to the build worktree, or `(none)` → short-circuit escalate. |
+| `--base-ref` | yes (integration) | Git ref; unresolvable in the worktree → short-circuit escalate. |
+| `--claimed-gates` | yes (integration) | Single-line inline JSON array. **Cross-check input only** (never the executed set). |
+| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named re-run red to `flaky: true`. |
+| `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
+| `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |
+
+- **Output:** writes `integration-results.json` into `--out` — the EVIDENCE file (`schema_version`,
+  `checkpoint_type`, `escalate_marker`, `canonical_source`, `gates`, `pre_existing`,
+  `under_declaration`, `scope`, `fast_forward_ok`, `conflicts_clean`, `errors`). It carries **NO
+  `verdict` key** — the proceed/revise/escalate Decision is the cold reviewer's (`NN-verdict.md`).
+- **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required (no new dep).
+- **Exit codes:** `0` results written (or routine no-op); `2` usage error (missing/unknown flag,
+  `--out` absent or not a directory).
+- **Callers:** the v2 Delegate (manager mode) and the refactored v1 `watcher.sh` (Phase 4).
+
+---
+
+# Revision cap (`revise-cap.sh`)
+
+Deterministic revision-cap enforcement (Delegate v2, spec W-c / FR11 / AC15). On a `revise`
+verdict the Delegate calls this one-shot; it atomically increments the single authoritative
+counter (`delegate-state.json#revise_counts[NN]`) and emits the cap decision. The Delegate acts
+on this stdout, never on its own cap inference — restoring v1 `verdict-write.sh`'s hard cap as a
+**script guarantee**, not a model instruction.
+
+```bash
+scripts/revise-cap.sh "$RUN_DIR/delegate-state.json" 05 2
+# stdout: "revise" (under cap) | "escalate" (new count >= cap)
+```
+
+| Arg | Required | Description |
+|-----|----------|-------------|
+| `<delegate-state.json-path>` | yes | Abs path to the per-run `delegate-state.json`. |
+| `<NN>` | yes | Zero-padded checkpoint ordinal (the `revise_counts` key). |
+| `<cap>` | yes | Integer cap (default policy: 2). |
+
+- **Output:** `revise` or `escalate` to stdout; the file's `revise_counts[NN]` is incremented and
+  written atomically (`.tmp` → `os.replace`, so concurrent calls cannot corrupt the JSON).
+- **Deps:** POSIX `sh` + `python3`.
+- **Exit codes:** `0` success; `1` any error (file not found, invalid JSON, non-integer cap, write
+  failure).
+- **Caller:** the v2 Delegate (manager mode), on a `revise` verdict.
+
+---
+
+# Ledger `Robin's call:` set (`ledger-set-robins-call.sh`)
+
+Deterministic `Robin's call:` population on an escalation resolution (Delegate v2, spec W6 / AC14).
+The model never hand-edits the append-only ledger (`delegate-decisions.md`): this one-shot locates
+the blank `Robin's call:` line for record `NN` and fills only that line, touching nothing else — so
+the append-only invariant stays a **script guarantee**. `ledger-append.sh` is untouched.
+
+```bash
+LEDGER_FILE="$RUN_DIR/delegate-decisions.md" \
+  scripts/ledger-set-robins-call.sh 05 "approved as-is"
+```
+
+- **Inputs:** `<NN>` (checkpoint ordinal) + `"<literal value>"`. Record `NN` is identified by its
+  `## NN.A — <timestamp>` § 9 header (and a `checkpoint: NN` field if one is present). The ledger
+  path resolves from `$LEDGER_FILE` (preferred) else `$RUN_DIR/delegate-decisions.md`.
+- **Output:** the one blank `Robin's call:` line for `NN` is filled (atomic `.tmp` → `os.replace`;
+  every other byte preserved). Refuses to overwrite an already-filled field, and refuses an
+  ambiguous (multiple-blank) match.
+- **Deps:** POSIX `sh` + `python3`.
+- **Exit codes:** `0` filled; `1` any error (no record for `NN`, already filled, ambiguous, bad
+  args, write failure, or neither `$LEDGER_FILE` nor `$RUN_DIR` set).
+- **Caller:** the v2 Delegate (manager mode), on an escalation resolution.
+
+---
+
 ## ChatGPT flat export
 
 `sync-chatgpt-export.sh` copies canon visual docs + locked `reference/` assets into
