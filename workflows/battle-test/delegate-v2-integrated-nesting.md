@@ -26,9 +26,17 @@ this one.
 - **v1 fallback (AC7):** F10 (watcher → integration-gate.sh, claude stubbed) PASS — the watcher stages Track-3 proceed-evidence field-for-field. The `--bare`-drop (R6) is confirmed in `watcher.sh` (`--setting-sources ""` carries CLAUDE.md suppression). F11 (live routine reviewer) FAILS as-shipped on the same `--json-schema` path defect (see Open BLOCKER); the scratch-patched watcher cleared the parse error.
 - **FR-44 (AC10):** every preference-modeling-term hit across the 7 edited/created files is an FR-44 negation/boundary statement that FORBIDS preference modeling; no actual model, placeholder, or hook exists.
 
-### Open BLOCKER (pre-promotion) — `--json-schema` path defect
+### Open BLOCKER (pre-promotion) — `--json-schema` path defect — **RESOLVED by 4be064e**
 
-The canonical cold-reviewer recipe passes the verdict schema as a **file path**:
+**RESOLVED 2026-06-25 in the build-fix commit 4be064e** (FIX 1 + FIX 2 below landed at all
+sites; re-proven LIVE against the landed recipe with no scratch patches: v2 Track-3 cold
+reviewer → `Decision: proceed`; v1 routine path F11 → valid verdict on claude 2.1.187). A
+mutation-tested guard fixture (`RUN_DIR/regression/15-watcher-json-schema-inline-not-path.md`)
+now guards both corrections. The diagnosis below is retained as the audit record of what this
+pre-promotion run found; the `## Run 2026-06-25` case table above is left as-is (it caught the
+blocker). The next `## Run` block, written at promotion, re-runs the matrix clean.
+
+The canonical cold-reviewer recipe passed the verdict schema as a **file path**:
 `--json-schema "$ROOT/config/delegate-verdict.schema.json"`. On claude 2.1.187 the
 `--json-schema <schema>` flag takes an **inline JSON Schema string**, not a path, so the
 spawn aborts with `Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized
@@ -49,12 +57,13 @@ path (still inside `$CTX`, so coldness and the AC4 "no path outside `$CTX`" rule
 stage `$CTX` outside any git tree.
 
 These corrections are the same class as the Phase-0 `--setting-sources ""` finding: a
-recipe/invocation fix the build must apply. Promotion to canon is gated on landing them and
-re-running this matrix with the live happy-path and the v1 routine path both green.
+recipe/invocation fix the build applied (commit 4be064e). The live happy-path and the v1
+routine path are both green against the landed recipe; promotion re-runs this matrix to write a
+fresh `## Run` block confirming it.
 
 ### waiver
 
 None. The two failure-mode cases (cold-reviewer failure, nested-spawn unavailable) are marked
 `pass` by inspection of the specified behavior, not `fail`, so no waiver is required. The
-`--json-schema` defect is recorded as an Open BLOCKER above, not waived — it must be fixed
-before canon promotion.
+`--json-schema` defect (recorded as the Open BLOCKER above) was **resolved in commit 4be064e**,
+not waived.
