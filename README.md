@@ -13,7 +13,7 @@ character appearance locks live in `VISUAL-CANON.md`.
 
 ```bash
 git clone git@github.com:rheos/bureau.git
-cd agent-framework
+cd bureau
 ./check-framework.sh
 ```
 
