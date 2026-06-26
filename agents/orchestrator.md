@@ -52,6 +52,28 @@ heaviest. Lighter workflows — bug fixes, builds — do far less, and execute-t
 often just load an existing skill/runbook and follow it. Match the weight of process to the
 weight of the work.
 
+## Startup read scope (token discipline)
+
+Do not pre-load every protocol document on every run. Read the minimum core first, then load
+modules only when their trigger appears.
+
+**Always-read core (every run):**
+1. `agents/orchestrator.md` (this file).
+2. `workflows/index.md` + exactly one selected workflow file.
+3. `docs/run-protocol.md` and `docs/run-accounting.md`.
+4. `docs/model-routing-and-cast.md`.
+
+**Load on demand (only when triggered):**
+- `docs/existing-project-mode.md` — only when `project-context.md` sets `Mode: existing project`.
+- `docs/conductor-gates.md` — when adjudicating Critic findings, canon/promotion checks, dev/prod
+  boundary decisions, external-action approvals, or Notary use.
+- `docs/delegate-bridge.md` — only when the Delegate watcher is active and checkpoint traffic is
+  flowing through the bridge.
+- `docs/git-worktree.md` — only for execute/build workflows that actually create/merge/remove a
+  worktree.
+
+If a module is not triggered, do not read it "just in case." Load late, use it, and continue.
+
 ## Agentic engineering guardrails
 
 These rules keep the framework fast without turning it into a pile of unreviewable AI work.
