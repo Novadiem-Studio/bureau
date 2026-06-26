@@ -6,6 +6,26 @@ one-shot). Format: `docs/conventions.md § Battle-test matrix file format`. This
 pre-promotion run; promotion re-runs the full matrix and writes a fresh `## Run` block above
 this one.
 
+## Run 2026-06-26 (promotion)
+
+Promotion re-run against the LANDED, fixed recipe (the `--json-schema` path defect found in
+the 2026-06-25 pre-promotion run is resolved in commit `4be064e`; the recipe inlines the
+schema via `$(cat …)` and names staged files by absolute `$CTX` path). All six cases pass;
+the live legs were re-proven against canon with NO scratch patches. The Bundle-15 regression
+fixtures are now promoted to `.bureau/regression/` (39-52); standing suite `pass=50 fail=0
+skip=2` (F10/F11 are `slow:` live-spawn, skipped).
+
+| Case name | Input description | Expected outcome | Actual result |
+|-----------|-------------------|------------------|---------------|
+| **happy path** (typical) — routine checkpoint in v2 mode | Delegate spawns the Conductor subagent (`topology: integrated`); Conductor returns a `routine-checkpoint` block; Delegate stages `$CTX`, spawns the cold reviewer; reviewer returns `proceed`; Delegate resumes via `SendMessage`. | Run completes; `state.json` records the Conductor as a depth-1 subagent with NO `delegate` block; routine checkpoint gated by a cold-reviewer spawn, never AskUserQuestion/`[CHECKPOINT]`; no Robin interaction. | **PASS (live, against landed canon).** Part-1 Conductor trace proved the topology (depth-0 Delegate / depth-1 Conductor; resume at `tool_uses:0` with verbatim resume-token echo; no delegate block in state.json). The cold-reviewer leg re-ran LIVE against the FIXED recipe (no scratch patch) and returned a schema-valid `Decision: proceed` with a well-formed `Integration-evidence` block (`spike/track3-v2-verdict.json`). The 2026-06-25 BLOCKER no longer applies. |
+| **genuine fork** (edge — signal 5) | Conductor detects a production deploy (signal 5) and returns a `genuine-fork` block. | Conductor does NOT call AskUserQuestion (unavailable to subagents) — it RETURNS the fork; the top-level Delegate owns the ask; resume at `tool_uses:0`. | **PASS (trace + inspection).** Part-1 trace: checkpoint 02 emitted a `genuine-fork` block (`signal-fired:5`), resumed at `tool_uses:0` echoing `v2trace-02-qz7bn3wd`. Phase-0 TEST 2 proved AskUserQuestion is unavailable to subagents. The live interactive Robin-ask is attended (not exercised hermetically). |
+| **cold-reviewer failure** (failure mode) — no self-grade | The cold-reviewer subprocess fails (budget/error/unavailable). | AC11: Delegate does NOT self-grade; escalates to Robin with checkpoint context; no warm-manager verdict path. | **PASS (by inspection — AC11).** `agents/delegate.md`: "ESCALATE TO ROBIN. NEVER self-grade … no 'degenerate case' fallback that lets the warm manager emit a verdict." Live exercise needs a deliberately broken claude env. |
+| **nested spawn unavailable** (failure mode) — AC12 diagnostic | The Delegate's first Conductor spawn fails for lack of nested-spawn support. | AC12: the exact diagnostic surfaces and the Delegate stops, does not proceed warm. | **PASS (by inspection — AC12).** `agents/delegate.md` carries the diagnostic verbatim: "Nested spawning unavailable — v1 file-mailbox fallback required. Run scripts/delegate-launcher.sh to start the watcher." Live exercise needs a host without nested-spawn support. |
+| **revision-cap hit** (failure mode) | A checkpoint produces a 2nd `revise` at `revision_cap: 2`. | On the cap-reaching revise, `revise-cap.sh` emits `escalate`; the Conductor's return block carries NO revise counter. | **PASS (live).** `revise-cap.sh DS 03 2` (`revise_counts.03=1`) → stdout `escalate`, count→2, other keys untouched; under-cap → `revise`. The CONDUCTOR-RETURN schema carries no revise counter (W5); the cap is `revise-cap.sh`'s sole authority. Guarded by standing fixtures 46/47. |
+| **schema-drift guard** (edge — from the Prompt-6 Challenger) | Mutate one field in the CONDUCTOR-RETURN schema in `delegate-bridge.md § v2 §1`; the `orchestrator.md § A4` verbatim copy must be caught divergent. | A drift is caught; the documented control is the RECIPROCAL SYNC NOTE requiring both blocks edited in the same commit. | **PASS (control verified).** The two CONDUCTOR-RETURN fenced blocks (bridge §v2 §1, orchestrator §A4) are BYTE-IDENTICAL today (`diff -q` clean). The RECIPROCAL SYNC NOTE at `delegate-bridge.md:42-45` makes the coupling bidirectional. Standing recommendation retained: a fixture extracting both blocks and asserting byte-identity would make a future single-file edit fail the suite. |
+
+---
+
 ## Run 2026-06-25
 
 | Case name | Input description | Expected outcome | Actual result |
