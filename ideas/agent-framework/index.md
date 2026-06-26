@@ -11,7 +11,43 @@ or one small series of runs with a clear acceptance boundary. Do not start by im
 every source idea as a separate mechanism; several of them are the same discipline seen from
 different angles.
 
-## Recommended execution order
+## Execution queue — do these in this order
+
+This is the **live, authoritative order** for the remaining (not-started) work. The big catalog
+table further down is the historical record (original rank + per-bundle status), not the running
+order — when the two seem to disagree, this section wins.
+
+**Critical path — strictly sequential, each depends on the one before it:**
+
+1. **[15 — Delegate v2: integrated nesting topology](15-delegate-v2-integrated-nesting.md)** —
+   **NEXT.** Spike-validated 2026-06-24. Goes before 11 and 12 because it re-architects the run
+   loop, the checkpoint model, and the human-wait boundary that 11 instruments and 12 optimizes.
+   Build 11/12 first and you instrument a topology you are about to replace, then redo the hooks.
+2. **[11 — Run optimization metrics](11-run-optimization-metrics.md)** — after 15, so it
+   instruments the *final* topology. It is also the instrument that proves whether 15 actually
+   cut human-wait. Ship before 12.
+3. **[12 — Planning loop reduction](12-planning-loop-reduction.md)** — after 11; it needs the
+   instrument to show the loop-count reduction actually landed.
+
+**Off the critical path — no fixed slot:**
+
+- **[10 — committed regression suite for `account-run.sh`](10-account-run-committed-regression-suite.md)**
+  — parallel-safe and topology-independent (small `execute-plan`). Slot in anytime; a fine quick
+  win to run before or alongside 15. Neither blocks nor is blocked by the critical path.
+- **[13 — Rheo memory framework integration](13-rheo-memory-framework-integration.md)** — gated on
+  remote Rheo/MOT maturity. Do the rules/spec slice whenever convenient; defer the adapter until
+  the remote side is ready.
+
+**Follow-on — not yet a bundle:**
+
+- **v3 self-audit gate** — a cold auditor re-reviews a blind sample of `proceed`s; the prerequisite
+  for running the Delegate *unattended*. Comes after 15. Promote as its own bundle once v2 is proven
+  on real runs. (15 makes *attended* integrated operation clean; unattended waits on this.)
+
+## Bundle catalog — all bundles, by original rank (record, not running order)
+
+For what to do next and in what order, see the **Execution queue** above. This table is the
+full catalog with status; the `Order` column is the original benefit rank, not the live sequence.
 
 | Order | Bundle | Source ideas | Why here |
 |---:|---|---|---|
@@ -53,13 +89,13 @@ different angles.
 | 5. External notary review (The Notary) | done — shipped to main 2026-06-20 (cue-packet template + state pointer + model-policy role + protocol doc + completed persona + orchestrator wiring + battle-test matrix; Promotion to canon: yes) |
 | 6. Navigation and runtime experiments | done — name-lint hygiene slice shipped to main 2026-06-22 (`check-framework.sh` name lint); local-runtime experiment deferred until accounting shows a real utility workload |
 | 8. Worktree location hygiene | done — shipped to main 2026-06-22 (worktrees moved out to `~/.bureau/worktrees/`; run output into `<target>/.bureau/runs/`; cross-run index) |
-| 10. A committed regression suite for `account-run.sh` | not started — **next up**; Bundle 04 follow-up (execute-plan); relocate the 17-case suite from gitignored `output/` into a committed runner |
+| 10. A committed regression suite for `account-run.sh` | not started — **parallel-safe / anytime** (off the critical path); Bundle 04 follow-up (execute-plan); relocate the 17-case suite from gitignored `output/` into a committed runner |
 | 11. Run optimization metrics | not started — Bundle 04 follow-up; tokens/loops/wall-clock/human-wait captured live into `log.md` (needs SubagentStop+Stop hooks). Ship before Bundle 12 so its loop-count reduction is measurable. |
 | 12. Planning loop reduction | not started — idea drafted from the Bundle 04 post-mortem; doctrine-consistent shift-left gates. Reduces loop *count*; complementary to Bundle 09 (loop *cost*). Direct Bundle 03 follow-up. Scope against the now-shipped pre-handoff self-checks. |
 | 13. Rheo memory framework integration | not started — largely gated on remote Rheo/MOT maturity; do the read-only adapter spec + framework rules now, defer the rest. |
 | 9. Principal delegate | done — spec + plan + scoped prompts shipped 2026-06-20 (agents/delegate.md persona + docs/delegate-bridge.md neutral authority doc + CLAUDE.md three-role contrast table + model-policy.v2.json delegate entry + 7 bridge scripts + 12 regression fixtures). v1 = manual attended path; v2 = autonomous loop; v3 self-audit gate deferred. Principal role explicitly deferred. |
 | 14. Delegate verification gate at integration boundaries | done — shipped to main 2026-06-23 (Delegate verifying mode at integration gates: P1 request/scope contracts → P5 Track-3 regression fixture, promoted to the standing suite). Bundle 09 follow-up; satisfied the 2026-06-22 priority override |
-| 15. Delegate v2 — integrated nesting topology | not started — idea, **spike-validated 2026-06-24**. The intended topology (Delegate spawns Conductor as a subagent, not the reverse), now unblocked by nested subagent spawning (v2.1.172) + subagent resume (SendMessage). Re-architects v1's file-mailbox bridge into in-session Agent-tool orchestration; Bundle 14's verifying logic survives in a cold reviewer sub-spawn. v3 self-audit (unattended operation) remains a separate follow-on prerequisite |
+| 15. Delegate v2 — integrated nesting topology | not started — **NEXT UP** (critical path); idea, **spike-validated 2026-06-24**. The intended topology (Delegate spawns Conductor as a subagent, not the reverse), now unblocked by nested subagent spawning (v2.1.172) + subagent resume (SendMessage). Re-architects v1's file-mailbox bridge into in-session Agent-tool orchestration; Bundle 14's verifying logic survives in a cold reviewer sub-spawn. v3 self-audit (unattended operation) remains a separate follow-on prerequisite |
 
 ## Cross-bundle principle: gate theater
 
@@ -134,3 +170,7 @@ The original ranking was a good benefit list, but execution needs dependency ord
 - Decision-quality gates should be installed before adding expensive optional review paths.
 - Accounting and local routing are useful, but they should optimize a stable process rather
   than shape an unstable one.
+- Bundle 15 (Delegate v2) precedes 11 and 12 because it re-architects the run loop those two
+  instrument and optimize. Instrumenting the v1 loop first (11's SubagentStop+Stop hooks,
+  measured at v1 `[CHECKPOINT]` prompts) would be thrown away once the Conductor becomes a
+  subagent and the human-wait boundary moves to escalation. Settle the topology, then measure it.
