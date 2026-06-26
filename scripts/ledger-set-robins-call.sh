@@ -11,22 +11,27 @@
 #   ledger-set-robins-call.sh <NN> "<literal value>"
 #
 # Record identification: a ledger record (docs/delegate-bridge.md § 9) is a block
-# that begins at a `## NN.A — <timestamp>` header and runs until the next `## `
-# header or EOF. The record for NN is matched by that header's ordinal (`## NN.`),
-# and ALSO by a `checkpoint: NN` field if one is present (belt-and-suspenders for
-# any future record shape). The blank line is `Robin's call:` with nothing after
-# the colon (exactly what ledger-append.sh writes); a filled field has a value.
+# that begins at a `## NN.<attempt> — <timestamp>` header (ledger-append.sh:67) and
+# runs until the next `## ` header or EOF. ledger-append.sh writes ONE record per
+# verdict, each with a `decision:` line (ledger-append.sh:68) and a blank
+# `Robin's call:` line — INCLUDING revise records. So NN alone is ambiguous on the
+# revise->escalate cap path (records `NN.1` decision:revise + `NN.2` decision:escalate
+# both carry a blank `Robin's call:`). `Robin's call:` ONLY ever resolves an
+# ESCALATION, so the target is the record for NN whose `decision:` field is
+# `escalate`; revise records' blank lines are never filled and stay blank. A blank
+# field is `Robin's call:` with nothing after the colon (what ledger-append.sh writes).
 #
 # Behavior:
 #   1. Resolve the ledger path (see "Ledger path" below).
-#   2. Find the record block for NN.
-#   3. Fill only its blank `Robin's call:` line with the literal value.
+#   2. Find the record block for NN whose `decision:` is `escalate`.
+#   3. Fill only that record's blank `Robin's call:` line with the literal value.
 #   4. Touch NO other line (atomic tmp -> mv; every other byte preserved).
 #
 # Exit codes:
 #   0  the blank field was filled
-#   1  any error: no record for NN, the field is already filled (refuse to
-#      overwrite), an ambiguous set of blank fields, bad args, or a write failure
+#   1  any error: no unresolved escalation record for NN, the field is already
+#      filled (refuse to overwrite), >1 escalation record (defensive), bad args,
+#      or a write failure
 #
 # Ledger path:
 #   $LEDGER_FILE wins if set; else $RUN_DIR/delegate-decisions.md; else error.
@@ -67,10 +72,13 @@ except OSError as e:
 # round-trips through "\n".join (a trailing newline becomes a trailing "" element).
 lines = text.split("\n")
 
-header_re     = re.compile(r'^##\s+' + re.escape(nn) + r'[.\s]')
-checkpoint_re = re.compile(r'^checkpoint:\s*' + re.escape(nn) + r'\s*$')
-robins_any    = re.compile(r"^Robin's call:")
-robins_blank  = re.compile(r"^Robin's call:\s*$")
+# Header `## NN.<attempt> — …` is the canonical record locator (the `decision:` field
+# picks the right verdict among NN's records). No `checkpoint:` matcher: real records
+# carry no such field, and a body cross-reference to another NN must not over-select.
+header_re    = re.compile(r'^##\s+' + re.escape(nn) + r'[.\s]')
+decision_re  = re.compile(r'^decision:\s*(\S+)')
+robins_any   = re.compile(r"^Robin's call:")
+robins_blank = re.compile(r"^Robin's call:\s*$")
 
 # Index record blocks by their `## ` headers.
 header_idxs = [i for i, l in enumerate(lines) if l.startswith("## ")]
@@ -79,40 +87,44 @@ for k, start in enumerate(header_idxs):
     end = header_idxs[k + 1] if k + 1 < len(header_idxs) else len(lines)
     blocks.append((start, end))
 
-# Select the blocks that ARE record NN.
-target_blocks = []
+# Select the record for NN whose `decision:` is `escalate`. revise/proceed records
+# for the same NN also carry a blank `Robin's call:`, but they are NOT resolved here.
+escalate_blocks = []
 for (start, end) in blocks:
-    if header_re.match(lines[start]) or any(checkpoint_re.match(lines[j]) for j in range(start, end)):
-        target_blocks.append((start, end))
-
-if not target_blocks:
-    sys.stderr.write("ledger-set-robins-call: no record found for checkpoint %s\n" % nn)
-    sys.exit(1)
-
-# Within the NN record(s), find the (single) blank Robin's call line.
-blank_idxs = []
-filled_seen = False
-for (start, end) in target_blocks:
+    if not header_re.match(lines[start]):
+        continue
+    decision = None
     for j in range(start, end):
-        if robins_any.match(lines[j]):
-            if robins_blank.match(lines[j]):
-                blank_idxs.append(j)
-            else:
-                filled_seen = True
-            break  # one Robin's call line per record
+        m = decision_re.match(lines[j])
+        if m:
+            decision = m.group(1).lower()
+            break
+    if decision == "escalate":
+        escalate_blocks.append((start, end))
 
-if len(blank_idxs) == 0:
-    if filled_seen:
-        sys.stderr.write("ledger-set-robins-call: Robin's call already filled for %s — refusing to overwrite\n" % nn)
-    else:
-        sys.stderr.write("ledger-set-robins-call: no blank Robin's call line for %s\n" % nn)
+if len(escalate_blocks) == 0:
+    sys.stderr.write("ledger-set-robins-call: no unresolved escalation record for checkpoint %s\n" % nn)
     sys.exit(1)
-if len(blank_idxs) > 1:
-    sys.stderr.write("ledger-set-robins-call: multiple blank Robin's call lines for %s — ambiguous, refusing\n" % nn)
+if len(escalate_blocks) > 1:
+    sys.stderr.write("ledger-set-robins-call: multiple escalation records for %s — refusing (defensive)\n" % nn)
+    sys.exit(1)
+
+# Locate that record's single Robin's call line.
+start, end = escalate_blocks[0]
+robins_idx = None
+for j in range(start, end):
+    if robins_any.match(lines[j]):
+        robins_idx = j
+        break
+if robins_idx is None:
+    sys.stderr.write("ledger-set-robins-call: escalation record for %s has no Robin's call line\n" % nn)
+    sys.exit(1)
+if not robins_blank.match(lines[robins_idx]):
+    sys.stderr.write("ledger-set-robins-call: Robin's call already filled for %s — refusing to overwrite\n" % nn)
     sys.exit(1)
 
 # Fill ONLY the target line; every other line is preserved verbatim.
-lines[blank_idxs[0]] = "Robin's call:  " + value
+lines[robins_idx] = "Robin's call:  " + value
 
 tmp = ledger + ".tmp"
 try:

@@ -359,14 +359,16 @@ LEDGER_FILE="$RUN_DIR/delegate-decisions.md" \
   scripts/ledger-set-robins-call.sh 05 "approved as-is"
 ```
 
-- **Inputs:** `<NN>` (checkpoint ordinal) + `"<literal value>"`. Record `NN` is identified by its
-  `## NN.A — <timestamp>` § 9 header (and a `checkpoint: NN` field if one is present). The ledger
-  path resolves from `$LEDGER_FILE` (preferred) else `$RUN_DIR/delegate-decisions.md`.
-- **Output:** the one blank `Robin's call:` line for `NN` is filled (atomic `.tmp` → `os.replace`;
-  every other byte preserved). Refuses to overwrite an already-filled field, and refuses an
-  ambiguous (multiple-blank) match.
+- **Inputs:** `<NN>` (checkpoint ordinal) + `"<literal value>"`. Among `NN`'s § 9 records
+  (`## NN.<attempt> — <timestamp>`) it targets the one whose `decision:` is `escalate` —
+  `Robin's call:` only ever resolves an escalation, and `revise` records carry a blank field that
+  stays blank (so `NN` alone is ambiguous on the revise→escalate cap path). The ledger path
+  resolves from `$LEDGER_FILE` (preferred) else `$RUN_DIR/delegate-decisions.md`.
+- **Output:** that escalate record's blank `Robin's call:` line is filled (atomic `.tmp` →
+  `os.replace`; every other byte preserved). Refuses to overwrite an already-filled field, and
+  refuses if there is no unresolved escalation record for `NN`.
 - **Deps:** POSIX `sh` + `python3`.
-- **Exit codes:** `0` filled; `1` any error (no record for `NN`, already filled, ambiguous, bad
+- **Exit codes:** `0` filled; `1` any error (no unresolved escalation for `NN`, already filled, bad
   args, write failure, or neither `$LEDGER_FILE` nor `$RUN_DIR` set).
 - **Caller:** the v2 Delegate (manager mode), on an escalation resolution.
 
