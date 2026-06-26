@@ -109,15 +109,20 @@ cd "$CTX" && claude -p \
   --system-prompt "You are The Delegate cold reviewer; do not act as the Conductor." \
   --model "$DELEGATE_MODEL" \
   --output-format json \
-  --json-schema "$ROOT/config/delegate-verdict.schema.json" \
+  --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
   --tools "Read" \
   --add-dir "$CTX" \
   --max-budget-usd "$B" \
   "$TASK_PROMPT" < /dev/null
 ```
 
-`$CTX = RUN_DIR/checkpoints/NN-context/` (the staged read root, v2 §9). Flag notes — each verified
-by the Phase-0 spike (`RUN_DIR/log.md`, TEST 3 / TEST 4):
+`$CTX = RUN_DIR/checkpoints/NN-context/` (the staged read root, v2 §9). `$TASK_PROMPT` names every
+staged file by its ABSOLUTE `$CTX` path (e.g. `$CTX/delegate-reviewer.md`, `$CTX/<artifact>`,
+`$CTX/integration-results.json`), NOT bare relative names: the headless Read tool resolves a
+relative name against the detected git/workspace root, not the spawn CWD, so a bare name is looked
+up at the repo root and DENIED by `--add-dir "$CTX"` (proven in Prompt 7 Part 2). Every named path
+is INSIDE `$CTX`, so AC4's "no path outside `$CTX`" still holds. Flag notes — each verified by the
+Phase-0 spike or Prompt 7 Part 2 (`RUN_DIR/log.md`):
 
 - **`--setting-sources ""` — REQUIRED for coldness.** `--add-dir` sandboxes only the **Read tool**
   (so `RUN_DIR/log.md` correctly returns READ_BLOCKED). CLAUDE.md auto-discovery is a **separate
@@ -130,9 +135,16 @@ by the Phase-0 spike (`RUN_DIR/log.md`, TEST 3 / TEST 4):
   confirmed it breaks auth ("Not logged in · Please run /login") on the current claude (2.1.187),
   so coldness is bought with `--setting-sources ""`, not `--bare`. The Phase-4 `watcher.sh` refactor
   drops `--bare` for the same reason.
-- **`--json-schema` MUST be absolute** (`$ROOT/config/delegate-verdict.schema.json`). Under
-  `cd "$CTX"` the CWD is `$CTX`, so a relative `config/...` would not resolve. The schema is read at
-  startup, before the sandbox applies, so this flag specifically needs the absolute path.
+- **`--json-schema` takes an INLINE JSON Schema STRING, not a path.** `claude --help` shows the
+  flag's argument is an inline schema (example `{"type":"object",...}`). Pass the schema file's
+  CONTENTS via `--json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")"` (double-quoted
+  command substitution keeps the JSON as one arg). A bare PATH aborts the spawn with
+  `Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'`, so no verdict
+  is written. There is therefore NO absolute path argument for the schema anymore. This was never
+  live-tested before Prompt 7 Part 2 — Phase-0 TEST 3 omitted `--json-schema` — which is why the
+  earlier "MUST be absolute path" characterization survived; Part 2 ran the full recipe live and
+  corrected it. `$ROOT` must be set in the spawn environment so the `$(cat ...)` resolves regardless
+  of the `cd "$CTX"` CWD (the path inside it is absolute).
 - **`$DELEGATE_MODEL`, `$B`** are caller-supplied env vars resolved at spawn time. `< /dev/null`
   closes stdin; `--max-budget-usd` caps spend.
 
@@ -451,7 +463,7 @@ cd "$CTX" && claude -p \
   --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
   --model "$DELEGATE_MODEL" \
   --output-format json \
-  --json-schema "$ROOT/config/delegate-verdict.schema.json" \
+  --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
   --tools "Read" \
   --add-dir "$CTX" \
   --setting-sources "" \
@@ -459,6 +471,12 @@ cd "$CTX" && claude -p \
   --max-budget-usd "$DELEGATE_MAX_USD" \
   "$DELEGATE_TASK_PROMPT"
 ```
+
+`--json-schema` takes an INLINE JSON Schema string, not a path, so the watcher inlines the schema
+file's CONTENTS via `$(cat ...)` (same fix as v2 §3 — a bare path aborts the spawn on claude
+2.1.187). `$DELEGATE_TASK_PROMPT` names the staged files by their ABSOLUTE `$CTX` paths (Section 4),
+because the headless Read tool resolves a bare relative name against the git/workspace root, not
+the CWD.
 
 Where `$CTX` = `RUN_DIR/checkpoints/NN-context/` (the staged per-checkpoint read scope). The
 watcher runs `cd "$CTX" && claude -p …` inside a scoped subshell and keeps the
@@ -515,8 +533,11 @@ After the verdict is written, `watcher.sh` removes the staging dir:
 `rm -rf "$CTX"`
 The canonical artifacts remain in `$RUN_DIR`; the staged copies are throwaway.
 
-The `$DELEGATE_TASK_PROMPT` names the staged files by their `$CTX`-relative paths
-(the artifact, `log-slice.md`, `state.json`, `conventions.md`, `delegate.md`). It
+The `$DELEGATE_TASK_PROMPT` names the staged files by their ABSOLUTE `$CTX` paths
+(`$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
+`$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
+checkpoints) — bare relative names are looked up at the git/workspace root, not the
+spawn CWD, and are DENIED by `--add-dir "$CTX"`. Every named path is INSIDE `$CTX`. It
 cannot name `log.md` because `log.md` is not in scope.
 
 ### Integration-mode staging additions

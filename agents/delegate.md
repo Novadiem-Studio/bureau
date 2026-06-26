@@ -131,19 +131,25 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      --system-prompt "You are The Delegate cold reviewer; do not act as the Conductor." \
      --model "$DELEGATE_MODEL" \
      --output-format json \
-     --json-schema "$ROOT/config/delegate-verdict.schema.json" \
+     --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
      --tools "Read" \
      --add-dir "$CTX" \
      --max-budget-usd "$B" \
      "$TASK_PROMPT" < /dev/null
    ```
-   `$TASK_PROMPT` is built from the bridge doc's reviewer prompt template. It names ONLY
-   `$CTX`-relative paths — the artifact by name, `log-slice.md`, `state.json`, `conventions.md`,
-   `delegate-reviewer.md`, and (integration only) `integration-results.json`. It carries NO
-   live-tree path outside `$CTX`, NO warm narrative, NO prior-verdict summary, NO relay context
-   (FR5/AC4). The ONLY absolute path in the whole spawn is the `--json-schema` flag
-   (`$ROOT/config/delegate-verdict.schema.json`) — a CLI flag read at startup before the sandbox
-   applies (bridge v2 §3), not part of the task prompt and not a read-scope grant. Read-only and
+   `$TASK_PROMPT` is built from the bridge doc's reviewer prompt template. It names the staged
+   files by their ABSOLUTE `$CTX` path — `$CTX/<artifact>`, `$CTX/log-slice.md`,
+   `$CTX/state.json`, `$CTX/conventions.md`, `$CTX/delegate-reviewer.md`, and (integration only)
+   `$CTX/integration-results.json`. Absolute `$CTX` paths are REQUIRED because the headless Read
+   tool resolves a bare relative name against the detected git/workspace root, not the spawn CWD,
+   so a relative name is looked up at the repo root and DENIED by the sandbox (proven in Prompt 7
+   Part 2). Every named path is INSIDE `$CTX`, so AC4's "no path outside `$CTX`" still holds. The
+   prompt carries NO live-tree path outside `$CTX`, NO warm narrative, NO prior-verdict summary,
+   NO relay context (FR5/AC4). `--json-schema` takes an INLINE JSON Schema string, not a path
+   (claude --help: example `{"type":...}`), so the recipe inlines the schema file's CONTENTS via
+   `$(cat "$ROOT/config/delegate-verdict.schema.json")` — there is NO absolute path argument for
+   the schema; a bare path aborts the spawn (`--json-schema is not valid JSON`). This was never
+   live-tested before Prompt 7 Part 2 because Phase-0 TEST 3 omitted the flag. Read-only and
    read-scope are OS-enforced (`--tools "Read"` + `--add-dir "$CTX"` + CWD=`$CTX`, no `--bare`):
    the reviewer physically cannot read `RUN_DIR/log.md` — the leak is PREVENTED, not caught
    (AC13).

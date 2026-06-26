@@ -324,14 +324,19 @@ process_request() {
       --out               "$CTX"
   fi
 
-  # ── build the task prompt (names $CTX-relative files only; never log.md) ───
-  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate-reviewer.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), and the artifact under review: ${artifact_base}. Apply the critic checklist in delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  # ── build the task prompt (names files by ABSOLUTE $CTX path; never log.md) ─
+  # Files are named by absolute $CTX path, NOT bare relative names: the headless
+  # claude Read tool resolves a relative path against the detected git/workspace
+  # root, not the spawn CWD, so a bare "delegate-reviewer.md" is looked up at the
+  # repo root and DENIED by the --add-dir "$CTX" sandbox. Every named path is INSIDE
+  # $CTX (the staged read root), so EC8/AC4 "no path outside $CTX" still holds.
+  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (house conventions), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), and the artifact under review: ${CTX}/${artifact_base}. Apply the critic checklist in ${CTX}/delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
 
   # ── override the task prompt for integration checkpoints (BLOCKER 1) ───────
   # Tell the Delegate to read integration-results.json. The routine prompt above is
   # used unchanged when checkpoint-type is routine/absent.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files in your read scope: delegate-reviewer.md (your role and the critic checklist), conventions.md (house conventions), log-slice.md (this checkpoint's log slice only), state.json (run state), the artifact under review: ${artifact_base}, and integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (house conventions), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), the artifact under review: ${CTX}/${artifact_base}, and ${CTX}/integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in ${CTX}/delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
   fi
 
   # ── system prompt: names the Delegate identity (paired with --setting-sources "")
@@ -350,11 +355,15 @@ process_request() {
   # subshell, so the watcher's CWD for the rest of the loop is unchanged. The
   # redirects sit OUTSIDE the subshell, so $out_json/$err_log resolve in the
   # watcher's CWD exactly as before (they derive from RUN_DIR/CHECKPOINTS_DIR).
+  # --json-schema takes an INLINE JSON Schema STRING, not a file path (claude --help:
+  # example is `{"type":...}`). Pass the schema file's CONTENTS via $(cat ...). A bare
+  # path aborts the spawn ("--json-schema is not valid JSON: Unrecognized token '/'").
+  # Never live-tested before Prompt 7 Part 2 (Phase-0 TEST 3 omitted this flag).
   ( cd "$CTX" && claude -p \
     --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
     --model "$DELEGATE_MODEL" \
     --output-format json \
-    --json-schema "$ROOT/config/delegate-verdict.schema.json" \
+    --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
     --tools "Read" \
     --add-dir "$CTX" \
     --setting-sources "" \
