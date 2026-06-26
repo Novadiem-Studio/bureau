@@ -4,8 +4,7 @@ This document owns the Conductor's model-routing policy, budget/quota usage note
 assignment tables. It was extracted from `agents/orchestrator.md` so orchestrator can stay
 focused on sequencing and adjudication.
 
-**Pointer back:** `agents/orchestrator.md` ("Model routing", "Usage snapshot", and
-"The cast and model per agent")
+**Pointer back:** `agents/orchestrator.md` § Model routing, budget usage, and cast map
 
 ---
 
@@ -183,6 +182,12 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **Tally** (shop droid) | `agents/tally.md` | standard - **sonnet, capped** | The thorough one. Meatier read-only odd jobs: directory surveys, log digests, mapping every place X appears across repos, gathering a coder's files. Spawn with `model: sonnet`, never opus. |
 | **Scoot** (shop droid) | `agents/scoot.md` | cheap - **haiku, locked** | The fast one. One-breath read-only fetches: path exists?, grep one pattern, fetch a value, confirm a command. Spawn with `model: haiku`. |
 | **The Notary** | `agents/notary.md` | strong | External cold attestation on a sealed packet; advisory, fresh-context |
+
+**Delegated checkpoint gating:**
+
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the v3 self-audit gate |
 
 Together they're the reason an odd job no longer falls through to the inherited session model.
 

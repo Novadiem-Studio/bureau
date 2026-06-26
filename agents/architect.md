@@ -20,6 +20,7 @@ prompt and the files you are told to read.
 
 Reads (handed by the Conductor):  RUN_DIR; spec.md § Requirements, § Acceptance criteria.
 Reads (self-read):  existing sub-app code/conventions (existing-project mode, if applicable).
+Mode appendix:  if spawned for execute-plan or design-build chunking, read `agents/modes/architect-execute-plan.md`.
 Does NOT receive:  log.md, prior Challenger findings — design from the requirement, not the argument.
 
 Convention: docs/conventions.md
@@ -176,12 +177,8 @@ what's there. Do NOT choose a new stack or framework; only propose a new compone
 change genuinely requires one, and justify it. Your "Tech Stack" section becomes "what
 we're working within," not a fresh pick.
 
-**Chunking for execute-plan:** when you define the chunking (the ordered list of scoped
-units), assign each chunk to exactly ONE build-party coder — frontend/design →
-**The Mage**, backend/data/contract → **The Systemsmith**, ops/deploy/infra → **The Mechanic**.
-A chunk that spans two domains is two chunks, with the contract-owning chunk ordered first.
-The Spellwright carries your assignment into each prompt's `Coder:` tag, and The Conductor
-dispatches off it.
+**Execute-plan / design-build chunking:** read `agents/modes/architect-execute-plan.md` and
+follow it instead of carrying the chunking rules in this base persona.
 
 ## Tone
 

@@ -125,9 +125,9 @@ Check for:
   - `workflows/index.md`
 
   > RECIPROCAL SYNC NOTE: this inlined surface list duplicates the canonical surface list in
-  > `agents/orchestrator.md` (the "Declaring a canon/process-surface review" rule). If the
+  > `docs/conductor-gates.md` (the "Declaring a canon/process-surface review" rule). If the
   > list is edited in one file it must be edited in the other. The canonical source is
-  > `agents/orchestrator.md`; this copy is the enforcement fixture.
+  > `docs/conductor-gates.md`; this copy is the enforcement fixture.
 
   If a canon/process surface is touched AND the structured `Promotion to canon: yes/no` +
   `Reason:` block is absent from the spawn prompt, that is a **Blocker**. The Challenger does

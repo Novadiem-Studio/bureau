@@ -56,12 +56,48 @@ grep -Fq '## Run accounting (close-out)' agents/orchestrator.md \
   || err "agents/orchestrator.md missing run-accounting pointer heading"
 grep -Fq '## Startup read scope (token discipline)' agents/orchestrator.md \
   || err "agents/orchestrator.md missing startup read-scope heading"
+always_core="$(awk '/\*\*Always-read core/{flag=1; next} /\*\*Load on demand/{flag=0} flag' agents/orchestrator.md)"
+if printf '%s\n' "$always_core" | grep -Fq 'docs/run-accounting.md'; then
+  err "agents/orchestrator.md startup core should not always-read run-accounting; load it at close-out"
+fi
+if printf '%s\n' "$always_core" | grep -Fq 'docs/model-routing-and-cast.md'; then
+  err "agents/orchestrator.md startup core should not always-read model-routing-and-cast; load before first spawn"
+fi
+grep -Fq 'Workflow: <selected workflow id>' agents/orchestrator.md \
+  || err "agents/orchestrator.md spawn template should pass selected workflow"
+grep -Fq 'Role mode: <mode for this spawn' agents/orchestrator.md \
+  || err "agents/orchestrator.md spawn template should pass role mode"
 grep -Fq 'docs/model-routing-and-cast.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing model-routing module pointer"
+grep -Fq 'agents/orchestrator.md` § Model routing, budget usage, and cast map' docs/model-routing-and-cast.md \
+  || err "docs/model-routing-and-cast.md pointer-back should target the orchestrator summary heading"
+grep -Fq 'docs/model-routing-and-cast.md` § Host policy - Claude Code (current)' README.md \
+  || err "README.md should point Host policy readers at docs/model-routing-and-cast.md"
+grep -Fq '| **The Delegate** | `agents/delegate.md` |' docs/model-routing-and-cast.md \
+  || err "docs/model-routing-and-cast.md missing Delegate in cast map"
+grep -Fq '| The Delegate | `agents/delegate.md` |' AGENTS.md \
+  || err "AGENTS.md missing Delegate in agent table"
+if grep -Fq 'Model tiers below' agents/orchestrator.md; then
+  err "agents/orchestrator.md still points at removed Model tiers section"
+fi
+if grep -Fq 'agents/orchestrator.md` § Host policy' README.md; then
+  err "README.md still points Host policy at agents/orchestrator.md"
+fi
 grep -Fq 'docs/existing-project-mode.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing existing-project module pointer"
 grep -Fq 'docs/conductor-gates.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing conductor-gates module pointer"
+if grep -Fq 'canonical source is `agents/orchestrator.md`' agents/critic.md; then
+  err "agents/critic.md canon/process surface note should point at docs/conductor-gates.md"
+fi
+[[ -f agents/modes/architect-execute-plan.md ]] \
+  || err "missing agents/modes/architect-execute-plan.md"
+[[ -f agents/modes/spellwright-execute-plan.md ]] \
+  || err "missing agents/modes/spellwright-execute-plan.md"
+grep -Fq 'agents/modes/architect-execute-plan.md' agents/architect.md \
+  || err "agents/architect.md should point execute-plan chunking at its mode appendix"
+grep -Fq 'agents/modes/spellwright-execute-plan.md' agents/prompt-engineer.md \
+  || err "agents/prompt-engineer.md should point execute-plan prompt folders at its mode appendix"
 grep -Fq '### Checkpoint type classification' docs/delegate-bridge.md \
   || err "docs/delegate-bridge.md missing checkpoint type classification anchor"
 grep -Fq 'docs/delegate-bridge.md § Checkpoint type classification' agents/orchestrator.md \

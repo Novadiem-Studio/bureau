@@ -60,10 +60,12 @@ modules only when their trigger appears.
 **Always-read core (every run):**
 1. `agents/orchestrator.md` (this file).
 2. `workflows/index.md` + exactly one selected workflow file.
-3. `docs/run-protocol.md` and `docs/run-accounting.md`.
-4. `docs/model-routing-and-cast.md`.
+3. `docs/run-protocol.md`.
 
 **Load on demand (only when triggered):**
+- `docs/model-routing-and-cast.md` — before resolving model routing, choosing a role/coder,
+  or spawning any agent. Do not spawn from memory; load this module before the first spawn.
+- `docs/run-accounting.md` — only at close-out or when handling an abnormal terminal exit.
 - `docs/existing-project-mode.md` — only when `project-context.md` sets `Mode: existing project`.
 - `docs/conductor-gates.md` — when adjudicating Critic findings, canon/promotion checks, dev/prod
   boundary decisions, external-action approvals, or Notary use.
@@ -139,8 +141,9 @@ as a hard quality bar:
 
 ## How to spawn an agent
 
-Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the **tier**
-for that agent (see **Model tiers** below — map tier → runtime model id when spawning).
+Use the **Agent tool**, `subagent_type: general-purpose`, and set `model` to the resolved
+runtime model for that role in `RUN_DIR/model-routing.json` (for Claude Code: `haiku`,
+`sonnet`, or `opus`; see `docs/model-routing-and-cast.md`).
 
 **Always pass `model` explicitly — never omit it.** An omitted `model` makes the subagent
 **inherit the main session's model**. When the Conductor runs on opus, that silently spends
@@ -156,8 +159,8 @@ studio's two shop droids — never let an odd job inherit the session model:
 
 Both are capped below opus, so an odd job can never inherit opus the way a bare spawn does.
 Pick Scoot by default; reach for Tally when the errand needs care or breadth. Reserve opus only
-for the roles the host-policy table marks opus. If you catch yourself spawning without a `model`,
-stop and add it.
+for the roles the model-routing module marks opus. If you catch yourself spawning without a
+`model`, stop and add it.
 
 Let `<ROOT>` be the absolute path to this `agent-framework/` folder. Let `<RUN_DIR>` be the
 absolute path to this run's directory (`<target-repo>/.bureau/runs/<yyyymmdd>-<task-slug>/` when a target is resolved, or `output/runs/<yyyymmdd>-<task-slug>/` for the no-target fallback). Pass a
@@ -168,6 +171,8 @@ You are running as <NAME> (the <ROLE>) in the Agent Team Framework, spawned with
 
 RUN_DIR: <RUN_DIR absolute path>
 WORKTREE: <absolute worktree path — build/execute prompts only; omit for planning-only spawns>
+Workflow: <selected workflow id>
+Role mode: <mode for this spawn, e.g. feature, execute-plan, design-build, brief, ingest, review>
 
 1. Read in full and adopt as your role:
    <ROOT>/agents/<role>.md
@@ -205,7 +210,8 @@ wait for its handoff before deciding the next move — this pipeline is sequenti
 ## Model routing, budget usage, and cast map
 
 > **Full protocol:** `docs/model-routing-and-cast.md`
-> Read this module at run start. This section is the reminder.
+> Read this module before resolving routing, choosing a role/coder, or spawning anything.
+> This section is the reminder.
 
 **Model routing source of truth:** resolve via `scripts/resolve-model-routing.sh`, copy to
 `RUN_DIR/model-routing.json`, and route every spawn from `roles.<role>` in that file.

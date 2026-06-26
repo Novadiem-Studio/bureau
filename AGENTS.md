@@ -86,6 +86,7 @@ reference and scope each agent to the right sub-app, while building within the c
 | The Mechanic (Sysadmin) | `agents/sysadmin.md` | Runs one vetted ops step: builds, deploys, infra. |
 | **Utility spawns** (on demand) | | |
 | The Notary | `agents/notary.md` | External cold attestation on a sealed artifact packet (advisory; Bundle 05). |
+| The Delegate | `agents/delegate.md` | Per-checkpoint automated gating verdict — flow-and-gating role, not a preference model; runs attended until the v3 self-audit gate (Bundle 09). |
 
 ## Output
 

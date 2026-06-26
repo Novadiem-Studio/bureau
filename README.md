@@ -31,7 +31,7 @@ frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`
 
 **Claude Code (current): haiku, sonnet, and opus.** Haiku = Scoot (cheap errands). Fable/premium
 experiments disabled. Challenger locked opus; Architect/Mage default opus; utility roles default
-sonnet. See `agents/orchestrator.md` § Host policy.
+sonnet. See `docs/model-routing-and-cast.md` § Host policy - Claude Code (current).
 
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
