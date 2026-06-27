@@ -42,7 +42,7 @@ violation — see the three-role contrast table in CLAUDE.md.
 
 **mode: cold reviewer** — Reads (OS-sandboxed to $CTX = RUN_DIR/checkpoints/NN-context/):
     delegate-reviewer.md (this persona's cold-reviewer-mode section, sliced by the stager),
-    conventions.md (house conventions),
+    conventions.md (convention router) + conventions/ modules on demand,
     log-slice.md (this checkpoint's log slice only; the full log.md is intentionally absent),
     state.json (the scope projection),
     the artifact under review,
@@ -112,7 +112,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    - the artifact under review (copied by name),
    - `log-slice.md` (this checkpoint's slice only),
    - `state.json` (the scope projection the Conductor wrote before returning),
-   - `conventions.md` (from `$ROOT/docs/`),
+   - `conventions.md` (router from `$ROOT/docs/`),
+   - `conventions/` (modules from `$ROOT/docs/conventions/`, loaded on demand),
    - `delegate-reviewer.md` — the cold-reviewer-mode SECTION of THIS file, via the W-d slice:
      ```sh
      awk '/^# COLD-REVIEWER-MODE:BEGIN/,/^# COLD-REVIEWER-MODE:END/' \
@@ -140,8 +141,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    ```
    `$TASK_PROMPT` is built from the bridge doc's reviewer prompt template. It names the staged
    files by their ABSOLUTE `$CTX` path — `$CTX/<artifact>`, `$CTX/log-slice.md`,
-   `$CTX/state.json`, `$CTX/conventions.md`, `$CTX/delegate-reviewer.md`, and (integration only)
-   `$CTX/integration-results.json`. Absolute `$CTX` paths are REQUIRED because the headless Read
+   `$CTX/state.json`, `$CTX/conventions.md`, `$CTX/conventions/`, `$CTX/delegate-reviewer.md`,
+   and (integration only) `$CTX/integration-results.json`. Absolute `$CTX` paths are REQUIRED because the headless Read
    tool resolves a bare relative name against the detected git/workspace root, not the spawn CWD,
    so a relative name is looked up at the repo root and DENIED by the sandbox (proven in Prompt 7
    Part 2). Every named path is INSIDE `$CTX`, so AC4's "no path outside `$CTX`" still holds. The

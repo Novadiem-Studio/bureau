@@ -2,7 +2,7 @@
 
 Pre-promotion matrix for the Delegate v2 integrated-nesting topology (Delegate top-level
 session, Conductor as a resumable Agent-tool subagent, cold reviewer as a headless `claude -p`
-one-shot). Format: `docs/conventions.md § Battle-test matrix file format`. This is the
+one-shot). Format: `docs/conventions/canon-promotion.md § Battle-test matrix file format`. This is the
 pre-promotion run; promotion re-runs the full matrix and writes a fresh `## Run` block above
 this one.
 

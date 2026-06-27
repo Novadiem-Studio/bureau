@@ -193,7 +193,7 @@ times; idempotent, no lock.
 
 Deterministic mechanical core of Bureau regression fixture promotion. Run at execute-plan
 close-out (step 7) after the integration branch merge, before the commit. Full lifecycle:
-`docs/conventions.md § Regression fixture file format`. Wiring: `workflows/execute-plan.md § step 7`.
+`docs/conventions/regression-fixtures.md § Regression fixture file format`. Wiring: `workflows/execute-plan.md § step 7`.
 
 ```bash
 # Dry-run first (report decisions, write nothing, run no suite):
@@ -226,7 +226,7 @@ sh scripts/promote-fixtures.sh \
 
 **Hard constraints (these never change):**
 - DOES NOT mutation-test (mutation-test is an authoring-convention obligation, not a script gate).
-- DOES NOT repath (repo-relative is an authoring-time guarantee per `docs/conventions.md`).
+- DOES NOT repath (repo-relative is an authoring-time guarantee per `docs/conventions/regression-fixtures.md`).
 - NEVER commits (commit is a Conductor action gated on exit 0).
 - NEVER pushes (push is past the production boundary; always the human's call).
 

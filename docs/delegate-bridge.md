@@ -270,7 +270,8 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
 - **the artifact under review** (copied by name);
 - **`log-slice.md`** — this checkpoint's log slice only;
 - **`state.json`** — the scope projection (the Conductor writes this before returning);
-- **`conventions.md`** — from `$ROOT/docs/`;
+- **`conventions.md`** — router from `$ROOT/docs/`;
+- **`conventions/`** — convention modules from `$ROOT/docs/conventions/`, loaded on demand;
 - **`delegate-reviewer.md`** — the cold-reviewer-mode SECTION of `agents/delegate.md`, via the W-d
   slice (v2 §4);
 - **`integration-results.json`** — integration checkpoints only, written by `integration-gate.sh`
@@ -298,7 +299,7 @@ context alone:
 | 6 | Destructive/irreversible, secrets/access, security/privacy | Yes | Artifact/diff inspection + keyword. |
 | 7 | Unresolved BLOCKER · exhausted revision cap · specialist conflict | Partial | BLOCKER + conflict are in the artifact/log-slice; **cap-exhaustion is NOT cold-detectable** — it is a cross-checkpoint counter the warm manager owns (`revise_counts`, EC7). |
 | 8 | Unexpected scope expansion · overlaps Robin's unrelated work | Partial | Scope-expansion vs spec § Requirements is detectable; **"overlaps unrelated work" is NOT** — it needs live external context. |
-| 9 | Spec-compliant but doctrine-violating (over-engineering) | Yes | The reviewer has the staged conventions.md + the artifact. |
+| 9 | Spec-compliant but doctrine-violating (over-engineering) | Yes | The reviewer has the staged conventions router/modules + the artifact. |
 
 **The named residual under-escalation gap:** cap-exhaustion (7), unrelated-work overlap (8), and
 conversation-only tradeoffs (2/3). The cold reviewer cannot independently catch these. For (7) the
@@ -527,6 +528,8 @@ cp "$ARTIFACT"                    "$CTX/"
 cp "$LOG_SLICE"                   "$CTX/log-slice.md"
 cp "$RUN_DIR/state.json"          "$CTX/"
 cp "$ROOT/docs/conventions.md"    "$CTX/"
+mkdir -p "$CTX/conventions"
+cp "$ROOT/docs/conventions/"*.md  "$CTX/conventions/"
 cp "$ROOT/agents/delegate.md"     "$CTX/"
 ```
 
@@ -537,7 +540,7 @@ The canonical artifacts remain in `$RUN_DIR`; the staged copies are throwaway.
 
 The `$DELEGATE_TASK_PROMPT` names the staged files by their ABSOLUTE `$CTX` paths
 (`$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
-`$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
+`$CTX/conventions/`, `$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
 checkpoints) — bare relative names are looked up at the git/workspace root, not the
 spawn CWD, and are DENIED by `--add-dir "$CTX"`. Every named path is INSIDE `$CTX`. It
 cannot name `log.md` because `log.md` is not in scope.

@@ -4,7 +4,7 @@ Single home for the coldness-receipt format, the review-artifact structure, and 
 adjudication rules. All persona and orchestrator files reference this doc rather than re-specifying
 these formats.
 
-Authoring quality bar: `docs/conventions.md` § Workflow / runbook authoring quality bar.
+Authoring quality bar: `docs/conventions/workflow-authoring.md` § Workflow / runbook authoring quality bar.
 
 ---
 
@@ -119,7 +119,7 @@ This is the v1 format anchor. The receipt is per-file, one entry per allowlisted
 ```
 
 **Promotion trigger:** if a Challenger check ever needs to cite this format by section reference
-(i.e., it becomes load-bearing cross-file), move it to `docs/conventions.md` under the
+(i.e., it becomes load-bearing cross-file), move it to the relevant `docs/conventions/` module under the
 convention-retirement rule and mark this section SUPERSEDED.
 
 ---

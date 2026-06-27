@@ -114,8 +114,25 @@ grep -Fq 'agents/critic/prompts.md' docs/external-action-boundary.md \
   || err "docs/external-action-boundary.md reciprocal note should name critic prompts slice"
 grep -Fq 'agents/critic/build-diff.md' docs/conductor-gates.md \
   || err "docs/conductor-gates.md reciprocal note should name critic build-diff slice"
-grep -Fq 'Reads (mode slice):' docs/conventions.md \
-  || err "docs/conventions.md Challenger contract should include critic mode-slice input"
+for module in agent-contracts workflow-authoring regression-fixtures canon-promotion failure-signatures; do
+  [[ -f "docs/conventions/${module}.md" ]] \
+    || err "missing docs/conventions/${module}.md"
+  grep -Fq "docs/conventions/${module}.md" docs/conventions.md \
+    || err "docs/conventions.md missing router pointer for ${module}"
+done
+if rg -n 'docs/conventions[.]md §' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+  err "stale docs/conventions.md § section reference; point at docs/conventions/<module>.md"
+fi
+grep -Fq 'Reads (mode slice):' docs/conventions/agent-contracts.md \
+  || err "docs/conventions/agent-contracts.md Challenger contract should include critic mode-slice input"
+grep -Fq 'docs/conventions/' docs/conductor-gates.md \
+  || err "docs/conductor-gates.md canon surface list should include docs/conventions/"
+for slice in spec-plan prompts build-diff; do
+  grep -Fq '`docs/conventions/`' "agents/critic/${slice}.md" \
+    || err "agents/critic/${slice}.md canon/process surface list should include docs/conventions/"
+done
+grep -Fq 'cp "$ROOT/docs/conventions/"*.md' scripts/watcher.sh \
+  || err "scripts/watcher.sh should stage docs/conventions modules with the conventions router"
 [[ -f agents/modes/architect-execute-plan.md ]] \
   || err "missing agents/modes/architect-execute-plan.md"
 [[ -f agents/modes/spellwright-execute-plan.md ]] \

@@ -287,6 +287,8 @@ process_request() {
   cp "$REQ_LOG_SLICE"              "$CTX/log-slice.md"
   cp "$RUN_DIR/state.json"         "$CTX/"
   cp "$ROOT/docs/conventions.md"   "$CTX/"
+  mkdir -p "$CTX/conventions"
+  cp "$ROOT/docs/conventions/"*.md "$CTX/conventions/"
   # Stage ONLY the cold-reviewer-mode SECTION of agents/delegate.md (W-d / W7).
   # The full dual-mode file grants manager-mode Bash/Write/spawn capabilities a
   # read-only reviewer must never read as its own; the awk slice extracts just the
@@ -332,13 +334,13 @@ process_request() {
   # root, not the spawn CWD, so a bare "delegate-reviewer.md" is looked up at the
   # repo root and DENIED by the --add-dir "$CTX" sandbox. Every named path is INSIDE
   # $CTX (the staged read root), so EC8/AC4 "no path outside $CTX" still holds.
-  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (house conventions), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), and the artifact under review: ${CTX}/${artifact_base}. Apply the critic checklist in ${CTX}/delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (convention router; load only the needed module from ${CTX}/conventions/), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), and the artifact under review: ${CTX}/${artifact_base}. Apply the critic checklist in ${CTX}/delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
 
   # ── override the task prompt for integration checkpoints (BLOCKER 1) ───────
   # Tell the Delegate to read integration-results.json. The routine prompt above is
   # used unchanged when checkpoint-type is routine/absent.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (house conventions), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), the artifact under review: ${CTX}/${artifact_base}, and ${CTX}/integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in ${CTX}/delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (convention router; load only the needed module from ${CTX}/conventions/), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), the artifact under review: ${CTX}/${artifact_base}, and ${CTX}/integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in ${CTX}/delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
   fi
 
   # ── system prompt: names the Delegate identity (paired with --setting-sources "")

@@ -63,6 +63,7 @@ Check for:
   - `workflows/` — any workflow file
   - `agents/` — any persona file
   - `docs/conventions.md`
+  - `docs/conventions/`
   - `plans/` prompt folders (`NN-*.md` / `00-index.md`)
   - The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
   - `workflows/index.md`
@@ -87,11 +88,11 @@ Check for:
 
   (b) The matrix present does not contain at least one named edge case AND at least one named
   failure mode. A 3–5-case matrix composed entirely of happy-path variants — regardless of
-  case count — is a **Blocker** (see `docs/conventions.md § Battle-test matrix file format`).
+  case count — is a **Blocker** (see `docs/conventions/canon-promotion.md § Battle-test matrix file format`).
 
   (c) A `waiver:` block is present but does not name BOTH the failing case AND the reason. A
   blank waiver (e.g. `waiver: accepted`) is itself a **Blocker**. See
-  `docs/conventions.md § Battle-test matrix file format` for the waiver validity rule.
+  `docs/conventions/canon-promotion.md § Battle-test matrix file format` for the waiver validity rule.
 
   (d) No `## Run` block exists in `battle-test.md`, OR its cases are not all
   pass-or-validly-waived. This is a **presence + results** check on the most recent `## Run`

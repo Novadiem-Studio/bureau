@@ -21,11 +21,11 @@
 #   4  Suite non-green after copy; Conductor must NOT commit; investigate failing fixture.
 #
 # DOES NOT mutation-test (mutation-test is an authoring-convention obligation, not a script gate).
-# DOES NOT repath (repo-relative is an authoring-time guarantee per docs/conventions.md).
+# DOES NOT repath (repo-relative is an authoring-time guarantee per docs/conventions/regression-fixtures.md).
 # NEVER commits (commit is a Conductor action gated on exit 0).
 # NEVER pushes (push is past the production boundary; always the human's call).
 #
-# Convention: docs/conventions.md § Regression fixture file format
+# Convention: docs/conventions/regression-fixtures.md § Regression fixture file format
 # Promotion lifecycle: workflows/execute-plan.md § step 7
 
 set -u

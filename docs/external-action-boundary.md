@@ -23,9 +23,9 @@ process — one that reaches a real recipient, external system, or third-party s
 
 > **RECIPROCAL SYNC NOTE:** `agents/critic/spec-plan.md` and `agents/critic/prompts.md` hold
 > duplicates of this 8-category taxonomy, inlined there because each cold Challenger mode slice
-> must be self-contained (per the input contract in `docs/conventions.md`). If the taxonomy is
-> edited here, it must also be edited in those slices. The canonical source is always this file;
-> if any copy differs, correct the critic slice to match — never the reverse.
+> must be self-contained (per the input contract in `docs/conventions/agent-contracts.md`). If
+> the taxonomy is edited here, it must also be edited in those slices. The canonical source is
+> always this file; if any copy differs, correct the critic slice to match — never the reverse.
 
 ---
 

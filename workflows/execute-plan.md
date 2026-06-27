@@ -96,7 +96,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 
    A fixture failure **BLOCKS** the prompt. The logged failure names: the fixture file, the `command:` value, and the actual failing output. A generic "regression failed" without these details is not a valid failure log.
 
-   No new script is required — the Conductor reads each fixture file and runs its `command:` field directly against the worktree or target directory. See `docs/conventions.md § Regression fixture file format` for the fixture format.
+   No new script is required — the Conductor reads each fixture file and runs its `command:` field directly against the worktree or target directory. See `docs/conventions/regression-fixtures.md § Regression fixture file format` for the fixture format.
 
    **Standing-suite gate (when `.bureau/regression/` exists):** Before any coder dispatch,
    if the target repo has a `<target-repo>/.bureau/regression/` directory, the gate also
@@ -111,7 +111,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    has a committed `run.sh`, is read through that runner. One mechanism per set, no two
    competing mechanisms over the same dir.) When the target repo IS the agent-framework,
    `.bureau/regression/` always exists and is read on every dispatch. See
-   `docs/conventions.md § Regression fixture file format` for the fixture format and lifecycle.
+   `docs/conventions/regression-fixtures.md § Regression fixture file format` for the fixture format and lifecycle.
 
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
@@ -131,7 +131,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
      wrong token, wrong data wiring) is always blocking regardless of server access.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
-   - **Fixture capture (on accept):** When the Conductor accepts a coder's prompt, capture the verification command(s) used for that prompt as one or more regression fixture files in `RUN_DIR/regression/`, per the format in `docs/conventions.md § Regression fixture file format`. One file per fixture, named `<NN>-<slug>.md`. Set `phase:` to the prompt id + workflow (`e.g. 03 · execute-plan`) and `owner:` to the prompt file. If the accepted phase had no discrete verification command (a "looks right" acceptance with no runnable command), record a fixture with `command: <none — phase accepted on visual inspection>` and log a Warning to `RUN_DIR/log.md` — this is a planning deficiency, not a gate failure.
+   - **Fixture capture (on accept):** When the Conductor accepts a coder's prompt, capture the verification command(s) used for that prompt as one or more regression fixture files in `RUN_DIR/regression/`, per the format in `docs/conventions/regression-fixtures.md § Regression fixture file format`. One file per fixture, named `<NN>-<slug>.md`. Set `phase:` to the prompt id + workflow (`e.g. 03 · execute-plan`) and `owner:` to the prompt file. If the accepted phase had no discrete verification command (a "looks right" acceptance with no runnable command), record a fixture with `command: <none — phase accepted on visual inspection>` and log a Warning to `RUN_DIR/log.md` — this is a planning deficiency, not a gate failure.
    - **Review-size gate:** before accepting a coder handoff, compare the diff to the prompt's
      named files, domain, and `Review size` handoff line. If the authored change is much broader
      than the prompt, crosses into another coder's domain, or hides large conceptual work behind
@@ -178,7 +178,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
 
    When a failure surfaces during a build-stage coder dispatch (step 6), the Conductor must, per
    failure:
-   1. Record a failure signature in `RUN_DIR/log.md`, per `docs/conventions.md § Failure signature
+   1. Record a failure signature in `RUN_DIR/log.md`, per `docs/conventions/failure-signatures.md § Failure signature
       format` (cite by name — do NOT restate the five fields).
    2. Identify the suspected layer and patch the durable artifact named by that layer.
    3. Run the verification case before dispatching the coder to retry or before adjudicating the
@@ -263,7 +263,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
       judgment call; the script does not make it.
 
    2. **Confirm mutation-test notes** — each selected fixture must have a mutation-test
-      confirmation note in `log.md` (per `docs/conventions.md § Regression fixture file format`
+      confirmation note in `log.md` (per `docs/conventions/regression-fixtures.md § Regression fixture file format`
       — mutation-test requirement). A selected fixture with no mutation-test note is a
       **Blocker** — fix or deselect before invoking the script. The script cannot verify
       mutation-test generically.
@@ -289,7 +289,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
       `[CHECKPOINT]` if different content) → copies survivors verbatim into
       `<repo>/.bureau/regression/` → runs `.bureau/regression/run.sh` and requires green.
       No repath step — repo-relative is an authoring-time guarantee (FR 13,
-      `docs/conventions.md § Regression fixture file format`).
+      `docs/conventions/regression-fixtures.md § Regression fixture file format`).
 
    4. **Handle exit code:**
       - **0** — survivors copied, suite green → proceed to commit.
@@ -308,7 +308,7 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
    **Non-framework target repos:** if the target repo is not the agent-framework itself,
    verify `.bureau/regression/` is not already owned for another purpose before writing to it.
    If a conflicting `.bureau/` exists, `[CHECKPOINT]` before proceeding (EC 3,
-   `docs/conventions.md § Regression fixture file format`).
+   `docs/conventions/regression-fixtures.md § Regression fixture file format`).
 
    **Run accounting last.** As the *final* close-out action — after the merge, package install,
    summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
@@ -329,9 +329,9 @@ builds the vetted prompts part by part (steps 5-7), each part reviewed before th
      `[EXTERNAL-ACTION CHECKPOINT]` entries in `log.md` to confirm every fired action was logged
      before it fired.
 
-   **`docs-sync-needed` (Conductor-owned Blocker).** For every script, runbook, or workflow changed this run, name the durable artifact patched — or state explicitly why none. Produce a list: one line per changed artifact, naming what was updated (e.g. `scripts/preflight.sh → docs/runbook X updated`). If no script/runbook/workflow changed this run, write the single line `docs-sync-needed: none — no script/runbook/workflow changed this run`. **An empty checkbox, a bare "done", or "docs are fine" is a Blocker** — the gate is satisfied only by the named list or the explicit no-change line. A change to `docs/conventions.md` itself satisfies the gate by naming `docs/conventions.md` as the artifact patched — the convention change IS the durable artifact; no further downstream update is implied.
+   **`docs-sync-needed` (Conductor-owned Blocker).** For every script, runbook, or workflow changed this run, name the durable artifact patched — or state explicitly why none. Produce a list: one line per changed artifact, naming what was updated (e.g. `scripts/preflight.sh → docs/runbook X updated`). If no script/runbook/workflow changed this run, write the single line `docs-sync-needed: none — no script/runbook/workflow changed this run`. **An empty checkbox, a bare "done", or "docs are fine" is a Blocker** — the gate is satisfied only by the named list or the explicit no-change line. A change to `docs/conventions.md` or a `docs/conventions/` module satisfies the gate by naming that convention artifact as the artifact patched — the convention change IS the durable artifact; no further downstream update is implied.
 
-   **`lessons-append` (Conductor-owned Blocker).** If a failure signature was recorded in `RUN_DIR/log.md` this run (per `docs/conventions.md § Failure signature format`), name the `output/studio/lessons.md` entry appended for it — by its `failure-signature:` slug — or state `lessons-append: none — carried` with the reason it was not appended this run (e.g. promotion deferred to a named next run). If no failure signature was recorded this run, write the single line `lessons-append: none — no failure signature recorded this run`. **An empty line, a bare "lessons updated", or "lessons.md is fine" with no named entry is a Blocker** — the gate is satisfied only by a named `lessons.md` entry (its slug), the explicit `none — carried` with a reason, or the explicit no-failure line. A failure signature in `log.md` with no corresponding `lessons.md` entry and no `none — carried` reason is a **Blocker** at close-out.
+   **`lessons-append` (Conductor-owned Blocker).** If a failure signature was recorded in `RUN_DIR/log.md` this run (per `docs/conventions/failure-signatures.md § Failure signature format`), name the `output/studio/lessons.md` entry appended for it — by its `failure-signature:` slug — or state `lessons-append: none — carried` with the reason it was not appended this run (e.g. promotion deferred to a named next run). If no failure signature was recorded this run, write the single line `lessons-append: none — no failure signature recorded this run`. **An empty line, a bare "lessons updated", or "lessons.md is fine" with no named entry is a Blocker** — the gate is satisfied only by a named `lessons.md` entry (its slug), the explicit `none — carried` with a reason, or the explicit no-failure line. A failure signature in `log.md` with no corresponding `lessons.md` entry and no `none — carried` reason is a **Blocker** at close-out.
 
 ## Prompt folder format
 

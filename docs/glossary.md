@@ -4,7 +4,7 @@ The decode legend for the shorthand that shows up in run output, spec deliverabl
 files: the `XX-N` deliverable labels, the state/status tokens, the checkpoint markers, and the
 verdict vocabulary. This is the one place that defines the label scheme; the section headings it
 derives from live in `agents/analyst.md § Output structure`, and the cast/role names live in
-`docs/conventions.md § File ↔ role alias table` (this file points there, it does not re-list them).
+`docs/conventions/agent-contracts.md § File ↔ role alias table` (this file points there, it does not re-list them).
 
 ---
 
@@ -93,7 +93,7 @@ In the Analyst's Greenfield Assumptions table (`agents/analyst.md`), each row ca
 ## Cast / role names
 
 Not re-listed here. The canonical map of persona file to cast name (The Conductor, The Challenger,
-The Spellwright, Analizer 2000, and the rest) is `docs/conventions.md § File ↔ role alias table`.
+The Spellwright, Analizer 2000, and the rest) is `docs/conventions/agent-contracts.md § File ↔ role alias table`.
 
 ---
 

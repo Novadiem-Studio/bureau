@@ -61,6 +61,7 @@ Check for:
   - `workflows/` — any workflow file
   - `agents/` — any persona file
   - `docs/conventions.md`
+  - `docs/conventions/`
   - `plans/` prompt folders (`NN-*.md` / `00-index.md`)
   - The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
   - `workflows/index.md`

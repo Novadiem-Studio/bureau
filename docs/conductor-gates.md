@@ -55,7 +55,7 @@ condition is unmet, carry it forward and keep building.
 
 ### Declaring a canon/process-surface review
 
-Whenever a run touches any **canon/process surface** (the list below - `workflows/`, `agents/`, `docs/conventions.md`, `plans/` prompt folders, the spawn-prompt template in `agents/orchestrator.md`, `workflows/index.md`), the Conductor's Challenger spawn prompt **MUST** include this structured block:
+Whenever a run touches any **canon/process surface** (the list below - `workflows/`, `agents/`, `docs/conventions.md`, `docs/conventions/`, `plans/` prompt folders, the spawn-prompt template in `agents/orchestrator.md`, `workflows/index.md`), the Conductor's Challenger spawn prompt **MUST** include this structured block:
 
 ```
 Promotion to canon: yes/no
@@ -74,6 +74,7 @@ The Challenger keys off this structured block and never self-infers a promotion 
 - `workflows/` - any workflow file
 - `agents/` - any persona file
 - `docs/conventions.md`
+- `docs/conventions/`
 - `plans/` prompt folders (`NN-*.md` / `00-index.md`)
 - The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
 - `workflows/index.md`

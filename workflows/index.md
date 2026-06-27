@@ -13,9 +13,9 @@ this folder with the full step definition.
 5. If the task is mixed (e.g. "fix these bugs AND add a feature"), split it and run each
    part through its own workflow.
 
-> **Authoring a step line?** Lead with **the agent's bold cast name**, make the tier its own **standard**/**strong** token, use → for outputs. Full spec: docs/conventions.md § Workflow step-line spec.
-> **Authoring a workflow or runbook?** Use docs/conventions.md § Workflow / runbook authoring
-> quality bar: objective, inputs, steps, outputs, done criteria, edge cases, fallback behavior,
+> **Authoring a step line?** Lead with **the agent's bold cast name**, make the tier its own **standard**/**strong** token, use → for outputs. Full spec: docs/conventions/workflow-authoring.md § Workflow step-line spec.
+> **Authoring a workflow or runbook?** Use docs/conventions/workflow-authoring.md § Workflow / runbook authoring quality bar:
+> objective, inputs, steps, outputs, done criteria, edge cases, fallback behavior,
 > and observability for unattended or externally visible work.
 
 ## Registered workflows

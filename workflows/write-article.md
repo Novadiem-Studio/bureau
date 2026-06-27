@@ -124,7 +124,7 @@ re-run from step 13. A build failure (14b) halts the same way.
 ## Fallback behavior
 
 - If a step fails (non-zero exit, agent error), the Conductor logs the failure to `RUN_DIR/log.md`
-  per `docs/conventions.md § Failure signature format` and raises a `[CHECKPOINT]`. **Do not
+  per `docs/conventions/failure-signatures.md § Failure signature format` and raises a `[CHECKPOINT]`. **Do not
   auto-retry silently.**
 - The article's recoverable state at any point is the latest clean `RUN_DIR/versions/` file. Every
   prior stage is preserved (immutable, numbered), so a bad step never destroys earlier work — roll

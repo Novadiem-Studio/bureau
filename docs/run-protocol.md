@@ -113,7 +113,7 @@ All three of these have bitten real runs:
 - **Carried items get their own key.** Open questions, caveats, and confirm-before-build
   notes go in `carried_items` — never appended to the `phase` string. `carried_items` is
   populated 1:1 from each agent's `Passing forward` footer bullets — copy them, don't
-  author a parallel list (`docs/conventions.md`).
+  author a parallel list (`docs/conventions/agent-contracts.md`).
 - **Validate after every write.** Duplicate keys silently shadow each other and stale
   values survive. After each update run:
   `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`
