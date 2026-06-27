@@ -145,8 +145,10 @@ Phase-0 spike or Prompt 7 Part 2 (`RUN_DIR/log.md`):
   earlier "MUST be absolute path" characterization survived; Part 2 ran the full recipe live and
   corrected it. `$ROOT` must be set in the spawn environment so the `$(cat ...)` resolves regardless
   of the `cd "$CTX"` CWD (the path inside it is absolute).
-- **`$DELEGATE_MODEL`, `$B`** are caller-supplied env vars resolved at spawn time. `< /dev/null`
-  closes stdin; `--max-budget-usd` caps spend.
+- **`$DELEGATE_MODEL`** is caller-supplied. **`$B`** is the per-spawn spend ceiling, set as
+  `${DELEGATE_MAX_USD:-5.00}`: generous headroom so the cap is a runaway backstop, not a throttle
+  (on a flat-rate subscription the dollars are notional; the cap only stops a stuck spawn, it must
+  never throttle a real review). `< /dev/null` closes stdin; `--max-budget-usd` caps one spawn's spend.
 
 Read-only (`--tools "Read"`) and read-scope (`--add-dir "$CTX"` + CWD=`$CTX`) are OS-enforced: the
 reviewer physically cannot read `RUN_DIR/log.md` or a prior `NN-verdict.md`. The leak is PREVENTED,
@@ -504,7 +506,7 @@ Each flag's load-bearing job:
   and broke coldness; with it, `claude_md_loaded: false` and the identity probe returns
   `NONE`. (Same finding as the v2 §3 single source.)
 - `--no-session-persistence`: no session to resume; each checkpoint is transcript-free.
-- `--max-budget-usd "$DELEGATE_MAX_USD"`: per-checkpoint spend ceiling (default 0.50).
+- `--max-budget-usd "$DELEGATE_MAX_USD"`: per-checkpoint spend ceiling (default 5.00; headroom, a runaway backstop not a throttle).
 
 `--bare` was DROPPED. It would also suppress CLAUDE.md auto-discovery, but Phase-0 TEST 4 (R6)
 confirmed it breaks auth ("Not logged in · Please run /login") on the current claude (2.1.187).

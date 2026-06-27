@@ -126,6 +126,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 5. Spawn the cold reviewer as a headless `claude -p` one-shot, OS-sandboxed, using the exact
    canonical recipe (`docs/delegate-bridge.md` v2 §3):
    ```sh
+   B="${DELEGATE_MAX_USD:-5.00}"   # spend ceiling: headroom, a runaway backstop not a throttle
    cd "$CTX" && claude -p \
      --setting-sources "" \
      --system-prompt "You are The Delegate cold reviewer; do not act as the Conductor." \

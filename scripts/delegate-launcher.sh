@@ -23,13 +23,13 @@
 #   $2              task brief text (optional positional; may be omitted if only
 #                   flags are needed, but then the brief defaults to empty)
 #   --revision-cap N  override the revision cap (default 2)
-#   --max-usd F       override the per-checkpoint spend ceiling (default 0.50)
+#   --max-usd F       override the per-checkpoint spend ceiling (default 5.00)
 #
 # Environment set / exported:
 #   RUN_DIR           absolute path to the run dir
 #   ROOT              absolute path to the agent-framework root
 #   REVISION_CAP      revision cap integer (default 2, overridable)
-#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 0.50, overridable)
+#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 5.00, overridable)
 #
 # Exit codes:
 #   0   clean exit (watcher exited normally or SIGTERM received)
@@ -41,7 +41,7 @@
 
 # Defaults
 revision_cap=2
-max_usd="0.50"
+max_usd="5.00"
 task_brief=""
 run_dir_arg=""
 brief_parsed=0

@@ -24,7 +24,9 @@
 # Environment (set by delegate-launcher.sh):
 #   RUN_DIR           absolute path to the run dir (also accepted as $1)
 #   ROOT              absolute path to the agent-framework root
-#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 0.50)
+#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 5.00; headroom, a runaway
+#                     backstop not a throttle. On a subscription the dollars are notional;
+#                     the cap exists only to stop a stuck spawn, never to throttle a real review.)
 #   REVISION_CAP      revision cap integer (default 2)
 #
 # Usage:
@@ -64,7 +66,7 @@ if [ ! -d "$ROOT" ]; then
   exit 1
 fi
 
-DELEGATE_MAX_USD="${DELEGATE_MAX_USD:-0.50}"
+DELEGATE_MAX_USD="${DELEGATE_MAX_USD:-5.00}"
 REVISION_CAP="${REVISION_CAP:-2}"
 # Per-checkpoint spawn-failure ceiling (money-safety). --max-budget-usd caps the
 # spend of ONE spawn but NOT the number of spawns. If the Delegate persistently
