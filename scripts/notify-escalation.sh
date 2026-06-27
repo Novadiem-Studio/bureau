@@ -17,7 +17,7 @@
 #   0  always (success path AND failure path) — never aborts the caller
 #   1  bad arguments only
 #
-# Spec refs: docs/delegate-bridge.md § 8 (escalation channel); EC4, A2, FR 7.
+# Spec refs: docs/delegate-bridge/watcher-v1.md § Section 8 (escalation channel); EC4, A2, FR 7.
 
 usage() {
   echo "Usage: notify-escalation.sh <checkpoint-id> <run-dir> <reason>" >&2

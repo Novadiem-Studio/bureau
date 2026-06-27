@@ -35,7 +35,7 @@
 #   0   clean exit (watcher exited normally or SIGTERM received)
 #   1   bad arguments (RUN_DIR missing or state.json absent)
 #
-# Spec refs: AC 11, FR 41, FR 42; docs/delegate-bridge.md § 5 (Conductor shim).
+# Spec refs: AC 11, FR 41, FR 42; docs/delegate-bridge.md § Section 5 (Conductor shim).
 
 # ── parse arguments ──────────────────────────────────────────────────────────
 

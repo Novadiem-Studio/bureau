@@ -36,8 +36,9 @@
 #   0  clean exit (SIGTERM trapped)
 #   1  bad configuration (RUN_DIR / ROOT missing or invalid)
 #
-# Spec refs: docs/delegate-bridge.md § 3 (spawn invocation), § 4 (staging),
-#            § 7 (bridge failure modes); AC 7, AC 13, AC 14; EC1, EC3, EC8.
+# Spec refs: docs/delegate-bridge/watcher-v1.md § Section 3 (spawn invocation),
+#            § Section 4 (staging), § Section 7 (bridge failure modes);
+#            AC 7, AC 13, AC 14; EC1, EC3, EC8.
 
 # ── configuration ────────────────────────────────────────────────────────────
 

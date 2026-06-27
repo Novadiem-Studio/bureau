@@ -10,7 +10,7 @@
 # Usage:
 #   ledger-set-robins-call.sh <NN> "<literal value>"
 #
-# Record identification: a ledger record (docs/delegate-bridge.md § 9) is a block
+# Record identification: a ledger record (docs/delegate-bridge/watcher-v1.md § Section 9) is a block
 # that begins at a `## NN.<attempt> — <timestamp>` header (ledger-append.sh:67) and
 # runs until the next `## ` header or EOF. ledger-append.sh writes ONE record per
 # verdict, each with a `decision:` line (ledger-append.sh:68) and a blank

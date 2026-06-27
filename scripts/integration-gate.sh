@@ -3,7 +3,7 @@
 #
 # This is the standalone one-shot extracted from scripts/watcher.sh's inline
 # integration executor (the FR14 single-source decision, spec OQ1). It is the ONE
-# copy of the gate logic, called by two callers (docs/delegate-bridge.md § v2 §5):
+# copy of the gate logic, called by two callers (docs/delegate-bridge/v2-integrated.md § v2 §5):
 #   - the v2 Delegate (manager mode) before spawning the cold reviewer at an
 #     integration checkpoint;
 #   - the refactored v1 watcher (Phase 4 / Prompt 4), in place of its inline body.
@@ -44,8 +44,9 @@
 #   0  results written (or routine no-op)
 #   2  usage error (missing/unknown flag, --out absent or not a directory)
 #
-# Spec refs: spec.md Architecture OQ1, Technical Risk R1; docs/delegate-bridge.md
-#            § v2 §5; AC5/AC7 (Track-3 evidence, closed end-to-end downstream).
+# Spec refs: spec.md Architecture OQ1, Technical Risk R1;
+#            docs/delegate-bridge/v2-integrated.md § v2 §5;
+#            AC5/AC7 (Track-3 evidence, closed end-to-end downstream).
 
 # ── parse CLI flags ──────────────────────────────────────────────────────────
 REQ_CHECKPOINT_TYPE=""

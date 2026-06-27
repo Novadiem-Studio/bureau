@@ -29,7 +29,7 @@
 #   2  validation failure (no verdict written, no ledger appended; notifier fired)
 #   1  bad arguments
 #
-# Spec refs: docs/delegate-bridge.md § 2, § 6; AC 8, AC 10, AC 16; EC2, EC6, EC7, EC10.
+# Spec refs: docs/delegate-bridge.md § Section 2, docs/delegate-bridge/watcher-v1.md § Section 6; AC 8, AC 10, AC 16; EC2, EC6, EC7, EC10.
 # Key invariants (gated at review):
 #   - The cap is checked against revise-count from the REQUEST file — never against
 #     `attempt`, never from the JSON output. A hash-rebind re-issue bumps `attempt`

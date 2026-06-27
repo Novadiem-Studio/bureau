@@ -8,4 +8,4 @@ command: |
   echo PASS
 expected: exit 0 — prints "state.json scope OK" then "PASS"; nonzero if the scope block, the new request fields, or the orchestrator classifier step are missing
 phase: 01 · execute-plan (Bundle 14)
-owner: prompts.md Prompt 1 (docs/delegate-bridge.md §2, templates/state.json, agents/orchestrator.md)
+owner: prompts.md Prompt 1 (docs/delegate-bridge.md § Section 2, templates/state.json, agents/orchestrator.md)

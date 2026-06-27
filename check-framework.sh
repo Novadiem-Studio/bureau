@@ -143,10 +143,31 @@ grep -Fq 'agents/modes/spellwright-execute-plan.md' agents/prompt-engineer.md \
   || err "agents/prompt-engineer.md should point execute-plan prompt folders at its mode appendix"
 grep -Fq '### Checkpoint type classification' docs/delegate-bridge.md \
   || err "docs/delegate-bridge.md missing checkpoint type classification anchor"
+grep -Fq '## Section 5: Conductor checkpoint shim' docs/delegate-bridge.md \
+  || err "docs/delegate-bridge.md missing Conductor checkpoint shim anchor"
+[[ -f docs/delegate-bridge/v2-integrated.md ]] \
+  || err "missing docs/delegate-bridge/v2-integrated.md"
+[[ -f docs/delegate-bridge/watcher-v1.md ]] \
+  || err "missing docs/delegate-bridge/watcher-v1.md"
+grep -Fq 'docs/delegate-bridge/v2-integrated.md' docs/delegate-bridge.md \
+  || err "docs/delegate-bridge.md missing v2 module pointer"
+grep -Fq 'docs/delegate-bridge/watcher-v1.md' docs/delegate-bridge.md \
+  || err "docs/delegate-bridge.md missing watcher module pointer"
+grep -Fq 'CONDUCTOR-RETURN' docs/delegate-bridge/v2-integrated.md \
+  || err "docs/delegate-bridge/v2-integrated.md missing CONDUCTOR-RETURN schema"
+grep -Fq 'RECIPROCAL SYNC NOTE' docs/delegate-bridge/v2-integrated.md \
+  || err "docs/delegate-bridge/v2-integrated.md missing schema reciprocal sync note"
+grep -Fq '## Section 3: The load-bearing spawn invocation' docs/delegate-bridge/watcher-v1.md \
+  || err "docs/delegate-bridge/watcher-v1.md missing watcher spawn section"
+grep -Fq '## Section 4: Staging' docs/delegate-bridge/watcher-v1.md \
+  || err "docs/delegate-bridge/watcher-v1.md missing watcher staging section"
 grep -Fq 'docs/delegate-bridge.md § Checkpoint type classification' agents/orchestrator.md \
   || err "agents/orchestrator.md should link to docs/delegate-bridge.md § Checkpoint type classification"
 if rg -n 'docs/delegate-bridge\.md § checkpoint types' . -g '*.md' -g '!output/runs/**' >/dev/null 2>&1; then
   err "stale delegate-bridge checkpoint-types anchor reference"
+fi
+if rg -n 'docs/delegate-bridge[.]md § v2|docs/delegate-bridge[.]md § Integrated topology|docs/delegate-bridge[.]md` v2|docs/delegate-bridge[.]md § [346789]' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+  err "stale delegate-bridge implementation reference; use v2-integrated.md or watcher-v1.md"
 fi
 if grep -n 'Read `agents/orchestrator.md` in full\.' AGENTS.md CLAUDE.md >/dev/null 2>&1; then
   err "startup docs still say to read orchestrator in full; use startup read-scope policy"

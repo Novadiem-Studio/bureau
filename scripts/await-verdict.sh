@@ -18,7 +18,7 @@
 #   2  timed out waiting for the verdict file
 #   1  bad arguments
 #
-# Spec refs: docs/delegate-bridge.md § 5 (Conductor checkpoint shim); FR 2, FR 37.
+# Spec refs: docs/delegate-bridge.md § Section 5 (Conductor checkpoint shim); FR 2, FR 37.
 
 usage() {
   echo "Usage: await-verdict.sh <verdict-file-path> [timeout-seconds]" >&2

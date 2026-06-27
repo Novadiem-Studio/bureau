@@ -4,7 +4,7 @@
 # Parses ONLY delegate-decisions.md — never log.md, never the artifact set. The
 # work is O(n) on the checkpoint count (EC5): one pass over the ledger records,
 # no re-reading of run files. Each ledger record is the schema ledger-append.sh
-# writes (docs/delegate-bridge.md § 9); this script is the read side of that
+# writes (docs/delegate-bridge/watcher-v1.md § Section 9); this script is the read side of that
 # contract.
 #
 # Usage:
@@ -18,7 +18,7 @@
 #   0  summary written
 #   1  bad arguments, or the ledger file does not exist
 #
-# Spec refs: docs/delegate-bridge.md § 9 (ledger schema); AC 15, FR 8, EC5.
+# Spec refs: docs/delegate-bridge/watcher-v1.md § Section 9 (ledger schema); AC 15, FR 8, EC5.
 
 usage() {
   echo "Usage: summary-gen.sh <ledger-file> <output-file>" >&2

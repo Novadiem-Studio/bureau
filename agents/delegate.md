@@ -33,7 +33,7 @@ violation — see the three-role contrast table in CLAUDE.md.
     the CONDUCTOR-RETURN block (the return value from the Conductor subagent),
     the artifact under review (path from the return block),
     RUN_DIR/log.md (manager only — used for resume context and logging).
-  Reads (self-opened): $ROOT/docs/delegate-bridge.md (the v2 contract reference).
+  Reads (self-opened): $ROOT/docs/delegate-bridge/v2-integrated.md (the v2 contract reference).
   Does NOT receive: the Conductor's internal conversation; prior checkpoint verdicts;
     the cold reviewer's spawn context — manager mode must not contaminate the cold context.
   Tools: Bash (to invoke integration-gate.sh, the claude -p reviewer, ledger-append.sh,
@@ -59,7 +59,7 @@ Convention: docs/conventions.md
 Manager/relay mode is the warm, top-level session. It has Bash + Write (Inputs above). It
 spawns and resumes the Conductor, runs the deterministic gates, stages each checkpoint's cold
 read-set, spawns a cold reviewer for every routine verdict, and routes forks to Robin. The
-protocol contract is `docs/delegate-bridge.md` § Integrated topology (v2); this section is the
+protocol contract is `docs/delegate-bridge/v2-integrated.md`; this section is the
 persona-side view of it — read the bridge doc for the field schemas and the script signatures.
 
 ### Bootstrap (starting a v2 session)
@@ -89,7 +89,7 @@ in v2 — the session IS the Delegate. To start:
 ### Main manager loop
 
 For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
-`docs/delegate-bridge.md` v2 §1). Read `return-type` FIRST, then branch.
+`docs/delegate-bridge/v2-integrated.md` § v2 §1). Read `return-type` FIRST, then branch.
 
 **Routine checkpoint (`return-type: routine-checkpoint`):**
 
@@ -125,7 +125,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    must not read as its own — W7 capability-contamination guard).
 4. Log the reviewer's task prompt to `RUN_DIR/log.md` BEFORE spawning (AC4 — auditable).
 5. Spawn the cold reviewer as a headless `claude -p` one-shot, OS-sandboxed, using the exact
-   canonical recipe (`docs/delegate-bridge.md` v2 §3):
+   canonical recipe (`docs/delegate-bridge/v2-integrated.md` § v2 §3):
    ```sh
    B="${DELEGATE_MAX_USD:-5.00}"   # spend ceiling: headroom, a runaway backstop not a throttle
    cd "$CTX" && claude -p \
@@ -481,7 +481,7 @@ signal in the Escalation field. Detectability limitations:
 ```
 DELEGATE RUN COMPLETE (manager/relay)
 Consumed: <delegate-state.json, state.json, the CONDUCTOR-RETURN blocks, the artifacts under
-  review, RUN_DIR/log.md, docs/delegate-bridge.md — checked against the ## Inputs contract;
+  review, RUN_DIR/log.md, docs/delegate-bridge/v2-integrated.md — checked against the ## Inputs contract;
   note any deviation>
 Produced: <delegate-state.json writes; RUN_DIR/log.md entries; the staged $CTX dirs; the ledger
   appends via ledger-append.sh / ledger-set-robins-call.sh — paths>

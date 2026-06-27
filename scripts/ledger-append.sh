@@ -25,7 +25,7 @@
 #   0  record appended
 #   1  bad arguments
 #
-# Spec refs: docs/delegate-bridge.md § 9 (decision ledger schema); FR 26-28.
+# Spec refs: docs/delegate-bridge/watcher-v1.md § Section 9 (decision ledger schema); FR 26-28.
 
 usage() {
   echo "Usage: ledger-append.sh <ledger-file> <label> <decision> <artifact-path> <artifact-hash> <uncertainties> <rationale> <borderline> <refs>" >&2

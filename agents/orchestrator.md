@@ -69,8 +69,9 @@ modules only when their trigger appears.
 - `docs/existing-project-mode.md` — only when `project-context.md` sets `Mode: existing project`.
 - `docs/conductor-gates.md` — when adjudicating Critic findings, canon/promotion checks, dev/prod
   boundary decisions, external-action approvals, or Notary use.
-- `docs/delegate-bridge.md` — only when the Delegate watcher is active and checkpoint traffic is
-  flowing through the bridge.
+- `docs/delegate-bridge.md` — only when checkpoint traffic flows through the Delegate bridge.
+  Load its `v2-integrated.md` or `watcher-v1.md` module only when that topology is active or
+  implementation detail is needed.
 - `docs/git-worktree.md` — only for execute/build workflows that actually create/merge/remove a
   worktree.
 
@@ -419,8 +420,8 @@ A cosmic elf who once conducted an orchestra of stars; took this job because the
 ## v2 checkpoint return protocol
 
 This is the **v2 / integrated-topology** path: the Delegate is the top-level session and spawned
-this Conductor as a resumable Agent-tool subagent (`docs/delegate-bridge.md § Integrated topology
-(v2)`). At each checkpoint the Conductor **returns a structured block to the Delegate** instead of
+this Conductor as a resumable Agent-tool subagent (`docs/delegate-bridge/v2-integrated.md`). At
+each checkpoint the Conductor **returns a structured block to the Delegate** instead of
 emitting an interactive `[CHECKPOINT]` or writing a v1 `NN-request.md`. The Delegate stages a cold
 read-set, spawns a fresh headless cold reviewer for the gating verdict, then resumes the Conductor
 via `SendMessage`. This section shares **no flow logic** with the v1 watcher-attended shim below
@@ -428,9 +429,9 @@ via `SendMessage`. This section shares **no flow logic** with the v1 watcher-att
 them per checkpoint.
 
 The full contract — return-block schema, staged manifest, cold-reviewer spawn recipe, the
-deterministic revision cap, and `delegate-state.json` — lives in `docs/delegate-bridge.md
-§ Integrated topology (v2)`. That doc is the authority; this section is the Conductor's
-per-checkpoint protocol.
+deterministic revision cap, and `delegate-state.json` — lives in
+`docs/delegate-bridge/v2-integrated.md`. That doc is the authority; this section is the
+Conductor's per-checkpoint protocol.
 
 ### A1 — Mode detection (which checkpoint path to run)
 
@@ -474,7 +475,7 @@ cold reviewer cannot see:
 For every routine checkpoint the fresh cold reviewer independently **re-applies all 9 signals** as a
 backstop, so a genuine fork the Conductor under-classified as routine is caught when the reviewer
 returns `escalate` (FR8). The named residual gap (signals 7-cap, 8-overlap, 2/3-conversation-only)
-is documented in `docs/delegate-bridge.md § v2 §10`.
+is documented in `docs/delegate-bridge/v2-integrated.md § v2 §10`.
 
 **AskUserQuestion is unavailable in subagent contexts (A3, confirmed by Phase-0 Test 2).** The
 Conductor must NOT call it regardless of classification. At a genuine fork the correct behavior is to
@@ -497,8 +498,8 @@ checkpoint. Returning before writing would lose them.
 ### A4 — Emit the CONDUCTOR-RETURN block, then end the turn
 
 Emit the return block as a fenced block in your final message, using this schema **verbatim** (the
-authority is `docs/delegate-bridge.md § v2 §1`; the Delegate parses `return-type` first, then
-branches):
+authority is `docs/delegate-bridge/v2-integrated.md § v2 §1`; the Delegate parses `return-type`
+first, then branches):
 
 ```
 CONDUCTOR-RETURN
@@ -582,10 +583,10 @@ Delegate is attached (i.e., when `delegate-launcher.sh` has started the watcher)
 NOT replace or edit the existing `[CHECKPOINT]` block above — that block remains unchanged
 as the fallback when no watcher is running.
 
-For the full protocol (request/verdict schemas, checkpoint-type classification, the
-`attempt` vs. `revise-count` distinction, the staging-dir assembly, the revision cap, and
-bridge failure modes), see `docs/delegate-bridge.md`. This section is the per-checkpoint
-reminder; the bridge doc is the authority.
+For the Conductor hot path (request/verdict schemas, checkpoint-type classification, and the
+`attempt` vs. `revise-count` distinction), see `docs/delegate-bridge.md`. For watcher staging,
+revision-cap enforcement, ledger, and bridge failure modes, load
+`docs/delegate-bridge/watcher-v1.md`. This section is the per-checkpoint reminder.
 
 ### Three-step shim (when watcher is active)
 
@@ -602,7 +603,7 @@ Write `RUN_DIR/checkpoints/NN-request.md` with both `attempt` and `revise-count`
 - First issue: `attempt: 1`, `revise-count: 0`.
 - On a `revise` re-issue: `attempt + 1`, `revise-count + 1`.
 - On a hash-rebind (artifact changed mid-checkpoint, not a revise): `attempt + 1`,
-  `revise-count unchanged`. See `docs/delegate-bridge.md § 2` for the full increment rules.
+  `revise-count unchanged`. See `docs/delegate-bridge.md § Section 2` for the full increment rules.
 
 **Step 2 — Fire `await-verdict.sh` via `run_in_background` and end the turn.**
 ```
