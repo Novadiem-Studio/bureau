@@ -46,7 +46,8 @@ skill and follow it; do not duplicate its steps here.
 4. **The Conductor** (**standard**) — close out: confirm the artifact/checkpoint is green,
    summarize what ran and what was produced, flag anything deferred → one-block summary appended
    to `RUN_DIR/log.md`, updated `state.json`. For commit-message guidance in execute-style runs,
-   see `workflows/execute-plan.md` step 7. (Run accounting **last** — see the end of this step.)
+   see `workflows/execute-plan/build-tail.md` step 7. (Run accounting **last** — see the end of
+   this step.)
 
    **Run accounting last.** As the *final* close-out action — after the summary and the final
    `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>` so `accounting.json`
@@ -85,5 +86,6 @@ skill and follow it; do not duplicate its steps here.
 > **dev/build artifact**: an image built, an archive produced, a deploy to dev verified. It does
 > NOT promote a release, publish a build to the public/store, or push toward a release/prod
 > branch. Any such step is a **release step**, decided and initiated by the human, never run
-> autonomously in this workflow. This is the same hard stop `execute-plan.md` carries in full —
-> see its "Production boundary — hard stop" block; it is not re-documented here at length.
+> autonomously in this workflow. This is the same hard stop
+> `workflows/execute-plan/build-tail.md` carries in full — see its "Production boundary — hard
+> stop" block; it is not re-documented here at length.

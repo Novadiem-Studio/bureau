@@ -141,6 +141,28 @@ grep -Fq 'agents/modes/architect-execute-plan.md' agents/architect.md \
   || err "agents/architect.md should point execute-plan chunking at its mode appendix"
 grep -Fq 'agents/modes/spellwright-execute-plan.md' agents/prompt-engineer.md \
   || err "agents/prompt-engineer.md should point execute-plan prompt folders at its mode appendix"
+[[ -f workflows/execute-plan/prompt-folder-format.md ]] \
+  || err "missing workflows/execute-plan/prompt-folder-format.md"
+[[ -f workflows/execute-plan/build-tail.md ]] \
+  || err "missing workflows/execute-plan/build-tail.md"
+grep -Fq 'workflows/execute-plan/prompt-folder-format.md' workflows/execute-plan.md \
+  || err "workflows/execute-plan.md missing prompt-folder-format module pointer"
+grep -Fq 'workflows/execute-plan/build-tail.md' workflows/execute-plan.md \
+  || err "workflows/execute-plan.md missing build-tail module pointer"
+grep -Fq 'workflows/execute-plan/prompt-folder-format.md' agents/modes/spellwright-execute-plan.md \
+  || err "Spellwright execute-plan appendix should use prompt-folder-format module"
+grep -Fq 'Production boundary — hard stop' workflows/execute-plan/build-tail.md \
+  || err "execute-plan build-tail missing production boundary"
+grep -Fq 'Close-out gates' workflows/execute-plan/build-tail.md \
+  || err "execute-plan build-tail missing close-out gates"
+grep -Fq 'run-worktree' workflows/execute-plan/build-tail.md \
+  || err "execute-plan build-tail should reference run-worktree"
+if rg -n 'workflows/execute-plan[.]md §|`execute-plan` § Prompt folder format|`execute-plan` § Production boundary|execute-plan[.]md` step [67]|execute-plan[.]md` carries in full' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!output/archive/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+  err "stale execute-plan section reference; use execute-plan/prompt-folder-format.md or execute-plan/build-tail.md"
+fi
+if rg -n 'Prompt folder format' workflows/execute-plan.md >/dev/null 2>&1; then
+  err "workflows/execute-plan.md should not inline Prompt folder format after split"
+fi
 grep -Fq '### Checkpoint type classification' docs/delegate-bridge.md \
   || err "docs/delegate-bridge.md missing checkpoint type classification anchor"
 grep -Fq '## Section 5: Conductor checkpoint shim' docs/delegate-bridge.md \
@@ -241,8 +263,8 @@ fi
 echo "== git worktree docs and script"
 [[ -f docs/git-worktree.md ]] || err "missing docs/git-worktree.md"
 [[ -x scripts/run-worktree.sh ]] || err "scripts/run-worktree.sh missing or not executable"
-if ! grep -q 'run-worktree' workflows/execute-plan.md; then
-  err "workflows/execute-plan.md should reference run-worktree"
+if ! grep -q 'run-worktree' workflows/execute-plan/build-tail.md; then
+  err "workflows/execute-plan/build-tail.md should reference run-worktree"
 fi
 
 echo "== name lint"

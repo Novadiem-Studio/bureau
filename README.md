@@ -51,7 +51,8 @@ Install list: `config/installs.json`.
 
 When parallel build halves must compound (Mage UI ↔ Systemsmith API), **The Coupler**
 (`agents/coupler.md`) verifies **phase lock** at the junction. Wired into
-`workflows/execute-plan.md` — writes `RUN_DIR/coupling/`. Energy/spells metaphor, not railway.
+`workflows/execute-plan/build-tail.md` — writes `RUN_DIR/coupling/`. Energy/spells metaphor,
+not railway.
 
 ## First time setup
 

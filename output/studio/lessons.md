@@ -2,8 +2,8 @@
 
 This file is the framework's cross-run learning log. The Conductor appends one entry per
 failure repair — gated by the `lessons-append` gate in both `workflows/operational-build.md`
-and `workflows/execute-plan.md`, each in its respective close-out step. The full entry format
-is defined below.
+and `workflows/execute-plan/build-tail.md`, each in its respective close-out step. The full
+entry format is defined below.
 
 A run that produced no failure repair appends nothing. A run that produced multiple failure
 repairs appends one entry per repair — multiple entries may share the same `run:` value. The

@@ -173,7 +173,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Coupler** | `agents/coupler.md` | standard | Phase-lock verification when two build halves must compound - spawn via `workflows/execute-plan.md` coupling pass |
+| **The Coupler** | `agents/coupler.md` | standard | Phase-lock verification when two build halves must compound - spawn via `workflows/execute-plan/build-tail.md` coupling pass |
 
 **Utility - odd jobs (the two shop droids):**
 
@@ -208,7 +208,7 @@ by The Spellwright). Dispatch each prompt to exactly the coder its tag names. A 
 missing or implausible tag is a Spellwright defect - route it back for a fix; don't guess
 from the sub-app.
 
-Two build-stage extensions (rules in `workflows/execute-plan.md` step 6):
+Two build-stage extensions (rules in `workflows/execute-plan/build-tail.md` step 6):
 - **Design review:** after The Mage builds a UI prompt, spawn The Cleric in `mode: review`
   to check the screens against `design/manifest.md`. Route DRIFTED findings back to
   The Mage together with The Challenger's correctness findings - one fix pass, two lenses.

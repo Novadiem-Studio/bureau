@@ -26,7 +26,7 @@
 # NEVER pushes (push is past the production boundary; always the human's call).
 #
 # Convention: docs/conventions/regression-fixtures.md § Regression fixture file format
-# Promotion lifecycle: workflows/execute-plan.md § step 7
+# Promotion lifecycle: workflows/execute-plan/build-tail.md step 7
 
 set -u
 

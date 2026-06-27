@@ -38,9 +38,10 @@ Check for:
   owned by the Conductor's workflow close-out, not a Challenger check.
 
   > DISAMBIGUATION — two boundaries, never double-flagged. The **production boundary** is the
-  > existing "Production boundary — hard stop" block in `execute-plan.md`: deploy beyond dev,
-  > release promotion, public ship. The **external-action boundary** is the 8-category taxonomy
-  > inlined in this slice: outbound communications and externally visible side effects,
+  > existing "Production boundary — hard stop" block in
+  > `workflows/execute-plan/build-tail.md`: deploy beyond dev, release promotion, public ship.
+  > The **external-action boundary** is the 8-category taxonomy inlined in this slice:
+  > outbound communications and externally visible side effects,
   > regardless of deployment stage. They are parallel protections for different risk classes.
   > Classify each finding as exactly ONE of the two — do NOT conflate them or double-label a
   > single finding as both.

@@ -100,9 +100,10 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is the fix
 > **built, verified, and green on the dev/integration branch**. The Conductor does NOT deploy
 > beyond dev, merge toward a release/prod branch, or ship to the public as part of this workflow.
-> This is the same hard stop `execute-plan.md` carries in full — see its "Production boundary —
-> hard stop" block; it is not re-documented here at length. When the repro passes and dev is
-> green, raise the `[DEV-VERIFIED CHECKPOINT]` and stop. Production is the human's call.
+> This is the same hard stop `workflows/execute-plan/build-tail.md` carries in full — see its
+> "Production boundary — hard stop" block; it is not re-documented here at length. When the repro
+> passes and dev is green, raise the `[DEV-VERIFIED CHECKPOINT]` and stop. Production is the
+> human's call.
 
 The full agent specs, verdict format, worktree mechanics, and checkpoint formats live in
 `agents/orchestrator.md` and the per-agent files in `agents/`. This file just names the sequence;

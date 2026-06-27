@@ -628,8 +628,8 @@ in the ductwork; no full portrait in the 4/2/4 grid.
 
 **Summons:** after parallel build tracks meet · when Mage and Systemsmith halves share a contract
 · before any prompt that consumes both sides · final integration seam before dev close-out.
-Spawn via `workflows/execute-plan.md` coupling pass. Writes `RUN_DIR/coupling/`, never replaces
-The Challenger's per-prompt review.
+Spawn via `workflows/execute-plan/build-tail.md` coupling pass. Writes `RUN_DIR/coupling/`,
+never replaces The Challenger's per-prompt review.
 
 **Tarot:** VI — The Lovers. Two currents at the junction choosing the same frequency; twin
 spirals interlock and the working compounds. *Upright:* phase lock holds; the spell rings as

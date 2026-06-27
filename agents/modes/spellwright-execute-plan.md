@@ -30,5 +30,5 @@ Load the owner's domain gotchas into the prompt so the coder does not rediscover
 
 ## Prompt folder format
 
-Use `workflows/execute-plan.md § Prompt folder format` as the canonical format. This appendix
-adds the coder ownership and domain-gotcha rules; it does not replace that workflow section.
+Use `workflows/execute-plan/prompt-folder-format.md` as the canonical format. This appendix
+adds the coder ownership and domain-gotcha rules; it does not replace that workflow module.

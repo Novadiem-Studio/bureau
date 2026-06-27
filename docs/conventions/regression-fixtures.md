@@ -27,7 +27,7 @@ One canonical definition of the per-fixture file format used in `RUN_DIR/regress
 
 **Handling on re-run**
 
-When the Conductor re-runs fixtures from `RUN_DIR/regression/` before dispatching the next prompt (per `workflows/execute-plan.md`), it applies the following rules per fixture file:
+When the Conductor re-runs fixtures from `RUN_DIR/regression/` before dispatching the next prompt (per `workflows/execute-plan/build-tail.md`), it applies the following rules per fixture file:
 
 - **`retired:` present** → skip; not run, not a blocker.
 - **`slow:` present** → skip running; carry as a Warning in the re-run log.
@@ -42,7 +42,7 @@ When the Conductor re-runs fixtures from `RUN_DIR/regression/` before dispatchin
 Fixtures live in three homes across their lifetime:
 
 - **Scratch (in-build):** `RUN_DIR/regression/` — authored during an execute-plan build, gitignored, pointing at the worktree via the `$ROOT` anchor (see "Repo-relative authoring rule" below). These are never committed. After promotion the scratch copy is superseded-but-retained as run provenance; it is not deleted.
-- **Promote (close-out):** `scripts/promote-fixtures.sh` performs the deterministic mechanical core of promotion — skip `<none>` → refuse non-repo-relative → dedupe by slug + `command:`/`expected:` content → copy verbatim → run suite green — on the set the Conductor selects. The script does NOT repath, does NOT commit, does NOT push. See `scripts/README.md` and `workflows/execute-plan.md § step 7`.
+- **Promote (close-out):** `scripts/promote-fixtures.sh` performs the deterministic mechanical core of promotion — skip `<none>` → refuse non-repo-relative → dedupe by slug + `command:`/`expected:` content → copy verbatim → run suite green — on the set the Conductor selects. The script does NOT repath, does NOT commit, does NOT push. See `scripts/README.md` and `workflows/execute-plan/build-tail.md` step 7.
 - **Standing (committed):** `<repo>/.bureau/regression/` — promoted fixtures committed to the integration branch. The runner at `.bureau/regression/run.sh` executes the suite. This is the machine-checkable guarantee on every clone and CI checkout.
 
 The scratch copy is superseded after promotion but left in place (gitignored, no cleanup cost; run archiving preserves it as provenance).

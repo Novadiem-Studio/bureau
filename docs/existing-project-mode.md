@@ -26,7 +26,7 @@ Before spawning agents, build a frame of reference so you can route work correct
    CLAUDE.md/conventions live. Name the **target** of this work: which sub-app(s)/dir(s) the
    change touches.
 
-`RUN_DIR/workspace-map.md` documents the target for the human frame of reference. It is written INTO RUN_DIR *after* creation and is **NOT** the source of the RUN_DIR location - that source is `state.json#target_repo`, resolved at run start (before creation). Call `scripts/ensure-bureau-ignored.sh R` before the first artifact write to `R/.bureau/`. If a pre-existing `.bureau/` in `R` looks foreign (no Bureau `state.json` shape in its `runs/`), `[CHECKPOINT]` before writing - same pattern as `execute-plan.md:308-311`.
+`RUN_DIR/workspace-map.md` documents the target for the human frame of reference. It is written INTO RUN_DIR *after* creation and is **NOT** the source of the RUN_DIR location - that source is `state.json#target_repo`, resolved at run start (before creation). Call `scripts/ensure-bureau-ignored.sh R` before the first artifact write to `R/.bureau/`. If a pre-existing `.bureau/` in `R` looks foreign (no Bureau `state.json` shape in its `runs/`), `[CHECKPOINT]` before writing - same pattern as `workflows/execute-plan/build-tail.md` close-out.
 
 This map is your frame of reference across repos. Keep it current; it persists across sessions.
 

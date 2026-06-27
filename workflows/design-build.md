@@ -13,7 +13,7 @@ needs no Claude Design round-trip: note it for The Mage and run `execute-plan` o
 **Type:** mixed (produces a design manifest + a reviewed scoped-prompt folder, then builds them
 part by part with review. Gated twice: you approve the prompt folder before any code is written,
 and the run **stops at development** — nothing deploys, merges toward a release/prod branch, or
-ships. See `execute-plan` § Production boundary.)
+ships. See `workflows/execute-plan/build-tail.md § Production boundary — hard stop`.)
 
 **Inputs:** the path to the Claude Design handoff bundle (the `.dc.html` export + its handoff
 `.md`); `project-context.md` if present; the workspace orientation (`monorepo-orientation`); the
@@ -60,7 +60,7 @@ and is run by reference, not re-documented here.
    to The Architect (max 2x), note + proceed, or `[CHECKPOINT]`.
 4. **The Spellwright** (Prompt Engineer, **standard**) — decompose the approved manifest + build
    map into the prompt folder → `prompts/` (`00-index.md` + `NN-<slug>.md`, format per
-   `execute-plan` § Prompt folder format). One prompt = one coherent unit a single Claude Code
+   `workflows/execute-plan/prompt-folder-format.md`). One prompt = one coherent unit a single Claude Code
    session can finish, owned by **exactly one coder** (tag every prompt `Coder:`), naming exact
    files and ending in a testable checkpoint. UI prompts carry design-fidelity acceptance criteria
    (the manifest's components, tokens, and states). Split any chunk that would sprawl.
@@ -71,24 +71,25 @@ and is run by reference, not re-documented here.
    proceed, or `[CHECKPOINT]`.
 6. **Gate** — show the human the design manifest + prompt folder; get a go before building.
    `[CHECKPOINT]`. (If they only wanted the manifest + prompts, stop here — a valid plan-only end.)
-7. **The Conductor** (**strong**) — build the vetted prompts exactly as **`execute-plan` steps
-   5b–7**: create the isolated **worktree** on a **non-`main` integration branch** (`main` may
-   auto-deploy), run preflight, then drive the build-party loop part by part — **The Mage** builds
+7. **The Conductor** (**strong**) — load `workflows/execute-plan/build-tail.md` and build the
+   vetted prompts exactly as its **build-tail steps 5b–7**: create the isolated **worktree** on a
+   **non-`main` integration branch** (`main` may auto-deploy), run preflight, then drive the
+   build-party loop part by part — **The Mage** builds
    each chunk in the worktree; **The Cleric** (mode: review) checks each built UI screen against
    `design/manifest.md` (components, tokens, states, flow, real data — FAITHFUL or DRIFTED, drift
    routes back to The Mage); **The Challenger** cold-reviews each diff; the Conductor adjudicates,
    captures fixtures, then closes out (merge to integration branch, package install, fixture
    promotion, run accounting) → built code on the integration branch, updated `log.md`,
    `state.json`. The **production boundary** and **external-action boundary** apply unchanged: the
-   run stops at **dev-verified** — nothing deploys or merges toward prod. Follow `execute-plan`
-   §§ 5b–7 for the full machinery (preflight, fixture gates, coupling, close-out gates); do not
-   duplicate it here.
+   run stops at **dev-verified** — nothing deploys or merges toward prod. Follow
+   `workflows/execute-plan/build-tail.md` for the full machinery (preflight, fixture gates,
+   coupling, close-out gates); do not duplicate it here.
 
-DONE — close-out per `execute-plan` step 7 (run `scripts/account-run.sh <RUN_DIR>` last per
-`docs/run-accounting.md`; satisfy the `docs-sync-needed` and `lessons-append` gates). If the run stopped at the step-6 gate
-(prompts only, no build), close out as a plan workflow — no commit-message or worktree guidance
-applies.
+DONE — close-out per `workflows/execute-plan/build-tail.md` step 7 (run
+`scripts/account-run.sh <RUN_DIR>` last per `docs/run-accounting.md`; satisfy the
+`docs-sync-needed` and `lessons-append` gates). If the run stopped at the step-6 gate (prompts
+only, no build), close out as a plan workflow — no commit-message or worktree guidance applies.
 
 The full agent specs, verdict format, and checkpoint formats live in `agents/orchestrator.md` and
 the per-agent files in `agents/`. This file names the sequence and defers the build tail to
-`execute-plan`; it doesn't duplicate either.
+`workflows/execute-plan/build-tail.md`; it doesn't duplicate either.

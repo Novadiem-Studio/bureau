@@ -171,5 +171,5 @@ in `docs/run-protocol.md § State management`. The `accounting` key ships in
 
 ## E. Commit-message guidance
 
-Commit-message guidance for execute workflows lives in `workflows/execute-plan.md` at the
-close-out step (step 7). It is advisory (SHOULD), not a hard gate.
+Commit-message guidance for execute workflows lives in `workflows/execute-plan/build-tail.md`
+at the close-out step (step 7). It is advisory (SHOULD), not a hard gate.

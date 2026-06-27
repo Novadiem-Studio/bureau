@@ -41,8 +41,8 @@ top-level `output/<file>`.
 - **Write to:** `RUN_DIR/prompts.md`. **Exception:** in the **`execute-plan`** workflow
   (existing project, a plan doc is given), write to a **folder beside the plan doc**
   (`<dir>/<NN>-<name>/`) holding `00-index.md` + `NN-<slug>.md` scoped prompts, per the format
-  in `workflows/execute-plan.md` and `agents/modes/spellwright-execute-plan.md`. Not
-  `RUN_DIR/prompts.md` in that case.
+  in `workflows/execute-plan/prompt-folder-format.md` and
+  `agents/modes/spellwright-execute-plan.md`. Not `RUN_DIR/prompts.md` in that case.
 - **Then return:** the handoff block at the bottom of this file.
 
 ## Responsibilities

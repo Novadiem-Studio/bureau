@@ -193,7 +193,8 @@ times; idempotent, no lock.
 
 Deterministic mechanical core of Bureau regression fixture promotion. Run at execute-plan
 close-out (step 7) after the integration branch merge, before the commit. Full lifecycle:
-`docs/conventions/regression-fixtures.md § Regression fixture file format`. Wiring: `workflows/execute-plan.md § step 7`.
+`docs/conventions/regression-fixtures.md § Regression fixture file format`. Wiring:
+`workflows/execute-plan/build-tail.md` step 7.
 
 ```bash
 # Dry-run first (report decisions, write nothing, run no suite):

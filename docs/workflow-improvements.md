@@ -36,8 +36,8 @@ tier-less nodes today.
 
 | File | Step | Problem | Fix |
 |---|---|---|---|
-| `execute-plan.md` | 6 | `**Build, part by part** — The Conductor runs…` — agent is prose, not a bold span | Lead with the agent: `**The Conductor** — build, part by part…` |
-| `execute-plan.md` | 7 | `**Close out** (The Conductor) —` — agent in parens | Same — bold the agent first |
+| `workflows/execute-plan/build-tail.md` | 6 | `**Build, part by part** — The Conductor runs…` — agent is prose, not a bold span | Lead with the agent: `**The Conductor** — build, part by part…` |
+| `workflows/execute-plan/build-tail.md` | 7 | `**Close out** (The Conductor) —` — agent in parens | Same — bold the agent first |
 | `docs-reconcile.md` | 1–2 | `**Survey (spawn, tier: standard).**` — tier is inside a compound label, not a standalone token | Split it: `**Survey** (spawn, **standard**) —` so `standard` is its own bold span |
 | `docs-reconcile.md` | 4–5 | `**Adjudicate (Conductor).**` / `**Close out (Conductor).**` — agent inside the label | Bold the agent name on its own |
 | `docs-reconcile.md` | 1 | "A fresh-context agent reads…" — anonymous spawn, no cast identity or tier | Name it. Even a generic role (the Witness, an analyst) gives it a tier and traceability. |
@@ -58,7 +58,7 @@ too. Recommend the convention; treat parser leniency as a fallback, not the plan
 `AGENT_ALIASES` in the parser is the single map from prose name → role key → cast id. Three
 agents that workflows spawn are missing from it, so their nodes go dark:
 
-- **The Coupler** — spawned in `execute-plan.md` step 6 ("Coupling pass"), has its own
+- **The Coupler** — spawned in `workflows/execute-plan/build-tail.md` step 6 ("Coupling pass"), has its own
   `agents/coupler.md` and a policy entry in `config/model-policy.v2.json`, but no alias and
   (check) no `society-cast.json` member. It's a first-class build-party agent that's
   invisible to the registry.
