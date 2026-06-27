@@ -87,9 +87,35 @@ grep -Fq 'docs/existing-project-mode.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing existing-project module pointer"
 grep -Fq 'docs/conductor-gates.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing conductor-gates module pointer"
-if grep -Fq 'canonical source is `agents/orchestrator.md`' agents/critic.md; then
-  err "agents/critic.md canon/process surface note should point at docs/conductor-gates.md"
+if rg -n 'canonical source is `agents/orchestrator\.md`|canonical list there|defined in Review 1 above|inlined under Review 1|inline surface list above' agents/critic.md agents/critic >/dev/null 2>&1; then
+  err "critic core/slices contain stale pre-split cross-reference or conductor-gates pointer"
 fi
+for slice in spec-plan prompts build-diff code-review; do
+  [[ -f "agents/critic/${slice}.md" ]] \
+    || err "missing agents/critic/${slice}.md"
+  grep -Fq "agents/critic/${slice}.md" agents/critic.md \
+    || err "agents/critic.md missing mode-slice pointer for ${slice}"
+done
+for slice in spec-plan prompts; do
+  grep -Fq '**Email and SMS sends**' "agents/critic/${slice}.md" \
+    || err "agents/critic/${slice}.md missing inlined external-action taxonomy"
+  grep -Fq 'docs/external-action-boundary.md' "agents/critic/${slice}.md" \
+    || err "agents/critic/${slice}.md missing external-action reciprocal sync note"
+done
+for slice in spec-plan prompts build-diff; do
+  grep -Fq '`workflows/`' "agents/critic/${slice}.md" \
+    || err "agents/critic/${slice}.md missing inlined canon/process surface list"
+  grep -Fq 'docs/conductor-gates.md' "agents/critic/${slice}.md" \
+    || err "agents/critic/${slice}.md missing conductor-gates reciprocal sync note"
+done
+grep -Fq 'agents/critic/spec-plan.md' docs/external-action-boundary.md \
+  || err "docs/external-action-boundary.md reciprocal note should name critic spec-plan slice"
+grep -Fq 'agents/critic/prompts.md' docs/external-action-boundary.md \
+  || err "docs/external-action-boundary.md reciprocal note should name critic prompts slice"
+grep -Fq 'agents/critic/build-diff.md' docs/conductor-gates.md \
+  || err "docs/conductor-gates.md reciprocal note should name critic build-diff slice"
+grep -Fq 'Reads (mode slice):' docs/conventions.md \
+  || err "docs/conventions.md Challenger contract should include critic mode-slice input"
 [[ -f agents/modes/architect-execute-plan.md ]] \
   || err "missing agents/modes/architect-execute-plan.md"
 [[ -f agents/modes/spellwright-execute-plan.md ]] \

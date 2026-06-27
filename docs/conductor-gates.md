@@ -67,7 +67,7 @@ This obligation is **unconditional on the run** because the Conductor always kno
 - **`Promotion to canon: yes`** - the run promotes a workflow or prompt to canon (adds a row to `workflows/index.md`, or commits a prompt folder to `plans/` as the accepted set). Declare `yes` and name the path to the `battle-test.md` alongside the artifact.
 - **`Promotion to canon: no`** - the run edits a canon/process surface WITHOUT promoting to canon. Declare `no` with a one-line reason. Silence is not a valid answer; even `no` must be explicit.
 
-The Challenger keys off this structured block and never self-infers a promotion from context. Absence of the block on a canon/process-surface review is itself a Blocker (see 15a in `agents/critic.md`).
+The Challenger keys off this structured block and never self-infers a promotion from context. Absence of the block on a canon/process-surface review is itself a Blocker (see 15a in the relevant `agents/critic/` mode slice).
 
 **The canon/process surfaces (canonical home - this file):**
 
@@ -78,10 +78,11 @@ The Challenger keys off this structured block and never self-infers a promotion 
 - The spawn-prompt template in `agents/orchestrator.md` (the "How to spawn an agent" section)
 - `workflows/index.md`
 
-> RECIPROCAL SYNC NOTE: `agents/critic.md` carries an inlined copy of this surface list under
-> its "Promotion gate" Blocker check (15a). If this list is edited here it must be edited there,
-> and vice versa. This file (`docs/conductor-gates.md`) is the canonical source; the critic.md
-> copy is the enforcement fixture for the cold Challenger.
+> RECIPROCAL SYNC NOTE: `agents/critic/spec-plan.md`, `agents/critic/prompts.md`, and
+> `agents/critic/build-diff.md` carry inlined copies of this surface list under their
+> "Promotion gate" Blocker checks (15a). If this list is edited here it must be edited in those
+> slices, and vice versa. This file (`docs/conductor-gates.md`) is the canonical source; the
+> critic slices are the enforcement fixtures for the cold Challenger.
 
 **Re-run-at-promotion obligation:** On `Promotion to canon: yes`, as part of promoting, the Conductor re-runs the full `battle-test.md` matrix and writes a **FRESH `## Run <date>` block** with the new results before the promotion is declared. The declaration block names the `battle-test.md` path. The Conductor authors the first `battle-test.md` at promotion time (v1 Conductor-owned; see spec Open Questions 1). This makes matrix staleness a producer obligation rather than a date comparison the cold Challenger cannot perform - the Challenger verifies `## Run` block presence and clean results only.
 

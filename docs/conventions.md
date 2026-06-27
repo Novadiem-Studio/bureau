@@ -60,6 +60,11 @@ Write this out in full, verbatim; it is the load-bearing case for the whole conv
 
 Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), and spec.md § Acceptance criteria — review them together.
 Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria — and NOTHING ELSE.
+Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
+the local project standards named there. Does NOT receive the author's rationale, chat history, or
+prior defenses of the change.
+Reads (mode slice): exactly one of `agents/critic/spec-plan.md`, `agents/critic/prompts.md`,
+`agents/critic/build-diff.md`, or `agents/critic/code-review.md`, matching the spawn mode.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.

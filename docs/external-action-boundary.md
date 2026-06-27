@@ -21,11 +21,11 @@ process — one that reaches a real recipient, external system, or third-party s
 - **DNS and infrastructure mutations** — DNS record changes, domain transfers, firewall rule changes, or equivalent provider-side changes
 - **Any other outbound HTTP to a non-local URL with a side effect** — the catch-all for actions not enumerated above but that produce an externally visible effect
 
-> **RECIPROCAL SYNC NOTE:** `agents/critic.md` holds a duplicate of this 8-category taxonomy,
-> inlined there because the cold Challenger cannot read this doc at review time (per the input
-> contract in `docs/conventions.md`). If the taxonomy is edited here, it must also be edited in
-> `agents/critic.md`. The canonical source is always this file; if the two copies ever differ,
-> correct `agents/critic.md` to match — never the reverse.
+> **RECIPROCAL SYNC NOTE:** `agents/critic/spec-plan.md` and `agents/critic/prompts.md` hold
+> duplicates of this 8-category taxonomy, inlined there because each cold Challenger mode slice
+> must be self-contained (per the input contract in `docs/conventions.md`). If the taxonomy is
+> edited here, it must also be edited in those slices. The canonical source is always this file;
+> if any copy differs, correct the critic slice to match — never the reverse.
 
 ---
 
