@@ -67,7 +67,7 @@ reference and scope each agent to the right sub-app, while building within the c
 1. Read `agents/orchestrator.md` core sections, then follow its
    **Startup read scope (token discipline)** to load only triggered modules.
 2. If `~/.novadiem/usage-snapshot.json` exists, read `claude` quota once (optional;
-   background poller — see `scripts/README.md`). Do not run `codexbar usage` during the run.
+   statusLine-owned — see `scripts/README.md`). Do not run any external usage command during the run.
 3. If `project-context.md` exists in the project root, read it.
 
 **Before creating a run dir — run these gates in order:**

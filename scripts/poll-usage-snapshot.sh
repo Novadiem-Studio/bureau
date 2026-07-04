@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# RETIRED — replaced by scripts/statusline-usage.sh (Claude Code statusLine). Do not run.
 # Poll CodexBar for Claude usage and write a shared snapshot.
 # The Conductor reads the snapshot instead of spawning codexbar per checkpoint.
 #

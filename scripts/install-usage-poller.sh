@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# RETIRED — replaced by scripts/statusline-usage.sh (Claude Code statusLine). Do not run.
 # Install a launchd agent that polls CodexBar every 5 minutes.
 # Usage: ./scripts/install-usage-poller.sh
 

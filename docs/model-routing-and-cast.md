@@ -103,37 +103,34 @@ edge cases after one routed fix. Log tier changes in `log.md`.
 
 ---
 
-## Usage snapshot (CodexBar)
+## Usage snapshot (statusLine)
 
-A background poller refreshes shared quota data every **5 minutes**. **Do not** run `codexbar usage`
-during a run - read the snapshot instead.
+Claude Code's `statusLine` (`scripts/statusline-usage.sh`) writes `~/.novadiem/usage-snapshot.json`
+after each API response. **Do not** run any external usage command during a run — read the snapshot.
 
 | Item | Value |
 |------|-------|
 | **Snapshot file** | `~/.novadiem/usage-snapshot.json` (override: `NOVADIEM_USAGE_SNAPSHOT_PATH`) |
-| **Install poller** | `scripts/install-usage-poller.sh` from this repo (launchd, 300s interval) |
-| **Manual refresh** | `scripts/poll-usage-snapshot.sh` |
+| **How it's updated** | Claude Code statusLine — wired via `~/.claude/settings.json` `statusLine` |
+| **Manual check** | `cat ~/.novadiem/usage-snapshot.json \| jq '.claude'` |
 
 **When to read:** at run start and before spawning expensive (`frontier` / `escalated`) agents (phase
 boundaries are enough; not every sub-spawn).
 
 **Fields:** `polledAt`, `ok`, `claude.sessionUsedPercent`, `claude.weeklyUsedPercent`,
-`claude.weeklyLeftPercent`, `claude.weeklyPaceDeficitPercent`, `claude.weeklyRunsOutIn`,
-`claude.sonnetLeftPercent`, `claude.sonnetUsedPercent`, `claude.sonnetBurnMode`. Treat as **stale**
-if `polledAt` is older than ~10 minutes or `ok` is false.
+`claude.weeklyLeftPercent`, `claude.sessionResetsIn`, `claude.weeklyResetsIn`. Treat as **stale**
+if `polledAt` is older than ~30 minutes or `ok` is false.
 
-**Ignore for routing:** `extraRateWindows` / Designs / Daily Routines - often vestigial after Anthropic
-folded design into the general pool. Cost/token stats from local JSONL logs are not quota meters.
+**Not available from this source:** `weeklyPaceDeficitPercent`, `weeklyRunsOutIn`,
+`sonnetLeftPercent`, `sonnetUsedPercent`, `sonnetBurnMode` — these are always `null` / `false`.
 
 ### Legacy Claude sonnet burn experiment (`config/experiments/sonnet-burn.json`)
 
-Used only by the legacy Claude tier resolver. It auto-activates when `claude.sonnetBurnMode: true`
-(`sonnetLeftPercent` > 25), sets utility roles to sonnet, and adds conductor notes. In v2 model
-routing, prefer provider-neutral experiments such as `budget-pressure-standardize`.
-
-While active in legacy Claude runs: spawn don't inline; split delegatable work into more sonnet
-passes; log `Sonnet: {left}% left` at phase boundaries. Weekly pace deficit still applies
-separately.
+Used only by the legacy Claude tier resolver. It was designed to auto-activate when
+`claude.sonnetBurnMode: true`, but `sonnetBurnMode` is always `false` from the statusLine source
+(Sonnet-specific metering is not exposed via `rate_limits`). **The sonnet-burn auto-trigger is
+inactive.** Activate manually if needed, or use provider-neutral experiments such as
+`budget-pressure-standardize`.
 
 ### Other budget hints (log in `log.md`)
 

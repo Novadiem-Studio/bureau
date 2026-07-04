@@ -7,7 +7,7 @@ Small JSON files that **override** role tiers from `config/model-policy.json` wh
 
 | Mechanism | Example |
 |-----------|---------|
-| **Auto** | `sonnet-burn.json` — fires when `~/.novadiem/usage-snapshot.json` has `claude.sonnetBurnMode: true` |
+| **Auto** | `sonnet-burn.json` — designed to fire when `claude.sonnetBurnMode: true`, but `sonnetBurnMode` is always `false` from the statusLine source (Sonnet metering not exposed via `rate_limits`). **Auto-trigger is inactive; activate manually if needed.** |
 | **Manual env** | `NOVADIEM_MODEL_EXPERIMENTS=systemsmith-sonnet` |
 | **Policy file** | Add experiment id to `manual_experiments` in `model-policy.json` |
 
@@ -30,7 +30,7 @@ jq '.roles' ~/.novadiem/resolved-model-tiers.json
 
 | Id | Trigger | Effect |
 |----|---------|--------|
-| `sonnet-burn` | `sonnetBurnMode` | Utility roles → sonnet; spawn don't inline |
+| `sonnet-burn` | `sonnetBurnMode` (auto-trigger **inactive** — manual only; see above) | Utility roles → sonnet; spawn don't inline |
 | `conductor-sonnet` | manual | Main session → sonnet (strict routing) |
 | `systemsmith-sonnet` | manual | Systemsmith → sonnet |
 | ~~`weekly-fable-build`~~ | — | **disabled** |

@@ -28,23 +28,19 @@ The framework is self-contained in `agents/`, `workflows/`, and `templates/`. A 
 |------|---------|-------|
 | **Agent** (subagent spawn) | Conductor | Map model **tiers** from `agents/orchestrator.md` to the runtime's model ids |
 | **Claude Design** (human step) | Visionary + The Cleric | No API — `[DESIGN HANDOFF]` checkpoint; export lands in `RUN_DIR/design/handoff/` |
-| **CodexBar** + usage poller | Conductor (budget hints) | Optional. Install: `scripts/install-usage-poller.sh`. Reads `~/.novadiem/usage-snapshot.json` — do not call `codexbar usage` per spawn |
+| **Claude Code statusLine** (`scripts/statusline-usage.sh`) | Conductor (budget hints) | Optional. Wired via `~/.claude/settings.json` `statusLine`. Reads `~/.novadiem/usage-snapshot.json` — no external app, no keychain prompts |
 
-## Usage poller (optional)
+## Usage snapshot (optional)
 
-Keeps Claude quota fresh without blocking the Conductor on OAuth fetches (~15–30s each).
+Keeps Claude quota fresh without blocking the Conductor. Claude Code itself pipes `rate_limits` JSON to `scripts/statusline-usage.sh` after each API response; the script writes `~/.novadiem/usage-snapshot.json` in the standard schema.
 
 ```bash
-# One-time install (macOS launchd, every 5 min)
-./scripts/install-usage-poller.sh
-
-# Or manual refresh
-./scripts/poll-usage-snapshot.sh
+# Wired via ~/.claude/settings.json - no install step needed
+# Verify the snapshot is live after a Claude Code response:
 cat ~/.novadiem/usage-snapshot.json | jq '.claude'
 ```
 
-Requires **CodexBar** (`brew` or upstream) and **jq**. Snapshot path: `NOVADIEM_USAGE_SNAPSHOT_PATH`.
-Do not use `~/Library/Caches/CodexBar/cost-usage/*.json` for quotas — that is historical cost, not live limits.
+Requires **jq** and the `statusLine` entry in `~/.claude/settings.json` pointing at `scripts/statusline-usage.sh`. Snapshot path: `NOVADIEM_USAGE_SNAPSHOT_PATH`.
 
 Full install, schema, and ops: **`scripts/README.md`**. Provider-neutral model routing:
 **`config/runtimes/README.md`**, **`config/model-experiments/README.md`**, and

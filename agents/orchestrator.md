@@ -222,9 +222,8 @@ Resolved routing beats workflow prose when they disagree.
 Use Scoot (`haiku`) and Tally (`sonnet`) for read-only odd jobs so trivial scouting cannot
 silently consume opus.
 
-**Budget handling:** read `~/.novadiem/usage-snapshot.json` (poller-owned), not live
-`codexbar usage`, at run start and before expensive spawns. Escalate tier only on evidence
-of weak/contradictory outputs.
+**Budget handling:** read `~/.novadiem/usage-snapshot.json` (statusLine-owned; no external poll),
+at run start and before expensive spawns. Escalate tier only on evidence of weak/contradictory outputs.
 
 **Cast map and build dispatch:** agent/coder tier tables, odd-job policy, and execute-step
 dispatch rules (including design-review and bounded parallel tracks) live in the module.

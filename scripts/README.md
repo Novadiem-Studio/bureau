@@ -1,55 +1,60 @@
-# Usage snapshot poller
+# Usage snapshot (statusLine)
 
-Background job that polls [CodexBar](https://github.com) for live Claude quota and writes a
-shared JSON file. The Conductor reads that file at phase boundaries instead of running
-`codexbar usage` on every spawn (~15–30s OAuth fetch each time).
+`scripts/statusline-usage.sh` is the Claude Code `statusLine` command. Claude Code pipes a
+JSON payload on stdin after each API response; the script extracts the 5-hour and 7-day
+`rate_limits` fields, writes `~/.novadiem/usage-snapshot.json` in the standard schema, and
+prints a compact status bar. No external app, no keychain prompts, no launchd agent needed —
+Claude Code itself (the token owner) hands the numbers over directly.
 
-## Quick start (macOS)
+The snapshot is updated after every API response, so the Conductor always reads live data
+without triggering any separate process.
 
-```bash
-# From the canonical agent-framework copy (or any install)
-./scripts/install-usage-poller.sh
+Retired scripts `poll-usage-snapshot.sh` and `install-usage-poller.sh` are kept in place
+for reference but marked retired at the top of each file.
 
-# Verify
-jq '{sonnetLeft: .claude.sonnetLeftPercent, burnMode: .claude.sonnetBurnMode, weeklyLeft: .claude.weeklyLeftPercent}' ~/.novadiem/usage-snapshot.json
+## Setup
+
+Wire it in `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+}
 ```
 
-Installs a **launchd** agent (`com.novadiem.usage-snapshot`) that runs every **5 minutes**
-and once at login.
+No other install step. Requires **jq** (`brew install jq`).
 
-## Files
+## Verify
 
-| File | Role |
-|------|------|
-| `poll-usage-snapshot.sh` | Fetch usage, write snapshot (callable manually or from launchd) |
-| `install-usage-poller.sh` | Copy plist to `~/Library/LaunchAgents/`, load agent, run once |
-| `com.novadiem.usage-snapshot.plist` | Template plist (`__POLL_SCRIPT__` / `__LOG_DIR__` substituted on install) |
+After any Claude Code API response, check the snapshot:
+
+```bash
+jq '{sessionUsed: .claude.sessionUsedPercent, weeklyUsed: .claude.weeklyUsedPercent, weeklyResetsIn: .claude.weeklyResetsIn}' ~/.novadiem/usage-snapshot.json
+```
 
 ## Snapshot location
 
 Default: `~/.novadiem/usage-snapshot.json`
 
-Override with `NOVADIEM_USAGE_SNAPSHOT_PATH`. The Conductor documents read rules in
-`agents/orchestrator.md` § Usage snapshot (CodexBar).
+Override with `NOVADIEM_USAGE_SNAPSHOT_PATH`. The Conductor read rules are in
+`agents/orchestrator.md` § Budget handling.
 
 ## Environment variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `NOVADIEM_USAGE_SNAPSHOT_PATH` | `~/.novadiem/usage-snapshot.json` | Where to write the snapshot |
-| `NOVADIEM_USAGE_PROVIDERS` | `claude` | Passed to `codexbar usage --provider` |
-| `NOVADIEM_USAGE_INCLUDE_JSON` | `0` | Set `1` for extra raw JSON fetch (second OAuth call) |
-| `NOVADIEM_USAGE_LOG_DIR` | `~/.novadiem/logs` | launchd stdout/stderr (install only) |
-| `CODEXBAR_BIN` | `codexbar` on PATH, else `/usr/local/bin/codexbar` | CodexBar binary |
 
 ## Snapshot schema
 
-Poller uses **one** CodexBar text call (matches the GUI). Sonnet and pace lines are not in JSON.
+`source` is `"claude-code-statusline"`. Fields from `rate_limits` are the 5-hour session
+window and the 7-day weekly window. Sonnet-specific fields are not available from this
+source and are always `null`; `sonnetBurnMode` is always `false`.
 
 ```json
 {
   "polledAt": "2026-06-12T05:31:23Z",
-  "source": "codexbar",
+  "source": "claude-code-statusline",
   "ok": true,
   "providersRequested": "claude",
   "providers": [],
@@ -57,40 +62,33 @@ Poller uses **one** CodexBar text call (matches the GUI). Sonnet and pace lines 
     "loginMethod": "Claude Max",
     "sessionLeftPercent": 100,
     "sessionUsedPercent": 0,
+    "sessionWindowMinutes": 300,
+    "sessionResetsIn": "0d 4h",
     "weeklyLeftPercent": 38,
     "weeklyUsedPercent": 62,
     "weeklyResetsIn": "4d 14h",
-    "weeklyPaceDeficitPercent": 28,
-    "weeklyRunsOutIn": "1d 11h",
-    "sonnetLeftPercent": 96,
-    "sonnetUsedPercent": 4,
-    "sonnetResetsIn": "4d 14h",
-    "sonnetBurnTargetLeftPercent": 25,
-    "sonnetBurnMode": true
+    "weeklyPaceDeficitPercent": null,
+    "weeklyRunsOutIn": null,
+    "sonnetLeftPercent": null,
+    "sonnetUsedPercent": null,
+    "sonnetResetsIn": null,
+    "sonnetBurnTargetLeftPercent": null,
+    "sonnetBurnMode": false
+  },
+  "rateLimits": {
+    "fiveHour": { "usedPercent": 0, "resetsAt": 1749710400 },
+    "sevenDay": { "usedPercent": 62, "resetsAt": 1750060800 }
   }
 }
 ```
 
-`sonnetBurnMode` is `true` while `sonnetLeftPercent` > 25. Legacy Claude runs use it to route
-aggressively to sonnet spawns; v2 provider-neutral routing should prefer explicit experiments such
-as `budget-pressure-standardize`.
-
-Set `NOVADIEM_USAGE_INCLUDE_JSON=1` for a second OAuth call that also stores raw `providers`.
-
-On failure, `ok` is `false`, `error` holds the CodexBar stderr, and `claude` is `null`.
-
-**Stale:** treat as stale if `polledAt` is older than ~10 minutes or `ok` is false.
-
-## What not to use
-
-`~/Library/Caches/CodexBar/cost-usage/*.json` is **historical cost** from JSONL scans — not
-live quota percentages. **Designs / Daily Routines** bars in the GUI are often vestigial (design
-folded into general pool ~May 2026). Ignore them for routing.
+On failure (jq missing, no rate_limits in payload), the snapshot is left untouched from the
+last good write. Treat as **stale** if `polledAt` is older than ~30 minutes or `ok` is false.
 
 ## Conductor behavior
 
 1. Read snapshot at **run start** and before expensive (`frontier` / `escalated`) spawns.
-2. Log budget notes in `RUN_DIR/log.md` — do not re-run CodexBar during the run.
+2. Log budget notes in `RUN_DIR/log.md`.
 3. **Model routing:** run `scripts/resolve-model-routing.sh` — see `config/runtimes/README.md`
    and `config/model-experiments/README.md`.
 4. Legacy Claude-only runs may still use `scripts/resolve-model-tiers.sh` and
@@ -98,43 +96,10 @@ folded into general pool ~May 2026). Ignore them for routing.
 
 Thresholds (from `agents/orchestrator.md`):
 
-- `sonnetBurnMode` — legacy Claude signal; in v2 routing, prefer provider-neutral experiments such
-  as `budget-pressure-standardize`.
+- `sonnetBurnMode` — always `false` from this source; the legacy sonnet-burn auto-trigger is
+  inactive. Use manual experiments such as `budget-pressure-standardize` instead.
 - `sessionUsedPercent` ≥ 90 — session cap risk.
 - `weeklyUsedPercent` ≥ 85 — defer non-critical frontier/escalated work.
-- `weeklyRunsOutIn` before reset — weekly pace deficit; don't ignore while routing cheaper work.
-
-## Operations
-
-```bash
-# Manual refresh
-./scripts/poll-usage-snapshot.sh
-
-# Poller logs
-tail -f ~/.novadiem/logs/usage-poller.err
-
-# Stop background poller
-launchctl unload ~/Library/LaunchAgents/com.novadiem.usage-snapshot.plist
-
-# Restart
-launchctl load ~/Library/LaunchAgents/com.novadiem.usage-snapshot.plist
-```
-
-## Requirements
-
-- **CodexBar** installed and authenticated for Claude (OAuth).
-- **jq** (`brew install jq`).
-- **macOS launchd** for `install-usage-poller.sh`. On Linux, use cron:
-
-  ```cron
-  */5 * * * * /path/to/agent-framework/scripts/poll-usage-snapshot.sh
-  ```
-
-## Alternative: CodexBar serve
-
-`codexbar serve` exposes `GET http://127.0.0.1:8080/usage?provider=claude` with a ~60s cache.
-This poller uses the CLI directly so it works without a long-lived serve process. If serve is
-already running, you could point a thin wrapper at the HTTP endpoint instead — not shipped here.
 
 ---
 

@@ -36,9 +36,10 @@ sonnet. See `docs/model-routing-and-cast.md` § Host policy - Claude Code (curre
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
 
-**Usage snapshot** — optional CodexBar poller writes `~/.novadiem/usage-snapshot.json` every
-5 minutes so the Conductor does not run `codexbar usage` on every spawn. Install:
-`./scripts/install-usage-poller.sh`. Docs: `scripts/README.md`, `DEPENDENCIES.md`.
+**Usage snapshot** — Claude Code's `statusLine` (`scripts/statusline-usage.sh`) writes
+`~/.novadiem/usage-snapshot.json` after each API response, so the Conductor always has
+fresh quota data without running any external command. Wired via `~/.claude/settings.json`.
+Docs: `scripts/README.md`, `DEPENDENCIES.md`.
 
 ## Studio-wide status (The Witness)
 
