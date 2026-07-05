@@ -45,10 +45,16 @@ fi
 # The first user-role JSONL line is the spawn prompt; bureau spawns always
 # include "RUN_DIR: <abs path>" in that prompt.
 # Use -Rn + fromjson? to skip malformed lines gracefully.
+#
+# Real Claude Code transcript schema (Bundle 11 ground truth — confirmed 2026-07-05):
+#   {"type":"user","message":{"role":"user","content":"<string or array>"}}
+# Top-level .role is absent; the selector must match on .type == "user" and
+# read .message.content. The old .role? == "user" selector matched ZERO lines
+# in production transcripts (silent no-op blocker — Challenger-verified).
 first_user_content=$(jq -Rn '
   [inputs | fromjson?]
-  | map(select(.role? == "user"))
-  | if length > 0 then .[0].content else "" end
+  | map(select(.type? == "user"))
+  | if length > 0 then .[0].message.content else "" end
 ' "$transcript_path" 2>/dev/null) || first_user_content='""'
 
 # first_user_content is a JSON value (may be a string, array, or null).

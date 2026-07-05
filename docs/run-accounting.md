@@ -209,6 +209,14 @@ restored byte-identical to its pre-probe state. **Installed Claude Code version:
 - `stop_hook_active` is **present in every captured fire** (Stop and SubagentStop alike)
   and carries JSON `false` when the hook fires normally.
 
+### Subagent transcript user-line schema (Bundle 11 ground truth)
+
+- **Real schema (as confirmed in production, 2026-07-05):** `{"type":"user","message":{"role":"user","content":"<string or content-array>"}}`
+  - Top-level `.role` is **absent** on user lines; the correct selector is `.type? == "user"` (not `.role? == "user"`).
+  - The content is at `.message.content`, not at top-level `.content`.
+  - Content shape is either a plain string or a content-array-of-blocks (`[{"type":"text","text":"..."}]`).
+  - Any selector using `.role? == "user"` matches zero lines and silently no-ops — confirmed blocker in P2 review.
+
 ### Timing findings
 
 - **Stop vs close-out ordering: Stop fires AFTER the turn's last action.** The captured
