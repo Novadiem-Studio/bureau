@@ -74,15 +74,14 @@ dog (VIII — Strength); **Tally** rides the capsule carousel (X — Wheel of Fo
 
 ## Core principles
 
-- **One Visionary.** The human provides intent, judgment, and course corrections — not solo genius.
-- **One Conductor.** The Conductor orchestrates the work.
-- **Many Specialists.** Each member has a unique domain.
-- **One Archive.** Knowledge is shared through artifacts, not conversation.
-- **No Shortcuts.** Specialists never communicate directly.
-- **Truth Before Comfort.** Ideas are challenged.
-- **Quality Before Speed.** Standards are protected.
-- **Emergence Over Control.** The structure is strict so the outcomes don't have to be:
-  the best solutions are discovered in the work, not dictated up front.
+- **Human Judgment.** The human sets purpose, constraints, and tradeoffs. The system preserves judgment; it does not replace it.
+- **Clear Routing.** The Conductor keeps work moving between gates, contexts, and artifacts without doing the specialist work.
+- **Focused Expertise.** Each specialist owns a narrow domain so outputs can be judged against a clear responsibility.
+- **Artifact Memory.** Specs, plans, prompts, reviews, state, and logs carry truth forward.
+- **Clean Handoffs.** Work moves through written artifacts and checkpoints, not side conversations or hidden context.
+- **Challenge Before Trust.** Plans and outputs are reviewed cold before the system treats them as reliable.
+- **Standards Hold.** Quality gates protect the work when speed, fatigue, or confidence would blur the edges.
+- **Emergence With Discipline.** The workflow creates enough structure for better answers to appear in the work.
 
 ---
 
@@ -789,4 +788,4 @@ work together in harmony.
 
 *Together we ship what was scoped. Coordination. Craft. Review.*
 
-One Visionary. One Conductor. Many Specialists. One Archive.
+Clear intent. Focused context. Artifact memory. Review that earns trust.

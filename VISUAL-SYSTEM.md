@@ -195,14 +195,14 @@ Visionary sits **outside** the specialist ring — intent enters; does not route
 
 Displayed around the perimeter:
 
-- One Visionary
-- One Conductor
-- Many Specialists
-- One Archive
-- Truth Before Comfort
-- Quality Before Speed
-- No Specialist-to-Specialist Communication
-- Artifacts Move Through The Archive
+- Human Judgment
+- Clear Routing
+- Focused Expertise
+- Artifact Memory
+- Clean Handoffs
+- Challenge Before Trust
+- Standards Hold
+- Emergence With Discipline
 
 ---
 
@@ -303,7 +303,7 @@ SPEC · PLAN · BRIEF · MANIFEST · PROMPTS · LOG · STATE — foundation of t
 
 **Mission:** We turn ideas into finished work through coordinated specialists and a shared project record.
 
-**Structure:** One Visionary. One Conductor. Many Specialists. One Archive.
+**Structure:** Clear intent. Focused context. Artifact memory. Review that earns trust.
 
 **Flourish:** We build for human flourishing.
 
@@ -414,7 +414,7 @@ We turn ideas into finished work through coordinated specialists and a shared pr
 ```
 Better Outcomes.
 ```
-or reuse structure line only: *One Visionary. One Conductor. Many Specialists. One Archive.* — not the full ENGINE footer stack.
+or reuse structure line only: *Clear intent. Focused context. Artifact memory. Review that earns trust.* — not the full ENGINE footer stack.
 
 ---
 

@@ -3,8 +3,8 @@
 A reusable multi-agent development framework for Claude Code. Drop this entire
 `agent-framework/` folder into any project root and run it.
 
-The cast's identities, archetypes, and voice are canon in `LORE.md` (one Visionary, one
-Conductor, many specialists, one Archive). This file and `agents/` are the
+The cast's identities, archetypes, and voice are canon in `LORE.md` (human judgment,
+clear routing, focused expertise, artifact memory). This file and `agents/` are the
 mechanics. When lore and mechanics disagree, mechanics win and the lore gets fixed.
 
 ## Canonical copy and drift

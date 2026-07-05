@@ -46,7 +46,7 @@ policy. Build-party spawns get `WORKTREE:`; all commits land in the worktree bra
 
 **Concurrency rules:**
 
-- One Conductor per run; never write outside your `RUN_DIR` + your run's worktree (if any).
+- A run has a single active Conductor; never write outside your `RUN_DIR` + your run's worktree (if any).
 - Two runs on the **same repo** are OK when each has its own worktree + `RUN_DIR`. Do not
   share one worktree or edit the integration branch directly during an open run.
 - Shared infrastructure (a dev DB, docker test containers) can still contend across runs —

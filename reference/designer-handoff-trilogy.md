@@ -159,9 +159,9 @@ NO tarot, NO medieval fantasy.
 ## Copy to render (perimeter)
 
 ```
-ONE VISIONARY · ONE CONDUCTOR · MANY SPECIALISTS · ONE ARCHIVE
-TRUTH BEFORE COMFORT · QUALITY BEFORE SPEED
-NO SPECIALIST-TO-SPECIALIST COMMUNICATION
+CLEAR INTENT · FOCUSED CONTEXT · ARTIFACT MEMORY
+CHALLENGE BEFORE TRUST · STANDARDS HOLD
+CLEAN HANDOFFS · REVIEW THAT EARNS TRUST
 ARTIFACTS MOVE THROUGH THE ARCHIVE
 ```
 
@@ -250,7 +250,7 @@ CLEAR INTENT. DEEP EXPERTISE. BETTER OUTCOMES.
 
 We turn ideas into finished work through coordinated specialists and a shared project record.
 
-One Visionary. One Conductor. Many Specialists. One Archive.
+Clear intent. Focused context. Artifact memory. Review that earns trust.
 
 We build for human flourishing.
 

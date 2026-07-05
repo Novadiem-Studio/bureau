@@ -9,8 +9,8 @@ apply to Claude, The Conductor, spawned specialists, or the framework runtime.
 A reusable multi-agent development framework for Codex.
 Use the global install at `~/Code/novadiem/bureau/` (do not copy into each project).
 
-The cast's identities, archetypes, and voice are canon in `LORE.md` (one Visionary, one
-Conductor, many specialists, one Archive). This file and `agents/` are the
+The cast's identities, archetypes, and voice are canon in `LORE.md` (human judgment,
+clear routing, focused expertise, artifact memory). This file and `agents/` are the
 mechanics. When lore and mechanics disagree, mechanics win and the lore gets fixed.
 
 ## Canonical copy and drift

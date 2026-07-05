@@ -290,7 +290,7 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 - **Green** (primary) — flourishing, harmony, human journey, serves the audience, craft with care
 - **Yellow** (primary) — systems, coordination, specialists, flow maps, the Bureau as intelligible structure
 - **Purple** (underpinnings) — mythos, ritual, belonging to the workshop; carried by **visuals and cast**, not preachy copy
-- **Orange** (healthy — must be present) — finished work, scoped delivery, Truth Before Comfort, defines what must be true
+- **Orange** (healthy — must be present) — finished work, scoped delivery, Challenge Before Trust, defines what must be true
 
 **Holier-than-thou guardrail:** mythos lives in the **art** (characters, circuitry, institution). Copy stays **grounded** — no ordained language (*stewards of creation*, *one truth*, *transform reality*). Flourishing is welcome; sermon tone is not.
 
@@ -308,7 +308,7 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 - **Title block:** *NOVADIEM STUDIO* / *THE BUREAU*
 - **Header:** *Clear Intent. Deep Expertise. Better Outcomes.*
 - **Mission block:** *We turn ideas into finished work through coordinated specialists and a shared project record.*
-- **Footer (structure):** *One Conductor. Many Specialists. Clear Intent.*
+- **Footer (structure):** *Clear intent. Focused context. Artifact memory. Review that earns trust.*
 - **Footer (mission):** *We build for human flourishing.* *(alternate)* *Together we ship what was scoped. Coordination. Craft. Review.*
 
 **Credential header alternate:** *Human Intent. Coordinated Craft. Better Outcomes.*
@@ -318,8 +318,8 @@ The annotated roster poster targets a specific client profile: affluent, meaning
 Copy below is **canon for posters and workshop scenes**. Most of it already lived in `LORE.md` principles or character titles; the ensemble comp surfaced readable poster forms worth locking.
 
 **Principle banners** (hanging from ceiling or flanking the hall — optional but encouraged):
-- *TRUTH BEFORE COMFORT*
-- *QUALITY BEFORE SPEED*
+- *CHALLENGE BEFORE TRUST*
+- *STANDARDS HOLD*
 
 (Source: core principles in `LORE.md`.)
 
