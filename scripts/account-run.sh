@@ -21,6 +21,10 @@
 
 set -euo pipefail
 
+# Resolve this script's own directory so sibling scripts (account-tokens.sh) can be
+# invoked by path without hardcoding the install location (Bundle 11, Step A2).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # 10 min — canonical staleness rule, scripts/README.md: stale if polledAt older than
 # ~10 min or ok=false. This is the ONLY staleness threshold in this script.
 readonly USAGE_SNAPSHOT_MAX_AGE_SECONDS=600
@@ -297,7 +301,27 @@ get_configured_model() {
 started_tmp=$(mktemp "${TMPDIR:-/tmp}/account-run.started.XXXXXX")
 terminal_tmp=$(mktemp "${TMPDIR:-/tmp}/account-run.terminal.XXXXXX")
 tmp_out=""
-trap 'rm -f "$started_tmp" "$terminal_tmp" "$tmp_out"' EXIT
+# tmp_prefix mirrors tmp_out's mktemp path but is NEVER blanked after the publish
+# (tmp_out is set to "" post-mv so the trap won't rm the now-final accounting.json).
+# The EXIT trap uses tmp_prefix to sweep any intermediate dotfile a mid-pipeline jq
+# failure leaked into RUN_DIR — ${tmp_prefix}.mem (§ 9) and
+# ${tmp_prefix}.{tok,enrich,v2,warn,tnote} (§ 9.5). Each of those steps is an
+# `<jq> > "${tmp_out}.X" && mv …` list whose jq failure is exempt from set -e, so the
+# script continues to publish and would otherwise strand the partial dotfile. Guarded
+# on a non-empty prefix in cleanup so an empty value never degrades the glob to ".*"
+# against the CWD.
+tmp_prefix=""
+cleanup() {
+    rm -f "$started_tmp" "$terminal_tmp"
+    if [ -n "$tmp_out" ]; then
+        rm -f "$tmp_out"
+    fi
+    if [ -n "$tmp_prefix" ]; then
+        rm -f "${tmp_prefix}."*
+    fi
+    return 0
+}
+trap cleanup EXIT
 
 # STEP 6.1 — guard log.md FIRST, then grep (never grep a missing file).
 _specialist_spawns_note=""
@@ -550,6 +574,16 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
               reported_status: {value: $status, confidence: "exact"}}'
     done | jq -s '.' 2>/dev/null || echo '[]')
 
+# Parallel attempt_id array, index-aligned with specialist_spawns_json above: both
+# iterate pass2_result.spawns[] in the same sorted (_order) sequence, so entry i in
+# each corresponds to the same spawn. This carries the attempt_id § 6 ACTUALLY PARSED
+# — verbatim, including descriptive ids like challenger-r1-1 — through to the STEP A2
+# enrichment join, WITHOUT emitting attempt_id as a specialist_spawns[] leaf (that
+# contract stands). The A2 enricher pairs on this key (the same one the hooks emit and
+# account-tokens.sh keys spawn_tokens by), not a reconstructed role+"-"+attempt
+# composite, which would miss any descriptive id and silently drop enrichment (W1).
+spawn_attempt_ids_json=$(printf '%s' "$pass2_result" | jq -c '[.spawns[].attempt_id]' 2>/dev/null || echo '[]')
+
 # ── 8. memory block — four scenarios; state.json#memory is the single switch ──
 
 memory_type=$(jq -r 'if has("memory") then (.memory | type) else "absent" end' "$STATE_JSON")
@@ -647,6 +681,7 @@ accounted_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Temp file INSIDE RUN_DIR so mv is always an atomic same-filesystem rename
 # (mktemp in $TMPDIR can be a different filesystem on macOS APFS).
 tmp_out=$(mktemp "$RUN_DIR/.accounting.json.tmp.XXXXXX")
+tmp_prefix="$tmp_out"   # persistent dotfile-sweep anchor for the EXIT trap (see § 6.0)
 
 # Assemble the _specialist_spawns_note from parse errors + accumulated loop notes.
 # All joins use join_note_sep → a uniform "; " separator, so an exact-string fixture matches.
@@ -764,6 +799,151 @@ if [ -n "$memory_json" ]; then
     jq --argjson mem "$memory_json" '. + {memory: $mem}' "$tmp_out" > "${tmp_out}.mem" \
         && mv "${tmp_out}.mem" "$tmp_out"
 fi
+
+# ── 9.5 Bundle 11 — enforcement gate + token-metrics merge ────────────────────
+# EVERY step below operates on $tmp_out via an intermediate temp file + atomic mv,
+# so it stays inside the § 9 tmp pipeline. Nothing is ever written in-place to the
+# final accounting.json; the single publish is the `mv "$tmp_out" ...` below. This
+# preserves the FR 8 write invariant (last-writer-wins on concurrent invocations,
+# never a torn file).
+
+# STEP A1 — zero-SPAWN-EVENT enforcement gate (FR 11 / AC 6). Fires when the run
+# shows evidence of spawns (a non-empty phases_complete OR narrative "Spawned"
+# headings in log.md) yet log.md carries zero structured SPAWN-EVENT: lines — the
+# signature of a close-out that never emitted machine-readable spawn records.
+# grep -c already prints "0" and exits 1 on no-match, so `|| true` (NOT `|| echo 0`,
+# which would concatenate to the un-parseable "0\n0") keeps the count a clean
+# integer under set -e.
+gate_spawn_event_count=0
+[ -r "$RUN_DIR/log.md" ] && gate_spawn_event_count=$(grep -c '^SPAWN-EVENT:' "$RUN_DIR/log.md") || true
+
+gate_spawned_heading_count=0
+[ -r "$RUN_DIR/log.md" ] && gate_spawned_heading_count=$(grep -cE '^## .*Spawned' "$RUN_DIR/log.md") || true
+
+# phases_complete non-empty: $phases_complete is compact JSON when exact, the literal
+# string "null" when unavailable — guard on the confidence before asking jq for its
+# length (jq length on null errors).
+gate_phases_nonempty=false
+if [ "$phases_conf" = "exact" ] && \
+   [ "$(printf '%s' "$phases_complete" | jq 'length')" -gt 0 ]; then
+    gate_phases_nonempty=true
+fi
+
+if [ "$gate_spawn_event_count" -eq 0 ] && \
+   { [ "$gate_phases_nonempty" = true ] || [ "$gate_spawned_heading_count" -gt 0 ]; }; then
+    echo "[CLOSE-OUT WARNING] log.md contains spawn headings or phases_complete is non-empty, but zero SPAWN-EVENT: lines found — accounting reflects no specialist spawns. Check that the Conductor emitted SPAWN-EVENT lines for all spawns."
+    # Durable marker in accounting.json (AC 6). String "true" — matches the AC's
+    # "or 'true' as string equivalent — whatever jq produces".
+    jq '. + {"_close_out_warning": "true"}' "$tmp_out" > "${tmp_out}.warn" \
+        && mv "${tmp_out}.warn" "$tmp_out"
+fi
+
+# STEP A2 — invoke account-tokens.sh and merge its stdout (FR 8 channel pin). The
+# consumer reads log.md + state.json and emits a self-contained JSON fragment on
+# stdout; it writes nothing into RUN_DIR. account-tokens.sh being absent or not
+# executable → skip entirely (backward compat: today's schema, schema_version 1).
+TOKENS_SCRIPT="$SCRIPT_DIR/account-tokens.sh"
+if [ -x "$TOKENS_SCRIPT" ]; then
+    # Capture stdout only. Guard the command substitution under set -e: a non-zero
+    # exit from account-tokens.sh must NOT abort account-run.sh — a token-consumer
+    # failure degrades to today's schema, it never strands the accounting write.
+    if tokens_json=$("$TOKENS_SCRIPT" "$RUN_DIR" 2>/dev/null); then
+        tokens_invoke_ok=1
+    else
+        tokens_invoke_ok=0
+    fi
+
+    if [ "$tokens_invoke_ok" -eq 1 ] && \
+       printf '%s' "$tokens_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
+        # Valid JSON object. Decide whether it actually carries Bundle 11 data. An
+        # "all-empty fragment" (no CONDUCTOR/SPAWN-TOKEN/CHECKPOINT events, no spawn
+        # durations, zero processed) means "no token data" — a legacy-only re-run:
+        # skip the merge and leave schema_version at 1 (AC 5). This is DISTINCT from
+        # an account-tokens.sh error (the else branch below): the no-data skip is
+        # benign and leaves today's schema unchanged with no _note, whereas a
+        # detectable error gets a stderr warning + a distinguishing _tokens_note.
+        tokens_have_data=$(printf '%s' "$tokens_json" | jq -r '
+            ((.conductor_tokens.confidence // "unavailable") != "unavailable")
+            or ((.checkpoints.entries | length) > 0)
+            or ((.wall_clock.active_spawn_time_s.value // 0) != 0)
+            or ((.tokens.processed_total.value // 0) != 0)
+            or (([.spawn_tokens[] | select(.tokens != null)] | length) > 0)
+        ' 2>/dev/null || echo false)
+
+        if [ "$tokens_have_data" = "true" ]; then
+            # (a) Merge the four top-level blocks (same pattern as the memory merge).
+            jq --argjson tok "$tokens_json" \
+               '. + {tokens: $tok.tokens,
+                     conductor_tokens: $tok.conductor_tokens,
+                     wall_clock: $tok.wall_clock,
+                     checkpoints: $tok.checkpoints}' \
+               "$tmp_out" > "${tmp_out}.tok" && mv "${tmp_out}.tok" "$tmp_out"
+
+            # (b) Enrich each specialist_spawns[] entry from the spawn_tokens map.
+            # Pairing key is the composite role+"-"+attempt — attempt_id is NOT a leaf
+            # in specialist_spawns[] (it is account-run.sh's internal dedup key). The
+            # composite matches the deterministic attempt_id format in
+            # docs/run-accounting.md § A and the spawn_tokens map keys. Each field is
+            # merged only when non-null: a started spawn with no matched
+            # SPAWN-TOKEN-EVENT (mid-run or unmatched) has null tokens/turns in the
+            # map, and `null | with_entries` would otherwise crash the whole write.
+            jq --argjson st "$tokens_json" --argjson aids "$spawn_attempt_ids_json" '
+              # Pair each spawn to its token record on the attempt_id § 6 ACTUALLY PARSED
+              # (carried index-aligned in $aids), NOT a reconstructed role+"-"+attempt
+              # composite. § 6 accepts descriptive attempt_ids (e.g. challenger-r1-1) and
+              # the hooks / account-tokens.sh key spawn_tokens by that verbatim id; the
+              # composite would rebuild "challenger-1", miss the record, and silently drop
+              # at/started_at/duration_s/turns/tokens/rework (W1). $aids is an internal
+              # pairing channel only — attempt_id is never emitted as a specialist_spawns[]
+              # leaf. Fall back to the composite when the parsed id is unavailable (a legacy
+              # line) or the parallel array is not length-aligned; for a conformant composite
+              # id the parsed id EQUALS the composite, so behavior is unchanged.
+              (($aids | length) == (.specialist_spawns | length)) as $aligned
+              | .specialist_spawns as $spawns
+              | .specialist_spawns = [
+                  range(0; ($spawns | length)) as $i
+                  | $spawns[$i] as $spawn
+                  | (if $aligned then $aids[$i] else null end) as $parsed_aid
+                  | (if ($parsed_aid != null and ($parsed_aid | type) == "string" and ($parsed_aid | length) > 0)
+                     then $parsed_aid
+                     else ($spawn.role.value + "-" + ($spawn.attempt.value | tostring)) end) as $aid
+                  | ($st.spawn_tokens[$aid]) as $stk
+                  | if $stk == null then $spawn
+                    else
+                      $spawn
+                      + {rework: ($stk.rework // false)}
+                      + (if $stk.at         != null then {at:         {value: $stk.at,         confidence: "exact"}} else {} end)
+                      + (if $stk.started_at != null then {started_at: {value: $stk.started_at, confidence: "exact"}} else {} end)
+                      + (if $stk.duration_s != null then {duration_s: $stk.duration_s} else {} end)
+                      + (if $stk.turns      != null then {turns:      {value: $stk.turns,      confidence: "exact"}} else {} end)
+                      + (if $stk.tokens     != null
+                         then {tokens: ($stk.tokens
+                                 | with_entries(.value = {value: .value,
+                                     confidence: (if .key == "output" then "estimated" else "exact" end)}))}
+                         else {} end)
+                    end
+                ]
+            ' "$tmp_out" > "${tmp_out}.enrich" && mv "${tmp_out}.enrich" "$tmp_out"
+
+            # (c) Bump schema_version to 2 — the merge succeeded and the output now
+            # carries the Bundle 11 sections.
+            jq '.schema_version = 2' "$tmp_out" > "${tmp_out}.v2" && mv "${tmp_out}.v2" "$tmp_out"
+        fi
+        # else: valid JSON but no token data → legacy-only re-run. Leave schema at 1,
+        # emit today's schema unchanged (no _note — AC 5 "output unchanged").
+    else
+        # account-tokens.sh present+executable but the invocation failed or emitted
+        # non-JSON — a detectable error (broken SCRIPT_DIR co-location, a jq fault in
+        # the consumer, …). Warn to stderr, skip the merge (schema stays 1), and record
+        # a distinguishing _tokens_note so the skip is not mistaken for a clean
+        # no-token-data run.
+        echo "[account-run] WARNING: account-tokens.sh failed or returned non-JSON — token metrics skipped; accounting.json emitted at schema_version 1" >&2
+        jq '. + {"_tokens_note": "token-metrics merge skipped — account-tokens.sh failed or returned invalid JSON (see stderr); an error path, not a no-token-data run"}' \
+            "$tmp_out" > "${tmp_out}.tnote" && mv "${tmp_out}.tnote" "$tmp_out"
+    fi
+fi
+# else: account-tokens.sh absent or not executable → backward compat, today's schema
+# unchanged (schema_version 1), silent — the pre-Bundle-11 install baseline.
 
 # mktemp creates the temp file 0600; chmod to 0644 so the emitted accounting.json is
 # world-readable per a normal umask 022 (a reader on a different uid, e.g. CI, can read it).

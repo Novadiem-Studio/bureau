@@ -143,6 +143,110 @@ run instead of losing it. Only a missing `RUN_DIR` itself is fatal.
 
 ---
 
+## B2. Bundle 11 line types
+
+Four additional structured line types complement the SPAWN-EVENT (§ A). All four appear in `RUN_DIR/log.md`, are machine-parsed by `scripts/account-tokens.sh` and `scripts/account-run.sh`, and are backward-compatible (pre-Bundle-11 runs that contain none of these lines degrade cleanly — see EC 9 / AC 5).
+
+### 1. SPAWN-EVENT enriched (Conductor-owned)
+
+The seven-key base format from § A gains required timestamp fields and one optional flag on the started line. The started line gains one timestamp (`at`); the terminal line gains two (`at` and `started_at`):
+
+```
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started","at":"2026-07-05T00:00:00Z"}
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete","at":"2026-07-05T00:01:00Z","started_at":"2026-07-05T00:00:00Z"}
+```
+
+- **started line** gains `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`) and optionally `"rework": true` (omit the key when false — see `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
+- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward by the Conductor). The consumer derives `duration_s` from `terminal.at − started.at` using the started event's own `at` directly; the `started_at` field on the terminal line echoes that value and is informational. When either timestamp is absent, `wall_clock.active_spawn_time_s.confidence` degrades.
+- `duration_s`, `turns`, and `tokens` are NOT on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook.
+
+### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
+
+Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist subagent completes. Contains the deduped token usage extracted from the subagent's isolated transcript.
+
+```
+SPAWN-TOKEN-EVENT: {"attempt_id":"architect-1","agent_id":"aae17f...","at":"2026-07-05T00:01:00Z","turns":11,"tokens":{"input":131,"cache_creation":17839,"cache_read":66779,"processed":84749,"output":699}}
+```
+
+When no `Attempt ID:` line is found in the spawn prompt (EC 7), the hook emits the fallback form — `attempt_id` is JSON `null` and a `_note` explains the gap:
+
+```
+SPAWN-TOKEN-EVENT: {"attempt_id":null,"_note":"attempt_id absent from spawn prompt — record cannot be paired to a SPAWN-EVENT","agent_id":"agent-ec7-test","at":"2026-07-05T00:01:00Z","turns":3,"tokens":{"input":50,"cache_creation":0,"cache_read":0,"processed":50,"output":3}}
+```
+
+These records are still counted into `tokens.processed_total` but cannot be paired to a SPAWN-EVENT; they appear in `tokens.unattributed_records`.
+
+- `processed = input + cache_creation + cache_read` (by construction in `sum_transcript_usage`).
+- **Dedup rule:** the consumer takes `max(processed)` per `agent_id` before summing — one subagent may produce multiple SubagentStop fires; taking max prevents inflation (EC 11 / AC 16).
+- Pairing: matched to a SPAWN-EVENT pair by `attempt_id`.
+
+### 3. CONDUCTOR-TOKEN-EVENT (conductor-stop.sh)
+
+Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires after every main-session response turn. There is no separate post-close-out fire — the one-shot final capture is simply the first Stop fire that finds the run closed (`state.json#accounting.status` non-pending after `account-run.sh` wrote it at close-out).
+
+```
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false}
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:15:00Z","turns":43,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":102},"final":true}
+```
+
+- `final: true` on the one-shot post-closure fire only. Confidence `"exact"` is only achievable when ≥ 1 `final: true` line is present.
+- **Consumer rule:** take `max(processed)` per `session_id`, then sum across sessions (multi-leg Conductor runs produce multiple session_ids).
+- A run with all SPAWN-TOKEN-EVENTs matched but no CONDUCTOR-TOKEN-EVENT has `tokens.processed_total.confidence == "partial"` with `_note: "conductor-share-pending"` — NOT `"exact"`. A build that labels this `"exact"` is broken (EC 12 / AC 4 Blocker guard).
+
+### 4. CHECKPOINT-EVENT (Conductor-written)
+
+Appended by the Conductor to `log.md` at each checkpoint lifecycle event. See also `agents/orchestrator.md § Checkpoint format`.
+
+```
+CHECKPOINT-EVENT: {"id":"design-review","status":"raised","at":"2026-07-05T00:05:00Z"}
+CHECKPOINT-EVENT: {"id":"design-review","status":"resolved","at":"2026-07-05T00:30:00Z","decision":"proceed with mobile-first layout"}
+```
+
+- `wait_s` is consumer-derived (`resolved.at − raised.at`); it is unavailable when only a raised line is present (run still blocked).
+- The consumer sums `wait_s` across all resolved pairs to produce `checkpoints.human_wait_total_s`.
+
+---
+
+## B3. Pointer lifecycle (canonical — FR 6)
+
+The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTER_FILE` for test isolation) tracks the active bureau run across Stop hook fires.
+
+**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>"}`.
+
+**Who writes it:** The Conductor, at run start and on resume (with echo to stdout for enrolment — see `agents/orchestrator.md § Pointer lifecycle`). The Conductor does NOT remove it.
+
+**Nonce ownership check:** `conductor-stop.sh` greps the transcript FILE CONTENT for both the nonce and `run_dir` (a path-based check would fail — the transcript path never contains these values). This closes EC 14: a session whose transcript contains `run_dir` but not the nonce exits 0.
+
+**Why the Conductor does NOT rm at close-out:** the post-closure Stop fire must still find the pointer to write `final: true`. Removing it at close-out (a round-2 defect) would make the final capture impossible and lock `processed_total.confidence` at `"partial"` forever.
+
+**Closure evidence:** On every Stop fire, `conductor-stop.sh` reads `RUN_DIR/state.json` to determine whether the run is closed. The run is closed when `accounting.status` is present and not `"pending"` (both `"complete"` and `"unavailable"` close it). A missing, unreadable, or unparseable `state.json` is treated as NOT closed — fail-safe direction, since a false positive would remove the pointer before the final capture can fire.
+
+**One-shot final capture:** `conductor-stop.sh` appends a `CONDUCTOR-TOKEN-EVENT` with `final: true`, then self-refreshes (`account-run.sh "$RUN_DIR"`), then performs compare-before-rm: re-reads the pointer and removes it ONLY if its `run_dir` AND `nonce` still match this run. If a newer run has enrolled (overwritten the pointer), it is left untouched.
+
+**Bounded capture:** once removed, later Stop fires in the same session find no pointer and exit 0. A single run produces at most one `final: true` line.
+
+**Stale pointer (crashed run):** retired by next run's startup overwrite, or by `rm "$_pointer_file"` at archive time. It never misattributes tokens to the wrong run because the nonce is unique per run.
+
+---
+
+## B4. Schema version and confidence enum
+
+**`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when `account-tokens.sh` returns Bundle 11 token data (the `tokens_have_data` signal — five conditions checked in `scripts/account-run.sh § 9.5`). A re-run on a log with no Bundle 11 event lines stays at schema 1; a failed `account-tokens.sh` invocation (non-zero exit or non-JSON output) also leaves the version at 1.
+
+**Five-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
+
+| Value | Meaning |
+|-------|---------|
+| `"exact"` | Full data available; no gaps or approximations. |
+| `"estimated"` | Derived from heuristics (e.g. output-tokens estimation). |
+| `"partial"` | Some data present but incomplete (e.g. SPAWN-TOKEN-EVENTs matched but no final CONDUCTOR-TOKEN-EVENT). |
+| `"unavailable"` | No usable data found for this field. |
+| `"inferred"` | Derived by inference from a secondary source (e.g. model-tiers.json tier name rather than an explicit model name in model-routing.json). |
+
+`"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above).
+
+---
+
 ## C. The optional `state.json#memory` key
 
 Write a `"memory"` object into `state.json` during the run **if and only if** Rheo/MOT
@@ -173,3 +277,75 @@ in `docs/run-protocol.md § State management`. The `accounting` key ships in
 
 Commit-message guidance for execute workflows lives in `workflows/execute-plan/build-tail.md`
 at the close-out step (step 7). It is advisory (SHOULD), not a hard gate.
+
+---
+
+## Hook field names (Bundle 11 ground truth)
+
+Probed live on 2026-07-05 (16:41–16:43 UTC) with a throwaway append-only hook registered
+for both `SubagentStop` and `Stop`, fired via one trivial Task subagent and one headless
+`claude -p` sub-session (4 captured fires), then removed. `~/.claude/settings.json` was
+restored byte-identical to its pre-probe state. **Installed Claude Code version: 2.1.187.**
+
+### SubagentStop payload — confirmed field names
+
+| Design assumption | Confirmed name | Value shape |
+|---|---|---|
+| `agent_transcript_path` | `agent_transcript_path` — **as designed** | absolute path, e.g. `~/.claude/projects/<munged-cwd>/<parent-session-id>/subagents/agent-<agent_id>.jsonl` |
+| `agent_id` | `agent_id` — **as designed** | stable per-subagent hex id, e.g. `a2782d235aa9e19ae` |
+
+- **Transcript-basename fallback: works.** The transcript basename is exactly
+  `agent-<agent_id>.jsonl`; stripping the `agent-` prefix and `.jsonl` suffix recovers
+  `agent_id` (verified: basename `agent-a2782d235aa9e19ae.jsonl` ↔ `agent_id`
+  `a2782d235aa9e19ae`).
+- The SubagentStop payload also carries the **parent** session's `session_id` and
+  `transcript_path` (the main-session JSONL, not the subagent's), plus `agent_type`,
+  `stop_hook_active`, `hook_event_name`, `cwd`, `last_assistant_message`.
+
+### Stop payload — confirmed field names
+
+| Design assumption | Confirmed name |
+|---|---|
+| `transcript_path` | `transcript_path` — **as designed** |
+| `session_id` | `session_id` — **as designed** |
+| `stop_hook_active` | `stop_hook_active` — **as designed** |
+
+- `stop_hook_active` is **present in every captured fire** (Stop and SubagentStop alike)
+  and carries JSON `false` when the hook fires normally.
+
+### Subagent transcript user-line schema (Bundle 11 ground truth)
+
+- **Real schema (as confirmed in production, 2026-07-05):** `{"type":"user","message":{"role":"user","content":"<string or content-array>"}}`
+  - Top-level `.role` is **absent** on user lines; the correct selector is `.type? == "user"` (not `.role? == "user"`).
+  - The content is at `.message.content`, not at top-level `.content`.
+  - Content shape is either a plain string or a content-array-of-blocks (`[{"type":"text","text":"..."}]`).
+  - Any selector using `.role? == "user"` matches zero lines and silently no-ops — confirmed blocker in P2 review.
+
+### Timing findings
+
+- **Stop vs close-out ordering: Stop fires AFTER the turn's last action.** The captured
+  Stop fire arrived after the headless session's final command had completed, and its
+  payload carries the session's complete final response in `last_assistant_message` —
+  the response (and every tool call inside it) is finished before the hook runs. A
+  close-out `account-run.sh` call made inside the final turn therefore completes before
+  the Stop hook fires, as the deferred-exact design requires.
+- **SubagentStop synchronicity: the append lands BEFORE the Task tool returns control.**
+  The hello-subagent's SubagentStop payload was on disk at 16:42:34Z; the parent's next
+  turn (captured verbatim in the following fire's `last_assistant_message`) began at
+  16:42:43Z. Prompt 2's hook can rely on its `SPAWN-TOKEN-EVENT:` line being written
+  before the Conductor resumes.
+- **Repeat fires per `agent_id` are real.** SubagentStop fired for the observing
+  session's own `agent_id` mid-run when it ended a turn while its background children
+  were still pending (`background_tasks` showed `status: "running"`). One subagent can
+  produce multiple SubagentStop fires; the dedup-by-`agent_id` (take-max on `processed`)
+  in the consumer is load-bearing, not defensive.
+
+### Dedup verification on a real transcript (sum_transcript_usage)
+
+- Transcript: `~/.claude/projects/-Users-robin-Code-novadiem-bureau/a0e10f20-33a6-42fb-854c-1d265f8d392a/subagents/agent-a51e7587527aabcae.jsonl`
+  (31 assistant usage lines, 14 unique `message.id` groups)
+- Naive processed sum (no dedup): **1,839,770**
+- Deduped processed sum (`sum_transcript_usage`): **914,546**
+- Overcount ratio on this transcript: **2.01x** (the 2.23x in the spec is the average
+  across the 2026-07-04 evaluation set; per-transcript ratios vary with content-block
+  fan-out)

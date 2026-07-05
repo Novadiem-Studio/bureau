@@ -174,7 +174,12 @@ RUN_DIR: <RUN_DIR absolute path>
 WORKTREE: <absolute worktree path — build/execute prompts only; omit for planning-only spawns>
 Workflow: <selected workflow id>
 Role mode: <mode for this spawn, e.g. feature, execute-plan, design-build, brief, ingest, review>
+Attempt ID: <role>-<attempt>
+```
 
+The `Attempt ID:` line is the literal string `scripts/subagent-stop.sh` greps from the spawn prompt to pair the spawn's `SPAWN-TOKEN-EVENT` record to its `SPAWN-EVENT`; omit it and the spawn's tokens land unattributed in `tokens.unattributed_records`.
+
+```
 1. Read in full and adopt as your role:
    <ROOT>/agents/<role>.md
 2. Read your inputs (absolute paths). Pass EXACTLY what the role's `## Inputs` block in
@@ -341,13 +346,49 @@ close-out (after merge, summary, and state/log updates).
 **SPAWN-EVENT lines** — emit to `RUN_DIR/log.md` twice per spawn (started + terminal status).
 Seven required keys: `role`, `agent`, `configured_model`, `actual_model`, `attempt`,
 `attempt_id`, `status`. `attempt_id` = `"<role>-<attempt>"`. Legal statuses:
-`started | complete | no-handoff | failed | terminated`. Full validation rules and
-`accounting.json` build details in `docs/run-accounting.md § A`.
+`started | complete | no-handoff | failed | terminated`.
+
+**Bundle 11 enrichments (additional fields on every SPAWN-EVENT line):**
+- **started line** gains: `"at": "<ISO-8601 UTC — $(date -u +%Y-%m-%dT%H:%M:%SZ)>"` and optionally `"rework": true` (see rework rule below; omit the key if false).
+- **terminal line** gains: `"at": "<ISO-8601 UTC>"` and `"started_at": "<the started line's at value, carried forward>"`.
+- `duration_s`, `turns`, and `tokens` are **NOT** on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook (`docs/run-accounting.md § B2`).
+
+**Rework flag rule ("redo, not re-sequence"):** Set `rework: true` on the **started** line ONLY when this spawn REDOES a deliverable an earlier spawn already attempted — specifically: a Challenger-blocker re-spawn (the Architect re-spawned to fix blockers on spec.md/plan.md it already produced), a retried failed or no-handoff spawn, or a corrected-design re-spawn. `rework` is NEVER set on a role's first build of any deliverable, even if it is that role's Nth spawn of the run. A role spawned on successive distinct prompts — e.g. the Mage building prompts 5, 6, 7 in sequence (attempt 1/2/3, each a first build of a different prompt) — is NOT rework. Rule: flag the spawn that re-does a deliverable — never the reviewer that triggered the redo, and never the Nth first-build in a sequence.
+
+Full validation rules and `accounting.json` build details in `docs/run-accounting.md § A` and `§ B2`.
 
 **Index close-out:** write `status: "complete"` (or `"blocked"`) to
 `output/studio/runs-index/<slug>.json` at terminal close-out; move to
 `output/studio/runs-index/archive/<slug>.json` (with `status: "archived"`) in the same step
 as the archive `mv` (EC 12).
+
+## Pointer lifecycle (FR 6)
+
+The pointer file tracks the active bureau run so `conductor-stop.sh` can attribute the Conductor's own token usage.
+
+**Path resolution:**
+```sh
+_pointer_file="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
+```
+`BUREAU_POINTER_FILE` exists solely for test isolation — run fixtures set it to a temp path so they never touch the real `~/.novadiem` directory. Default behavior (BUREAU_POINTER_FILE unset) is unchanged.
+
+**At run start** (alongside step 4 — run-dir creation):
+```sh
+mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem exists (or override's parent)
+# Write one-line JSON:
+printf '{"run_dir":"%s","nonce":"%s","written_at":"%s"}\n' \
+  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$_pointer_file"
+# Echo the written line — ownership credential:
+cat "$_pointer_file"
+```
+The echo places the nonce in this session's transcript content so `conductor-stop.sh`'s ownership check can verify it.
+
+**On resume:** read `"$_pointer_file"`. If it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce). If it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it.
+
+**At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
+
+**At archive:** if `"$_pointer_file"` exists and its `run_dir` matches the run being archived → `rm "$_pointer_file"`. Otherwise leave it (a different run may have already enrolled).
 
 ## Checkpoint format
 
@@ -368,6 +409,19 @@ Raise a checkpoint only when:
 - An ambiguity genuinely can't be resolved from the artifacts, or
 - The Critic flagged a blocker that needs a product decision, or
 - You've hit `max_critic_loops` on the same agent.
+
+**CHECKPOINT-EVENT machine-readable lines** — append to `log.md` alongside the narrative checkpoint output:
+
+At checkpoint RAISE:
+```
+CHECKPOINT-EVENT: {"id":"<slug>","status":"raised","at":"<date -u +%Y-%m-%dT%H:%M:%SZ>"}
+```
+
+At checkpoint RESOLVE:
+```
+CHECKPOINT-EVENT: {"id":"<slug>","status":"resolved","at":"<date -u +%Y-%m-%dT%H:%M:%SZ>","decision":"<one-line Robin decision>"}
+```
+`<slug>` is a short stable identifier for the checkpoint (e.g. `design-review`, `critic-blocker-2`). The consumer derives `wait_s` from `resolved.at − raised.at`; unavailable when raised-only.
 
 ## Design handoff checkpoint format
 
