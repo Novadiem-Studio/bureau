@@ -86,6 +86,15 @@ Record prompt id in `state.json` → `git.prompts_merged` (Conductor updates via
 
 On merge conflict: `[CHECKPOINT]` — human resolves in repo on `devel`, then `remove` when done.
 
+**Tree hygiene is forbidden in the target repo.** Never run `git clean` (any flags) or a
+`reset --hard` + clean sweep in the target repo at close-out or before a merge. `.bureau/runs/`
+is gitignored BY DESIGN and holds every concurrent run's live state: a `git clean -fdx` there
+deletes ALL tracks' run dirs while sparing tracked files (verified live 2026-07-05 — one
+track's close-out hygiene swept `mot/.bureau/runs/` for every track; tracked
+`.bureau/regression/` survived, which is the fingerprint of this failure). If a pristine tree
+is needed, clean inside your run's WORKTREE. The target repo's untracked state is never yours
+to sweep.
+
 ## Concurrent runs
 
 Two runs on the **same repo** are safe when each has its own worktree + `RUN_DIR`. Do not share
