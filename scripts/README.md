@@ -14,11 +14,14 @@ for reference but marked retired at the top of each file.
 
 ## Setup
 
-Wire it in `~/.claude/settings.json`:
+Wire it in `~/.claude/settings.json` (merge into the existing file — do not replace it):
 
 ```json
 {
-  "statusLine": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+  }
 }
 ```
 
@@ -113,13 +116,20 @@ Two Claude Code hooks capture token usage automatically at the end of every bure
 Fires when each Task subagent completes. Reads the subagent's isolated transcript, extracts deduped token usage via `scripts/lib/bureau-token-lib.sh`, and appends one `SPAWN-TOKEN-EVENT:` line to the active bureau run's `log.md`. Matches the record to its SPAWN-EVENT pair using the `Attempt ID:` field from the spawn prompt (which is why every spawn prompt must carry `Attempt ID: <role>-<attempt>`).
 
 **Stop → `scripts/conductor-stop.sh`**
-Fires once per main-session response turn and once after close-out. Reads the Conductor's own transcript, appends a `CONDUCTOR-TOKEN-EVENT:` line to `log.md`, and on the post-closure fire performs the one-shot final capture: sets `final: true`, self-refreshes `accounting.json` via `account-run.sh`, and removes the pointer file (compare-before-rm).
+Fires after every main-session response turn. Reads the Conductor's own transcript, appends a `CONDUCTOR-TOKEN-EVENT:` line to `log.md`, and on the first fire that finds the run closed performs the one-shot final capture: sets `final: true`, self-refreshes `accounting.json` via `account-run.sh`, and removes the pointer file (compare-before-rm). There is no separate post-close-out fire — the one-shot is the normal Stop hook running on the first turn after `account-run.sh` has set `accounting.status` to non-pending.
 
 ### Wiring (in `~/.claude/settings.json`)
 
+Merge the following keys into your existing `~/.claude/settings.json` — do **not** replace the whole file (that would clobber `statusLine`, `model`, `mcpServers`, and other settings). Use `jq -s '.[0] * .[1]'` or edit manually.
+
+The keys to add or merge:
+
 ```json
 {
-  "statusLine": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh",
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+  },
   "hooks": {
     "SubagentStop": [
       {

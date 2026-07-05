@@ -175,7 +175,11 @@ WORKTREE: <absolute worktree path — build/execute prompts only; omit for plann
 Workflow: <selected workflow id>
 Role mode: <mode for this spawn, e.g. feature, execute-plan, design-build, brief, ingest, review>
 Attempt ID: <role>-<attempt>
+```
 
+The `Attempt ID:` line is the literal string `scripts/subagent-stop.sh` greps from the spawn prompt to pair the spawn's `SPAWN-TOKEN-EVENT` record to its `SPAWN-EVENT`; omit it and the spawn's tokens land unattributed in `tokens.unattributed_records`.
+
+```
 1. Read in full and adopt as your role:
    <ROOT>/agents/<role>.md
 2. Read your inputs (absolute paths). Pass EXACTLY what the role's `## Inputs` block in

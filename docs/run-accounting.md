@@ -149,7 +149,7 @@ Four additional structured line types complement the SPAWN-EVENT (§ A). All fou
 
 ### 1. SPAWN-EVENT enriched (Conductor-owned)
 
-The seven-key base format from § A gains two required timestamp fields on every line, and one optional flag on the started line:
+The seven-key base format from § A gains required timestamp fields and one optional flag on the started line. The started line gains one timestamp (`at`); the terminal line gains two (`at` and `started_at`):
 
 ```
 SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started","at":"2026-07-05T00:00:00Z"}
@@ -157,7 +157,7 @@ SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opu
 ```
 
 - **started line** gains `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`) and optionally `"rework": true` (omit the key when false — see `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
-- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward). The consumer derives `duration_s = at - started_at`; when absent, `wall_clock.active_spawn_time_s.confidence` degrades.
+- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward by the Conductor). The consumer derives `duration_s` from `terminal.at − started.at` using the started event's own `at` directly; the `started_at` field on the terminal line echoes that value and is informational. When either timestamp is absent, `wall_clock.active_spawn_time_s.confidence` degrades.
 - `duration_s`, `turns`, and `tokens` are NOT on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook.
 
 ### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
@@ -168,13 +168,21 @@ Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist 
 SPAWN-TOKEN-EVENT: {"attempt_id":"architect-1","agent_id":"aae17f...","at":"2026-07-05T00:01:00Z","turns":11,"tokens":{"input":131,"cache_creation":17839,"cache_read":66779,"processed":84749,"output":699}}
 ```
 
+When no `Attempt ID:` line is found in the spawn prompt (EC 7), the hook emits the fallback form — `attempt_id` is JSON `null` and a `_note` explains the gap:
+
+```
+SPAWN-TOKEN-EVENT: {"attempt_id":null,"_note":"attempt_id absent from spawn prompt — record cannot be paired to a SPAWN-EVENT","agent_id":"agent-ec7-test","at":"2026-07-05T00:01:00Z","turns":3,"tokens":{"input":50,"cache_creation":0,"cache_read":0,"processed":50,"output":3}}
+```
+
+These records are still counted into `tokens.processed_total` but cannot be paired to a SPAWN-EVENT; they appear in `tokens.unattributed_records`.
+
 - `processed = input + cache_creation + cache_read` (by construction in `sum_transcript_usage`).
 - **Dedup rule:** the consumer takes `max(processed)` per `agent_id` before summing — one subagent may produce multiple SubagentStop fires; taking max prevents inflation (EC 11 / AC 16).
 - Pairing: matched to a SPAWN-EVENT pair by `attempt_id`.
 
 ### 3. CONDUCTOR-TOKEN-EVENT (conductor-stop.sh)
 
-Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires once per main-session response turn and once after close-out (the one-shot final capture).
+Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires after every main-session response turn. There is no separate post-close-out fire — the one-shot final capture is simply the first Stop fire that finds the run closed (`state.json#accounting.status` non-pending after `account-run.sh` wrote it at close-out).
 
 ```
 CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false}
@@ -211,6 +219,8 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 
 **Why the Conductor does NOT rm at close-out:** the post-closure Stop fire must still find the pointer to write `final: true`. Removing it at close-out (a round-2 defect) would make the final capture impossible and lock `processed_total.confidence` at `"partial"` forever.
 
+**Closure evidence:** On every Stop fire, `conductor-stop.sh` reads `RUN_DIR/state.json` to determine whether the run is closed. The run is closed when `accounting.status` is present and not `"pending"` (both `"complete"` and `"unavailable"` close it). A missing, unreadable, or unparseable `state.json` is treated as NOT closed — fail-safe direction, since a false positive would remove the pointer before the final capture can fire.
+
 **One-shot final capture:** `conductor-stop.sh` appends a `CONDUCTOR-TOKEN-EVENT` with `final: true`, then self-refreshes (`account-run.sh "$RUN_DIR"`), then performs compare-before-rm: re-reads the pointer and removes it ONLY if its `run_dir` AND `nonce` still match this run. If a newer run has enrolled (overwritten the pointer), it is left untouched.
 
 **Bounded capture:** once removed, later Stop fires in the same session find no pointer and exit 0. A single run produces at most one `final: true` line.
@@ -221,7 +231,7 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 
 ## B4. Schema version and confidence enum
 
-**`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when the Bundle 11 merge path succeeds (i.e. at least one Bundle 11 line type is present and parsed). A legacy-only run always produces schema 1; the version never downgrades.
+**`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when `account-tokens.sh` returns Bundle 11 token data (the `tokens_have_data` signal — five conditions checked in `scripts/account-run.sh § 9.5`). A re-run on a log with no Bundle 11 event lines stays at schema 1; a failed `account-tokens.sh` invocation (non-zero exit or non-JSON output) also leaves the version at 1.
 
 **Five-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
 
@@ -231,7 +241,7 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 | `"estimated"` | Derived from heuristics (e.g. output-tokens estimation). |
 | `"partial"` | Some data present but incomplete (e.g. SPAWN-TOKEN-EVENTs matched but no final CONDUCTOR-TOKEN-EVENT). |
 | `"unavailable"` | No usable data found for this field. |
-| `"unknown"` | Cannot determine confidence level (parse error or missing prerequisite). |
+| `"inferred"` | Derived by inference from a secondary source (e.g. model-tiers.json tier name rather than an explicit model name in model-routing.json). |
 
 `"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above).
 
