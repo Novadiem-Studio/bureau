@@ -173,3 +173,67 @@ in `docs/run-protocol.md § State management`. The `accounting` key ships in
 
 Commit-message guidance for execute workflows lives in `workflows/execute-plan/build-tail.md`
 at the close-out step (step 7). It is advisory (SHOULD), not a hard gate.
+
+---
+
+## Hook field names (Bundle 11 ground truth)
+
+Probed live on 2026-07-05 (16:41–16:43 UTC) with a throwaway append-only hook registered
+for both `SubagentStop` and `Stop`, fired via one trivial Task subagent and one headless
+`claude -p` sub-session (4 captured fires), then removed. `~/.claude/settings.json` was
+restored byte-identical to its pre-probe state. **Installed Claude Code version: 2.1.187.**
+
+### SubagentStop payload — confirmed field names
+
+| Design assumption | Confirmed name | Value shape |
+|---|---|---|
+| `agent_transcript_path` | `agent_transcript_path` — **as designed** | absolute path, e.g. `~/.claude/projects/<munged-cwd>/<parent-session-id>/subagents/agent-<agent_id>.jsonl` |
+| `agent_id` | `agent_id` — **as designed** | stable per-subagent hex id, e.g. `a2782d235aa9e19ae` |
+
+- **Transcript-basename fallback: works.** The transcript basename is exactly
+  `agent-<agent_id>.jsonl`; stripping the `agent-` prefix and `.jsonl` suffix recovers
+  `agent_id` (verified: basename `agent-a2782d235aa9e19ae.jsonl` ↔ `agent_id`
+  `a2782d235aa9e19ae`).
+- The SubagentStop payload also carries the **parent** session's `session_id` and
+  `transcript_path` (the main-session JSONL, not the subagent's), plus `agent_type`,
+  `stop_hook_active`, `hook_event_name`, `cwd`, `last_assistant_message`.
+
+### Stop payload — confirmed field names
+
+| Design assumption | Confirmed name |
+|---|---|
+| `transcript_path` | `transcript_path` — **as designed** |
+| `session_id` | `session_id` — **as designed** |
+| `stop_hook_active` | `stop_hook_active` — **as designed** |
+
+- `stop_hook_active` is **present in every captured fire** (Stop and SubagentStop alike)
+  and carries JSON `false` when the hook fires normally.
+
+### Timing findings
+
+- **Stop vs close-out ordering: Stop fires AFTER the turn's last action.** The captured
+  Stop fire arrived after the headless session's final command had completed, and its
+  payload carries the session's complete final response in `last_assistant_message` —
+  the response (and every tool call inside it) is finished before the hook runs. A
+  close-out `account-run.sh` call made inside the final turn therefore completes before
+  the Stop hook fires, as the deferred-exact design requires.
+- **SubagentStop synchronicity: the append lands BEFORE the Task tool returns control.**
+  The hello-subagent's SubagentStop payload was on disk at 16:42:34Z; the parent's next
+  turn (captured verbatim in the following fire's `last_assistant_message`) began at
+  16:42:43Z. Prompt 2's hook can rely on its `SPAWN-TOKEN-EVENT:` line being written
+  before the Conductor resumes.
+- **Repeat fires per `agent_id` are real.** SubagentStop fired for the observing
+  session's own `agent_id` mid-run when it ended a turn while its background children
+  were still pending (`background_tasks` showed `status: "running"`). One subagent can
+  produce multiple SubagentStop fires; the dedup-by-`agent_id` (take-max on `processed`)
+  in the consumer is load-bearing, not defensive.
+
+### Dedup verification on a real transcript (sum_transcript_usage)
+
+- Transcript: `~/.claude/projects/-Users-robin-Code-novadiem-bureau/a0e10f20-33a6-42fb-854c-1d265f8d392a/subagents/agent-a51e7587527aabcae.jsonl`
+  (31 assistant usage lines, 14 unique `message.id` groups)
+- Naive processed sum (no dedup): **1,839,770**
+- Deduped processed sum (`sum_transcript_usage`): **914,546**
+- Overcount ratio on this transcript: **2.01x** (the 2.23x in the spec is the average
+  across the 2026-07-04 evaluation set; per-transcript ratios vary with content-block
+  fan-out)
