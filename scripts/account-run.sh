@@ -315,7 +315,31 @@ else
         spawn_event_line_count=$((spawn_event_line_count + 1))
         lineno="${raw_line%%:*}"           # source line number from grep -n
         rest="${raw_line#*:}"              # strip the "lineno:" grep -n prefix
-        payload="${rest#SPAWN-EVENT: }"    # strip the SPAWN-EVENT: prefix → bare JSON
+        payload="${rest#SPAWN-EVENT: }"    # strip the SPAWN-EVENT: prefix → JSON or key=value
+
+        # STEP 6.1b — key=value fallback. The canonical payload is compact JSON, but Conductors
+        # in practice also emit space-separated `key=value` pairs (observed on multiple real runs;
+        # see docs/evaluation/framework-evaluation-log.md 2026-07-01). If the payload is not a JSON
+        # object (doesn't start with `{`), convert `k=v k=v …` to JSON: `attempt` becomes a JSON
+        # number, every other value a JSON string. Values are simple tokens (no spaces/quotes)
+        # because the pairs are space-delimited, so no escaping is needed.
+        case "$payload" in
+            '{'*) : ;;   # already JSON — leave as-is
+            *=*)
+                payload=$(printf '%s' "$payload" | awk '{
+                    printf "{"; first=1;
+                    for (i=1;i<=NF;i++){
+                        eq=index($i,"=");
+                        if(eq==0) continue;
+                        k=substr($i,1,eq-1); v=substr($i,eq+1);
+                        if(!first) printf ","; first=0;
+                        if(k=="attempt") printf "\"%s\":%s", k, v;
+                        else printf "\"%s\":\"%s\"", k, v;
+                    }
+                    printf "}";
+                }')
+                ;;
+        esac
 
         # STEP 6.2 — strict one-value parse gate. -cs slurps into an array; length==1 → .[0],
         # else error(). Rejects empty/whitespace-only (len 0) and two-values-on-one-line (len 2+).
@@ -383,12 +407,17 @@ else
             continue
         fi
 
-        # attempt_id must equal role + "-" + attempt.
-        expected_attempt_id="${role}-${attempt_raw}"
-        if [ "$attempt_id" != "$expected_attempt_id" ]; then
-            spawn_parse_errors+=("line $lineno: attempt_id mismatch — got '$attempt_id', expected '$expected_attempt_id'")
-            continue
-        fi
+        # attempt_id must be role-prefixed (role + "-" + <suffix>). Relaxed from strict equality
+        # with "${role}-${attempt}" so descriptive per-pass suffixes (e.g. challenger-r1-1,
+        # cleric-brief-1) are accepted while the role linkage is preserved. Uniqueness across
+        # spawns is enforced downstream by keying started/terminal pairs on attempt_id.
+        case "$attempt_id" in
+            "${role}-"?*) : ;;
+            *)
+                spawn_parse_errors+=("line $lineno: attempt_id '$attempt_id' not prefixed by role '${role}-'")
+                continue
+                ;;
+        esac
 
         # status legal values.
         case "$status" in
