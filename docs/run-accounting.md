@@ -143,6 +143,100 @@ run instead of losing it. Only a missing `RUN_DIR` itself is fatal.
 
 ---
 
+## B2. Bundle 11 line types
+
+Four additional structured line types complement the SPAWN-EVENT (§ A). All four appear in `RUN_DIR/log.md`, are machine-parsed by `scripts/account-tokens.sh` and `scripts/account-run.sh`, and are backward-compatible (pre-Bundle-11 runs that contain none of these lines degrade cleanly — see EC 9 / AC 5).
+
+### 1. SPAWN-EVENT enriched (Conductor-owned)
+
+The seven-key base format from § A gains two required timestamp fields on every line, and one optional flag on the started line:
+
+```
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started","at":"2026-07-05T00:00:00Z"}
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete","at":"2026-07-05T00:01:00Z","started_at":"2026-07-05T00:00:00Z"}
+```
+
+- **started line** gains `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`) and optionally `"rework": true` (omit the key when false — see `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
+- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward). The consumer derives `duration_s = at - started_at`; when absent, `wall_clock.active_spawn_time_s.confidence` degrades.
+- `duration_s`, `turns`, and `tokens` are NOT on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook.
+
+### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
+
+Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist subagent completes. Contains the deduped token usage extracted from the subagent's isolated transcript.
+
+```
+SPAWN-TOKEN-EVENT: {"attempt_id":"architect-1","agent_id":"aae17f...","at":"2026-07-05T00:01:00Z","turns":11,"tokens":{"input":131,"cache_creation":17839,"cache_read":66779,"processed":84749,"output":699}}
+```
+
+- `processed = input + cache_creation + cache_read` (by construction in `sum_transcript_usage`).
+- **Dedup rule:** the consumer takes `max(processed)` per `agent_id` before summing — one subagent may produce multiple SubagentStop fires; taking max prevents inflation (EC 11 / AC 16).
+- Pairing: matched to a SPAWN-EVENT pair by `attempt_id`.
+
+### 3. CONDUCTOR-TOKEN-EVENT (conductor-stop.sh)
+
+Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires once per main-session response turn and once after close-out (the one-shot final capture).
+
+```
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false}
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:15:00Z","turns":43,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":102},"final":true}
+```
+
+- `final: true` on the one-shot post-closure fire only. Confidence `"exact"` is only achievable when ≥ 1 `final: true` line is present.
+- **Consumer rule:** take `max(processed)` per `session_id`, then sum across sessions (multi-leg Conductor runs produce multiple session_ids).
+- A run with all SPAWN-TOKEN-EVENTs matched but no CONDUCTOR-TOKEN-EVENT has `tokens.processed_total.confidence == "partial"` with `_note: "conductor-share-pending"` — NOT `"exact"`. A build that labels this `"exact"` is broken (EC 12 / AC 4 Blocker guard).
+
+### 4. CHECKPOINT-EVENT (Conductor-written)
+
+Appended by the Conductor to `log.md` at each checkpoint lifecycle event. See also `agents/orchestrator.md § Checkpoint format`.
+
+```
+CHECKPOINT-EVENT: {"id":"design-review","status":"raised","at":"2026-07-05T00:05:00Z"}
+CHECKPOINT-EVENT: {"id":"design-review","status":"resolved","at":"2026-07-05T00:30:00Z","decision":"proceed with mobile-first layout"}
+```
+
+- `wait_s` is consumer-derived (`resolved.at − raised.at`); it is unavailable when only a raised line is present (run still blocked).
+- The consumer sums `wait_s` across all resolved pairs to produce `checkpoints.human_wait_total_s`.
+
+---
+
+## B3. Pointer lifecycle (canonical — FR 6)
+
+The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTER_FILE` for test isolation) tracks the active bureau run across Stop hook fires.
+
+**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>"}`.
+
+**Who writes it:** The Conductor, at run start and on resume (with echo to stdout for enrolment — see `agents/orchestrator.md § Pointer lifecycle`). The Conductor does NOT remove it.
+
+**Nonce ownership check:** `conductor-stop.sh` greps the transcript FILE CONTENT for both the nonce and `run_dir` (a path-based check would fail — the transcript path never contains these values). This closes EC 14: a session whose transcript contains `run_dir` but not the nonce exits 0.
+
+**Why the Conductor does NOT rm at close-out:** the post-closure Stop fire must still find the pointer to write `final: true`. Removing it at close-out (a round-2 defect) would make the final capture impossible and lock `processed_total.confidence` at `"partial"` forever.
+
+**One-shot final capture:** `conductor-stop.sh` appends a `CONDUCTOR-TOKEN-EVENT` with `final: true`, then self-refreshes (`account-run.sh "$RUN_DIR"`), then performs compare-before-rm: re-reads the pointer and removes it ONLY if its `run_dir` AND `nonce` still match this run. If a newer run has enrolled (overwritten the pointer), it is left untouched.
+
+**Bounded capture:** once removed, later Stop fires in the same session find no pointer and exit 0. A single run produces at most one `final: true` line.
+
+**Stale pointer (crashed run):** retired by next run's startup overwrite, or by `rm "$_pointer_file"` at archive time. It never misattributes tokens to the wrong run because the nonce is unique per run.
+
+---
+
+## B4. Schema version and confidence enum
+
+**`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when the Bundle 11 merge path succeeds (i.e. at least one Bundle 11 line type is present and parsed). A legacy-only run always produces schema 1; the version never downgrades.
+
+**Five-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
+
+| Value | Meaning |
+|-------|---------|
+| `"exact"` | Full data available; no gaps or approximations. |
+| `"estimated"` | Derived from heuristics (e.g. output-tokens estimation). |
+| `"partial"` | Some data present but incomplete (e.g. SPAWN-TOKEN-EVENTs matched but no final CONDUCTOR-TOKEN-EVENT). |
+| `"unavailable"` | No usable data found for this field. |
+| `"unknown"` | Cannot determine confidence level (parse error or missing prerequisite). |
+
+`"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above).
+
+---
+
 ## C. The optional `state.json#memory` key
 
 Write a `"memory"` object into `state.json` during the run **if and only if** Rheo/MOT

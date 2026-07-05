@@ -103,6 +103,69 @@ Thresholds (from `agents/orchestrator.md`):
 
 ---
 
+## Run-metrics hooks
+
+Two Claude Code hooks capture token usage automatically at the end of every bureau specialist spawn and at the end of the Conductor's own session. Both are global (they fire for every Claude Code session on this machine) but exit 0 silently for non-bureau sessions via a fail-safe ladder.
+
+### What they do
+
+**SubagentStop → `scripts/subagent-stop.sh`**
+Fires when each Task subagent completes. Reads the subagent's isolated transcript, extracts deduped token usage via `scripts/lib/bureau-token-lib.sh`, and appends one `SPAWN-TOKEN-EVENT:` line to the active bureau run's `log.md`. Matches the record to its SPAWN-EVENT pair using the `Attempt ID:` field from the spawn prompt (which is why every spawn prompt must carry `Attempt ID: <role>-<attempt>`).
+
+**Stop → `scripts/conductor-stop.sh`**
+Fires once per main-session response turn and once after close-out. Reads the Conductor's own transcript, appends a `CONDUCTOR-TOKEN-EVENT:` line to `log.md`, and on the post-closure fire performs the one-shot final capture: sets `final: true`, self-refreshes `accounting.json` via `account-run.sh`, and removes the pointer file (compare-before-rm).
+
+### Wiring (in `~/.claude/settings.json`)
+
+```json
+{
+  "statusLine": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh",
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [{"type": "command", "command": "/Users/robin/Code/novadiem/bureau/scripts/subagent-stop.sh"}]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [{"type": "command", "command": "/Users/robin/Code/novadiem/bureau/scripts/conductor-stop.sh"}]
+      }
+    ]
+  }
+}
+```
+
+Empty `matcher` means fires for all sessions (same behaviour as the `statusLine` global hook).
+
+### How `account-tokens.sh` and `account-run.sh` consume events
+
+`scripts/account-tokens.sh` parses `SPAWN-TOKEN-EVENT:` and `CONDUCTOR-TOKEN-EVENT:` lines from a run's `log.md`, deduplicates by `agent_id` (take-max on `processed`), and emits a structured token summary. `scripts/account-run.sh` calls it at close-out to build `accounting.json`, merging the Bundle 11 token data with the SPAWN-EVENT-derived work-shape. Full grammar and examples: `docs/run-accounting.md § B2`.
+
+### Pointer file (`~/.novadiem/bureau-active-run`)
+
+A one-line JSON file `{"run_dir":"<abs path>","nonce":"<uuid>","written_at":"<ISO-8601>"}` written by the Conductor at run start and echoed to stdout (the echo places the nonce in the session transcript so `conductor-stop.sh` can verify ownership). The Conductor does NOT remove it at close-out — removal happens inside `conductor-stop.sh` after the one-shot `final: true` capture.
+
+If the pointer lingers after a crashed run: the next run's startup overwrites it harmlessly (the nonce is unique, so no mis-attribution), or remove it manually with `rm ~/.novadiem/bureau-active-run`. An orphaned pointer never causes a false-positive capture: `conductor-stop.sh` verifies both the `run_dir` AND `nonce` appear in the current session's transcript content before writing anything.
+
+Override `BUREAU_POINTER_FILE` to a temp-dir path in test fixtures so they never touch `~/.novadiem`:
+```sh
+export BUREAU_POINTER_FILE="$(mktemp -d)/bureau-active-run"
+```
+
+### ROLLBACK / UNREGISTER (W11)
+
+To cleanly disable these hooks machine-wide:
+
+1. Open `~/.claude/settings.json` and remove the `"SubagentStop"` and `"Stop"` entries from the `"hooks"` block (leave the `"statusLine"` key and any other keys untouched).
+2. Confirm hooks exit silently: `echo '{"agent_transcript_path":""}' | bash scripts/subagent-stop.sh` should produce no output and exit 0.
+3. Optionally remove a lingering pointer: `rm -f ~/.novadiem/bureau-active-run`.
+
+**Important — read-pointer-equals-enrolment:** Reading the pointer at run start (the echo step) is what places the nonce in the Conductor session's transcript — it is the ownership credential for future Stop fires. After removing the hooks, any remaining pointer is harmless: unrelated sessions do not carry the nonce, so `conductor-stop.sh` (now removed from hooks) would exit 0 at the ownership check regardless. You may `rm ~/.novadiem/bureau-active-run` at any time without affecting any active session's Stop fires (they will simply find no pointer and exit 0). Rolling back does not require ending or restarting any running Claude sessions.
+
+---
+
 # Git worktree (`run-worktree.sh`)
 
 Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
