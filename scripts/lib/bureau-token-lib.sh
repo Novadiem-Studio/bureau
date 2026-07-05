@@ -38,12 +38,17 @@ sum_transcript_usage() {
     echo "[bureau-token-lib] sum_transcript_usage: file not readable: ${jsonl_path:-<missing argument>}" >&2
     return 1
   fi
-  jq -cs '
-    [ .[]
-      | select(.type? == "assistant")
-      | select(.message.id? != null)
-      | select(.message.usage? != null)
-    ]
+  # -Rn: read each line as a raw string (no JSON parse on import), then
+  # fromjson? per line — malformed/truncated lines are silently skipped.
+  # Output shape and message.id dedup semantics are identical to the prior
+  # -cs implementation; the only difference is line-level fault tolerance.
+  jq -Rn '
+    [inputs | fromjson?]
+    | [ .[]
+        | select(.type? == "assistant")
+        | select(.message.id? != null)
+        | select(.message.usage? != null)
+      ]
     | group_by(.message.id)
     | {
         input:          (map(.[0].message.usage.input_tokens // 0) | add // 0),
