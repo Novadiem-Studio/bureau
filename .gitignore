@@ -1,4 +1,5 @@
 .DS_Store
+.idea/
 output/*
 !output/studio
 # The cross-run run-index is regenerable runtime cache (per-run pointers with machine-local
