@@ -301,7 +301,27 @@ get_configured_model() {
 started_tmp=$(mktemp "${TMPDIR:-/tmp}/account-run.started.XXXXXX")
 terminal_tmp=$(mktemp "${TMPDIR:-/tmp}/account-run.terminal.XXXXXX")
 tmp_out=""
-trap 'rm -f "$started_tmp" "$terminal_tmp" "$tmp_out"' EXIT
+# tmp_prefix mirrors tmp_out's mktemp path but is NEVER blanked after the publish
+# (tmp_out is set to "" post-mv so the trap won't rm the now-final accounting.json).
+# The EXIT trap uses tmp_prefix to sweep any intermediate dotfile a mid-pipeline jq
+# failure leaked into RUN_DIR — ${tmp_prefix}.mem (§ 9) and
+# ${tmp_prefix}.{tok,enrich,v2,warn,tnote} (§ 9.5). Each of those steps is an
+# `<jq> > "${tmp_out}.X" && mv …` list whose jq failure is exempt from set -e, so the
+# script continues to publish and would otherwise strand the partial dotfile. Guarded
+# on a non-empty prefix in cleanup so an empty value never degrades the glob to ".*"
+# against the CWD.
+tmp_prefix=""
+cleanup() {
+    rm -f "$started_tmp" "$terminal_tmp"
+    if [ -n "$tmp_out" ]; then
+        rm -f "$tmp_out"
+    fi
+    if [ -n "$tmp_prefix" ]; then
+        rm -f "${tmp_prefix}."*
+    fi
+    return 0
+}
+trap cleanup EXIT
 
 # STEP 6.1 — guard log.md FIRST, then grep (never grep a missing file).
 _specialist_spawns_note=""
@@ -554,6 +574,16 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
               reported_status: {value: $status, confidence: "exact"}}'
     done | jq -s '.' 2>/dev/null || echo '[]')
 
+# Parallel attempt_id array, index-aligned with specialist_spawns_json above: both
+# iterate pass2_result.spawns[] in the same sorted (_order) sequence, so entry i in
+# each corresponds to the same spawn. This carries the attempt_id § 6 ACTUALLY PARSED
+# — verbatim, including descriptive ids like challenger-r1-1 — through to the STEP A2
+# enrichment join, WITHOUT emitting attempt_id as a specialist_spawns[] leaf (that
+# contract stands). The A2 enricher pairs on this key (the same one the hooks emit and
+# account-tokens.sh keys spawn_tokens by), not a reconstructed role+"-"+attempt
+# composite, which would miss any descriptive id and silently drop enrichment (W1).
+spawn_attempt_ids_json=$(printf '%s' "$pass2_result" | jq -c '[.spawns[].attempt_id]' 2>/dev/null || echo '[]')
+
 # ── 8. memory block — four scenarios; state.json#memory is the single switch ──
 
 memory_type=$(jq -r 'if has("memory") then (.memory | type) else "absent" end' "$STATE_JSON")
@@ -651,6 +681,7 @@ accounted_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Temp file INSIDE RUN_DIR so mv is always an atomic same-filesystem rename
 # (mktemp in $TMPDIR can be a different filesystem on macOS APFS).
 tmp_out=$(mktemp "$RUN_DIR/.accounting.json.tmp.XXXXXX")
+tmp_prefix="$tmp_out"   # persistent dotfile-sweep anchor for the EXIT trap (see § 6.0)
 
 # Assemble the _specialist_spawns_note from parse errors + accumulated loop notes.
 # All joins use join_note_sep → a uniform "; " separator, so an exact-string fixture matches.
@@ -856,27 +887,42 @@ if [ -x "$TOKENS_SCRIPT" ]; then
             # merged only when non-null: a started spawn with no matched
             # SPAWN-TOKEN-EVENT (mid-run or unmatched) has null tokens/turns in the
             # map, and `null | with_entries` would otherwise crash the whole write.
-            jq --argjson st "$tokens_json" '
-              .specialist_spawns = [
-                .specialist_spawns[]
-                | . as $spawn
-                | ($spawn.role.value + "-" + ($spawn.attempt.value | tostring)) as $aid
-                | ($st.spawn_tokens[$aid]) as $stk
-                | if $stk == null then $spawn
-                  else
-                    $spawn
-                    + {rework: ($stk.rework // false)}
-                    + (if $stk.at         != null then {at:         {value: $stk.at,         confidence: "exact"}} else {} end)
-                    + (if $stk.started_at != null then {started_at: {value: $stk.started_at, confidence: "exact"}} else {} end)
-                    + (if $stk.duration_s != null then {duration_s: $stk.duration_s} else {} end)
-                    + (if $stk.turns      != null then {turns:      {value: $stk.turns,      confidence: "exact"}} else {} end)
-                    + (if $stk.tokens     != null
-                       then {tokens: ($stk.tokens
-                               | with_entries(.value = {value: .value,
-                                   confidence: (if .key == "output" then "estimated" else "exact" end)}))}
-                       else {} end)
-                  end
-              ]
+            jq --argjson st "$tokens_json" --argjson aids "$spawn_attempt_ids_json" '
+              # Pair each spawn to its token record on the attempt_id § 6 ACTUALLY PARSED
+              # (carried index-aligned in $aids), NOT a reconstructed role+"-"+attempt
+              # composite. § 6 accepts descriptive attempt_ids (e.g. challenger-r1-1) and
+              # the hooks / account-tokens.sh key spawn_tokens by that verbatim id; the
+              # composite would rebuild "challenger-1", miss the record, and silently drop
+              # at/started_at/duration_s/turns/tokens/rework (W1). $aids is an internal
+              # pairing channel only — attempt_id is never emitted as a specialist_spawns[]
+              # leaf. Fall back to the composite when the parsed id is unavailable (a legacy
+              # line) or the parallel array is not length-aligned; for a conformant composite
+              # id the parsed id EQUALS the composite, so behavior is unchanged.
+              (($aids | length) == (.specialist_spawns | length)) as $aligned
+              | .specialist_spawns as $spawns
+              | .specialist_spawns = [
+                  range(0; ($spawns | length)) as $i
+                  | $spawns[$i] as $spawn
+                  | (if $aligned then $aids[$i] else null end) as $parsed_aid
+                  | (if ($parsed_aid != null and ($parsed_aid | type) == "string" and ($parsed_aid | length) > 0)
+                     then $parsed_aid
+                     else ($spawn.role.value + "-" + ($spawn.attempt.value | tostring)) end) as $aid
+                  | ($st.spawn_tokens[$aid]) as $stk
+                  | if $stk == null then $spawn
+                    else
+                      $spawn
+                      + {rework: ($stk.rework // false)}
+                      + (if $stk.at         != null then {at:         {value: $stk.at,         confidence: "exact"}} else {} end)
+                      + (if $stk.started_at != null then {started_at: {value: $stk.started_at, confidence: "exact"}} else {} end)
+                      + (if $stk.duration_s != null then {duration_s: $stk.duration_s} else {} end)
+                      + (if $stk.turns      != null then {turns:      {value: $stk.turns,      confidence: "exact"}} else {} end)
+                      + (if $stk.tokens     != null
+                         then {tokens: ($stk.tokens
+                                 | with_entries(.value = {value: .value,
+                                     confidence: (if .key == "output" then "estimated" else "exact" end)}))}
+                         else {} end)
+                    end
+                ]
             ' "$tmp_out" > "${tmp_out}.enrich" && mv "${tmp_out}.enrich" "$tmp_out"
 
             # (c) Bump schema_version to 2 — the merge succeeded and the output now
