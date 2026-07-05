@@ -1,8 +1,8 @@
 {
-  "_comment": "templates/accounting.json — canonical schema + reference template for Bundle 04 run accounting. Uses JSON-with-_comment-keys format (NOT JSONC; jq cannot parse // comments). Every observation leaf is {value, confidence} — four legal confidence values: exact | estimated | inferred | unavailable. Exempt items carry no confidence: schema_version (structural integer); _comment/_note strings (documentation); container objects and arrays (run, specialist_spawns, phases, cost, usage_snapshot, memory). Emitted accounting.json from a real run carries only data keys plus any _note the script writes — it does NOT reproduce these teaching comments.",
+  "_comment": "templates/accounting.json — canonical schema + reference template for Bundle 04 run accounting (Bundle 11 adds the token/metric sections). Uses JSON-with-_comment-keys format (NOT JSONC; jq cannot parse // comments). Every observation leaf is {value, confidence} — five legal confidence values: exact | estimated | inferred | unavailable | partial. partial: the sum of the shares that are present, with pending shares named in a sibling _note — legal wherever a total can be honestly incomplete (Bundle 11, FR 10). Exempt items carry no confidence: schema_version (structural integer); _comment/_note strings (documentation); container objects and arrays (run, specialist_spawns, phases, cost, usage_snapshot, memory, tokens, conductor_tokens, wall_clock, checkpoints). Emitted accounting.json from a real run carries only data keys plus any _note the script writes — it does NOT reproduce these teaching comments.",
 
-  "schema_version": 1,
-  "_comment_schema_version": "schema_version is a structural integer constant. It is the FIRST item on the observation-leaf exemption list — it carries no confidence key. v1 = 1.",
+  "schema_version": 2,
+  "_comment_schema_version": "schema_version is a structural integer constant. It is the FIRST item on the observation-leaf exemption list — it carries no confidence key. v1 = 1. v2 = 2 (Bundle 11): adds the top-level tokens / conductor_tokens / wall_clock / checkpoints sections and enriches each specialist_spawns[] entry with at / started_at / duration_s / turns / tokens / rework. A run merges to schema_version 2 only when account-tokens.sh returns Bundle 11 token data; a legacy-only re-run (no Bundle 11 event lines in log.md) stays at schema_version 1 with those sections absent.",
 
   "run": {
     "_comment": "Container — exempt from confidence. Wraps run-metadata leaves.",
@@ -63,6 +63,37 @@
         "value": "complete",
         "confidence": "exact",
         "_comment": "Terminal status from the SPAWN-EVENT termination line (same attempt_id). Legal terminal values: complete | no-handoff | failed | terminated. A spawn with a status:started line but no termination line gets reported_status:started (in-progress or abandoned — surfaced honestly, not hidden). The no-handoff/terminated case is NOT dropped."
+      },
+      "_comment_bundle11_enrichment": "The six fields below are Bundle 11 (schema_version 2) enrichment, merged into this entry by account-run.sh Step A2(b) from account-tokens.sh's spawn_tokens map. The pairing key is the composite role+'-'+attempt (matching the deterministic attempt_id), NOT attempt_id (which is not a leaf here). A started spawn with no matched SPAWN-TOKEN-EVENT (mid-run or unmatched) keeps its rework flag but omits the token/duration/turns fields. All six are ABSENT at schema_version 1.",
+      "rework": false,
+      "_comment_rework": "Plain boolean (NOT a {value,confidence} leaf) — carried through from the SPAWN-EVENT started line's optional rework flag (default false). true ONLY when this spawn redoes a deliverable an earlier spawn already attempted (a Challenger-blocker re-spawn, a retried failed/no-handoff spawn, a corrected-design re-spawn). NEVER set on a role's first build of a deliverable, even on its Nth spawn of the run. Drives tokens.rework_ratio.",
+      "at": {
+        "value": "2026-07-05T00:01:00Z",
+        "confidence": "exact",
+        "_comment": "Terminal-line timestamp (%Y-%m-%dT%H:%M:%SZ). exact when the spawn's terminal SPAWN-EVENT carried an at; falls back to the started at when no terminal exists."
+      },
+      "started_at": {
+        "value": "2026-07-05T00:00:00Z",
+        "confidence": "exact",
+        "_comment": "Started-line timestamp, carried forward onto the terminal line by the Conductor."
+      },
+      "duration_s": {
+        "value": 60,
+        "confidence": "exact",
+        "_comment": "(terminal.at - started.at) via jq fromdateiso8601. exact when both timestamps parse; {value:null, confidence:unavailable} when the spawn is in-progress or a timestamp is malformed. A <=0 value is emitted as-is with a sibling _note (clock skew), never corrected or discarded."
+      },
+      "turns": {
+        "value": 5,
+        "confidence": "exact",
+        "_comment": "Assistant turn count from the matched SPAWN-TOKEN-EVENT (deduped-message groups carrying a tool_use block)."
+      },
+      "tokens": {
+        "_comment": "Per-spawn token totals from the matched SPAWN-TOKEN-EVENT (deduped by agent_id, take-max). processed = input + cache_creation + cache_read. output is confidence:estimated (large file writes bill as cache_creation, not output); the other four are exact.",
+        "input": { "value": 200, "confidence": "exact" },
+        "cache_creation": { "value": 300, "confidence": "exact" },
+        "cache_read": { "value": 500, "confidence": "exact" },
+        "processed": { "value": 1000, "confidence": "exact" },
+        "output": { "value": 50, "confidence": "estimated" }
       }
     }
   ],
@@ -158,6 +189,91 @@
       "value": true,
       "confidence": "exact",
       "_comment": "boolean. exact when present and boolean; {null, unavailable, _note} when absent or wrong type."
+    }
+  },
+
+  "tokens": {
+    "_comment": "Container — exempt from confidence. Bundle 11 (schema_version 2) ONLY: present when account-run.sh merged account-tokens.sh output. Derived from log.md SPAWN-TOKEN-EVENT (deduped by agent_id, take-max) + CONDUCTOR-TOKEN-EVENT (deduped by session_id take-max, summed across legs). ABSENT at schema_version 1.",
+    "processed_total": {
+      "value": 2000,
+      "confidence": "exact",
+      "_semantics": "processed sums per-turn cumulative usage (input + cache_creation + cache_read) across deduped messages — a billing-shaped figure that scales with turn count, not a unique-token count; use for before/after comparisons only",
+      "_comment": "Specialist processed (deduped per agent_id) + conductor processed (deduped per session_id, summed). confidence:exact ONLY when (a) >=1 CONDUCTOR-TOKEN-EVENT has final:true AND (b) every terminal SPAWN-EVENT has a matched SPAWN-TOKEN-EVENT. Otherwise confidence:partial with a sibling _note naming the pending share(s): 'conductor-share-pending: final-leg capture not yet in log.md' and/or '<n> specialist spawn(s) have no matched SPAWN-TOKEN-EVENT'."
+    },
+    "output_total": {
+      "value": 95,
+      "confidence": "estimated",
+      "_comment": "Specialist output + conductor output. ALWAYS confidence:estimated — large file writes bill as cache_creation, not output (EC 3 / AC 9)."
+    },
+    "rework_ratio": {
+      "value": 0.15,
+      "confidence": "exact",
+      "_comment": "(sum of processed over spawns flagged rework:true) / processed_total. confidence tracks processed_total (a derived metric is never more confident than its inputs). 0.0 when no spawn is rework:true; {null, unavailable} when processed_total is 0."
+    },
+    "tokens_per_loop": {
+      "value": 1000.0,
+      "confidence": "exact",
+      "_comment": "processed_total / sum(state.json#critic_loops). confidence tracks processed_total. {null, unavailable} when total critic_loops is 0 (never divide by zero)."
+    },
+    "unattributed_records": {
+      "value": [],
+      "confidence": "exact",
+      "_comment": "Array of SPAWN-TOKEN-EVENT payloads whose attempt_id is null OR has no matching SPAWN-EVENT started line — surfaced, never dropped, and still counted into processed_total. This is a container leaf; the value carries the array."
+    }
+  },
+
+  "conductor_tokens": {
+    "_comment": "Container — exempt from confidence, EXCEPT it carries a block-level confidence key (below). Bundle 11 (schema_version 2) ONLY. The Conductor runs in the main session and is never a specialist_spawns[] entry (AC 10) — its token usage lives here, distinct. Multi-leg: dedup per session_id take-max, then sum across distinct session_ids (resumed runs have >1 leg).",
+    "tokens": {
+      "input": 40,
+      "cache_creation": 60,
+      "cache_read": 100,
+      "processed": 200,
+      "output": 10,
+      "_comment": "Summed conductor totals across deduped legs. processed = input + cache_creation + cache_read."
+    },
+    "turns": 42,
+    "legs": 1,
+    "confidence": "exact",
+    "_comment_confidence": "exact when >=1 CONDUCTOR-TOKEN-EVENT has final:true; partial + _note 'final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run' when conductor lines exist but none is final:true; unavailable + _note when no CONDUCTOR-TOKEN-EVENT lines exist at all."
+  },
+
+  "wall_clock": {
+    "_comment": "Container — exempt from confidence. Bundle 11 (schema_version 2) ONLY. Derived from paired SPAWN-EVENT started/terminal timestamps.",
+    "active_spawn_time_s": {
+      "value": 120,
+      "confidence": "exact",
+      "_semantics": "summed active time of individual spawns — not run wall-clock: parallel spawns sum to more than the wall-clock they overlapped in, and human-wait between spawns is excluded",
+      "_comment": "Sum of duration_s over all spawns where both timestamps parse. confidence:exact when every paired spawn's duration_s is exact; partial when any spawn's duration_s is unavailable."
+    },
+    "minutes_per_loop": {
+      "value": 1.0,
+      "confidence": "exact",
+      "_comment": "active_spawn_time_s / 60 / sum(critic_loops). confidence tracks active_spawn_time_s. {null, unavailable} when total critic_loops is 0."
+    }
+  },
+
+  "checkpoints": {
+    "_comment": "Container — exempt from confidence. Bundle 11 (schema_version 2) ONLY. From CHECKPOINT-EVENT raised/resolved pairs in log.md.",
+    "entries": [
+      {
+        "_comment": "One entry per raised checkpoint. decision is null when absent from the resolved line. wait_s.confidence:exact when the checkpoint resolved; unavailable when raised-only (EC 5). A wait_s <= 0 is emitted as-is with a sibling _note (EC 10), never corrected or discarded.",
+        "id": "design-model",
+        "raised_at": "2026-07-05T00:02:00Z",
+        "resolved_at": "2026-07-05T00:04:00Z",
+        "decision": "proceed as designed",
+        "wait_s": { "value": 120, "confidence": "exact" }
+      }
+    ],
+    "human_wait_total_s": {
+      "value": 120,
+      "confidence": "exact",
+      "_comment": "Sum of wait_s over entries whose wait_s.confidence is exact (resolved pairs only). confidence:exact when every raised checkpoint has a resolved pair; partial + _note when any raised-only entries exist. Raised-only checkpoints never contribute."
+    },
+    "active_vs_blocked_ratio": {
+      "value": 0.4,
+      "confidence": "exact",
+      "_comment": "wall_clock.active_spawn_time_s / human_wait_total_s. confidence is the less-confident of the two inputs. {null, unavailable} when human_wait_total_s is 0 or null."
     }
   }
 }
