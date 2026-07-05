@@ -4,9 +4,9 @@
   "default_runtime": "claude",
   "host_policy": {
     "claude": {
-      "allowed_spawn_models": ["haiku", "sonnet", "opus"],
-      "forbidden": ["claude-fable-5", "fable", "premium"],
-      "note": "haiku/sonnet/opus only. Fable/premium paused — use opus. haiku is the cheap rung (Scoot). Jun 2026."
+      "allowed_spawn_models": ["haiku", "sonnet", "opus", "fable"],
+      "forbidden": ["premium"],
+      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only — re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
     }
   },
   "manual_experiments": [],

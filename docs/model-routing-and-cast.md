@@ -37,9 +37,10 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 
 ### Host policy - Claude Code (current)
 
-**Haiku, sonnet, and opus.** Do not spawn `claude-fable-5`, `fable`, or legacy `premium` tier.
-**Always pass `model` explicitly** on every spawn (see "How to spawn an agent" in
-`agents/orchestrator.md`).
+**Haiku, sonnet, and opus for defaults; fable for escalation only.** Fable was re-enabled
+Jul 2026 for the `frontier` / `escalated` tiers — do not use it as a first-pass default, and do
+not spawn the legacy `premium` tier. **Always pass `model` explicitly** on every spawn (see
+"How to spawn an agent" in `agents/orchestrator.md`).
 
 | Spawn `model` | Roles |
 |---------------|-------|
@@ -47,11 +48,12 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 | **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic, Witness, Coupler, Tally (default utility), **Scribe** (default; escalate to opus for Draft/Revise) |
 | **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
 
-Provider-neutral tiers `strong` / `frontier` / `escalated` resolve to **opus** on the Claude
-adapter - not a separate Fable model. Fable experiments in `config/experiments/` are **disabled**
-until re-enabled deliberately.
+Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` resolve to
+**fable** (re-enabled Jul 2026, escalation only — never a first-pass default).
 
-**Escalate sonnet -> opus** when a handoff is thin after one routed fix. Do not escalate to Fable.
+**Escalate sonnet -> opus** when a handoff is thin after one routed fix; escalate opus -> fable
+only on a real escalation trigger (final gate, second critic loop, repeated failure,
+human-requested).
 
 **Try experiments:** `NOVADIEM_MODEL_EXPERIMENTS=budget-pressure-standardize` or add ids to
 `manual_experiments` in `config/model-policy.v2.json`. See `config/model-experiments/README.md`.

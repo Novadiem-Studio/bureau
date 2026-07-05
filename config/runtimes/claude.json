@@ -1,8 +1,8 @@
 {
   "runtime": "claude",
-  "description": "Claude Code adapter — haiku, sonnet, opus. Fable/premium not used.",
-  "spawn_models": ["haiku", "sonnet", "opus"],
-  "forbidden_models": ["claude-fable-5", "fable"],
+  "description": "Claude Code adapter — haiku, sonnet, opus; fable for escalation tiers only.",
+  "spawn_models": ["haiku", "sonnet", "opus", "fable"],
+  "forbidden_models": [],
   "capabilities": {
     "supports_fresh_context_subagents": true,
     "supports_parallel_subagents": true,
@@ -24,12 +24,12 @@
       "notes": "Architecture, critique, frontend/backend first pass."
     },
     "frontier": {
-      "model": "opus",
-      "notes": "Same as strong — no separate Fable model while Fable is paused."
+      "model": "fable",
+      "notes": "Fable re-enabled for escalation (Jul 2026). Final gates, subtle state/design, high-risk reviews."
     },
     "escalated": {
-      "model": "opus",
-      "notes": "Strongest Claude path available in this framework."
+      "model": "fable",
+      "notes": "Fable + highest reasoning budget — repeated failure, hard adjudication, human-requested escalation."
     }
   }
 }
