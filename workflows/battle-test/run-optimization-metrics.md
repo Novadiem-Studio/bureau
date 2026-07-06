@@ -2,7 +2,7 @@
 
 **Canon surfaces touched:** `agents/orchestrator.md`, `docs/run-accounting.md`, `scripts/README.md`
 **Promotion to canon:** yes (declared by The Conductor per docs/conductor-gates.md)
-**Status:** EXECUTED 8/8 — `## Run 2026-07-05` block below; Case 6 recipe defect fixed (staged-copy shim) and re-run 2026-07-05.
+**Status:** EXECUTED 8/8 — `## Run 2026-07-05` block below; Case 6 recipe defect fixed (staged-copy shim) and re-run 2026-07-05; Case 7 recipe rewritten to `BUREAU_ACCOUNT_RUN_SH` observing-shim injection (Bundle 16, 2026-07-06).
 
 ---
 
@@ -39,7 +39,7 @@
 | **FAILURE MODE: Conductor share pending at close-out — partial, not exact (EC 12 / AC 4 Blocker guard)** | A `log.md` containing a complete set of matched SPAWN-EVENT pairs and a SPAWN-TOKEN-EVENT for each specialist, but NO CONDUCTOR-TOKEN-EVENT line at all. | `tokens.processed_total.confidence == "partial"` with `_note` containing `"conductor-share-pending"`. Must NOT be `"exact"`. A build that labels this `"exact"` is broken — this case is the Blocker guard. | PASS — confidence=partial, _note="conductor-share-pending: final-leg capture not yet in log.md" |
 | **FAILURE MODE: Zero SPAWN-EVENT with spawn headings — enforcement gate fires (EC 8 / AC 6)** | A `log.md` containing a narrative heading `## [2026-07-05T00:00:00Z] — Spawned The Architect` and no `SPAWN-EVENT:` lines. `state.json` has `phases_complete: ["architect"]` (non-empty). | `account-run.sh` stdout contains `[CLOSE-OUT WARNING]`; `accounting.json` carries `"_close_out_warning"` key. The gate must fire; a build that silently emits clean JSON without the warning is broken. | PASS — `[CLOSE-OUT WARNING]` in stdout, `_close_out_warning` in accounting.json |
 | **ADVERSARIAL: compare-before-rm guard exercised — pointer swapped mid-hook (P3 review)** | A shim `account-run.sh` that, when called by `conductor-stop.sh`'s self-refresh step, overwrites `$BUREAU_POINTER_FILE` with a new JSON whose `run_dir` and `nonce` differ from the values loaded by the hook's Step B. After the shim returns, the hook reaches Step G(3). | `conductor-stop.sh` exits 0; the pointer file is NOT removed (compare-before-rm detects the mismatch: current `run_dir`/`nonce` ≠ the hook's loaded values, so the hook leaves it untouched). The original run's `log.md` still has `final:true` appended. Verifies that the hook re-reads the pointer at Step G(3) rather than caching the value from Step B. | PASS — staged-copy shim: conductor-stop.sh + lib/bureau-token-lib.sh copied to temp dir; shim account-run.sh placed alongside; SCRIPT_DIR resolves to temp dir naturally; shim overwrote pointer with /other nonce; compare-before-rm detected mismatch and left pointer untouched; log.md has final:true. All three assertions green. |
-| **ADVERSARIAL: Forced account-run.sh failure — append-before-refresh ordering locked (P3 review)** | A shim `account-run.sh` that exits non-zero (simulating a refresh failure). `conductor-stop.sh` is driven to the `final:true` path. | `conductor-stop.sh` exits 0; `CONDUCTOR-TOKEN-EVENT` with `final:true` is already appended to `log.md` BEFORE the `account-run.sh` call is made (Step F before Step G(2)). The self-refresh failure is logged to stderr but does NOT prevent pointer removal (Step G(3) still runs). `accounting.json` is not updated (refresh failed) but the token event record is preserved. Verifies that a refresh failure cannot roll back the append — the ordering is append → refresh → rm, not refresh → append. | PASS (partial) — final:true appended, pointer removed, exit 0 verified. Shim injection not possible (same SCRIPT_DIR defect as Case 6); forced-failure path not exercised, but ordering (Step F before G2) is code-structural and verified observationally. |
+| **ADVERSARIAL: Forced account-run.sh failure — append-before-refresh ordering locked (P3 review)** | A shim `account-run.sh` that exits non-zero (simulating a refresh failure). `conductor-stop.sh` is driven to the `final:true` path. | `conductor-stop.sh` exits 0; `CONDUCTOR-TOKEN-EVENT` with `final:true` is already appended to `log.md` BEFORE the `account-run.sh` call is made (Step F before Step G(2)). The self-refresh failure is logged to stderr but does NOT prevent pointer removal (Step G(3) still runs). `accounting.json` is not updated (refresh failed) but the token event record is preserved. Verifies that a refresh failure cannot roll back the append — the ordering is append → refresh → rm, not refresh → append. | PASS — `BUREAU_ACCOUNT_RUN_SH` observing-shim injection confirmed; ordering proven via sentinel (final-at-shim ≥ 1); pointer absent after hook exits; exit 0. |
 | **ADVERSARIAL: Malformed/empty pointer JSON + corrupt state.json fail-safe (P3 review)** | Three sub-cases: (a) `$BUREAU_POINTER_FILE` exists but contains invalid JSON (e.g. `{`); (b) pointer file is empty (zero bytes); (c) pointer is valid JSON but `state.json` in the named `RUN_DIR` is invalid JSON (corrupt). | (a) and (b): `conductor-stop.sh` exits 0; no stdout output and no log.md write (a stderr warning IS expected and must not fail the case) — Step B's parse fails, hook exits at the pointer-validation fail-safe. (c): `conductor-stop.sh` exits 0 — Step E reads `state.json` for closure evidence; parse failure is treated as OPEN (final=false), so it appends a non-final `CONDUCTOR-TOKEN-EVENT` and skips Step G entirely (no pointer removal, no self-refresh). Verifies that malformed inputs never cause non-zero exits (would disrupt non-bureau Claude sessions). | PASS — (a) exit 0, no stdout; (b) exit 0, no stdout; (c) final:false appended, pointer stays, exit 0 |
 
 ---
@@ -87,19 +87,34 @@ None. All cases must pass before canon promotion.
   ```
 
   **Case 7 — forced account-run.sh failure** (fixture 66: `conductor-stop AC 17b`)
+  _(Recipe rewritten 2026-07-06: `BUREAU_ACCOUNT_RUN_SH` env-var injection — no `SCRIPT_DIR` override, no staged copy of the script. Uses an OBSERVING shim that records sentinels before exiting non-zero; three assertions prove ordering, not just co-occurrence.)_
   ```bash
+  ROOT="$(git rev-parse --show-toplevel)"
   TMPF=$(mktemp -d); export BUREAU_POINTER_FILE="$TMPF/ptr"
+  SHIM_DIR="$TMPF/shim"; mkdir -p "$SHIM_DIR"
+  # Observing shim: records sentinels BEFORE exiting non-zero (proves ordering, not co-occurrence).
+  # grep pattern includes JSON key's double quotes — bare 'final:true' never matches the emitted line.
+  printf '#!/usr/bin/env bash\ngrep -c '"'"'"final":true'"'"' "$1/log.md" > "%s/final-at-shim"\n[ -f "$BUREAU_POINTER_FILE" ] && echo yes > "%s/ptr-at-shim" || echo no > "%s/ptr-at-shim"\nexit 1\n' \
+    "$TMPF" "$TMPF" "$TMPF" > "$SHIM_DIR/account-run.sh"
+  chmod +x "$SHIM_DIR/account-run.sh"
+  export BUREAU_ACCOUNT_RUN_SH="$SHIM_DIR/account-run.sh"
   RUN_PATH="$TMPF/run"; mkdir -p "$RUN_PATH"; touch "$RUN_PATH/log.md"
-  printf '{"accounting":{"status":"complete","path":"accounting.json"}}' > "$RUN_PATH/state.json"
-  NONCE=$(uuidgen | tr '[:upper:]' '[:lower:]')
-  printf '{"run_dir":"%s","nonce":"%s","written_at":"2026-07-05T00:00:00Z"}\n' "$RUN_PATH" "$NONCE" > "$BUREAU_POINTER_FILE"
-  printf 'RUN_DIR: %s\nnonce: %s\n' "$RUN_PATH" "$NONCE" > "$TMPF/t.jsonl"
-  # Shim account-run.sh exits non-zero
-  printf '#!/usr/bin/env bash\nexit 1\n' > "$TMPF/account-run.sh"; chmod +x "$TMPF/account-run.sh"
-  SCRIPT_DIR="$TMPF" bash scripts/conductor-stop.sh <<< \
-    "{\"session_id\":\"s1\",\"transcript_path\":\"$TMPF/t.jsonl\",\"stop_hook_active\":false}" 2>/dev/null
-  # Assert: final:true already appended; pointer removed; hook exits 0
-  grep -q '"final":true' "$RUN_PATH/log.md" && [ ! -e "$BUREAU_POINTER_FILE" ] && echo PASS
+  printf '{"accounting":{"status":"complete"}}' > "$RUN_PATH/state.json"
+  NONCE="nonce-fixture-case7"
+  # Four-field pointer format (baseline:null); no SCRIPT_DIR override, no staged copy
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"2026-07-06T00:00:00Z","baseline":null}\n' \
+    "$RUN_PATH" "$NONCE" > "$BUREAU_POINTER_FILE"
+  printf '%s\n' "RUN_DIR: $RUN_PATH" "NONCE: $NONCE" > "$TMPF/t.jsonl"
+  printf '%s\n' '{"type":"assistant","message":{"id":"msg-c7","usage":{"input_tokens":5000000,"cache_creation_input_tokens":2000000,"cache_read_input_tokens":1000000,"output_tokens":100000},"content":[{"type":"text"}]}}' >> "$TMPF/t.jsonl"
+  bash "$ROOT/scripts/conductor-stop.sh" <<< \
+    "{\"session_id\":\"s-c7\",\"transcript_path\":\"$TMPF/t.jsonl\",\"stop_hook_active\":false}" 2>/dev/null
+  rc=$?
+  # Assert 1 — ORDERING PROVEN: final:true was already in log.md when shim ran (Step F before G(2))
+  cnt=$(cat "$TMPF/final-at-shim" 2>/dev/null)
+  # Assert 2 — TEMPORAL REMOVAL: pointer existed at shim invocation; absent after hook exits
+  ptr_at_shim=$(cat "$TMPF/ptr-at-shim" 2>/dev/null)
+  [ "$rc" = "0" ] && [ "${cnt:-0}" -ge 1 ] && [ "$ptr_at_shim" = "yes" ] && \
+    [ ! -e "$BUREAU_POINTER_FILE" ] && echo PASS
   rm -rf "$TMPF"
   ```
 
@@ -129,5 +144,3 @@ None. All cases must pass before canon promotion.
   ```
 
 - The `## Run <date>` block and filled-in Actual result column will be added during Part B live execution after hooks are registered in `~/.claude/settings.json`.
-
-- **Deferred (Bundle-12 candidate):** A `BUREAU_ACCOUNT_RUN_SH` env-var override in `conductor-stop.sh` would make shim injection direct — no staged copy required. Currently `SCRIPT_DIR` is unconditionally reassigned at line 28; adding `ACCOUNT_RUN_SH="${BUREAU_ACCOUNT_RUN_SH:-$SCRIPT_DIR/account-run.sh}"` and calling `"$ACCOUNT_RUN_SH"` instead would let test harnesses inject a shim via env-var alone. Staged-copy approach is the working solution in the interim.

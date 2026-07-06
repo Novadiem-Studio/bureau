@@ -37,8 +37,6 @@ Conductor against the worktree canon at commit 4806c6d.
 | Failure — hash mismatch | pass — ITEM 5 mismatch-receipt + halt behavior present. |
 | Failure — provenance sub-field missing | pass — per-entry flag vs whole-review cold-break distinction (ITEM 6/7) intact. |
 
-Deferred improvement (recorded 2026-07-05, Bundle-12 candidates from the Bundle 11 battle-test carry forward unchanged): `BUREAU_ACCOUNT_RUN_SH` env override; staged-copy recipe for the Bundle 11 case-7 forced-failure sub-assertion.
-
 ---
 
 # Bundle 03 — Planning decision quality gates
