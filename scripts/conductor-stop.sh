@@ -122,26 +122,239 @@ if [ -r "$RUN_DIR/state.json" ]; then
   fi
 fi
 
+# ── Step E.5: Resolve baseline (four-row state machine) ──────────────────────
+# Placed AFTER Step E because the first-fire and EC-4 re-record branches need
+# usage_json (the session cumulative from sum_transcript_usage) to compute the
+# baseline value. No second sum_transcript_usage call — read the one in scope.
+#
+# jq distinguishes an ABSENT baseline key from an explicit null via has():
+# plain `.baseline` is null for BOTH. Absent = pre-Bundle-16 pointer = legacy.
+#
+#   pointer .baseline          Action
+#   ─────────────────────────  ──────────────────────────────────────────────
+#   has("baseline")==false     Legacy — subtract 0, emit the old 6-key shape, no
+#                              write (FR 6, FR 7, EC 1).
+#   null                       First fire — record baseline = {session_id +
+#                              current cumulative}, write back (two-step guard),
+#                              then use it. Write fails → baseline=0 this fire,
+#                              no retry (EC 3).
+#   object, .session_id == sid Use it verbatim — same baseline every fire (FR 3).
+#   object, .session_id != sid Resumed leg in a new session — re-record a fresh
+#                              baseline for THIS session, write back, use it
+#                              (EC 4). Write fails → baseline=0 this fire.
+#
+# Sets for Step F:
+#   baseline_is_legacy  true|false  (true also covers the EC-3 write-fail fallback:
+#                                    emit the old 6-key shape with no baseline key)
+#   baseline_session_id, baseline_input, baseline_cache_creation,
+#   baseline_cache_read, baseline_processed, baseline_output, baseline_turns
+#                       integers (0 when legacy)
+#   baseline_obj_json   the baseline object emitted on the line (empty when legacy)
+
+# Default to the legacy (fail-open) shape; flipped to non-legacy only once a valid
+# baseline object is resolved and — for the null / EC-4 rows — durably written.
+baseline_is_legacy="true"
+baseline_session_id=""
+baseline_input=0
+baseline_cache_creation=0
+baseline_cache_read=0
+baseline_processed=0
+baseline_output=0
+baseline_turns=0
+baseline_obj_json=""
+
+# Compose a candidate baseline object from the current session cumulative.
+_bl_candidate() {
+  printf '%s' "$usage_json" | jq -c --arg sid "$session_id" \
+    '{session_id: $sid, input: .input, cache_creation: .cache_creation,
+      cache_read: .cache_read, processed: .processed, output: .output, turns: .turns}' \
+    2>/dev/null
+}
+
+# Adopt a just-recorded candidate as the in-memory baseline (deltas ≈ 0 this fire).
+_bl_adopt_candidate() {
+  baseline_session_id="$session_id"
+  baseline_input=$(printf '%s' "$usage_json" | jq -r '.input // 0' 2>/dev/null)
+  baseline_cache_creation=$(printf '%s' "$usage_json" | jq -r '.cache_creation // 0' 2>/dev/null)
+  baseline_cache_read=$(printf '%s' "$usage_json" | jq -r '.cache_read // 0' 2>/dev/null)
+  baseline_processed=$(printf '%s' "$usage_json" | jq -r '.processed // 0' 2>/dev/null)
+  baseline_output=$(printf '%s' "$usage_json" | jq -r '.output // 0' 2>/dev/null)
+  baseline_turns=$(printf '%s' "$usage_json" | jq -r '.turns // 0' 2>/dev/null)
+}
+
+# Two-step write-back guard (required because the enrollment printf is NOT atomic
+# — a newer run can overwrite the pointer between our pre-mv check and the mv).
+# Returns 0 only if the pointer still names THIS run's run_dir+nonce both before
+# AND after the atomic mv. A lost race → return 1; the caller degrades to
+# baseline=0 for this fire and does NOT retry. Unlike compare-before-rm at Step
+# G(3) (which only removes and is always safe), a write-back that loses the race
+# could resurrect this run's identity over a newer run's fresh pointer, so the
+# post-mv re-read is mandatory. (The pre-mv→mv clobber window is a named, accepted
+# residual — narrow, first-fire only; see plan.md.)
+# $1 = candidate baseline object JSON.
+_bl_write_back() {
+  local cand="$1" pre_run pre_nonce post_run post_nonce tmp_ptr
+  [ -n "$cand" ] || return 1
+  # (1) Pre-mv check: does the pointer still name THIS run?
+  [ -e "$POINTER_FILE" ] || return 1
+  pre_run=$(jq -r '.run_dir // empty' "$POINTER_FILE" 2>/dev/null) || pre_run=""
+  pre_nonce=$(jq -r '.nonce // empty' "$POINTER_FILE" 2>/dev/null) || pre_nonce=""
+  [ "$pre_run" = "$RUN_DIR" ] && [ "$pre_nonce" = "$NONCE" ] || return 1
+  # (2) Compose a fresh four-key pointer, preserving run_dir/nonce/written_at
+  #     verbatim (only baseline is added), and publish via temp-file + atomic mv.
+  #     The temp file lives beside the pointer so the mv is same-filesystem/atomic
+  #     (mirrors scripts/account-run.sh's ".accounting.json.tmp.XXXXXX" pattern).
+  tmp_ptr=$(mktemp "${POINTER_FILE}.tmp.XXXXXX" 2>/dev/null) || return 1
+  if ! printf '%s' "$pointer_json" | jq -c --argjson baseline "$cand" \
+        '{run_dir: .run_dir, nonce: .nonce, written_at: .written_at, baseline: $baseline}' \
+        > "$tmp_ptr" 2>/dev/null; then
+    rm -f "$tmp_ptr" 2>/dev/null
+    return 1
+  fi
+  if ! mv "$tmp_ptr" "$POINTER_FILE" 2>/dev/null; then
+    rm -f "$tmp_ptr" 2>/dev/null
+    return 1
+  fi
+  # (3) Post-mv re-read: confirm the pointer still names THIS run (race not lost).
+  post_run=$(jq -r '.run_dir // empty' "$POINTER_FILE" 2>/dev/null) || post_run=""
+  post_nonce=$(jq -r '.nonce // empty' "$POINTER_FILE" 2>/dev/null) || post_nonce=""
+  [ "$post_run" = "$RUN_DIR" ] && [ "$post_nonce" = "$NONCE" ] || return 1
+  return 0
+}
+
+baseline_state=$(printf '%s' "$pointer_json" | jq -r \
+  'if (has("baseline") | not) then "legacy"
+   elif (.baseline == null) then "null"
+   elif (.baseline | type) == "object" then "object"
+   else "legacy" end' 2>/dev/null) || baseline_state="legacy"
+
+case "$baseline_state" in
+  legacy)
+    : # keep legacy defaults — subtract 0, emit the old 6-key shape (FR 6/7)
+    ;;
+  null)
+    # First fire for this run — record the baseline from the current cumulative.
+    _bl_cand=$(_bl_candidate)
+    if _bl_write_back "$_bl_cand"; then
+      baseline_obj_json="$_bl_cand"
+      _bl_adopt_candidate
+      baseline_is_legacy="false"
+    fi
+    # else: EC 3 — write failed / race lost → baseline=0 this fire, no retry.
+    ;;
+  object)
+    _bl_sid=$(printf '%s' "$pointer_json" | jq -r '.baseline.session_id // ""' 2>/dev/null) || _bl_sid=""
+    if [ -n "$_bl_sid" ] && [ "$_bl_sid" = "$session_id" ]; then
+      # Same session — reuse the recorded baseline verbatim (FR 3).
+      _bl_obj=$(printf '%s' "$pointer_json" | jq -c \
+        '.baseline | {session_id: (.session_id // ""),
+                      input: (.input // 0), cache_creation: (.cache_creation // 0),
+                      cache_read: (.cache_read // 0), processed: (.processed // 0),
+                      output: (.output // 0), turns: (.turns // 0)}' 2>/dev/null) || _bl_obj=""
+      if [ -n "$_bl_obj" ]; then
+        baseline_obj_json="$_bl_obj"
+        baseline_session_id="$_bl_sid"
+        baseline_input=$(printf '%s' "$_bl_obj" | jq -r '.input' 2>/dev/null)
+        baseline_cache_creation=$(printf '%s' "$_bl_obj" | jq -r '.cache_creation' 2>/dev/null)
+        baseline_cache_read=$(printf '%s' "$_bl_obj" | jq -r '.cache_read' 2>/dev/null)
+        baseline_processed=$(printf '%s' "$_bl_obj" | jq -r '.processed' 2>/dev/null)
+        baseline_output=$(printf '%s' "$_bl_obj" | jq -r '.output' 2>/dev/null)
+        baseline_turns=$(printf '%s' "$_bl_obj" | jq -r '.turns' 2>/dev/null)
+        baseline_is_legacy="false"
+      fi
+    else
+      # EC 4 — baseline tagged with a different (or missing) session_id: re-record
+      # a fresh baseline for THIS session so the resumed leg is not clamped to ~0
+      # by subtracting the prior session's (large) baseline.
+      _bl_cand=$(_bl_candidate)
+      if _bl_write_back "$_bl_cand"; then
+        baseline_obj_json="$_bl_cand"
+        _bl_adopt_candidate
+        baseline_is_legacy="false"
+      fi
+      # else: EC 3 — write failed / race lost → baseline=0 this fire, no retry.
+    fi
+    ;;
+esac
+
 # ── Step F: Append CONDUCTOR-TOKEN-EVENT ─────────────────────────────────────
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-event_line=$(printf '%s' "$usage_json" | jq -c \
-  --arg session_id "$session_id" \
-  --arg at "$now" \
-  --argjson final "$final" \
-  '{
-    session_id: $session_id,
-    at: $at,
-    turns: .turns,
-    tokens: {
-      input: .input,
-      cache_creation: .cache_creation,
-      cache_read: .cache_read,
-      processed: .processed,
-      output: .output
-    },
-    final: $final
-  }' 2>/dev/null) || event_line=""
+if [ "$baseline_is_legacy" = "true" ]; then
+  # Legacy branch (absent baseline key OR the EC-3 write-fail fallback): emit the
+  # exact pre-Bundle-16 6-key shape — byte-for-byte identical to today's output on
+  # the same input (FR 6, AC 6). No baseline key, no _note. Do NOT reorder keys.
+  event_line=$(printf '%s' "$usage_json" | jq -c \
+    --arg session_id "$session_id" \
+    --arg at "$now" \
+    --argjson final "$final" \
+    '{
+      session_id: $session_id,
+      at: $at,
+      turns: .turns,
+      tokens: {
+        input: .input,
+        cache_creation: .cache_creation,
+        cache_read: .cache_read,
+        processed: .processed,
+        output: .output
+      },
+      final: $final
+    }' 2>/dev/null) || event_line=""
+else
+  # Non-legacy branch: subtract the baseline per field from the raw cumulative and
+  # clamp each delta ≥ 0 (input/cache_creation/cache_read/output/turns). Re-derive
+  # processed from the CLAMPED components (never clamp processed on its own) so the
+  # processed == input+cache_creation+cache_read identity holds and AC 7's bound is
+  # satisfied by construction (FR 2). Attach the baseline object (OQ 4, audit) and,
+  # if any field clamped, a _note naming each clamped field with its raw/baseline
+  # pair (FR 4 / EC 2). Key order: session_id, at, turns, tokens, final, baseline,
+  # then _note last (only when a clamp fired).
+  event_line=$(printf '%s' "$usage_json" | jq -c \
+    --arg session_id "$session_id" \
+    --arg at "$now" \
+    --argjson final "$final" \
+    --argjson b_input "$baseline_input" \
+    --argjson b_cache_creation "$baseline_cache_creation" \
+    --argjson b_cache_read "$baseline_cache_read" \
+    --argjson b_output "$baseline_output" \
+    --argjson b_turns "$baseline_turns" \
+    --argjson baseline "$baseline_obj_json" \
+    '
+    (.input          - $b_input)          as $raw_input          |
+    (.cache_creation - $b_cache_creation) as $raw_cache_creation |
+    (.cache_read     - $b_cache_read)     as $raw_cache_read     |
+    (.output         - $b_output)         as $raw_output         |
+    (.turns          - $b_turns)          as $raw_turns          |
+    (if $raw_input          < 0 then 0 else $raw_input          end) as $c_input          |
+    (if $raw_cache_creation < 0 then 0 else $raw_cache_creation end) as $c_cache_creation |
+    (if $raw_cache_read     < 0 then 0 else $raw_cache_read     end) as $c_cache_read     |
+    (if $raw_output         < 0 then 0 else $raw_output         end) as $c_output         |
+    (if $raw_turns          < 0 then 0 else $raw_turns          end) as $c_turns          |
+    ($c_input + $c_cache_creation + $c_cache_read) as $c_processed |
+    ([ (if $raw_input          < 0 then "clamped input (raw \(.input) < baseline \($b_input)) to 0" else empty end),
+       (if $raw_cache_creation < 0 then "clamped cache_creation (raw \(.cache_creation) < baseline \($b_cache_creation)) to 0" else empty end),
+       (if $raw_cache_read     < 0 then "clamped cache_read (raw \(.cache_read) < baseline \($b_cache_read)) to 0" else empty end),
+       (if $raw_output         < 0 then "clamped output (raw \(.output) < baseline \($b_output)) to 0" else empty end),
+       (if $raw_turns          < 0 then "clamped turns (raw \(.turns) < baseline \($b_turns)) to 0" else empty end)
+     ]) as $notes |
+    {
+      session_id: $session_id,
+      at: $at,
+      turns: $c_turns,
+      tokens: {
+        input: $c_input,
+        cache_creation: $c_cache_creation,
+        cache_read: $c_cache_read,
+        processed: $c_processed,
+        output: $c_output
+      },
+      final: $final,
+      baseline: $baseline
+    }
+    + (if ($notes | length) > 0 then {"_note": ($notes | join("; "))} else {} end)
+    ' 2>/dev/null) || event_line=""
+fi
 
 if [ -z "$event_line" ]; then
   echo "[conductor-stop] WARNING: failed to compose event JSON — skipping append" >&2
