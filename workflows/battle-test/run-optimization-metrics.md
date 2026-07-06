@@ -2,7 +2,30 @@
 
 **Canon surfaces touched:** `agents/orchestrator.md`, `docs/run-accounting.md`, `scripts/README.md`
 **Promotion to canon:** yes (declared by The Conductor per docs/conductor-gates.md)
-**Status:** EXECUTED 8/8 — `## Run 2026-07-05` block below; Case 6 recipe defect fixed (staged-copy shim) and re-run 2026-07-05; Case 7 recipe rewritten to `BUREAU_ACCOUNT_RUN_SH` observing-shim injection (Bundle 16, 2026-07-06).
+**Status:** EXECUTED 8/8 — `## Run 2026-07-06` block below (Bundle 16 delta-baseline feature; Case 7 full PASS via `BUREAU_ACCOUNT_RUN_SH`); prior run `## Run 2026-07-05` follows.
+
+---
+
+## Run 2026-07-06
+
+**Date:** 2026-07-06
+**Environment:** macOS 25.5.0, Bash 3.2, jq 1.7.1
+**Claude version:** claude-sonnet-4-6 (The Mechanic subagent, mechanic-3)
+**Scripts under test:** `scripts/conductor-stop.sh` (Bundle 16 delta-baseline feature), `scripts/account-tokens.sh` (unchanged), `scripts/lib/bureau-token-lib.sh` (unchanged)
+**Regression suite:** 108 PASS / 0 FAIL / 2 SKIP (slow) — 110 fixtures total
+
+| Case | Result | Key evidence |
+|------|--------|--------------|
+| Happy path — complete run with all events | PASS | schema_version=2, processed_total.confidence=exact, active_spawn_time_s.confidence=exact, human_wait_total_s=120, conductor_tokens present |
+| EDGE: Pre-Bundle-11 old format (7-key) | PASS | schema_version=1, valid JSON, specialist_spawns populated with role/agent/attempt/configured_model/actual_model/reported_status, no new blocks present |
+| EDGE: Double SubagentStop dedup | PASS | processed_total=110249 (max 84749 + conductor 25500, not sum); confidence=exact |
+| FAILURE MODE: Conductor pending → partial | PASS | confidence=partial, _note="conductor-share-pending: final-leg capture not yet in log.md" |
+| FAILURE MODE: Zero SPAWN-EVENT enforcement gate | PASS | stdout contains `[CLOSE-OUT WARNING]`, accounting.json carries `_close_out_warning` key |
+| ADVERSARIAL: compare-before-rm guard | PASS | staged-copy shim; shim swapped nonce to "other"; compare-before-rm detected mismatch, pointer left untouched; log.md has final:true |
+| ADVERSARIAL: Forced account-run.sh failure — ordering | PASS | Full PASS — `BUREAU_ACCOUNT_RUN_SH` observing-shim injection confirmed; no staged copy required. rc=0, final-at-shim=1 (ordering proven), ptr-at-shim=yes (temporal), pointer absent after exit |
+| ADVERSARIAL: Malformed/empty pointer + corrupt state.json | PASS | (a) `{` → exit 0, no stdout; (b) empty → exit 0, no stdout; (c) corrupt state.json → final:false appended, pointer stays, exit 0 |
+
+**Summary:** 8/8 PASS. Case 7 — full PASS: `BUREAU_ACCOUNT_RUN_SH` shim injection confirmed, no staged copy required. Upstream drift check: one global install — no per-project copies to drift-check.
 
 ---
 
