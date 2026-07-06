@@ -206,7 +206,9 @@ fi
 # Inline single-backtick spans are not scanned.
 #
 # Forbidden patterns (check d):
-#   jq-lone-dot        — jq -e . (lone-dot filter; exits on truthiness, not parse-success)
+#   jq-lone-dot        — jq -e . and all equivalent spellings: quoted ('.' or "."),
+#                         combined flags (-er, -re), long flag (--exit-status), and
+#                         separate-flag forms (-e -r); lone-dot only — jq -e '.foo' is safe
 #   advisory-lock-call — flock (unavailable on macOS Bash 3.2)
 #   array-builtin-call — readarray (Bash 4+ builtin)
 #   array-builtin-call — mapfile (Bash 4+ builtin)
@@ -234,9 +236,27 @@ check_snippets() {
     fi
     [ "$in_fence" -eq 1 ] || continue
 
-    # 1. jq-lone-dot: jq -e . where . is a lone-dot filter
-    #    (dot immediately followed by whitespace or end-of-line, not a selector like .foo)
-    if printf '%s\n' "$line" | grep -qE 'jq[[:space:]]+-e[[:space:]]+\.([[:space:]]|$)'; then
+    # 1. jq-lone-dot: lone-dot filter with exit-status semantics, all spellings.
+    #    Flags matched: -e, -er, -re, --exit-status, -e -r, -r -e, and combinations.
+    #    Filter forms: . (unquoted), '.' (single-quoted), "." (double-quoted).
+    #    A quoted lone dot is never a legitimate filter; no false-positive risk.
+    #    A real filter like jq -e '.foo' does NOT match (not a lone dot after the flag).
+    jq_lone_dot=0
+    # Unquoted lone dot: jq -e . | jq -er . | jq -e -r . | jq --exit-status . etc.
+    if printf '%s\n' "$line" | grep -qE 'jq[[:space:]]+(-e[[:alnum:]]*|-[[:alnum:]]*e[[:alnum:]]*|--exit-status)([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+\.([[:space:]]|$)'; then
+      jq_lone_dot=1
+    fi
+    # Single-quoted lone dot: jq -e '.' | jq -er '.' | jq --exit-status '.' etc.
+    if printf '%s\n' "$line" | grep -qE "jq[[:space:]]+(-e[[:alnum:]]*|-[[:alnum:]]*e[[:alnum:]]*|--exit-status)([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+'\\.'"; then
+      jq_lone_dot=1
+    fi
+    # Double-quoted lone dot: jq -e "." | jq -er "." | jq --exit-status "." etc.
+    # _dq_jq_pat ends with the opening " of the filter; \\.\" appends literal-dot + closing "
+    _dq_jq_pat='jq[[:space:]]+(-e[[:alnum:]]*|-[[:alnum:]]*e[[:alnum:]]*|--exit-status)([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+"'
+    if printf '%s\n' "$line" | grep -qE "${_dq_jq_pat}\\.\""; then
+      jq_lone_dot=1
+    fi
+    if [ "$jq_lone_dot" -eq 1 ]; then
       add_defect "${fname}:${n} — jq-lone-dot — bare 'jq -e .' gate exits on truthiness not parse-success; use 'jq -e type == \"object\"' or similar"
     fi
 
