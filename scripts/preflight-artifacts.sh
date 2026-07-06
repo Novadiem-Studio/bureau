@@ -206,9 +206,11 @@ fi
 # Inline single-backtick spans are not scanned.
 #
 # Forbidden patterns (check d):
-#   jq-lone-dot        — jq -e . and all equivalent spellings: quoted ('.' or "."),
-#                         combined flags (-er, -re), long flag (--exit-status), and
-#                         separate-flag forms (-e -r); lone-dot only — jq -e '.foo' is safe
+#   jq-lone-dot        — jq -e . and equivalent spellings: unquoted/quoted lone dot
+#                         ('.' or "."), combined-letter flags like -er, --exit-status.
+#                         NOT matched: split-flag sequences where e is not in the lead
+#                         position (e.g. -r -e .) and glued flags without spaces (e.g.
+#                         -e-r); lone-dot only — jq -e '.foo' is safe.
 #   advisory-lock-call — flock (unavailable on macOS Bash 3.2)
 #   array-builtin-call — readarray (Bash 4+ builtin)
 #   array-builtin-call — mapfile (Bash 4+ builtin)

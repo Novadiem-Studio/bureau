@@ -48,6 +48,12 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model routing" 
    *This step is omitted from bug-fix and operational-build workflows — those have no
    Requirements/Architecture split to reconcile.*
 
+   > RECIPROCAL SYNC NOTE: this step and `agents/analyst.md § Reconciliation mode` describe
+   > the same reconciliation obligation. If the inputs, three questions, output format, or EC 3/
+   > EC 8 obligations are edited here they must be edited in `agents/analyst.md § Reconciliation
+   > mode`, and vice versa. `agents/analyst.md` is the persona-level authority; this step is the
+   > workflow-sequence reference.
+
 4. **[DESIGN-MODEL CHECKPOINT]** (mandatory) — The Conductor shows the human the Architect's
    design-model summary + over-baseline mechanism list, waits for go or a model correction
    (see "Design-model checkpoint" in `agents/orchestrator.md`)

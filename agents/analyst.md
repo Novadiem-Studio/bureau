@@ -120,10 +120,10 @@ Write to `RUN_DIR/spec.md`:
 
 > **When to include:** include this section when (a) the Orchestrator explicitly declares the
 > run greenfield in the spec header and spawn prompt, OR (b) the run mode is genuinely
-> ambiguous — no Mode declaration is present AND no existing codebase is referenced in the
-> project brief. "No existing codebase referenced" is a secondary, corroborating signal for
-> the ambiguous case only, not a standalone trigger on its own. Omit entirely when the
-> Orchestrator explicitly declares existing-project mode.
+> ambiguous — no Mode declaration is present. "No existing codebase referenced" is a
+> corroborating signal for the ambiguous case, but not a gating condition — the table is
+> required whenever no explicit existing-project Mode declaration is present. Omit entirely
+> when the Orchestrator explicitly declares existing-project mode.
 >
 > **Assumption reduction is self-review (FR 13):** Walk every significant assumption in the
 > project brief and classify it before writing requirements. This is your own pass — no new
@@ -175,6 +175,12 @@ product. Read the target sub-app's existing code and docs for what already exist
 frame requirements as additions or modifications to it. Don't re-spec what's already built.
 
 ## Reconciliation mode
+
+> RECIPROCAL SYNC NOTE: this section and `workflows/feature.md` step 3 describe the same
+> reconciliation obligation. If the inputs, three questions, output format, or EC/EC 8
+> obligations are edited here they must be edited in `workflows/feature.md` step 3, and vice
+> versa. This file (`agents/analyst.md`) is the persona-level authority; `workflows/feature.md`
+> step 3 is the workflow-sequence reference.
 
 A second spawn of the Analyst, after the Architect has appended the Architecture section to
 `spec.md`. The Conductor runs this before the design-model checkpoint in the feature workflow.
