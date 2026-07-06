@@ -17,6 +17,11 @@
 # Bash 3.2 / macOS: no declare -A, no readarray/mapfile, no flock,
 # no set -e with bare grep calls; grep -F for literal-$ patterns;
 # grep -Fxq for set-membership tests.
+#
+# grep pinned to the system binary: a PATH grep may be ugrep, which does not
+# match the (^|[^[:alnum:]]) boundary-group idiom these checks depend on
+# (eval ledger 2026-07-06 — 28 false defects on the B16 run).
+PATH="/usr/bin:$PATH"
 
 PHASE="round1"
 RUN_DIR=""
