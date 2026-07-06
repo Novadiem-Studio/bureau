@@ -100,7 +100,7 @@ Write the resolved value to `state.json#target_repo`: an absolute path, or the l
    installs may finish in place with `scripts/resolve-model-tiers.sh` and `RUN_DIR/model-tiers.json`.
 6. **Triage the task** against `workflows/index.md` and run the matching workflow (see
    "Triage: pick a workflow first" in `agents/orchestrator.md`). The default `feature`
-   workflow spawns Analizer 2000 → The Architect → The Challenger → The Cleric → The Spellwright
+   workflow spawns Analizer 2000 → The Architect → Analizer 2000 (reconciliation) → The Challenger → The Cleric → The Spellwright
    → The Challenger. If no workflow fits, the `define-workflow` skill creates one.
 
 ## Agent files
