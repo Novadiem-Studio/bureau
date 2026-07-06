@@ -13,9 +13,6 @@ This roadmap organizes framework evolution into prioritized bundles. The executa
 lives in [ideas/agent-framework](../ideas/agent-framework/index.md); this document is the
 durable narrative view for framework docs.
 
-For a more public-facing explanation of the vision, see
-[The Bureau Learns to Remember](spotlight-bureau-rheo-memory.md).
-
 Rheo persistent memory is included as a boundary-respecting framework integration track
 (Bundle 13). Rheo memory itself is remote MOT/Rheo runtime work; the Bureau framework runs
 from the local development workspace today. They should converge through explicit contracts
