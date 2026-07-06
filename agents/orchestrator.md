@@ -397,7 +397,7 @@ _pointer_file="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
 ```sh
 mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem exists (or override's parent)
 # Write one-line JSON:
-printf '{"run_dir":"%s","nonce":"%s","written_at":"%s"}\n' \
+printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null}\n' \
   "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   > "$_pointer_file"
 # Echo the written line — ownership credential:
@@ -405,7 +405,14 @@ cat "$_pointer_file"
 ```
 The echo places the nonce in this session's transcript content so `conductor-stop.sh`'s ownership check can verify it.
 
-**On resume:** read `"$_pointer_file"`. If it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce). If it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it.
+**On resume:** read `"$_pointer_file"`. If it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce). If it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it. The fresh pointer MUST use the four-field format (same as run-start):
+```sh
+printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null}\n' \
+  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$_pointer_file"
+cat "$_pointer_file"
+```
+(A three-field fresh-pointer here would leave `has("baseline")==false`, causing `conductor-stop.sh` to treat the resumed leg as a pre-Bundle-16 run and fall back to session-cumulative emission.)
 
 **At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
 
