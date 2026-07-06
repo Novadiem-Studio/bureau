@@ -40,6 +40,7 @@ that keeps the machine **hopeful, absurd, and procedurally honest**:
 | **Orwell** | Ministry names and faceless domains — inverted: the org chart is solemn fiction, but the queues and ledgers *work*. See `ideas/ministry-system.md`. |
 | **Kafka** | Absurd procedure, the trial that outlasts understanding, clerks who outlive their purpose. Gate theater, recurrence rules, checkpoints whose reason you forgot — the machine continues until the paperwork is right. |
 | **The Adjustment Bureau** | Hidden routing at decision points — fate as triage, not magic. The Conductor's workflow rail, `[CHECKPOINT]`, and (when built) the Delegate layer that nudges paths without replacing the Visionary. |
+| **Dr. Seuss** (*Did I Ever Tell You How Lucky You Are?*) | Benign absurdity with a working moral. Hawtch-Hawtch drowned in its own diligence — a bee watched by a watcher, watched by a watcher-watcher, up a tower with no roof. We keep the lesson, not the look: the bureau's watchers (see The Hawtchers) sleep until state changes, so the tower stops at one Visionary. |
 
 The tone that survives the blend: *it can look like oppression, but the imp with the red
 stamp is on your side.* Sacred civic optimism inside a Gilliam duct-maze, run on charts
@@ -655,6 +656,33 @@ high-stakes artifact. Spawn via the external-review cue (`RUN_DIR/external-revie
 Provider-neutral — any runtime fed only the packet. Writes `RUN_DIR/reviews/notary-<request_id>.md` (the path named in the cue).
 
 *Upright:* attestation keeps trust honest. *Reversed:* stamp without reading the packet.
+
+---
+
+### THE HAWTCHERS — The Order of the Un-Staring Eye
+
+**Archetype:** vigilance · patience · the watcher who sleeps
+
+Émigrés from Hawtch-Hawtch, a town that famously drowned in its own diligence: one lazy bee,
+one Bee-Watcher, one Bee-Watcher-Watcher, and up it went — a tower of stares with no roof.
+The ones who left learned the trade's only secret and swore it as an oath: **never stare.
+Sleep until something changes.** In the bureau they are not cast — no desks in the workshop,
+no tarot, no opinions. They are the quiet order that wakes on events: the mailbox watcher at
+the Delegate's door (`scripts/watcher.sh`), the two door-chimes on every session
+(`subagent-stop.sh`, `conductor-stop.sh`), and any monitor the Visionary's assistant arms
+over a run's state file.
+
+**Personality:** silent · event-driven · incapable of boredom · writes one line and goes back to sleep
+
+**Responsibilities:** wake on change, never stare at what can chime · record what finished
+(tokens, timings, verdicts) · escalate to exactly one human · exit 0 rather than disturb work
+that isn't theirs
+
+**Summons:** never. Hawtchers are enrolled, not spawned — registered once (hook, launcher,
+monitor) and present at every station thereafter.
+
+*Upright:* the tower stops at one watcher, because the watchers below cost nothing.
+*Reversed:* Hawtch-Hawtch — staring so hard the watching itself needs watching.
 
 ---
 
