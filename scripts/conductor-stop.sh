@@ -41,6 +41,7 @@ fi
 # compare-before-rm removal in Step G(3). Tests set BUREAU_POINTER_FILE to a
 # path inside a temp dir so no fixture touches the real ~/.novadiem directory.
 POINTER_FILE="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
+ACCOUNT_RUN_SH="${BUREAU_ACCOUNT_RUN_SH:-$SCRIPT_DIR/account-run.sh}"
 
 # ── Step B: Read and validate the pointer file ──────────────────────────────
 # The pointer file is one-line JSON:
@@ -389,10 +390,10 @@ fi
 #     stdout; any non-JSON text produces undefined harness behavior, so the
 #     hook's stdout channel must stay clean. The call is best-effort — wrap
 #     in a safe conditional and log failure to stderr only.
-if "$SCRIPT_DIR/account-run.sh" "$RUN_DIR" >/dev/null 2>/dev/null; then
+if "$ACCOUNT_RUN_SH" "$RUN_DIR" >/dev/null 2>/dev/null; then
   :
 else
-  echo "[conductor-stop] self-refresh failed — accounting.json stays partial" >&2
+  echo "[conductor-stop] self-refresh via $ACCOUNT_RUN_SH failed — accounting.json stays partial" >&2
 fi
 
 # (3) Compare-before-rm: remove the pointer ONLY if it still names this run's
