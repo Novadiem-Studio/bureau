@@ -102,6 +102,22 @@ understood in one focused code-review sitting. Large generated files, lockfiles,
 snapshots are allowed when the project requires them, but name them explicitly and keep the
 human-authored conceptual change small.
 
+## Contracts, not code
+
+A build prompt specifies the contract and the executable tests — signatures, validation
+rules, payload shapes, exit codes, and the fixture cases that must pass — and lets the build
+agent write the implementation. Embedding production implementation code in a prompt is a
+scoping violation.
+
+**EC 6:** a large fixture (e.g. 60 lines of expected values, not logic) is a test, not a
+violation. Large fixture data is allowed when the project requires it; name it explicitly and
+keep the human-authored conceptual change small.
+
+**EC 10:** a shell snippet or jq filter that specifies an expected schema shape (types only,
+no logic) is a contract stub, not implementation code, and is not a violation. The 25-line
+threshold and the classification (test fixture / contract stub / reference-only) are the
+Spellwright's judgment in the evidence column.
+
 Signs a prompt is too big:
 - It produces more than 5-6 new files
 - It spans multiple system components
@@ -221,6 +237,7 @@ wholly unchecked.**
 | 5. Literal env keys | A prompt names an env var, config key, or base URL: grep for `_KEY`, `_URL`, `env`, `.env`, `BASE_URL`, `endpoint`. | Each literal key matches `.env.example` (correct name, correct casing) and any base URL matches the deployed routing. | `.env.example:line`, or `missing/mismatched key — <name>`. |
 | 6. Async/sync signature | A code block defines or calls an I/O function (grep for `async`, `await`, `def `, route handler, `httpx`, `fetch`, saga/`useEffect`). | The signature matches what the framework expects: no blocking sync call in an async route; framework-async values (e.g. Next.js 15 `params` is a `Promise`) are awaited, not unwrapped sync. | `path:line` + the framework rule, or `mismatch — <detail>`. |
 | 7. Stale-name in prose | A capitalized identifier or proper-noun symbol appears in prompt **prose, outside any code block** — a counter name, config key, class, endpoint, or feature name referred to narratively (e.g. "increment the `ProcessedLeads` counter", "the Vesper module"). Trigger: any such named token in prose; grep the prose layer (lines not inside ` ``` ` fences) for capitalized/underscored identifiers. | grep the live code for each prose-named symbol; confirm the prompt's prose uses the name the code actually uses today — not a renamed, paraphrased, or stale one. This is the layer checks 3–6 can't see: they read code blocks; a stale name in prose slips past them. (Catches the gmail-llm "counter names in prose differ from real keys in code" case.) | `path:line` of the live name, or `stale — prose says <x>, code uses <y>`. |
+| 8. Code-volume | Any fenced block in a prompt's body exceeding 25 lines (the prompt-wrapper fence itself is not a trigger — count only fenced blocks nested within the prompt body) | Block is either a test fixture, a contract stub (signatures + types only, no logic), or a reference snippet explicitly labelled "for reference only." If none of these: flag it as a contracts-not-code violation. | block location (prompt N, line M), block type classification, or `violation — implementation code in prompt N` |
 
 **Output discipline.** Run every in-scope check. Surface only the **N's** and any **Y whose
 evidence was non-obvious** — never a wall of routine Y's. Each defect you **found and fixed**

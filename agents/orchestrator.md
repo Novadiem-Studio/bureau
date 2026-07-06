@@ -271,6 +271,20 @@ Then stop and wait. If the human corrects the model, route the correction to the
 as a revision (this does not count against `critic_loops` — it's a product/model
 correction, not a critic loop). If the human says go, proceed to Critic round 1.
 
+**FR 5 pre-flight gate (mandatory before Challenger round 1):** Before spawning The
+Challenger for round 1, run:
+
+```
+scripts/preflight-artifacts.sh <RUN_DIR> --phase round1
+```
+
+Record the exit code and any defect lines in `RUN_DIR/log.md`.
+
+- **Exit 1 (defects found):** fix the artifact defect or raise a `[CHECKPOINT]`. Do NOT
+  spawn The Challenger while the script exits non-zero. This gate is mandatory — it is
+  not Conductor-discretionary.
+- **Exit 0 (`preflight: clean`):** proceed with The Challenger spawn.
+
 ## Adjudicating The Challenger's findings
 
 > **Full protocol:** `docs/conductor-gates.md`
@@ -289,6 +303,13 @@ real-time human-approved `[EXTERNAL-ACTION CHECKPOINT]` before externally visibl
 
 **Notary usage:** optional advisory cold review only; never a replacement for Challenger or a
 checkpoint authority.
+
+**4b verification routing:** a persona re-edit or correction that a Prompt-4b
+(planning-verification) finding identifies as needed routes back to the owning Phase-1,
+Phase-2, or Phase-3 prompt — whichever the 4b finding names as the source — and is NOT
+patched inside the 4b prompt itself. The rationale: the fix stays reviewable alongside its
+owner, and design decisions do not scatter across verification artifacts. This rule lives
+here only — it is not duplicated in `agents/prompt-engineer.md`.
 
 ## Design handoff (human-in-the-loop)
 
@@ -460,6 +481,42 @@ Then stop and wait. Do not write prompts until the handoff bundle has been inges
 - Prompts are sequenced correctly — each builds on prior output
 - Each prompt has a clear single responsibility
 - The full sequence would produce a working MVP if executed in order
+
+## Completion checklist
+
+Run all four checks before writing `status: "complete"` to `state.json` or declaring the
+run done. Running and logging the checklist is not optional — skipping it on confidence
+("I already checked") is a process violation.
+
+**(a) AC coverage:** every AC in the spec is mapped by number to a plan phase, a prompt, or
+a build step. The scripted half — verifying every AC N is cited by ID in `plan.md` or
+`prompts.md` — is covered by `scripts/preflight-artifacts.sh <RUN_DIR> --phase final`
+check (e). The semantic half (does the cited phase or prompt actually satisfy the AC?)
+remains with the Challenger. An unmapped AC is a failure; adding a missing citation to
+`plan.md` or `prompts.md` is acceptable if it is a small additive edit; a genuinely
+unsatisfied AC requires a `[CHECKPOINT]`.
+
+**(b) Blocker closure:** every Challenger Blocker from all rounds is closed in the current
+artifact text — the fix must be in the file, not just acknowledged in the log. The Conductor
+checks by re-reading each Blocker's cited location. Note: there is no single greppable
+`BLOCKER: open/closed` token in real logs. The mechanical half is "no orphan Blocker finding"
+— every `### Blockers` block in the log has a Conductor adjudication line; the "fix is real"
+half is the Challenger re-review.
+
+**(c) Pre-flight clean:** `scripts/preflight-artifacts.sh <RUN_DIR> --phase final` exits 0
+on the final artifact set (spec.md + plan.md + prompts.md). This is a re-run at close-out
+on the full artifact set — not acceptance of the round-1 result.
+
+**(d) Mechanical linter clean:** none of the four forbidden patterns per spec FR 5d survives
+in any fenced code block in any artifact. This is a strict subset of check (c); naming it
+separately makes it explicit.
+
+**Log format:** write a `COMPLETION-CHECK:` block to `RUN_DIR/log.md` under a
+`## [TIMESTAMP] — Completion checklist` heading. One line per check: check letter, pass/fail,
+and the evidence (script exit line, grep result, or AC-map statement). A run whose `log.md`
+carries no `COMPLETION-CHECK:` block at close-out has not completed the checklist — that
+absence is a detectable defect auditable by `bureau-run-eval` and the Witness. Close-out must
+be LOUD when this block is missing: do not silently declare done.
 
 ## Tone
 

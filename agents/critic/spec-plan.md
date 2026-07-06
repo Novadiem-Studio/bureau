@@ -139,6 +139,27 @@ Check for:
   `plan.md` before the phase that designs past that assumption is a **Blocker** (read the plan
   for it — the checkpoint must precede any design phase that depends on the Visionary decision).
 
+- **Observed-behavior-absence gate (FR 4):** This check fires when BOTH conditions are true:
+
+  1. The spec's FRs or Architecture section describes reading or parsing framework-internal
+     artifacts. Detection anchors: parsing verbs (`parse`, `read`, `grep`, `extract from`,
+     `match`) applied to named artifacts, including at minimum these three signal names:
+     `log.md` headings, `state.json` keys, and `SPAWN-EVENT`/`SPAWN-TOKEN-EVENT`/
+     `CONDUCTOR-TOKEN-EVENT` lines. Also covers transcript paths, run-dir shapes, and hook
+     stdin/stdout fields.
+  2. The spec has no `## Observed-behavior reconciliation` section.
+
+  When both are true → **Blocker.** Treat absence of this section identically to absence of
+  the `### Greenfield Assumptions` table from a greenfield spec — both are required sections
+  that gate the Challenger's trust in the artifact.
+
+  When condition 1 is true but condition 2 is false (section IS present): check passes.
+  Content depth (whether it cites ≥2 logs, ≥3 deviations) is at the Challenger's discretion;
+  the binary check is presence vs. absence.
+
+  **The FR-11 greenfield-assumption-table check above is UNCHANGED.** This is a new check
+  alongside it. Do NOT modify FR-11's conditions or trigger.
+
 - **Memory-citation gate (FR 12):** A `decided` assumption row that is resolved by memory but
   is missing any of {`source:`, `confidence:`, `timestamp:`, `stale-sensitive:`} is a
   **Warning**. Escalate to **Blocker** if the undercited assumption is load-bearing to a
