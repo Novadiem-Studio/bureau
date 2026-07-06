@@ -18,7 +18,7 @@ cd "$ROOT" || exit 2
 DIR="$ROOT/.bureau/regression"
 
 pass=0; fail=0; skip=0; failed=""
-for f in "$DIR"/[0-9][0-9]-*.md; do
+for f in "$DIR"/[0-9][0-9]-*.md "$DIR"/[0-9][0-9][0-9]-*.md; do
   [ -f "$f" ] || continue
   base=$(basename "$f")
   if grep -q '^retired:' "$f"; then echo "SKIP retired  $base"; skip=$((skip + 1)); continue; fi
