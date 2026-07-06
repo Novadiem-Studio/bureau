@@ -72,3 +72,15 @@ failure-signature: 03-fixture-heredoc-col0-awk-truncation
 artifact-patched: docs/conventions/regression-fixtures.md § Regression fixture file format (nested-heredoc indentation authoring rule)
 status: promoted — nested-heredoc indentation rule added to docs/conventions/regression-fixtures.md § Regression fixture file format
 note: A `command: |` fixture that embeds a heredoc (`cat <<'EOF'`) whose body sits at COLUMN 0 false-passes when run via `.bureau/regression/run.sh`: the runner's awk captures the command block only while lines stay indented and STOPS at the first column-0 line, truncating the command to the setup + an unterminated heredoc opener — which exits 0 vacuously without invoking the code under test. Rule: indent the ENTIRE command block ≥2 spaces (heredoc bodies + the closing delimiter at exactly 2 spaces) so the 2-space strip lands the heredoc body at col 0 and the delimiter closes correctly. ALWAYS verify a fixture THROUGH run.sh's extraction, never by running the raw `command:` body (the raw body masks the truncation). Caught by the Conductor mid-build; the dogfood fixtures 16–21 were re-authored and re-verified through the extraction path before promotion.
+
+## 2026-07-06 — rheo-memory-track5 (mot)
+- **BSD sed voids GNU-style mutation probes.** `sed "0,/re/s//x/"` silently no-ops on macOS;
+  a mutation test that doesn't verify the mutation actually landed proves nothing. Verify the
+  mutated line changed (grep it) before trusting a NOT-CAUGHT result. Caught in-run at fixture 10.
+- **onnxruntime-node + process.exit() = SIGABRT.** With a live inference threadpool,
+  process.exit(0) dies with "mutex lock failed" exit 134. Operator scripts that embed must
+  RETURN on success and use process.exitCode (assignment) for failure signaling so Node drains
+  the pool. Found + fixed in mot's backfill-embeddings.ts; verified by two independent probes.
+- **npm swallows flags without `--`.** A documented `npm run script --flag` silently drops the
+  flag (a dry-run became a real run). Runbooks must write `npm run script -- --flag`; an
+  operator-doc claim is only correct if empirically probed. Caught at the final gate.

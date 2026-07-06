@@ -16,6 +16,13 @@
 #   .bureau/archive/
 # NEVER a blanket .bureau/ entry — because .bureau/regression/ is a committed,
 # tracked fixture suite and a blanket entry would silently un-track it.
+#
+# The same entries are ALSO written to .git/info/exclude. .gitignore is branch
+# content: an old branch that predates these entries un-ignores .bureau/runs/
+# the moment it is checked out, and a GUI "discard changes" then deletes every
+# run dir (this destroyed 4 runs' state in mot on 2026-07-05 via GitHub Desktop
+# branch browsing). info/exclude is repo-local and branch-independent — it
+# holds on every branch, which is the actual protection.
 
 set -euo pipefail
 
@@ -53,5 +60,20 @@ append_if_missing() {
 
 append_if_missing ".bureau/runs/"    "$REPO/.bureau/runs/x"
 append_if_missing ".bureau/archive/" "$REPO/.bureau/archive/x"
+
+# ── branch-independent belt: .git/info/exclude ───────────────────────────────
+# check-ignore above may be satisfied by a .gitignore entry that exists only on
+# the CURRENT branch. info/exclude is not version-controlled, so it protects
+# run dirs on every branch, including old ones that predate the entries.
+
+EXCLUDE="$(git -C "$REPO" rev-parse --git-path info/exclude)"
+# rev-parse may return a path relative to the repo root
+[[ "$EXCLUDE" = /* ]] || EXCLUDE="$REPO/$EXCLUDE"
+mkdir -p "$(dirname "$EXCLUDE")"
+touch "$EXCLUDE"
+for entry in ".bureau/runs/" ".bureau/archive/"; do
+  grep -qxF "$entry" "$EXCLUDE" || printf '%s\n' "$entry" >> "$EXCLUDE" \
+    || die "cannot write to $EXCLUDE"
+done
 
 exit 0
