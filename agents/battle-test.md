@@ -1,3 +1,48 @@
+# Bundle 12 — planning-loop reduction
+
+## Run 2026-07-05
+
+Promotion run (full standing matrix per `docs/conductor-gates.md § Re-run-at-promotion`;
+FR 8 modifies the analyst trigger the Bundle 03 greenfield-gate cases pin on). Three
+sub-sections: Bundle 12 cases, Bundle 03 re-run, Bundle 05 re-run. Evaluated by the
+Conductor against the worktree canon at commit 4806c6d.
+
+### Bundle 12 cases
+
+| Case name | Input description | Expected outcome | Actual result |
+|-----------|-------------------|-----------------|---------------|
+| Happy path — self-observing spec with reconciliation section | A spec whose FRs describe parsing `log.md` headings and `SPAWN-EVENT` lines, carrying an `## Observed-behavior reconciliation` section citing 2 real run logs. Challenger round 1 reviews. | Observed-behavior-absence gate (FR 4) does NOT fire (condition 2 false). | pass — gate fires only when BOTH conditions hold (`agents/critic/spec-plan.md:142-150`); section present → no fire. Live instance: this run's own spec.md (parses framework artifacts, carries the section with 2 cited logs + 7 observations). |
+| Failure mode — self-observing spec, section absent | The same spec WITHOUT the `## Observed-behavior reconciliation` section. Challenger round 1 reviews. | FR 4 Observed-behavior-absence gate fires as **Blocker**. | pass — condition 1 true (parsing verbs `parse`/`read`/`grep` applied to `log.md` headings + `SPAWN-EVENT` lines, two of the three named signal anchors), condition 2 true (no section) → Blocker per the gate text; severity stated in the gate block. |
+| Edge case — FR 8 trigger symmetry (four sub-cases) | (i) greenfield explicitly declared; (ii) existing-project explicitly declared; (iii) ambiguous — no Mode declaration, no codebase referenced; (iv) CORNER: no Mode declaration, codebase IS referenced. Compare `agents/analyst.md` When-to-include vs `agents/critic/spec-plan.md` FR-11. | (i) both fire; (ii) neither fires; (iii) both fire; (iv) both fire — identical conditions in all four. | pass — producer (`analyst.md:121-126`): include on explicit greenfield OR no-Mode-declaration; codebase-referenced explicitly non-gating; omit only on explicit existing-project. Checker (`spec-plan.md:127-134`): required iff existing-project mode not declared. Both reduce to the same predicate; corner sub-case (iv) both fire — the asymmetry found at the P2+P3 review is closed and pinned here. |
+| Edge case — reconciliation with no Architecture section (EC 3) | Reconciliation-mode Analyst spawned on a spec.md with no Architecture section. | Writes `RECONCILED: no Architecture section found in spec.md — reconciliation skipped` to log.md and returns; valid terminal state, not a failure. | pass — exact skip-note text and valid-terminal-state rule at `agents/analyst.md:210-212`; EC 1 clean-note validity stated alongside. |
+| Failure mode — Architect proposes cutting an FR (EC 2) | Reconciliation pass finds the Architecture narrows a written FR not yet human-ratified. | Analyst flags it in the `RECONCILED:` note (PENDING-RATIFICATION), does NOT rewrite/delete the FR; decision goes to the design-model checkpoint. | pass — flag-don't-delete rule at `agents/analyst.md § Reconciliation mode` EC 2 block; LIVE evidence from this run: analyst-2 flagged the FR 5b scope narrowing as PENDING-RATIFICATION, left FR text unchanged, and the checkpoint (01) ratified it — the full designed path executed on a real drift. |
+
+### Bundle 03 re-run (against the updated FR 8 trigger)
+
+| Case | Result |
+|------|--------|
+| Happy path — greenfield with outcome | pass — greenfield declared: producer clause (a) includes the table; FR-11 requires it (no existing-project declaration); FR 4 outcome gate + FR 12 unchanged and present (`spec-plan.md:111`). |
+| Edge — explicit exploratory run | pass — existing-project declared → producer omits, FR-11 does not fire; FR 4 exploratory escape unchanged. |
+| Edge — existing-project run | pass — "Omit entirely when the Orchestrator explicitly declares existing-project mode" (new producer clause) matches FR-11's declaration-keyed no-fire exactly. |
+| Failure — all three gates fire | pass — FR 4 (absent outcome), FR 11 (exact heading absent), FR 12 (load-bearing undercited row) all fire; gate texts untouched by this bundle (P5 added the new gate adjacent; FR-11 verified unchanged at the final build review). |
+| Failure — bake-off with no criteria | pass — EC 5 subcondition intact under the FR 4 outcome-metric gate block. |
+
+### Bundle 05 re-run (Notary — untouched by FR 8; completeness per full-matrix obligation)
+
+| Case | Result |
+|------|--------|
+| Happy path — well-formed cue, matching hashes | pass — `templates/external-review.json` carries allowlist/hashes/provenance (jq-verified); receipt/verdict contract per `docs/notary-review.md` ITEMs intact. |
+| Edge — memory excerpt with valid provenance | pass — provenance three-field rule present (ITEM 6). |
+| Failure — prohibited-input cold-break | pass — NOTARY FLAG text present in `agents/notary.md` (5 occurrences incl. the log.md cold-break). |
+| Failure — hash mismatch | pass — ITEM 5 mismatch-receipt + halt behavior present. |
+| Failure — provenance sub-field missing | pass — per-entry flag vs whole-review cold-break distinction (ITEM 6/7) intact. |
+
+Deferred improvement (recorded 2026-07-05, Bundle-12 candidates from the Bundle 11 battle-test carry forward unchanged): `BUREAU_ACCOUNT_RUN_SH` env override; staged-copy recipe for the Bundle 11 case-7 forced-failure sub-assertion.
+
+---
+
+# Bundle 03 — Planning decision quality gates
+
 ## Run 2026-06-20
 
 | Case name | Input description | Expected outcome | Actual result |
