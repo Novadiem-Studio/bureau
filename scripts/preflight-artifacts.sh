@@ -239,7 +239,7 @@ check_snippets() {
     [ "$in_fence" -eq 1 ] || continue
 
     # 1. jq-lone-dot: lone-dot filter with exit-status semantics, all spellings.
-    #    Flags matched: -e, -er, -re, --exit-status, -e -r, -r -e, and combinations.
+    #    Flags matched: -e, -er, -re (e-in-lead-position clusters), --exit-status. NOT matched: split-flag sequences (-r -e) and glued -e-r.
     #    Filter forms: . (unquoted), '.' (single-quoted), "." (double-quoted).
     #    A quoted lone dot is never a legitimate filter; no false-positive risk.
     #    A real filter like jq -e '.foo' does NOT match (not a lone dot after the flag).
