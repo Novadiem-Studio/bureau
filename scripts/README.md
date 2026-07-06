@@ -176,6 +176,27 @@ To cleanly disable these hooks machine-wide:
 
 ---
 
+# Artifact pre-flight (`preflight-artifacts.sh`)
+
+A read-only checker that validates artifact cross-references and embedded-snippet invariants before the Challenger spawn and at close-out.
+
+Two phases:
+
+- `round1` (default) — gates the Challenger spawn. Requires `spec.md` and `plan.md`; checks (a) artifact presence, (b) dangling ID cross-references in `plan.md`, (c) every FR defined in `spec.md` cited by ID in `plan.md`, and (d) four forbidden snippet patterns in fenced blocks (`jq -e .` lone-dot gate, `flock`, `readarray`, `mapfile`).
+- `final` — gates close-out. Adds `prompts.md` to the required set and extends checks (b) and (d) to `prompts.md`; also runs check (e): every AC defined in `spec.md` cited by ID in `plan.md` or `prompts.md`.
+
+Exit-code contract:
+
+| Exit | Meaning | Output |
+|------|---------|--------|
+| 0 | All checks passed | stdout: `preflight: clean` |
+| 1 | One or more defects found | stdout: one report line per defect — `file:approx-line — check-id — detail` |
+| 2 | Cannot run (bad args, RUN_DIR missing or unreadable) | stderr: error |
+
+Distinct from `scripts/preflight.sh`, which checks env keys against the live environment and writes `preflight.md`. This script is read-only and writes nothing.
+
+---
+
 # Git worktree (`run-worktree.sh`)
 
 Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
