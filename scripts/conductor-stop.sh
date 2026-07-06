@@ -182,15 +182,24 @@ _bl_adopt_candidate() {
   baseline_turns=$(printf '%s' "$usage_json" | jq -r '.turns // 0' 2>/dev/null)
 }
 
-# Two-step write-back guard (required because the enrollment printf is NOT atomic
-# — a newer run can overwrite the pointer between our pre-mv check and the mv).
+# Two-step write-back guard (enrollment printf is not atomic — a sibling run
+# can write a fresh pointer between our pre-mv check and the mv, or after the
+# mv but before our re-read).
 # Returns 0 only if the pointer still names THIS run's run_dir+nonce both before
-# AND after the atomic mv. A lost race → return 1; the caller degrades to
-# baseline=0 for this fire and does NOT retry. Unlike compare-before-rm at Step
-# G(3) (which only removes and is always safe), a write-back that loses the race
-# could resurrect this run's identity over a newer run's fresh pointer, so the
-# post-mv re-read is mandatory. (The pre-mv→mv clobber window is a named, accepted
-# residual — narrow, first-fire only; see plan.md.)
+# AND after the atomic mv. A lost race → return 1; caller degrades to
+# baseline=0 this fire, no retry.
+#
+# Post-mv re-read scope: guards only the POST-mv window. If a sibling writes
+# AFTER our mv but BEFORE our re-read, we see their pointer, bail (return 1),
+# and correctly degrade — no wrong value emitted by either run.
+#
+# Pre-check→mv window: UNDETECTABLE. If a sibling enrolls in this window our
+# mv overwrites their fresh pointer; the re-read then sees our own just-written
+# content and passes tautologically. The sibling's capture is silently lost —
+# it degrades to partial / baseline=0 (EC 5: honest degrade, no wrong value).
+# This is a deliberately-unmitigated residual; a real fix needs CAS (O_EXCL /
+# hardlink) or a mutex shared with the enrollment writer (see bureau-token-lib
+# mkdir mutex). Collision window: milliseconds, first-fire only, never observed.
 # $1 = candidate baseline object JSON.
 _bl_write_back() {
   local cand="$1" pre_run pre_nonce post_run post_nonce tmp_ptr
