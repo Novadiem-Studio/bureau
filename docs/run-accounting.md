@@ -184,11 +184,24 @@ These records are still counted into `tokens.processed_total` but cannot be pair
 
 Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires after every main-session response turn. There is no separate post-close-out fire — the one-shot final capture is simply the first Stop fire that finds the run closed (`state.json#accounting.status` non-pending after `account-run.sh` wrote it at close-out).
 
+**Legacy shape** (pointer has no `baseline` key — pre-Bundle-16 run or backward-compat fallback):
+
 ```
 CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false}
 CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:15:00Z","turns":43,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":102},"final":true}
 ```
 
+**Non-legacy shape** (pointer has a `baseline` field — Bundle-16+ run; `tokens.*` are run-scoped deltas):
+
+```
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:14:00Z","turns":121,"tokens":{"input":10000000,"cache_creation":2000000,"cache_read":4000000,"processed":16000000,"output":100000},"final":false,"baseline":{"session_id":"c66e96...","input":20000000,"cache_creation":8000000,"cache_read":6000000,"processed":34000000,"output":300000,"turns":121}}
+CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:15:00Z","turns":16,"tokens":{"input":10000000,"cache_creation":4000000,"cache_read":4000000,"processed":18000000,"output":100000},"final":true,"baseline":{"session_id":"c66e96...","input":20000000,"cache_creation":8000000,"cache_read":6000000,"processed":34000000,"output":300000,"turns":121}}
+```
+
+- **Delta values (Bundle-16+ runs):** when the pointer has a `baseline` field, `tokens.*` fields carry **run-scoped deltas**, not session-cumulative values. Each field is `raw_cumulative − baseline[field]`, clamped to ≥ 0. `processed` is re-derived from the clamped components (`input + cache_creation + cache_read`) — never subtracted separately — keeping `processed == input + cache_creation + cache_read` by construction.
+- **`baseline` key:** non-legacy lines carry a top-level `baseline` object (the subtrahend — for audit only; `account-tokens.sh` does not consume it). An optional `_note` key is appended when any field was clamped, naming each clamped field with its raw and baseline values (e.g. `"clamped input (raw 100 < baseline 200) to 0"`).
+- **`confidence:exact` meaning (Bundle-16+ runs):** `confidence:exact` now means an exact **run-scoped** share, not the full session-cumulative. Two sequential runs in the same session each produce a separate `RUN_DIR/log.md`; their per-run `processed` values sum to the session total. For legacy lines (no `baseline` key), `confidence:exact` retains its original meaning — exact session-cumulative for single-run sessions.
+- **Legacy branch:** a line with **no `baseline` key** (pre-Bundle-16 pointer or backward-compat fallback) carries session-cumulative values exactly as before, in the same 6-key shape with no `baseline` or `_note` keys. Consumer semantics and `account-tokens.sh` logic are unchanged for these lines.
 - `final: true` on the one-shot post-closure fire only. Confidence `"exact"` is only achievable when ≥ 1 `final: true` line is present.
 - **Consumer rule:** take `max(processed)` per `session_id`, then sum across sessions (multi-leg Conductor runs produce multiple session_ids).
 - A run with all SPAWN-TOKEN-EVENTs matched but no CONDUCTOR-TOKEN-EVENT has `tokens.processed_total.confidence == "partial"` with `_note: "conductor-share-pending"` — NOT `"exact"`. A build that labels this `"exact"` is broken (EC 12 / AC 4 Blocker guard).
@@ -211,7 +224,26 @@ CHECKPOINT-EVENT: {"id":"design-review","status":"resolved","at":"2026-07-05T00:
 
 The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTER_FILE` for test isolation) tracks the active bureau run across Stop hook fires.
 
-**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>"}`.
+**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>","baseline":null}`. The `baseline` field is `null` at enrollment and is updated to a baseline object on the first Stop hook fire for the run (see state machine below).
+
+**Baseline state machine:** `conductor-stop.sh` inspects the pointer's `baseline` field after every Stop fire to decide how to compute the run-scoped delta. `jq has("baseline")` distinguishes an absent key (pre-Bundle-16 pointer) from an explicit `null` (Bundle-16 enrolled, not yet fired). See `scripts/conductor-stop.sh § Step E.5` for the implementation.
+
+| `pointer.baseline` | Action |
+|---|---|
+| key absent (`has("baseline")==false`) | Legacy — emit the old 6-key cumulative shape, no write (FR 6, FR 7). |
+| `null` | First fire — record current session cumulative as the baseline object, write back via two-step guard, then use it. Write fails → baseline=0 this fire only, no retry (EC 3 residual). |
+| object, `.session_id` matches current session | Same session — reuse the recorded baseline verbatim (FR 3). No write. |
+| object, `.session_id` differs from current session | Resumed leg in a new session (EC 4) — re-record a fresh baseline for this session, write back, use it. Write fails → baseline=0 this fire. |
+
+**Accounting confidence:** for Bundle-16+ runs (pointer has a `baseline` field), `CONDUCTOR-TOKEN-EVENT` lines carry run-scoped deltas, so `confidence:exact` on these lines means an exact **run-scoped** share — not the full session-cumulative. Two sequential runs in the same session each contribute their own share; the per-run shares sum to the session total (see § B2.3 for the full confidence note).
+
+**Two-step write-back guard:** the enrollment `printf` is not atomic. A sibling run can enroll between the pre-`mv` check and the `mv` (pre-check→mv window: undetectable — the sibling's capture degrades to partial / baseline=0, EC 5). The post-`mv` re-read guards only the post-`mv` window: if a sibling writes after the `mv` but before the re-read, the writer sees the sibling's pointer, bails, and correctly degrades. No wrong values are emitted by either run. See `scripts/conductor-stop.sh § _bl_write_back` for the exact guard.
+
+**EC 3 residual:** if the first-fire baseline write fails, the hook falls back to baseline=0 and emits a line without a `baseline` key (the old 6-key cumulative shape). A subsequent successful fire will emit a delta line. `account-tokens.sh` uses `max_by(.tokens.processed)` per `session_id` — the early raw-cumulative line (larger processed value) dominates take-max, producing over-attribution equal to today's behavior for that run. This residual is deliberate and pinned by a standing fixture (Fixture E / 97-series).
+
+**Step B validation:** the three-key gate (`run_dir` / `nonce` / `written_at`) does NOT include `baseline`. An absent `baseline` key is the backward-compat legacy signal, not a validation error.
+
+**`BUREAU_ACCOUNT_RUN_SH`:** when this environment variable is set, `conductor-stop.sh` calls the named script at Step G(2) instead of `$SCRIPT_DIR/account-run.sh`. Unset behavior is identical — the default path resolves to `$SCRIPT_DIR/account-run.sh`. Primarily used for test injection (fixture-F / forced-failure shim).
 
 **Who writes it:** The Conductor, at run start and on resume (with echo to stdout for enrolment — see `agents/orchestrator.md § Pointer lifecycle`). The Conductor does NOT remove it.
 
