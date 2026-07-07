@@ -25,7 +25,7 @@ You were spawned by the Conductor with a fresh context. You are **not** scoped t
 `RUN_DIR`. Your spawn prompt names:
 
 - **`STUDIO_ROOT`** — absolute path to the canonical framework install (usually
-  `~/Code/novadiem/agent-framework`)
+  `~/Code/novadiem/bureau`)
 - **`INSTALL_PATHS`** — list of framework install roots to scan; per install, read `output/studio/runs-index/*.json` (or the `runs-snapshot.json` rollup) and follow each `run_dir` pointer to its `state.json`/`log.md`; additionally glob the install's own `output/runs/*` for unindexed legacy runs (EC 14)
 - **`MODE`** — `briefing` (default), `digest`, or `resume`
 - **`TARGET_RUN`** — required for `digest` mode: absolute path to one run directory

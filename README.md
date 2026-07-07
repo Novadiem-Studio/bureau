@@ -29,9 +29,11 @@ also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-pro
 using `scripts/resolve-model-routing.sh`. The framework starts roles on capable but not always
 frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`.
 
-**Claude Code (current): haiku, sonnet, and opus.** Haiku = Scoot (cheap errands). Fable/premium
-experiments disabled. Challenger locked opus; Architect/Mage default opus; utility roles default
-sonnet. See `docs/model-routing-and-cast.md` § Host policy - Claude Code (current).
+**Claude Code (current): haiku, sonnet, opus, and fable-for-escalation.** Haiku = Scoot (cheap
+errands). Fable re-enabled Jul 2026 for the `frontier` / `escalated` tiers only (never a first-pass
+default; no legacy `premium`). Challenger defaults to `strong` and escalates to opus for
+final/high-risk gates; Architect/Mage default opus; utility roles default sonnet. Always pass
+`model` explicitly on every spawn. See `docs/model-routing-and-cast.md` § Host policy - Claude Code (current).
 
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.

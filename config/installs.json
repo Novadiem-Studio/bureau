@@ -1,11 +1,11 @@
 {
   "description": "Framework installs The Witness and Ministry of Flow (aka Logistics) scan. Per install: read `index_glob` (per-run index entries) first; fall back to `runs_glob` for unindexed legacy runs (EC 14). Extend as legacy copies are retired.",
-  "studio_root": "~/Code/novadiem/agent-framework",
+  "studio_root": "~/Code/novadiem/bureau",
   "installs": [
     {
       "id": "canonical",
-      "name": "Agent Framework (canonical)",
-      "path": "~/Code/novadiem/agent-framework",
+      "name": "Bureau (canonical)",
+      "path": "~/Code/novadiem/bureau",
       "index_glob": "output/studio/runs-index/*.json",
       "runs_glob": "output/runs/*"
     },

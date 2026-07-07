@@ -42,7 +42,10 @@ fi
 
 usage_json='{}'
 if [[ -f "$SNAPSHOT_PATH" ]]; then
-  usage_json="$(jq -c '.' "$SNAPSHOT_PATH")"
+  # Degrade to defaults on a malformed snapshot rather than hard-failing under
+  # set -e — the doc contract (model-routing-and-cast.md) says missing/stale/bad
+  # budget data proceeds with defaults, not an aborted startup.
+  usage_json="$(jq -c '.' "$SNAPSHOT_PATH" 2>/dev/null || printf '{}')"
 fi
 
 manual_from_env="${NOVADIEM_MODEL_EXPERIMENTS:-}"
