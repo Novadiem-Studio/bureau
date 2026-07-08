@@ -396,23 +396,49 @@ _pointer_file="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
 **At run start** (alongside step 4 — run-dir creation):
 ```sh
 mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem exists (or override's parent)
-# Write one-line JSON:
-printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null}\n' \
-  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+# Write one-line JSON (five fields — project_dir is $(pwd -P), the Conductor's cwd,
+# which conductor-stop.sh munges and matches against the transcript path):
+printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
+  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
   > "$_pointer_file"
 # Echo the written line — ownership credential:
 cat "$_pointer_file"
+# Enrollment log line — NONCE-FREE (reading the log must not confer ownership).
+# Write this EXACT line to "$RUN_DIR/log.md" (do NOT substitute the nonce value into it):
+#   Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership.
 ```
-The echo places the nonce in this session's transcript content so `conductor-stop.sh`'s ownership check can verify it.
+The echo places the nonce in this session's transcript content so `conductor-stop.sh`'s ownership check can verify it. The enrollment log line is deliberately nonce-free: the pointer file and the transcript are the only two places the nonce ever appears.
 
-**On resume:** read `"$_pointer_file"`. If it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce). If it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it. The fresh pointer MUST use the four-field format (same as run-start):
+**On resume:** read `"$_pointer_file"`. There are two sub-paths, and both rejoin at a shared tail:
+
+- **(A) echo-existing** — if it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce):
+  ```sh
+  cat "$_pointer_file"
+  ```
+- **(B) write-fresh** — if it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it. The fresh pointer MUST use the five-field format (same as run-start), including `project_dir` set to the current cwd:
+  ```sh
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
+    "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
+    > "$_pointer_file"
+  cat "$_pointer_file"
+  ```
+  (A four-field fresh-pointer here — dropping `project_dir` — would disable the ownership gate for this leg; a three-field one would additionally leave `has("baseline")==false`, causing `conductor-stop.sh` to treat the resumed leg as a pre-Bundle-16 run and fall back to session-cumulative emission.)
+
+**Shared resume tail (runs once for BOTH sub-paths).** AFTER both sub-path (A) and sub-path (B) have run — i.e. once, in the shared tail where they rejoin, NOT nested inside either sub-path (if you implement (A)/(B) as one `if…elif…fi`, this is after that `fi`) — increment `resumed_legs`, then write the nonce-free enrollment log line. Placing the increment inside only one sub-path is the exact FR 11 bug: the common echo-existing resume would silently skip it.
 ```sh
-printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null}\n' \
-  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  > "$_pointer_file"
-cat "$_pointer_file"
+# Increment resumed_legs (atomic; absence treated as 0). Fires on BOTH resume sub-paths.
+_rl_tmp=$(mktemp "$RUN_DIR/state.json.tmp.XXXXXX")
+if jq '.resumed_legs = ((.resumed_legs // 0) + 1)' "$RUN_DIR/state.json" > "$_rl_tmp"; then
+  mv "$_rl_tmp" "$RUN_DIR/state.json"
+else
+  rm -f "$_rl_tmp"
+fi
 ```
-(A three-field fresh-pointer here would leave `has("baseline")==false`, causing `conductor-stop.sh` to treat the resumed leg as a pre-Bundle-16 run and fall back to session-cumulative emission.)
+Then write the nonce-free enrollment log line to `"$RUN_DIR/log.md"` — the EXACT same line as run-start, with the nonce value never substituted in:
+```
+Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership.
+```
+`resumed_legs` is written on first resume only; `templates/state.json` is NOT changed. Absent means 0 in both this increment and the consumer read.
 
 **At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
 

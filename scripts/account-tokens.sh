@@ -87,6 +87,13 @@ if [ -r "$STATE_JSON" ]; then
   [ -n "$cl" ] && critic_loops_json="$cl"
 fi
 
+# ── Part C (continued): resumed_legs from state.json (absent/non-number → 0) ───
+resumed_legs=0
+if [ -r "$STATE_JSON" ]; then
+  _rl=$(jq -r 'if (has("resumed_legs") and ((.resumed_legs|type)=="number")) then .resumed_legs else 0 end' "$STATE_JSON" 2>/dev/null) || _rl=0
+  [ -n "$_rl" ] && resumed_legs="$_rl"
+fi
+
 # ── Part D: derive every metric in a single jq pass and emit on stdout ────────
 JQ_PROG=$(cat <<'JQ'
 # Bare-string-safe ISO-8601 parse: a valid FR-1 %Y-%m-%dT%H:%M:%SZ string →
@@ -118,7 +125,8 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 
 # --- CONDUCTOR-TOKEN-EVENT: dedup per session_id take-max, sum across legs -----
 | ($conductor | group_by(.session_id) | map(max_by(.tokens.processed // 0))) as $cond
-| ($conductor | map(.final == true) | any) as $has_final
+| ($conductor | group_by(.session_id) | map(map(.final == true) | any)) as $leg_finals
+| (($conductor | length) > 0 and ($leg_finals | all)) as $all_legs_final
 | ($cond | length) as $legs
 | ($cond | map(.tokens.input // 0)          | add // 0) as $cond_input
 | ($cond | map(.tokens.cache_creation // 0) | add // 0) as $cond_cc
@@ -129,7 +137,7 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 
 # --- processed_total + confidence lattice (FR 9 / FR 10) ----------------------
 | ($spec_processed + $cond_processed) as $processed_total
-| ($has_final) as $cond_ok
+| ($all_legs_final) as $cond_ok
 | ($n_unmatched == 0) as $spec_ok
 | (if $cond_ok and $spec_ok then "exact" else "partial" end) as $pt_conf
 | ([ (if ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md" else empty end),
@@ -137,12 +145,24 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
    ]) as $pt_notes
 
 # conductor_tokens block confidence
-| (if $has_final then "exact"
+| (if $all_legs_final then "exact"
    elif ($conductor | length) > 0 then "partial"
    else "unavailable" end) as $cond_conf
 | (if $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
    elif $cond_conf == "unavailable" then "no CONDUCTOR-TOKEN-EVENT lines present in log.md yet"
    else null end) as $cond_block_note
+
+# --- FR 5: suspicious-multi-leg note (more legs than recorded resumes explain) -
+| ($legs > ($resumed_legs + 1)) as $suspicious_multi_leg
+| (if $suspicious_multi_leg
+   then "\($legs) conductor legs detected with no resume evidence in state.json — verify all are legitimate conductor legs; a foreign session may have been captured."
+   else null end) as $suspicious_note
+
+# --- FR 5: merge cond-block note + suspicious note (both can co-fire) ----------
+| ([
+    (if $cond_block_note != null then $cond_block_note else empty end),
+    (if $suspicious_note != null then $suspicious_note else empty end)
+  ] | if length > 0 then join("; ") else null end) as $combined_note
 
 # --- per-spawn duration_s (consumer-derived, <=0 guard, both-parse rule) ------
 | ($started | map(
@@ -253,7 +273,7 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
       turns: $cond_turns,
       legs: $legs,
       confidence: $cond_conf
-    } + (if $cond_block_note != null then {_note: $cond_block_note} else {} end)),
+    } + (if $combined_note != null then {_note: $combined_note} else {} end)),
     wall_clock: {
       active_spawn_time_s: {value: $active_time, confidence: $active_conf,
         _semantics: "summed active time of individual spawns — not run wall-clock: parallel spawns sum to more than the wall-clock they overlapped in, and human-wait between spawns is excluded"},
@@ -285,6 +305,7 @@ if jq -n \
   --slurpfile checkpoints "$cp_f" \
   --slurpfile parse_notes "$nt_f" \
   --argjson critic_loops "$critic_loops_json" \
+  --argjson resumed_legs "$resumed_legs" \
   "$JQ_PROG"; then
   exit 0
 else

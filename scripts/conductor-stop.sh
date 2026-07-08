@@ -59,6 +59,10 @@ fi
 RUN_DIR=$(printf '%s' "$pointer_json" | jq -r '.run_dir // empty' 2>/dev/null)
 NONCE=$(printf '%s' "$pointer_json" | jq -r '.nonce // empty' 2>/dev/null)
 written_at=$(printf '%s' "$pointer_json" | jq -r '.written_at // empty' 2>/dev/null)
+# project_dir is OPTIONAL — read it, but do NOT add it to the required-keys guard
+# below. Its absence is a legal state (legacy pointer or failed write — EC 2
+# fail-open): a project_dir-less pointer falls straight through Step C.0.
+project_dir=$(printf '%s' "$pointer_json" | jq -r '.project_dir // empty' 2>/dev/null)
 
 if [ -z "$RUN_DIR" ] || [ -z "$NONCE" ] || [ -z "$written_at" ]; then
   echo "[conductor-stop] pointer file missing required keys (run_dir/nonce/written_at): $POINTER_FILE" >&2
@@ -80,6 +84,30 @@ transcript_path=$(printf '%s' "$stdin_json" | jq -r '.transcript_path // empty' 
 if [ -z "$transcript_path" ] || [ ! -r "$transcript_path" ]; then
   exit 0  # No readable transcript — silent no-op
 fi
+
+# ── Step C.0: Project-dir ownership gate (FR 2, FR 6) ────────────────────────
+# Inserted BEFORE the nonce-grep. If project_dir is present in the pointer,
+# compare the munged project_dir against the munged component of the transcript
+# path (the parent-dir basename that Claude Code derives from the session's cwd).
+# Exit 0 silently on mismatch. If project_dir is absent (legacy / failed write),
+# fall through to the nonce-grep — EC 2 fail-open.
+if [ -n "$project_dir" ]; then
+  _pd_munged="${project_dir//\//-}"        # every / -> -
+  _pd_munged="${_pd_munged//./-}"          # every . -> -  (REQUIRED: proven by OQ 4)
+  _tx_projdir=$(basename "$(dirname "$transcript_path")")
+  if [ -z "$_pd_munged" ] || [ -z "$_tx_projdir" ] || [ "$_pd_munged" != "$_tx_projdir" ]; then
+    # Mismatch. If the transcript ALSO contains the nonce AND RUN_DIR (it looked
+    # like the legitimate owner but the munged cwd did not match), emit exactly
+    # ONE stderr diagnostic — the W2 carve-out (FR 6). Never stderr on a plain
+    # mismatch (that would fire for every unrelated machine Stop).
+    if grep -qF -- "$NONCE" "$transcript_path" 2>/dev/null \
+       && grep -qF -- "$RUN_DIR" "$transcript_path" 2>/dev/null; then
+      echo "[conductor-stop] project_dir mismatch on an owner-looking transcript (nonce+RUN_DIR present); munged cwd '$_tx_projdir' != '$_pd_munged' — check target-repo path munging" >&2
+    fi
+    exit 0
+  fi
+fi
+# If project_dir is empty: fall straight through to the nonce-grep (EC 2 legacy path).
 
 if ! grep -qF -- "$NONCE" "$transcript_path" 2>/dev/null; then
   exit 0
@@ -216,7 +244,7 @@ _bl_write_back() {
   #     (mirrors scripts/account-run.sh's ".accounting.json.tmp.XXXXXX" pattern).
   tmp_ptr=$(mktemp "${POINTER_FILE}.tmp.XXXXXX" 2>/dev/null) || return 1
   if ! printf '%s' "$pointer_json" | jq -c --argjson baseline "$cand" \
-        '{run_dir: .run_dir, nonce: .nonce, written_at: .written_at, baseline: $baseline}' \
+        '{run_dir: .run_dir, nonce: .nonce, written_at: .written_at, baseline: $baseline, project_dir: .project_dir}' \
         > "$tmp_ptr" 2>/dev/null; then
     rm -f "$tmp_ptr" 2>/dev/null
     return 1

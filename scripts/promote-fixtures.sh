@@ -111,7 +111,7 @@ fi
 _cand_tmp=$(mktemp "${TMPDIR:-/tmp}/promote-fixtures.cand.XXXXXX")
 trap 'rm -f "$_cand_tmp"' EXIT
 
-for f in "$SRC"/[0-9][0-9]-*.md; do
+for f in "$SRC"/[0-9][0-9]-*.md "$SRC"/[0-9][0-9][0-9]-*.md; do
   [ -f "$f" ] || continue
   slug=$(basename "$f" .md)
   if [ -n "$ONLY" ]; then

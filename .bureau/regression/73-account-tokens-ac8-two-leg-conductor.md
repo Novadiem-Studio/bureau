@@ -1,4 +1,5 @@
 name: account-tokens AC 8 — two-leg conductor take-max within session, sum across legs
+retired: 02 · feature — FR 4 per-leg final: mixed-final input now yields "partial" not "exact"; superseded by fixtures 104/106
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

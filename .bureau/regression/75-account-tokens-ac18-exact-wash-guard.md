@@ -1,4 +1,5 @@
 name: account-tokens AC 18 — exact-wash guard (no final:true -> partial; add one -> exact)
+retired: 02 · feature — FR 4 per-leg final: mixed-final input now yields "partial" not "exact"; superseded by fixtures 104/106
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)
