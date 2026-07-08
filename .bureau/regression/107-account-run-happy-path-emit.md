@@ -14,8 +14,10 @@ command: |
   bash "$ROOT/scripts/account-run.sh" "$RP" >/dev/null 2>&1 || { rm -rf "$TMPF"; exit 1; }
   jq -e '.schema_version == 1 and .run.accounted_at.confidence == "exact"' "$RP/accounting.json" > /dev/null || { rm -rf "$TMPF"; exit 1; }
   jq -e '(.phases | has("complete")) and (.phases | has("status")) and ((.phases | has("phases_complete")) | not)' "$RP/accounting.json" > /dev/null || { rm -rf "$TMPF"; exit 1; }
+  jq -e '.cost.currency_estimate.value == null' "$RP/accounting.json" > /dev/null || { rm -rf "$TMPF"; exit 1; }
+  jq -e '(.phases | has("phase_status") | not)' "$RP/accounting.json" > /dev/null || { rm -rf "$TMPF"; exit 1; }
   rm -rf "$TMPF"
   echo "PASS"
-expected: exit 0; stdout "PASS"; schema_version=1, run.accounted_at.confidence=exact, phases has "complete" and "status" keys but not "phases_complete"
+expected: exit 0; stdout "PASS"; schema_version=1, run.accounted_at.confidence=exact, phases has "complete" and "status" keys but not "phases_complete" or "phase_status"; cost.currency_estimate.value==null
 phase: 01 · execute-plan
 owner: Prompt 01 / account-run base-engine battle-test
