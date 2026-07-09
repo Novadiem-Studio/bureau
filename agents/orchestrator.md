@@ -808,6 +808,9 @@ When the Delegate resumes you with the verdict (or a fork answer):
     fresh-Conductor-spawn fallback.
 (b) **Act from the preserved transcript** — `tool_uses: 0`. Do not re-read `state.json`, the
     artifact, or any file to recover state; the resume carries your prior context intact (AC3).
+    (The **log-and-drop** context-hygiene discipline does NOT apply across a `SendMessage` resume
+    hop: here the transcript is deliberately preserved and authoritative — the `resume-token` echo
+    in (a) proves it survived. Log-and-drop governs phase boundaries in normal flow, a disjoint event.)
 (c) **Route on the verdict:**
     - **`proceed`** → continue with the next workflow phase.
     - **`revise`** → route the verdict's `Required-changes` to the specialist that owns the root, by
