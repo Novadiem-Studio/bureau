@@ -564,7 +564,7 @@ Then stop and wait. Do not write prompts until the handoff bundle has been inges
 
 ## Completion checklist
 
-Run all four checks before writing `status: "complete"` to `state.json` or declaring the
+Run all five checks before writing `status: "complete"` to `state.json` or declaring the
 run done. Running and logging the checklist is not optional — skipping it on confidence
 ("I already checked") is a process violation.
 
@@ -594,6 +594,67 @@ on the full artifact set — not acceptance of the round-1 result.
 **(d) Mechanical linter clean:** none of the four forbidden patterns per spec FR 5d survives
 in any fenced code block in any artifact. This is a strict subset of check (c); naming it
 separately makes it explicit.
+
+**(e) Scope-class declaration + measurement (FR 7, AC 8):** At close-out, write
+`decisions.scope_class` into `state.json` — a string value inside the existing free-form
+`decisions` object (NOT a new top-level key). Example: `"feature-comparable (16 specialist
+spawns, feature workflow)"`. The jq write shape:
+```json
+{"decisions": {"scope_class": "feature-comparable (N specialist spawns, feature workflow)", "...other existing decisions...": "..."}}
+```
+Use the real spawn count from `accounting.json#specialist_spawns` (or the SPAWN-EVENT count
+from `log.md` if accounting has not yet run). Echo the same declaration in the close-out
+`log.md` entry under the `## [TIMESTAMP] — Completion checklist` heading. Both the
+`state.json` write and the `log.md` echo are required; either alone is insufficient for a
+cold reader to reproduce the before/after comparison (AC 8).
+
+**Scope-match rule (FR 7, EC 5):** a run is "feature-comparable" for before/after diet
+comparison iff it is a `feature` (or `feature+execute`) workflow AND has >= 8 specialist
+spawns. Runs with < 8 specialist spawns declare scope_class `"short-run (N specialist
+spawns, out of comparison scope)"` and are excluded from the primary before/after metric —
+they are not failures, just out of scope for the diet comparison.
+
+**Primary metric (AC 1):** `conductor_tokens.tokens.processed / tokens.processed_total.value`.
+Load-bearing path fact: `conductor_tokens` is a **top-level** key in `accounting.json`, NOT
+nested under `tokens`. Reading `tokens.conductor_tokens.processed` silently returns `{}`.
+The correct path: `jq '.conductor_tokens.tokens.processed / .tokens.processed_total.value' accounting.json`.
+The metric is confirmatory only when `conductor_tokens.confidence == "exact"` (a `final:true`
+CONDUCTOR-TOKEN-EVENT captured). A `confidence: "partial"` read may corroborate but does not
+confirm AC 1.
+
+**Secondary metric (AC 2):** `conductor_tokens.tokens.cache_read /
+(Sigma specialist_spawns[*].tokens.cache_read.value + conductor_tokens.tokens.cache_read)`.
+Note the asymmetry: `specialist_spawns[*].tokens.cache_read` is a `{value, confidence}`
+dict — use `.value`; `conductor_tokens.tokens.cache_read` is a plain int — no `.value`.
+The jq shape:
+```
+jq '(.conductor_tokens.tokens.cache_read) /
+    ((.specialist_spawns | map(.tokens.cache_read.value) | add) +
+     .conductor_tokens.tokens.cache_read)' accounting.json
+```
+Target: < 0.60 on the same after-diet run that meets AC 1. This is a directional
+requirement.
+
+**Before-corpus note (A2, CALL C):** B11 (`.bureau/archive/20260705-planning-loop-reduction/`)
+is the primary before baseline: 60.2% processed share, `confidence: partial` (sound for
+conductor_tokens, partial for processed_total due to 27 missing SPAWN-TOKEN-EVENTs). B12
+(`.bureau/archive/20260706-delta-baseline-conductor-capture/`) is contaminated-high
+corroboration only — do not average with B11. The after-run MUST run under the
+ownership-by-identity fix (shipped, commit `14a9532`) to avoid the same foreign-leg
+contamination. A `confidence: partial` baseline (B11) reading <45% on the after-run is
+still a genuine drop across the tier — the comparison is sound because both the partial
+and exact reads err conservative-high, so a measured drop persists direction regardless
+of the tier gap.
+
+**Spawn-prompt slimming (FR 5, measure-only):** Record in the close-out log whether
+repeated inline constraint blocks in spawn prompts across this run exceeded the ~5k-token
+threshold that would justify a `RUN_DIR/conductor-notes.md` pointer in a future bundle. No
+mechanism is built in v1. If the threshold is exceeded, record it as a named carried item
+for the next bundle; if it is not, note it as "threshold not exceeded, mechanism deferred."
+
+**EC 5 carried item:** if no >=8-spawn feature run appears in the 90 days after this diet
+ships, the < 0.45 target is re-evaluated rather than silently failed. Record this as a
+carried item in `state.json#carried_items` at close-out.
 
 **Log format:** write a `COMPLETION-CHECK:` block to `RUN_DIR/log.md` under a
 `## [TIMESTAMP] — Completion checklist` heading. One line per check: check letter, pass/fail,
