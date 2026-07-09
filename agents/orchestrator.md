@@ -102,11 +102,21 @@ still adjudicate every handoff carefully.
 The durable source of truth is the run's artifacts, not the main conversation. At phase
 boundaries, after major adjudications, and before any intentional context reset/compaction:
 
-1. Update `RUN_DIR/state.json` with the current phase, decisions, carried items, and git state.
-2. Append a short resume note to `RUN_DIR/log.md`: what just completed, what is next, what is
-   blocked, and which artifact is canonical.
-3. After a compact/resume, re-read `state.json` and the latest relevant `log.md` section before
-   acting. Do not trust half-remembered conversation context over the written artifacts.
+1. **MUST** update `RUN_DIR/state.json` with the current phase, decisions, carried items, and
+   git state before the next spawn. A phase boundary without this write is a process
+   violation — not a hygiene aspiration (FR 1).
+2. **MUST** append a short resume note to `RUN_DIR/log.md` before the next spawn: what just
+   completed, what is next, what is blocked, and which artifact is canonical. This write
+   happens at every phase boundary, not only when context feels heavy (FR 1).
+3. **MUST** re-read `state.json` and the latest relevant `log.md` section before acting, after
+   any intentional history drop, `/compact` fire, or context compaction from any source. The
+   transcript is not adjudication memory — the written artifacts are. Do not trust
+   half-remembered conversation context over the written artifacts (FR 2).
+4. **Log-and-drop (FR 3):** once a specialist handoff is adjudicated and its decision is
+   written to `state.json`/`log.md`, the in-context handoff tool-result block is spent. Do
+   not scroll back to it for adjudication state. The `log.md` copy is canonical; the
+   in-context copy is disposable after adjudication. This applies to every specialist
+   handoff: Analyst, Architect, Challenger (both rounds), Designer, Prompt Engineer.
 
 If context is getting heavy mid-phase, prefer a fresh Scoot/Tally read-only pass or a fresh
 specialist spawn over dragging old discussion forward. Fresh context is a feature when the
@@ -325,6 +335,18 @@ when you log each blocker during adjudication, and one `status:"closed"` line wh
 verify the fix (the same moment you write the `COMPLETION-CHECK:(b)` prose). Use the
 `id` format `"r<round>-b<n>"` — the id is stable across the raise and close lines for
 the same blocker. Format and key definitions: `docs/run-accounting.md § B2.5`.
+
+**EC 3 timing guard:** the log-and-drop and phase-boundary read-back disciplines apply only
+at clean phase boundaries — never mid-adjudication. Mid-adjudication is defined as: after a
+Challenger handoff is received but before `state.json#decisions` is updated for that round.
+Do not drop or compact context while an adjudication is in progress; complete the
+adjudication write (state.json + log.md BLOCKER-EVENT lines) first.
+
+**Topology compatibility (OQ 2, AC 9):** log-and-drop discipline is topology-agnostic — it
+works identically under interactive, v1-watcher, and v2-integrated-Delegate topologies. The
+chained-session (resume-per-phase) mechanism is explicitly NOT adopted in v1 because it
+breaks the Delegate's SendMessage resume loop (`agents/orchestrator.md § v2 checkpoint
+return protocol`). The existing resume protocol (`CLAUDE.md § Resuming` + `agents/orchestrator.md ## Run directory, state management, and log format` resume-gate + `## Pointer lifecycle (FR 6)`) is unchanged; it remains the recovery path for a dead session only, not a routine diet mechanism.
 
 **Round-2 exclusion from disk (FR 6, CALL D):** Before spawning the round-2 Challenger,
 derive the already-adjudicated exclusion set from the `BLOCKER-EVENT` ledger in `log.md`,
