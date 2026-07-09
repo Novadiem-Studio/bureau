@@ -216,10 +216,18 @@ check_convention_citations() {
     }
     return tok
   }
-  function extract_cited_heading(s,   pos) {
-    pos = index(s, "§")
-    if (pos == 0) return ""
-    return substr(s, pos+1)
+  function extract_cited_heading(s,   parts, h) {
+    # split() matches the full 2-byte UTF-8 sequence for §, so parts[2] starts
+    # at the byte immediately after the closing byte of §.  index()+substr()
+    # with +1 lands inside the 2-byte sequence and prepends a stray 0xA7 byte.
+    if (split(s, parts, "§") < 2) return ""
+    h = parts[2]
+    sub(/^[[:space:]]+/, "", h)
+    # Strip trailing sentence punctuation that may follow the heading in prose
+    # (e.g. "CLAUDE.md § Store slice conventions." — the period is sentence-end,
+    # not part of the heading title).
+    sub(/[[:space:].,);:]+$/, "", h)
+    return h
   }
   BEGIN { in_fence = 0; prev_triggered = 0; prev_line = ""; prev_n = 0 }
   {
