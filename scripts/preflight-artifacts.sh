@@ -145,6 +145,170 @@ harvest_defs "$SPEC"
 harvest_defs "$PLAN"
 sort -u "$DEFS" -o "$DEFS"
 
+# ── Helper: read target_repo from state.json ──────────────────────────────────
+# Reads RUN_DIR/state.json, returns the absolute path via stdout.
+# Returns empty string if the value is "(no-target)", file is missing, or
+# unreadable. Never exits the script on failure — degrades cleanly.
+
+read_target_repo() {
+  local json="$RUN_DIR/state.json"
+  [ -f "$json" ] || return
+  local val
+  val=$(grep '"target_repo"' "$json" | sed 's/.*"target_repo"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  [ "$val" = "(no-target)" ] && return
+  printf '%s' "$val"
+}
+
+# ── (h) Convention citations ──────────────────────────────────────────────────
+# Scans non-fenced, non-heading, non-ID-definition lines for a compound
+# structural term from the closed keyword set immediately adjacent to a
+# backticked concrete name.  When triggered, requires a citation on the same
+# line OR the immediately following line:
+#   CLAUDE.md §         — on-disk resolved against target_repo
+#   novadiem-engineering § — always valid, no on-disk resolve
+#   no CLAUDE.md for    — explicit no-CLAUDE.md escape (EC 4)
+# Missing citation → convention-uncited
+# CLAUDE.md § citation with missing file/heading → convention-source-missing
+#
+# Bash 3.2 / BSD grep portable; uses pinned PATH from line 24.
+
+check_convention_citations() {
+  local f="$1"
+  local fname
+  fname="$(basename "$f")"
+  local target_repo_val
+  target_repo_val="$(read_target_repo)"
+
+  # Use awk for the main line-scanning loop (performance: ~200× faster than
+  # per-line grep/sed subshells on multi-hundred-line specs).
+  #
+  # Awk emits one output line per finding in one of two forms:
+  #   UNCITED:<lineno>:<triggered line (first 60 chars)>
+  #   CITED:<lineno>:<path token before §>:<heading after §>
+  #
+  # The shell then converts each form to an add_defect call, and resolves
+  # CITED on-disk (CLAUDE.md § only; novadiem-engineering § and no CLAUDE.MD
+  # for are treated as valid without on-disk resolve).
+  local awk_out
+  awk_out="$(awk '
+  function strip_dbtick(s,   r) {
+    # Remove double-backtick markdown spans (may contain inner single backticks).
+    # Iterative match removes each span from left to right.
+    r = s
+    while (match(r, /``[^`]*(`[^`]*`)*[^`]*``/)) {
+      r = substr(r, 1, RSTART-1) substr(r, RSTART+RLENGTH)
+    }
+    return r
+  }
+  function has_citation(s) {
+    return (s ~ /CLAUDE\.md §/ || s ~ /novadiem-engineering §/ || s ~ /no CLAUDE\.md for/)
+  }
+  function is_claude_cite(s) {
+    return (s ~ /CLAUDE\.md §/ && s !~ /novadiem-engineering §/ && s !~ /no CLAUDE\.md for/)
+  }
+  function extract_cited_path(s,   tok, rest) {
+    # Token immediately before §: last whitespace-delimited token preceding §
+    rest = s
+    while (match(rest, /[^[:space:]]+[[:space:]]+§/)) {
+      tok = substr(rest, RSTART, RLENGTH)
+      sub(/[[:space:]]+§.*/, "", tok)
+      rest = substr(rest, RSTART+RLENGTH)
+    }
+    return tok
+  }
+  function extract_cited_heading(s,   pos) {
+    pos = index(s, "§")
+    if (pos == 0) return ""
+    return substr(s, pos+1)
+  }
+  BEGIN { in_fence = 0; prev_triggered = 0; prev_line = ""; prev_n = 0 }
+  {
+    n++
+    line = $0
+
+    # Handle deferred citation check from previous triggered line
+    if (prev_triggered) {
+      if (has_citation(line)) {
+        if (is_claude_cite(line)) {
+          p = extract_cited_path(line)
+          h = extract_cited_heading(line)
+          if (p != "") print "CITED:" prev_n ":" p ":" h
+        }
+        # else novadiem-engineering § or no CLAUDE.MD for — valid, no output
+      } else {
+        print "UNCITED:" prev_n ":" substr(prev_line, 1, 60)
+      }
+      prev_triggered = 0
+    }
+
+    # Toggle fenced-block state
+    if (line ~ /^[[:space:]]*```/) { in_fence = !in_fence; next }
+    if (in_fence) next
+
+    # Skip heading lines and ID-definition lines
+    if (line ~ /^[[:space:]]*#/) next
+    if (line ~ /^[[:space:]]*\*\*(FR|EC|AC)/) next
+
+    # Strip double-backtick spans for trigger check only
+    scan = strip_dbtick(line)
+
+    # Check adjacency trigger (combined ERE alternation for all 10 terms)
+    TERMS = "(store slice|service class|error envelope|response envelope|db column|database column|sql table|db table|database table|saga)"
+    triggered = 0
+    if (scan ~ ("`[^`]+`[[:space:]]+" TERMS)) triggered = 1
+    if (!triggered && scan ~ (TERMS "[[:space:]]+(named[[:space:]]+|called[[:space:]]+)?`[^`]+")) triggered = 1
+
+    if (triggered) {
+      if (has_citation(line)) {
+        if (is_claude_cite(line)) {
+          p = extract_cited_path(line)
+          h = extract_cited_heading(line)
+          if (p != "") print "CITED:" n ":" p ":" h
+        }
+      } else {
+        prev_triggered = 1
+        prev_line = line
+        prev_n = n
+      }
+    }
+  }
+  END {
+    if (prev_triggered) print "UNCITED:" prev_n ":" substr(prev_line, 1, 60)
+  }
+  ' "$f")"
+
+  # Process awk output: emit add_defect calls for each finding
+  local emit_line emit_type emit_n emit_detail emit_path emit_heading
+  local resolved_file
+  while IFS= read -r emit_line || [ -n "$emit_line" ]; do
+    [ -n "$emit_line" ] || continue
+    emit_type="${emit_line%%:*}"
+    rest="${emit_line#*:}"
+    emit_n="${rest%%:*}"
+    emit_detail="${rest#*:}"
+
+    case "$emit_type" in
+      UNCITED)
+        add_defect "${fname}:${emit_n} — convention-uncited — ${emit_detail}"
+        ;;
+      CITED)
+        # On-disk resolve for CLAUDE.md § citations
+        emit_path="${emit_detail%%:*}"
+        emit_heading="${emit_detail#*:}"
+        if [ -n "$target_repo_val" ]; then
+          resolved_file="${target_repo_val}/${emit_path}"
+          if [ ! -f "$resolved_file" ] || ! grep -qF "$emit_heading" "$resolved_file" 2>/dev/null; then
+            add_defect "${fname}:${emit_n} — convention-source-missing — ${emit_path}"
+          fi
+        fi
+        # If target_repo_val is empty (no-target / self-run): treat as valid (R3 degrade path)
+        ;;
+    esac
+  done << EOF
+$awk_out
+EOF
+}
+
 # ── (c) FR coverage ───────────────────────────────────────────────────────────
 # Every FR N defined in spec.md must appear by ID at least once in plan.md.
 # Prose-only coverage is not checked (ID-form mentions only).
@@ -289,6 +453,14 @@ check_snippets "$SPEC"
 check_snippets "$PLAN"
 if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
   check_snippets "$PROMPTS"
+fi
+
+# ── (h) Convention citations ──────────────────────────────────────────────────
+# round1: spec.md + plan.md; also harmless at final.
+
+if [ "$PHASE" = "round1" ] || [ "$PHASE" = "final" ]; then
+  check_convention_citations "$SPEC"
+  check_convention_citations "$PLAN"
 fi
 
 # ── (e) AC coverage (--phase final only) ─────────────────────────────────────
