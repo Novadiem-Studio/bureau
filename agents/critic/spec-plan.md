@@ -108,6 +108,22 @@ Check for:
   Blocker, specific conditions, no Conductor-discretion escape hatch. This slice carries its
   own copy because the cold Challenger loads only one review mode slice per spawn.
 
+- **Hard-gate zero-FP evidence gate (idea #24):** Fires when the spec introduces a NEW
+  auto-reject grammar (a new hard gate / preflight blocker / merge gate) AND claims it has
+  zero false positives. For that claim, confirm from `spec.md`:
+  (a) a fire-count table is present, measured against a PINNED corpus — a committed manifest
+      path OR the standing glob `~/Code/**/.bureau/{runs,archive}/*/spec.md` (+`plan.md`) —
+      WITH the resolved dir count M recorded, so you can resolve the SAME enumeration;
+  (b) the table separates the TRIGGER count K from the false-positive count, and K>0
+      (a zero-FP claim on 0 triggers is unexercised, not proof);
+  (c) the evidence is reproducible — spot-check by resolving the pinned reference and
+      confirming M is in the same range, and re-running the grammar on ONE or two cited dirs.
+  A subset-only claim (K/FP measured on fewer than the pinned M) OR a 0-triggers claim (K=0)
+  is a **Blocker the producer closes** — you do NOT re-derive the full-corpus run yourself.
+  Re-derivation is the producer's measurement; doing it for them is what cost run #18 two
+  Architect→Challenger loops. This gate is HARD-gate-only: an advisory / self-check zero-FP
+  claim does not auto-reject, so it is out of scope (do not demand full-corpus evidence for it).
+
 - **Outcome-metric gate (FR 4):** If the spec is NOT declared exploratory, the
   `Outcome / bottleneck:` field must name an observable, non-trivial improvement. A metric is
   non-trivial only if it would be possible to do the work and still NOT satisfy the metric. Flag
