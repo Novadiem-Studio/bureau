@@ -112,6 +112,14 @@ If context is getting heavy mid-phase, prefer a fresh Scoot/Tally read-only pass
 specialist spawn over dragging old discussion forward. Fresh context is a feature when the
 inputs are clean.
 
+**Scope-call logging (EC 4 b/c):** When the Conductor makes an informal scope call
+mid-run (e.g. "treat this as a warning, not a blocker") or agrees to watch-but-not-fix a
+Challenger warning, write that decision to `log.md` in the same adjudication entry — not
+just in conversation. If a later phase depends on the call, also add a one-line pointer
+under `state.json#decisions` (the free-form `decisions` object). These are not new
+schema fields; the existing fields are the target. A scope call that exists only in
+conversation is not re-derivable after any drop or compaction.
+
 ### Tool fit
 
 Use the boring tool that makes the operation repeatable:
@@ -310,6 +318,23 @@ Phase-2, or Phase-3 prompt — whichever the 4b finding names as the source — 
 patched inside the 4b prompt itself. The rationale: the fix stays reviewable alongside its
 owner, and design decisions do not scatter across verification artifacts. This rule lives
 here only — it is not duplicated in `agents/prompt-engineer.md`.
+
+**BLOCKER-EVENT emission (FR 4a gap-close, AC 6):** When adjudicating a Challenger round,
+emit a `BLOCKER-EVENT:` line per blocker to `RUN_DIR/log.md` — one `status:"raised"` line
+when you log each blocker during adjudication, and one `status:"closed"` line when you
+verify the fix (the same moment you write the `COMPLETION-CHECK:(b)` prose). Use the
+`id` format `"r<round>-b<n>"` — the id is stable across the raise and close lines for
+the same blocker. Format and key definitions: `docs/run-accounting.md § B2.5`.
+
+**Round-2 exclusion from disk (FR 6, CALL D):** Before spawning the round-2 Challenger,
+derive the already-adjudicated exclusion set from the `BLOCKER-EVENT` ledger in `log.md`,
+not from conversation memory. Run: `grep 'BLOCKER-EVENT:' RUN_DIR/log.md | grep '"status":"closed"' | grep -E '"closed_at_round":1[,}]'`
+to get the set of round-1-closed blockers. Pass this set to the round-2 Challenger spawn
+prompt as the "already adjudicated in round 1" list. A round-2 Challenger must not re-raise
+a blocker already in this closed set; if it does, that is a process failure (the round-2
+blocker list must come from new artifact findings, not forgotten round-1 closures). If the
+log carries no `BLOCKER-EVENT` lines (pre-Phase-1 run or opted-out run), fall back to
+reading the `### Blockers` / `COMPLETION-CHECK:(b)` prose, exactly as today (FR 9).
 
 ## Design handoff (human-in-the-loop)
 
@@ -531,10 +556,14 @@ unsatisfied AC requires a `[CHECKPOINT]`.
 
 **(b) Blocker closure:** every Challenger Blocker from all rounds is closed in the current
 artifact text — the fix must be in the file, not just acknowledged in the log. The Conductor
-checks by re-reading each Blocker's cited location. Note: there is no single greppable
-`BLOCKER: open/closed` token in real logs. The mechanical half is "no orphan Blocker finding"
-— every `### Blockers` block in the log has a Conductor adjudication line; the "fix is real"
-half is the Challenger re-review.
+checks by re-reading each Blocker's cited location. Where `BLOCKER-EVENT:` lines are present (Phase-1 gap-close, `docs/run-accounting.md § B2.5`),
+the mechanical half is: every `status:"raised"` line in the ledger has a matching
+`status:"closed"` line with the same `id` — run `grep 'BLOCKER-EVENT:' RUN_DIR/log.md`
+and confirm no raised id is missing its closed pair. Where `BLOCKER-EVENT:` lines are
+absent (pre-Phase-1 run, opted-out run), fall back to the prose check: every `### Blockers`
+block in the log has a Conductor adjudication line. In both cases the "fix is real" half is
+the Challenger re-review. If the ledger and the `### Blockers` prose disagree on count, the
+prose count is authoritative and the ledger is corrected (R5 drift mitigation).
 
 **(c) Pre-flight clean:** `scripts/preflight-artifacts.sh <RUN_DIR> --phase final` exits 0
 on the final artifact set (spec.md + plan.md + prompts.md). This is a re-run at close-out

@@ -218,6 +218,45 @@ CHECKPOINT-EVENT: {"id":"design-review","status":"resolved","at":"2026-07-05T00:
 - `wait_s` is consumer-derived (`resolved.at − raised.at`); it is unavailable when only a raised line is present (run still blocked).
 - The consumer sums `wait_s` across all resolved pairs to produce `checkpoints.human_wait_total_s`.
 
+### 5. BLOCKER-EVENT (Conductor-written)
+
+Appended by the Conductor to `log.md` at two lifecycle points per Challenger blocker:
+when the Conductor adjudicates a Challenger round (one `raised` line per blocker) and
+when the Conductor verifies each fix (one `closed` line per blocker — same moment it
+writes the `COMPLETION-CHECK:(b)` prose today). See also
+`agents/orchestrator.md § Adjudicating The Challenger's findings`.
+
+```
+BLOCKER-EVENT: {"round":1,"id":"r1-b1","status":"raised","root":"architecture","gist":"cold-reviewer guard misses v2 reach-out"}
+BLOCKER-EVENT: {"round":1,"id":"r1-b1","status":"closed","fix_ref":"spec.md §R2 / plan.md Phase 3","closed_at_round":1}
+```
+
+**`raised` keys:** `round` (int), `id` (string), `status` (`"raised"`), `root` (string —
+the root-cause category, e.g. `"architecture"`, `"prompts"`, `"scope"`), `gist` (string —
+one-line description of the blocker).
+
+**`closed` keys:** `round` (int), `id` (string), `status` (`"closed"`), `fix_ref` (string
+— artifact and section where the fix lands), `closed_at_round` (int — the round in which
+the fix was verified; equals `round` for a same-round fix, higher for a cross-round fix).
+
+**`id` format:** `"r<round>-b<n>"` — deterministic and stable across the `raised`→`closed`
+pair. Mirrors the `attempt_id = "<role>-<attempt>"` convention (§ A). The stable id is what
+makes the `raised`/`closed` pair grep-recoverable: `grep 'BLOCKER-EVENT:' log.md | grep
+'"id":"r1-b1"'` returns exactly the raise line and the close line for that blocker.
+
+**Append cadence:** same pattern as SPAWN-EVENT / CHECKPOINT-EVENT — the literal prefix
+`BLOCKER-EVENT: ` followed by compact JSON on its own line. The consumer parses by prefix;
+a malformed payload is a Conductor write error, not a format extension.
+
+**Parsed by:** the Conductor (deriving the round-2 exclusion set before a round-2 Challenger
+spawn) and `bureau-run-eval` (the `blocker-replay` no-regression check). NOT parsed by
+`account-run.sh` or `account-tokens.sh` — no accounting-schema change (FR 8).
+
+**Backward compatibility:** a `log.md` with zero `BLOCKER-EVENT` lines degrades gracefully
+to today's prose-only blocker tracking (FR 9). A run that predates this line type or does
+not emit it is valid; the round-2 exclusion falls back to reading the `### Blockers` /
+`COMPLETION-CHECK:(b)` prose, exactly as today.
+
 ---
 
 ## B3. Pointer lifecycle (canonical — FR 6)
