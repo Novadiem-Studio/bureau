@@ -183,7 +183,15 @@ try:
     worktree, canon_raw = sys.argv[1], sys.argv[2]
     canon = json.loads(canon_raw)
     for g in canon.get("gates", []):
-        ret = subprocess.run(g["command"], shell=True, cwd=worktree)
+        # FIX (defect 1): capture_output=True so a verbose gate's stdout/stderr
+        # cannot inherit this python process's stdout — which IS the `$(...)`
+        # the shell captures into GATE_RESULTS_JSON. Without capture, a chatty
+        # gate (e.g. jest printing ~74KB) prepends non-JSON to the captured
+        # string; the downstream json.loads then fails and gates collapses to
+        # [] — a silent false all-clear. Only ret.returncode is consumed, so
+        # discarding the captured stdout/stderr is safe.
+        ret = subprocess.run(g["command"], shell=True, cwd=worktree,
+                             capture_output=True)
         results.append({
             "name": g["name"],
             "command": g["command"],
@@ -291,8 +299,14 @@ try:
             else:
                 added = True
                 for g in pre_existing_claimed:
-                    ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree)
-                    ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir)
+                    # FIX (defect 1, same class as the canonical-gate loop):
+                    # capture_output=True so a verbose claimed-pre-existing gate
+                    # cannot contaminate the `$(...)` this heredoc feeds into
+                    # PRE_EXISTING_JSON. Only the returncodes are consumed.
+                    ret_branch = subprocess.run(g["command"], shell=True, cwd=worktree,
+                                                capture_output=True)
+                    ret_base = subprocess.run(g["command"], shell=True, cwd=tmpdir,
+                                              capture_output=True)
                     results.append({
                         "name": g["name"],
                         "command": g["command"],
