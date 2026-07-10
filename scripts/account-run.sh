@@ -871,12 +871,22 @@ if [ -x "$TOKENS_SCRIPT" ]; then
         ' 2>/dev/null || echo false)
 
         if [ "$tokens_have_data" = "true" ]; then
-            # (a) Merge the four top-level blocks (same pattern as the memory merge).
+            # (a) Merge the four top-level blocks (same pattern as the memory merge),
+            # PLUS the fragment's `_notes` breadcrumb when present. account-tokens.sh
+            # emits `_notes` (an array of strings) when it zeroes a non-object (scalar)
+            # `tokens` event or skips a torn line — otherwise it is absent. Carry it
+            # into accounting.json so the observation phase can see a malformed event
+            # was silently counted as 0, not just a transient stderr DEBUG line
+            # (pre-eval-hardening Challenger W1). Conditional so a clean run adds no
+            # `_notes` key and stays byte-for-byte unchanged (`$tok._notes // []` is
+            # `[]` when absent → length 0 → the empty-object branch, no key added).
             jq --argjson tok "$tokens_json" \
                '. + {tokens: $tok.tokens,
                      conductor_tokens: $tok.conductor_tokens,
                      wall_clock: $tok.wall_clock,
-                     checkpoints: $tok.checkpoints}' \
+                     checkpoints: $tok.checkpoints}
+                  + (if (($tok._notes // []) | length) > 0
+                     then {_notes: $tok._notes} else {} end)' \
                "$tmp_out" > "${tmp_out}.tok" && mv "${tmp_out}.tok" "$tmp_out"
 
             # (b) Enrich each specialist_spawns[] entry from the spawn_tokens map.
