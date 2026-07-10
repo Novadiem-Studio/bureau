@@ -10,15 +10,20 @@
 # the time every call, and the same stamp is echoed for reuse on adjacent event lines.
 #
 # Usage:
-#   log-append.sh <RUN_DIR> "<heading text>"      # append "## [<TS>] — <heading>", echo <TS>
-#   log-append.sh <RUN_DIR> "<heading text>" < body   # body piped on stdin, appended verbatim
-#   log-append.sh --now                            # print a fresh <TS> only; write nothing
+#   log-append.sh <RUN_DIR> "<heading text>"        # append "## [<TS>] — <heading>", echo <TS>
+#   log-append.sh <RUN_DIR> "<heading text>" - < body  # trailing "-": read a body from stdin
+#   log-append.sh --now                              # print a fresh <TS> only; write nothing
 #
 # Behavior:
 #   - TS is always `date -u +%Y-%m-%dT%H:%M:%SZ` (real UTC, this instant).
 #   - Appends "\n## [<TS>] — <heading>\n" to <RUN_DIR>/log.md, creating it if absent,
 #     appending (never truncating) if present.
-#   - If a body is piped on stdin (non-tty), it is appended verbatim under the heading.
+#   - Reading a body from stdin is OPT-IN: it happens ONLY when a literal "-" is passed as
+#     the third argument. The heading-only form (two args) NEVER touches stdin — no `cat`,
+#     no read, no possibility of blocking. This matters because "stdin is not a tty" is NOT
+#     "a body was piped": the Conductor's Bash-tool stdin can be an open non-tty stream that
+#     never sends EOF, so a tty-inference `cat` would hang the whole run indefinitely on the
+#     common heading-only path. Requiring an explicit "-" makes the fragile read deliberate.
 #   - Echoes <TS> to stdout so the caller can reuse the SAME real stamp for an adjacent
 #     machine event-line "at" field (the header and the event line share one clock read).
 #   - `--now` (or no RUN_DIR) prints only a fresh `date -u` stamp — a real-clock primitive
@@ -26,12 +31,13 @@
 #
 # Exit codes:
 #   0  section appended (or --now stamp printed)
-#   1  bad arguments (missing/again-not-a-dir RUN_DIR, or empty heading)
+#   1  bad arguments (missing/again-not-a-dir RUN_DIR, empty heading, or bad 3rd arg)
 #
 # POSIX /bin/sh; portable to macOS /bin/sh and Bash 3.2. No bashisms.
 
 usage() {
-  echo "Usage: log-append.sh <RUN_DIR> \"<heading text>\" [< body]   |   log-append.sh --now" >&2
+  echo "Usage: log-append.sh <RUN_DIR> \"<heading text>\" [-]   |   log-append.sh --now" >&2
+  echo "       (append a stdin body only with an explicit trailing \"-\"; heading-only never reads stdin)" >&2
   exit 1
 }
 
@@ -46,8 +52,17 @@ if [ "$#" -eq 0 ] || [ "$1" = "--now" ]; then
 fi
 
 # ── argument handling ─────────────────────────────────────────────────────────
+# Two args = heading only (never reads stdin). Three args = the third MUST be the
+# literal "-", which OPTS IN to reading a body from stdin. Any other count/3rd arg
+# is misuse.
 
-[ "$#" -eq 2 ] || usage
+READ_BODY=0
+case "$#" in
+  2) ;;
+  3) [ "$3" = "-" ] || { echo "log-append: third argument must be literal \"-\" to read a stdin body, got: $3" >&2; usage; }
+     READ_BODY=1 ;;
+  *) usage ;;
+esac
 
 RUN_DIR="$1"
 HEADING="$2"
@@ -64,10 +79,11 @@ LOG_FILE="$RUN_DIR/log.md"
 # ── append (never overwrite) ──────────────────────────────────────────────────
 # A leading blank line separates this section from prior content; harmless on the
 # first write. `>>` creates the file if absent and appends otherwise — never `>`.
+# The stdin read is reached ONLY when "-" opted in (READ_BODY=1); the heading-only
+# path never touches stdin, so it cannot block on a stream that never sends EOF.
 {
   printf '\n## [%s] — %s\n' "$TS" "$HEADING"
-  # Append a piped body verbatim only when stdin is NOT a tty (something was piped).
-  if [ ! -t 0 ]; then
+  if [ "$READ_BODY" -eq 1 ]; then
     cat
   fi
 } >>"$LOG_FILE"
