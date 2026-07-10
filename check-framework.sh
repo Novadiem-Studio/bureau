@@ -267,6 +267,23 @@ if ! grep -q 'run-worktree' workflows/execute-plan/build-tail.md; then
   err "workflows/execute-plan/build-tail.md should reference run-worktree"
 fi
 
+echo "== orchestrator.md regrowth guard"
+# agents/orchestrator.md is the Conductor's core context, loaded (in part) on
+# every run's startup. Idea #19 (the Conductor context diet, shipped 2026-07-09)
+# trimmed it hard: it was 465 lines right after that refactor. It keeps regrowing
+# — 889 lines as of 2026-07-09 — which works directly against the context diet.
+# ORCHESTRATOR_MD_BUDGET is a documented soft ceiling: a WARNING (advisory), never
+# an `err` — a hard fail on line count is too brittle for prose that legitimately
+# grows a little. 925 = 889 baseline + ~36 lines (~4%) of headroom, so it does not
+# fire today but trips on further growth, forcing a conscious "trim or raise the
+# budget" decision instead of silent creep. When #19's rationale says the file
+# should shrink, LOWER this number rather than let it drift up.
+ORCHESTRATOR_MD_BUDGET=925
+orch_lines=$(wc -l < agents/orchestrator.md | tr -d '[:space:]')
+if [[ "$orch_lines" -gt "$ORCHESTRATOR_MD_BUDGET" ]]; then
+  warn "agents/orchestrator.md is ${orch_lines} lines, over the ${ORCHESTRATOR_MD_BUDGET}-line budget — it is the Conductor's startup context and this works against idea #19 (the Conductor context diet). Trim it back or, if the growth is justified, raise ORCHESTRATOR_MD_BUDGET in check-framework.sh with a note why."
+fi
+
 echo "== name lint"
 # Advisory warnings only. Does NOT touch `errors` or the exit code.
 # A warning means a file name looks vague. The right response is to rename the
