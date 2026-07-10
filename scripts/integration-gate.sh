@@ -447,29 +447,48 @@ PY
   #  2. Non-ff case: run a REAL 3-way merge test with `git merge-tree`.
   #     Prefer the modern `git merge-tree --write-tree` (git ≥ 2.38): it does a
   #     real merge and EXITS NON-ZERO (1) iff there are conflicts, 0 iff clean.
-  #     Fall back to the older 3-arg `git merge-tree <base> <base> <branch>`
-  #     form (which always exits 0) and detect conflicts by grepping its output
-  #     for conflict markers (^<<<<<<<). Neither form touches the working tree,
-  #     so untracked/dirty files cannot register as conflicts.
+  #     Fall back (git < 2.38, or when BUREAU_FORCE_LEGACY_MERGETREE=1 forces it
+  #     for test coverage) to the classic 3-arg `git merge-tree <mergebase>
+  #     <branch1> <branch2>` form, which ALWAYS exits 0 and marks conflicts
+  #     inline in its diff output. Two things the classic form requires, both of
+  #     which the first cut of this fix got wrong and are verified here against
+  #     real `git merge-tree` output:
+  #       (a) arg 1 must be the TRUE common ancestor `git merge-base <base> HEAD`
+  #           — NOT base itself. Passing base as its own merge-base makes HEAD's
+  #           change look like the only divergence, so git resolves it as a clean
+  #           two-way change and never emits markers (a real conflict then reads
+  #           as clean — the exact silent all-clear this run exists to kill).
+  #       (b) classic merge-tree prefixes conflict-hunk lines with `+` in its
+  #           diff, so a genuine conflict shows `+<<<<<<< .our` — an anchored
+  #           `^<<<<<<< ` pattern can NEVER match it. Match `^+<<<<<<<`.
+  #     Neither merge-tree form touches the working tree, so untracked/dirty
+  #     files cannot register as conflicts.
+  #
+  # BUREAU_FORCE_LEGACY_MERGETREE=1 skips the modern `--write-tree` path so the
+  # legacy fallback is reachable under regression on a modern git (mirrors the
+  # BUREAU_* test-injection convention, e.g. BUREAU_POINTER_FILE / BUREAU_ACCOUNT_RUN_SH).
   if [ "$FF_OK" = "true" ]; then
     CONFLICTS_CLEAN=true
   else
-    # Non-ff: run the modern `--write-tree` merge test once and read its exit
-    # code — 0 = clean, 1 = conflicts, anything else (e.g. 128 when the flag is
-    # unsupported on an older git) = fall through to the legacy marker scan.
-    git -C "$REQ_WORKTREE_PATH" merge-tree --write-tree \
-      "$REQ_BASE_REF" HEAD >/dev/null 2>&1
-    MT_RC=$?
+    MT_RC=2   # sentinel: "modern path not run" → go straight to legacy fallback
+    if [ "${BUREAU_FORCE_LEGACY_MERGETREE:-0}" != "1" ]; then
+      # Modern `--write-tree` merge test: exit 0 = clean, 1 = conflicts, other
+      # (e.g. 128 when the flag is unsupported) = fall through to legacy.
+      git -C "$REQ_WORKTREE_PATH" merge-tree --write-tree \
+        "$REQ_BASE_REF" HEAD >/dev/null 2>&1
+      MT_RC=$?
+    fi
     if [ "$MT_RC" = "0" ]; then
       CONFLICTS_CLEAN=true
     elif [ "$MT_RC" = "1" ]; then
       CONFLICTS_CLEAN=false
     else
-      # Legacy fallback: older `git merge-tree <base> <base> <branch>` always
-      # exits 0; conflicts are marked inline with `<<<<<<<` markers in output.
-      if git -C "$REQ_WORKTREE_PATH" merge-tree \
-           "$REQ_BASE_REF" "$REQ_BASE_REF" HEAD 2>/dev/null \
-           | grep -q '^<<<<<<< '; then
+      # Classic fallback: TRUE merge-base as arg 1, and match the `+`-prefixed
+      # conflict marker the classic diff emits (see (a)/(b) above).
+      MB="$(git -C "$REQ_WORKTREE_PATH" merge-base "$REQ_BASE_REF" HEAD 2>/dev/null)"
+      if [ -n "$MB" ] && git -C "$REQ_WORKTREE_PATH" merge-tree \
+           "$MB" "$REQ_BASE_REF" HEAD 2>/dev/null \
+           | grep -q '^+<<<<<<<'; then
         CONFLICTS_CLEAN=false
       else
         CONFLICTS_CLEAN=true
