@@ -211,7 +211,8 @@ and do NOT touch the Architecture section.
   `RECONCILED: no Architecture section found in spec.md — reconciliation skipped` to
   `log.md` and return. This is a valid terminal state, not a missing-step error.
 - Write a `RECONCILED:` note to `RUN_DIR/log.md` under the heading
-  `## [TIMESTAMP] — Analizer 2000 (reconciliation) → complete`. Name each change made to
+  `## [TIMESTAMP] — Analizer 2000 (reconciliation) → complete` (`[TIMESTAMP]` = a real
+  `date -u` UTC stamp via `scripts/log-append.sh`, never typed from context). Name each change made to
   the Requirements section, or state
   `RECONCILED: no drift detected — no changes to Requirements section` if none.
 - **EC 1:** a clean reconciliation (no drift) is a valid terminal state. The Conductor must

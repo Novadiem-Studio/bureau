@@ -85,6 +85,10 @@ reading another slice unless the Conductor explicitly changes the mode and re-sp
 
 ## Output — write to RUN_DIR/log.md
 
+`[TIMESTAMP]` is a real UTC stamp from `scripts/log-append.sh "$RUN_DIR" "<heading>"` (or, at
+minimum, `$(date -u +%Y-%m-%dT%H:%M:%SZ)`) — a shell-computed clock read, never a value typed
+from context.
+
 ```markdown
 ## [TIMESTAMP] — The Challenger review: [round 1 spec+plan | round 2 prompts | build-diff | code-review]
 

@@ -168,7 +168,10 @@ The index `status` is NOT `phase_status` verbatim:
 
 ## Log format
 
-Append to `RUN_DIR/log.md` after every spawn and every decision:
+Append to `RUN_DIR/log.md` after every spawn and every decision. `[TIMESTAMP]` below is a
+placeholder for a **real `date -u` UTC stamp written via `scripts/log-append.sh`** (which
+computes and echoes it), never a freehand value typed from context — see
+`agents/orchestrator.md § Run directory, state management, and log format` for the MUST:
 
 ```markdown
 ## [TIMESTAMP] — Spawned Analyst → complete

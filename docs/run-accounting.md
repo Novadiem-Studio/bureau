@@ -88,8 +88,10 @@ always on all terminal exits" rule below — both exist so partial runs still ac
 what they spent).
 
 This SPAWN-EVENT line is SEPARATE from and ADDITIONAL to the existing narrative log heading
-(`## [TIMESTAMP] — Spawned ...`). Write both: the SPAWN-EVENT line is the machine-readable
-record, the heading is the human one.
+(`## [TIMESTAMP] — Spawned ...`, where `[TIMESTAMP]` is a real `date -u` UTC stamp written via
+`scripts/log-append.sh`, never a typed value). Write both: the SPAWN-EVENT line is the
+machine-readable record, the heading is the human one — and the heading's stamp and this line's
+`"at"` field should reuse the SAME clock read (the `<TS>` `log-append.sh` echoes).
 
 The script parses ONLY the `SPAWN-EVENT:` lines — never the narrative headings. It reads
 them in a per-line guarded loop, parsing each payload with

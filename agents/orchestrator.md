@@ -402,6 +402,22 @@ table in `docs/run-protocol.md § State management`).
 SPAWN-EVENT machine-readable lines (see `docs/run-accounting.md § A`) go on the same append
 — they are separate from the heading, not a replacement.
 
+**MUST — timestamps are shell-computed, never typed.** You are an LLM; if you write a
+timestamp as text you will type a plausible one from context, and planning-run logs drift to
+round-hour placeholders. So `[TIMESTAMP]` is NEVER a freehand value. Every timestamp is a real
+UTC clock read: call `scripts/log-append.sh <RUN_DIR> "<what happened>"` — it appends the
+`## [<TS>] — …` heading with a shell-computed `date -u +%Y-%m-%dT%H:%M:%SZ` stamp and echoes
+that same `<TS>` on stdout. Reuse the echoed value for any adjacent event line's `"at"` field
+so the heading and its SPAWN-EVENT/CHECKPOINT-EVENT/BLOCKER-EVENT line share ONE real read
+(those `"at"` fields use the very same `date -u` idiom shown at their sites below — that
+consistency is the point). At minimum, if you write a heading by hand, its stamp MUST come
+from `$(date -u +%Y-%m-%dT%H:%M:%SZ)` (or `scripts/log-append.sh --now`), never from context.
+Example:
+```sh
+TS=$(scripts/log-append.sh "$RUN_DIR" "Spawned The Architect → complete")  # heading written; TS echoed
+# reuse $TS on the paired SPAWN-EVENT "at" field — one clock read, not two guesses
+```
+
 ## Run accounting (close-out)
 
 > **Full protocol:** `docs/run-accounting.md`
@@ -604,7 +620,9 @@ spawns, feature workflow)"`. The jq write shape:
 ```
 Use the real spawn count from `accounting.json#specialist_spawns` (or the SPAWN-EVENT count
 from `log.md` if accounting has not yet run). Echo the same declaration in the close-out
-`log.md` entry under the `## [TIMESTAMP] — Completion checklist` heading. Both the
+`log.md` entry under the `## [TIMESTAMP] — Completion checklist` heading (write it with
+`scripts/log-append.sh` — `[TIMESTAMP]` is a real `date -u` stamp, never typed; see the
+timestamp MUST above). Both the
 `state.json` write and the `log.md` echo are required; either alone is insufficient for a
 cold reader to reproduce the before/after comparison (AC 8).
 
@@ -657,7 +675,8 @@ ships, the < 0.45 target is re-evaluated rather than silently failed. Record thi
 carried item in `state.json#carried_items` at close-out.
 
 **Log format:** write a `COMPLETION-CHECK:` block to `RUN_DIR/log.md` under a
-`## [TIMESTAMP] — Completion checklist` heading. One line per check: check letter, pass/fail,
+`## [TIMESTAMP] — Completion checklist` heading (via `scripts/log-append.sh`, so the stamp is
+a real `date -u` read — never typed; see the timestamp MUST in § Run directory). One line per check: check letter, pass/fail,
 and the evidence (script exit line, grep result, or AC-map statement). A run whose `log.md`
 carries no `COMPLETION-CHECK:` block at close-out has not completed the checklist — that
 absence is a detectable defect auditable by `bureau-run-eval` and the Witness. Close-out must
