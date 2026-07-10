@@ -110,29 +110,47 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
       .status == "complete" or .status == "no-handoff"
       or .status == "failed" or .status == "terminated"))) as $terminals
 
+# --- non-object `tokens` tolerance (schema-2 guard) ----------------------------
+# The canonical schema-2 shape is tokens:{input,cache_creation,cache_read,
+# processed,output} — an OBJECT. But some events get logged with `tokens` as a
+# bare scalar number (e.g. "tokens":96666 — the Agent tool's
+# <usage><subagent_tokens>N</subagent_tokens> summary). jq's `// 0` catches null
+# but NOT a type error: `(number).processed` throws "Cannot index number with
+# string" and crashes the whole parser, which cascades into account-run.sh's
+# WARNING path and silently drops the run to schema_version 1. The `objects`
+# filter passes a value through only when it IS an object (else empty → `// 0`
+# supplies the default), so every `.tokens.<field>` read below is written as
+# `(.tokens | objects | .<field>) // 0`: a scalar/absent `tokens` contributes 0
+# to every field and never crashes. Count the non-object records here so we can
+# surface an advisory note (they are skipped for numeric purposes, not fatal).
+| ($spawn_tokens | map(select((.tokens | type) != "object")) | length) as $st_nonobj_n
+
 # --- SPAWN-TOKEN-EVENT: dedup by agent_id, take-max processed (EC 11 / AC 16) --
-| ($spawn_tokens | group_by(.agent_id) | map(max_by(.tokens.processed // 0))) as $stok
+| ($spawn_tokens | group_by(.agent_id) | map(max_by((.tokens | objects | .processed) // 0))) as $stok
 | ($stok | map(.attempt_id) | map(select(. != null))) as $stok_ids
 | ($started | map(.attempt_id)) as $started_ids
 
 # specialist share (sum over the deduped set — each agent_id counted once)
-| ($stok | map(.tokens.processed // 0) | add // 0) as $spec_processed
-| ($stok | map(.tokens.output // 0)    | add // 0) as $spec_output
+| ($stok | map((.tokens | objects | .processed) // 0) | add // 0) as $spec_processed
+| ($stok | map((.tokens | objects | .output) // 0)    | add // 0) as $spec_output
 
 # every terminal SPAWN-EVENT must have a matched SPAWN-TOKEN-EVENT (FR 10 (b))
 | ($terminals | map(.attempt_id) | map(select(. as $tid | ($stok_ids | index($tid)) == null))) as $unmatched_terminals
 | ($unmatched_terminals | length) as $n_unmatched
 
 # --- CONDUCTOR-TOKEN-EVENT: dedup per session_id take-max, sum across legs -----
-| ($conductor | group_by(.session_id) | map(max_by(.tokens.processed // 0))) as $cond
+# Same non-object `tokens` tolerance as the specialist block above: a scalar
+# `tokens` on a conductor leg contributes 0 to each field instead of crashing.
+| ($conductor | map(select((.tokens | type) != "object")) | length) as $cond_nonobj_n
+| ($conductor | group_by(.session_id) | map(max_by((.tokens | objects | .processed) // 0))) as $cond
 | ($conductor | group_by(.session_id) | map(map(.final == true) | any)) as $leg_finals
 | (($conductor | length) > 0 and ($leg_finals | all)) as $all_legs_final
 | ($cond | length) as $legs
-| ($cond | map(.tokens.input // 0)          | add // 0) as $cond_input
-| ($cond | map(.tokens.cache_creation // 0) | add // 0) as $cond_cc
-| ($cond | map(.tokens.cache_read // 0)     | add // 0) as $cond_cr
-| ($cond | map(.tokens.processed // 0)      | add // 0) as $cond_processed
-| ($cond | map(.tokens.output // 0)         | add // 0) as $cond_output
+| ($cond | map((.tokens | objects | .input) // 0)          | add // 0) as $cond_input
+| ($cond | map((.tokens | objects | .cache_creation) // 0) | add // 0) as $cond_cc
+| ($cond | map((.tokens | objects | .cache_read) // 0)     | add // 0) as $cond_cr
+| ($cond | map((.tokens | objects | .processed) // 0)      | add // 0) as $cond_processed
+| ($cond | map((.tokens | objects | .output) // 0)         | add // 0) as $cond_output
 | ($cond | map(.turns // 0)                 | add // 0) as $cond_turns
 
 # --- processed_total + confidence lattice (FR 9 / FR 10) ----------------------
@@ -191,7 +209,7 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 # --- rework numerator: processed over spawns flagged rework:true (FR 9) -------
 | ($pairs | map(select(.rework == true) | .attempt_id)) as $rework_ids
 | ([ $rework_ids[] as $rid
-     | ($stok | map(select(.attempt_id == $rid)) | map(.tokens.processed // 0) | max // 0)
+     | ($stok | map(select(.attempt_id == $rid)) | map((.tokens | objects | .processed) // 0) | max // 0)
    ] | add // 0) as $rework_processed
 
 # --- total critic loops (sum of critic_loops values; null-safe) ---------------
@@ -243,14 +261,18 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | (reduce $pairs[] as $sp ({};
     . + {
       ($sp.attempt_id): (
-        ($stok | map(select(.attempt_id == $sp.attempt_id)) | max_by(.tokens.processed // 0)) as $tok
+        ($stok | map(select(.attempt_id == $sp.attempt_id)) | max_by((.tokens | objects | .processed) // 0)) as $tok
         | {
             at: $sp.at,
             started_at: $sp.started_at,
             duration_s: ({value: $sp.dur_value, confidence: $sp.dur_conf}
                          + (if $sp.dur_note != null then {_note: $sp.dur_note} else {} end)),
             turns: (if $tok != null then ($tok.turns // 0) else null end),
-            tokens: (if $tok != null then $tok.tokens else null end),
+            # Emit tokens only when it is a genuine object — a spawn whose only
+            # record carried a scalar `tokens` yields null here (treated like an
+            # unmatched spawn), so account-run.sh's `$stk.tokens | with_entries`
+            # enrichment never receives a scalar and crashes downstream.
+            tokens: (if ($tok != null and (($tok.tokens | type) == "object")) then $tok.tokens else null end),
             rework: $sp.rework
           }
       )
@@ -294,7 +316,24 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
     },
     spawn_tokens: $spawn_tokens_map
   }
-  + (if ($parse_notes | length) > 0 then {_notes: $parse_notes} else {} end)
+  # Merge torn-line parse notes with a non-object-`tokens` advisory (both land in
+  # _notes). ($st_nonobj_n + $cond_nonobj_n) counts every SPAWN-TOKEN-EVENT /
+  # CONDUCTOR-TOKEN-EVENT whose `tokens` was a non-object (scalar) and so
+  # contributed 0 instead of crashing — surfaced, not silently swallowed.
+  | ($st_nonobj_n + $cond_nonobj_n) as $nonobj_total
+  | . + (if (($parse_notes | length) > 0) or ($nonobj_total > 0)
+         then {_notes: ($parse_notes
+                        + (if $nonobj_total > 0
+                           then ["\($nonobj_total) token event(s) had a non-object (scalar) `tokens` field — counted as 0, not fatal"]
+                           else [] end))}
+         else {} end)
+  # Advisory stderr line (nice-to-have): mirrors account-run.sh's WARNING lane.
+  # `debug` writes ["DEBUG:", …] to STDERR and passes its input through unchanged
+  # on stdout, so the single-value JSON fragment account-run.sh captures is
+  # untouched. Gated on $nonobj_total so a clean run emits nothing.
+  | if $nonobj_total > 0
+    then debug("[account-tokens] NOTE: skipped \($nonobj_total) malformed (non-object) token event(s)")
+    else . end
 JQ
 )
 
