@@ -1,6 +1,20 @@
 # Battle-test: build-review-cold
 
-## Run 2026-07-09
+**Canon surface touched:** `workflows/build-review-cold.md`, `workflows/index.md`
+**Promotion to canon:** yes (declared by The Conductor per `docs/conventions/canon-promotion.md`)
+**Status:** EXECUTED 4/4 — promotion re-run below; the four routing verdicts were independently
+hand-verified twice (Mechanic author + Challenger `ae9ef74c` cold build-diff, five concrete diffs).
+
+## Run 2026-07-09 (promotion)
+
+Promotion re-run of the reasoning matrix against the LANDED workflow text (`9541973`, the case
+labels tagged `EDGE:`/`FAILURE MODE:`). Each case's expected routing was re-checked against the
+merged `workflows/build-review-cold.md` step-2 self-gate; The Challenger's independent cold
+hand-test of the same five diffs (non-atomic RMW → fire, permission-defaults-open → fire,
+migration+reprice → escalate, CSS → ship, plain `setTimeout` → ship) is the corroborating run.
+`check-framework.sh` clean (exit 0). **4/4 — all cases route as specified; no mis-fire, no
+mis-silent.** Two cases named `EDGE:`, two `FAILURE MODE:` (canon-promotion category requirement).
+Upstream drift: one global install — no per-project copies to drift-check.
 
 | Case name | Input description | Expected outcome | Actual result |
 |-----------|------------------|-----------------|---------------|
