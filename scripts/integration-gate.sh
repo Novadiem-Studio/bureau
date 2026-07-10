@@ -430,11 +430,51 @@ PY
     FF_OK=false
   fi
 
-  # ── CONFLICTS CHECK ────────────────────────────────────────────────────
-  if [ -z "$(git -C "$REQ_WORKTREE_PATH" status --porcelain 2>/dev/null)" ]; then
+  # ── CONFLICTS CHECK (defect 2) ─────────────────────────────────────────
+  # Semantics: "would integrating base..HEAD produce merge conflicts?" — NOT
+  # "is the working tree dirty". The old test was `git status --porcelain`,
+  # which reports ANY dirty/untracked file (e.g. the Delegate's own untracked
+  # .bureau/regression/run.sh), so it falsely returned conflicts_clean=false
+  # while FF_OK=true — a self-contradiction that Step 4 turns into a bogus
+  # "unresolved merge conflicts" revise. Untracked/dirty working-tree files
+  # must NEVER count as conflicts.
+  #
+  # Test (mirrors the FAST-FORWARD-CHECK style above):
+  #  1. Fast-forwardable case: if FF_OK=true then base IS an ancestor of HEAD,
+  #     so integrating base..HEAD is a pure fast-forward with NO conflicts by
+  #     definition ⇒ conflicts_clean=true. This also guarantees the invariant
+  #     "ff-ok ⇒ conflicts-clean" (the two fields can never contradict).
+  #  2. Non-ff case: run a REAL 3-way merge test with `git merge-tree`.
+  #     Prefer the modern `git merge-tree --write-tree` (git ≥ 2.38): it does a
+  #     real merge and EXITS NON-ZERO (1) iff there are conflicts, 0 iff clean.
+  #     Fall back to the older 3-arg `git merge-tree <base> <base> <branch>`
+  #     form (which always exits 0) and detect conflicts by grepping its output
+  #     for conflict markers (^<<<<<<<). Neither form touches the working tree,
+  #     so untracked/dirty files cannot register as conflicts.
+  if [ "$FF_OK" = "true" ]; then
     CONFLICTS_CLEAN=true
   else
-    CONFLICTS_CLEAN=false
+    # Non-ff: run the modern `--write-tree` merge test once and read its exit
+    # code — 0 = clean, 1 = conflicts, anything else (e.g. 128 when the flag is
+    # unsupported on an older git) = fall through to the legacy marker scan.
+    git -C "$REQ_WORKTREE_PATH" merge-tree --write-tree \
+      "$REQ_BASE_REF" HEAD >/dev/null 2>&1
+    MT_RC=$?
+    if [ "$MT_RC" = "0" ]; then
+      CONFLICTS_CLEAN=true
+    elif [ "$MT_RC" = "1" ]; then
+      CONFLICTS_CLEAN=false
+    else
+      # Legacy fallback: older `git merge-tree <base> <base> <branch>` always
+      # exits 0; conflicts are marked inline with `<<<<<<<` markers in output.
+      if git -C "$REQ_WORKTREE_PATH" merge-tree \
+           "$REQ_BASE_REF" "$REQ_BASE_REF" HEAD 2>/dev/null \
+           | grep -q '^<<<<<<< '; then
+        CONFLICTS_CLEAN=false
+      else
+        CONFLICTS_CLEAN=true
+      fi
+    fi
   fi
 
   # ── BRANCH TIP SHA ────────────────────────────────────────────────────
