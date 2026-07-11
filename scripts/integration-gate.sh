@@ -94,6 +94,34 @@ if [ ! -d "$OUT" ]; then
   echo "integration-gate: --out dir does not exist (the caller must stage it first): $OUT" >&2
   exit 2
 fi
+# Preflight writability (nice-to-have — the post-write assertion below is the
+# must). A write into an unwritable --out fails silently otherwise (F2): the
+# Python heredoc raises PermissionError but the shell still reaches `exit 0`,
+# reporting SUCCESS with NO evidence file. Catch the common case early.
+if [ ! -w "$OUT" ]; then
+  echo "integration-gate: --out dir is not writable: $OUT" >&2
+  exit 2
+fi
+
+# ── FAIL-CLOSED post-write assertion (F2) ─────────────────────────────────────
+# integration-results.json is the Delegate's verifying-mode source of truth, and
+# it has NO "file absent → escalate" contract, so a gate that exits 0 having
+# written NOTHING is a silent SUCCESS-with-no-evidence. Every heredoc that is
+# meant to write $OUT/integration-results.json is followed by a call to this: it
+# verifies the file exists, is non-empty, AND parses as JSON; if any check fails
+# it prints a clear stderr reason and exits 2 (a distinct fail-closed code). A
+# write failure can therefore NEVER reach the `exit 0` at the foot of this script.
+assert_results_written() {
+  _res="$OUT/integration-results.json"
+  if [ ! -s "$_res" ]; then
+    echo "integration-gate: FAIL-CLOSED — expected evidence file absent or empty after write: $_res (write likely failed, e.g. unwritable --out); exiting 2 rather than reporting a false SUCCESS" >&2
+    exit 2
+  fi
+  if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$_res" 2>/dev/null; then
+    echo "integration-gate: FAIL-CLOSED — evidence file is not valid JSON after write: $_res; exiting 2 rather than reporting a false SUCCESS" >&2
+    exit 2
+  fi
+}
 
 # ── integration-mode pre-spawn executor part A: parse + short-circuit flags ──
 # Relocated here (it ran before staging in watcher.sh). Logic unchanged.
@@ -142,6 +170,8 @@ with open(path, "w") as fh:
     json.dump(data, fh, indent=2)
 sys.exit(0)
 PY
+  # F2: fail closed if the escalate-marker write did not land on disk.
+  assert_results_written
 
 else
 
@@ -652,6 +682,12 @@ except Exception as e:
         # own error handling surfaces it; there is nothing safe left to write.
         raise
 PY
+  # F2: fail closed if the final results write did not land on disk. Covers both
+  # the ordinary write path and the last-resort escalate-file write above: if the
+  # heredoc's Python re-raised (filesystem-level failure), the shell does not
+  # `set -e`, so control falls through to here — and this assertion converts that
+  # into exit 2 instead of the false SUCCESS the bare `exit 0` below would give.
+  assert_results_written
 
 fi   # end if INTEGRATION_ESCALATE
 
