@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # account-tokens.sh <RUN_DIR> — Bundle 11 derived-metrics consumer.
 #
-# Reads RUN_DIR/log.md and RUN_DIR/state.json ONLY. It NEVER reads a session
-# transcript (the SubagentStop/Stop hooks are the only transcript readers).
+# Reads RUN_DIR/log.md, RUN_DIR/state.json, and (guarded, backstop only)
+# RUN_DIR/delegate-state.json — all sibling run-dir files. It NEVER reads a
+# session transcript (the SubagentStop/Stop hooks are the only transcript
+# readers); the FR-8 channel pin forbids transcripts, not this run-dir state file.
 # Emits one self-contained JSON fragment on STDOUT and writes nothing into
 # RUN_DIR (FR 8 channel pin — stdout is the only output channel; there is no
 # intermediate file that could race or leak). account-run.sh (Phase 5)
@@ -98,6 +100,20 @@ if [ -r "$STATE_JSON" ]; then
   [ -n "$_rl" ] && resumed_legs="$_rl"
 fi
 
+# ── Part C (continued): v2 topology from delegate-state.json (backstop guard) ──
+# ONE guarded read of a sibling run-dir file (NOT a transcript — the FR-8 channel
+# pin forbids transcripts, not this run-dir state file). Null-safe: absent /
+# unreadable / unparseable / non-"integrated" ⇒ empty ⇒ the guard is inert. Only
+# the literal value "integrated" arms the v2-capture-gap note below. Backstop:
+# once the subagent-Conductor capture works this stays silent (its second
+# condition requires confidence=="unavailable"); it fires only on a genuine gap.
+delegate_topology=""
+DELEGATE_STATE_JSON="$RUN_DIR/delegate-state.json"
+if [ -r "$DELEGATE_STATE_JSON" ]; then
+  _dt=$(jq -r 'if (type=="object") and (has("topology")) and ((.topology|type)=="string") then .topology else "" end' "$DELEGATE_STATE_JSON" 2>/dev/null) || _dt=""
+  [ -n "$_dt" ] && delegate_topology="$_dt"
+fi
+
 # ── Part D: derive every metric in a single jq pass and emit on stdout ────────
 JQ_PROG=$(cat <<'JQ'
 # Bare-string-safe ISO-8601 parse: a valid FR-1 %Y-%m-%dT%H:%M:%SZ string →
@@ -180,10 +196,22 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
    then "\($legs) conductor legs detected with no resume evidence in state.json — verify all are legitimate conductor legs; a foreign session may have been captured."
    else null end) as $suspicious_note
 
-# --- FR 5: merge cond-block note + suspicious note (both can co-fire) ----------
+# --- v2 capture-gap backstop: integrated topology but zero conductor lines -----
+# When the Delegate declared an integrated (v2) run AND no CONDUCTOR-TOKEN-EVENT
+# was captured (confidence "unavailable"), the subagent-Conductor capture did not
+# fire — a REAL gap, not a clean zero. Annotate only: never fabricate a number,
+# never change confidence (already "unavailable", which is correct). Inert on v1 /
+# no-topology runs (a v1 run with a legitimately-pending share keeps the
+# conductor-share-pending note). Once the primary fix works this stays silent.
+| (if ($delegate_topology == "integrated") and ($cond_conf == "unavailable")
+   then "v2-integrated topology but zero CONDUCTOR-TOKEN-EVENT captured — the subagent-Conductor token capture did not fire (check the BUREAU_ROLE: conductor marker in the Delegate spawn prompt and the subagent-stop.sh conductor branch); conductor share is a real gap, not a clean zero"
+   else null end) as $v2_gap_note
+
+# --- FR 5: merge cond-block note + suspicious note + v2-gap note (can co-fire) --
 | ([
     (if $cond_block_note != null then $cond_block_note else empty end),
-    (if $suspicious_note != null then $suspicious_note else empty end)
+    (if $suspicious_note != null then $suspicious_note else empty end),
+    (if $v2_gap_note != null then $v2_gap_note else empty end)
   ] | if length > 0 then join("; ") else null end) as $combined_note
 
 # --- per-spawn duration_s (consumer-derived, <=0 guard, both-parse rule) ------
@@ -424,6 +452,7 @@ if jq -n \
   --slurpfile parse_notes "$nt_f" \
   --argjson critic_loops "$critic_loops_json" \
   --argjson resumed_legs "$resumed_legs" \
+  --arg delegate_topology "$delegate_topology" \
   "$JQ_PROG"; then
   exit 0
 else

@@ -67,11 +67,28 @@ persona-side view of it — read the bridge doc for the field schemas and the sc
 Robin opens a session pointed at this persona (manager/relay mode). There is no launcher script
 in v2 — the session IS the Delegate. To start:
 
-1. Spawn the Conductor as a resumable Agent-tool subagent. The spawn prompt carries:
+1. Spawn the Conductor as a resumable Agent-tool subagent. The spawn prompt's **first user
+   message** carries, each on its own line, literally:
+   ```
+   RUN_DIR: <abs RUN_DIR>
+   BUREAU_ROLE: conductor
+   ```
+   plus:
    - the `topology: integrated` directive (OQ4 — the authoritative mode signal: *return to me
      at each checkpoint; do not write NN-request.md, do not call await-verdict.sh, do not emit
      an interactive [CHECKPOINT]*),
-   - the task, RUN_DIR, and the full bureau CLAUDE.md context the Conductor needs.
+   - the task and the full bureau CLAUDE.md context the Conductor needs.
+
+   The two literal lines are the token-capture rail (they are NOT decoration):
+   - `RUN_DIR: <abs>` — the exact shape `scripts/subagent-stop.sh` Step 3 greps to identify the
+     bureau run this subagent belongs to. Without it the hook cannot resolve RUN_DIR and drops
+     the Conductor's tokens.
+   - `BUREAU_ROLE: conductor` — the marker `subagent-stop.sh` Step 4.5 matches (anchored,
+     case-sensitive) to classify this subagent as the Conductor and emit a **CONDUCTOR-TOKEN-EVENT**
+     (baseline/delta) instead of a specialist SPAWN-TOKEN-EVENT. This is ownership-by-identity
+     (the spawn prompt declares the role), not by grepping the log for a mention — same rail as a
+     specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn (step 2 below
+     references `RUN_DIR/delegate-state.json`), so no new ordering constraint.
 2. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
    exactly its five fields:
    ```json
