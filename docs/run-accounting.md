@@ -164,7 +164,7 @@ SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opu
 
 ### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
 
-Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist subagent completes. Contains the deduped token usage extracted from the subagent's isolated transcript.
+Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist subagent completes. Contains the deduped token usage extracted from the subagent's isolated transcript. (One exception: a subagent whose spawn prompt carries the `BUREAU_ROLE: conductor` marker is the v2-integrated Conductor and instead gets a **CONDUCTOR-TOKEN-EVENT** — see § 3a.)
 
 ```
 SPAWN-TOKEN-EVENT: {"attempt_id":"architect-1","agent_id":"aae17f...","at":"2026-07-05T00:01:00Z","turns":11,"tokens":{"input":131,"cache_creation":17839,"cache_read":66779,"processed":84749,"output":699}}
@@ -207,6 +207,16 @@ CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:15:00Z","tu
 - `final: true` on the one-shot post-closure fire only. Confidence `"exact"` is only achievable when ≥ 1 `final: true` line is present.
 - **Consumer rule:** take `max(processed)` per `session_id`, then sum across sessions (multi-leg Conductor runs produce multiple session_ids).
 - A run with all SPAWN-TOKEN-EVENTs matched but no CONDUCTOR-TOKEN-EVENT has `tokens.processed_total.confidence == "partial"` with `_note: "conductor-share-pending"` — NOT `"exact"`. A build that labels this `"exact"` is broken (EC 12 / AC 4 Blocker guard).
+
+#### 3a. CONDUCTOR-TOKEN-EVENT via subagent-stop.sh (v2-integrated runs)
+
+In a **v2-integrated (Delegate-driven)** run the Conductor runs as an Agent-tool **subagent** of the Delegate, not as the top session. `conductor-stop.sh` (the Stop hook) fires only for the Delegate's top session and never sees the Conductor's transcript, so it captures **zero** conductor tokens. Instead `scripts/subagent-stop.sh` (the SubagentStop hook) emits the Conductor's CONDUCTOR-TOKEN-EVENT.
+
+- **Marker.** The Delegate's Conductor spawn prompt (`agents/delegate.md § Bootstrap`) carries, on their own lines, `RUN_DIR: <abs>` and `BUREAU_ROLE: conductor`. `subagent-stop.sh` classifies a subagent as the Conductor **iff** the first user message contains an anchored, case-sensitive `^\s*BUREAU_ROLE:\s+conductor\s*$` line — ownership-by-identity, like a specialist's `Attempt ID:`. A prose mention of "conductor" does not match. Absence of the marker ⇒ the normal SPAWN-TOKEN-EVENT path.
+- **Emitted shape** is identical to the conductor-stop line above (same schema, delta/clamp arithmetic — both emitters share `bureau-token-lib.sh § compute_delta_line` / `compute_legacy_line`). The emitted `session_id` is the subagent's **`agent_id`** (stable per-subagent across every resumed leg), so `account-tokens.sh`'s dedup-by-`session_id` take-max collapses the resumed legs to the single largest cumulative delta — no cross-leg double-count.
+- **Baseline store.** Because a subagent has no pointer file, the per-run baseline lives in a hook-owned dotfile `RUN_DIR/.conductor-subagent-baseline.json`, a top-level object keyed by `agent_id`. Two-row state machine: first leg records baseline = current cumulative (two-step write-back guard); later legs reuse it verbatim and emit the delta. Write failure degrades to baseline-0 for that leg (raw cumulative once), no retry — the same EC-3 residual conductor-stop accepts. The dotfile lives under `.bureau/runs/<slug>/`, which is already gitignored. (Test override: `BUREAU_SUBAGENT_BASELINE_FILE`.)
+- **`final`** uses the same `state.json#accounting.status` signal as conductor-stop (non-pending ⇒ `final:true`; missing/unreadable ⇒ fail-safe open). No self-refresh and no pointer rm — there is no pointer, and the Conductor runs `account-run.sh` inside its own final turn.
+- **Backstop guard.** `account-tokens.sh` reads `RUN_DIR/delegate-state.json#topology` (null-safe). When `topology == "integrated"` AND `conductor_tokens.confidence == "unavailable"` (zero conductor lines), it attaches a `_note` naming the capture gap — converting a silent zero into a named gap. Silent once capture works; inert on v1 / no-topology runs.
 
 ### 4. CHECKPOINT-EVENT (Conductor-written)
 
