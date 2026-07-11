@@ -226,11 +226,17 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 #      its terminal SPAWN-EVENT line, while far tighter than the 12h / wrong-date
 #      fabrication. Different calendar date OR |Δ| > 900s ⇒ that attempt's narrative
 #      time is fabricated. Even ONE tainted attempt taints the whole active_time sum.
-#  (2) ALL-ROUND-HOUR (secondary — for when no hook time exists to compare). If
-#      there are >=2 narrative spawn timestamps (started + terminal `at`) and they
-#      ALL land exactly on :00:00 (epoch % 3600 == 0), that is fabrication — a real
-#      process does not repeatedly complete on the exact hour. A single coincidental
-#      :00:00 must NOT trip it (require ALL and >=2).
+#  (2) ALL-ROUND-HOUR (secondary — a genuine FALLBACK, only when no hook has
+#      vouched for the times). If there are >=2 narrative spawn timestamps (started +
+#      terminal `at`) and they ALL land exactly on :00:00 (epoch % 3600 == 0), that
+#      is fabrication — a real process does not repeatedly complete on the exact
+#      hour. But this heuristic must yield to hard evidence: if ANY attempt has an
+#      agreeing hook `at` (same date, within tolerance), an independent unfakeable
+#      clock has vouched that those times are REAL, so round-ness alone must NOT
+#      override it. So (2) only implies fabrication when NO agreeing hook exists
+#      (`$all_round_hour and ($any_hook_agrees | not)`). A single coincidental
+#      :00:00 must NOT trip it either (require ALL and >=2). By contrast a
+#      DISAGREEING hook (1) is always a positive fabrication signal — never gated.
 #
 # The hook `at` per attempt_id (deduped SPAWN-TOKEN-EVENT set $stok, take-max), and
 # the narrative terminal `at` per attempt ($pairs). A per-attempt cross-check row:
@@ -248,19 +254,25 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
          diff_date: (($narr | . - (. % 86400)) != ($hook | . - (. % 86400))) } ]) as $xcheck
 | ($xcheck | map(select(.diff_date or (.delta_s > 900)))) as $xcheck_bad
 | (($xcheck_bad | length) > 0) as $hook_disagree
+# At least one attempt whose narrative and hook `at` AGREE (same UTC date AND
+# |Δ| <= 900s) — an independent unfakeable clock vouching the times are real.
+| (($xcheck | map(select((.diff_date | not) and (.delta_s <= 900))) | length) > 0) as $any_hook_agrees
 
 # (2) all-round-hour tell over the narrative spawn timestamps (started + terminal).
 | ([ $pairs[] | (.started_at | tsnum), (.at | tsnum) ] | map(select(. != null))) as $narr_ts
 | (($narr_ts | length) >= 2 and ($narr_ts | map(. % 3600 == 0) | all)) as $all_round_hour
 
-| ($hook_disagree or $all_round_hour) as $ts_fabricated
+# A disagreeing hook is always fabrication; the round-hour heuristic is a fallback
+# that yields to any agreeing-hook evidence (W1 — round-ness must not override a
+# hook that has vouched the times are real).
+| ($hook_disagree or ($all_round_hour and ($any_hook_agrees | not))) as $ts_fabricated
 | (if $hook_disagree
    then ($xcheck_bad | .[0]) as $b
      | "active_spawn_time_s: narrative SPAWN-EVENT time disagrees with hook SPAWN-TOKEN-EVENT time for attempt \($b.attempt_id) (narrative \($b.narr) vs hook \($b.hook)"
        + (if $b.diff_date then ", different calendar date" else ", Δ\((($b.delta_s)/60|floor))m > 15m tolerance" end)
        + ") — narrative times treated as fabricated, not exact"
-   elif $all_round_hour
-   then "active_spawn_time_s: all \($narr_ts | length) narrative SPAWN-EVENT timestamps land exactly on the round hour (:00:00) — treated as fabricated (LLM-typed), not exact"
+   elif ($all_round_hour and ($any_hook_agrees | not))
+   then "active_spawn_time_s: all \($narr_ts | length) narrative SPAWN-EVENT timestamps land exactly on the round hour (:00:00) with no agreeing hook to vouch for them — treated as fabricated (LLM-typed), not exact"
    else null end) as $ts_note
 
 # active_conf: "exact" only when every duration parsed AND no fabrication tell fired.
