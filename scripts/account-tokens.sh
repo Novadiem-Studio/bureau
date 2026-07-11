@@ -163,11 +163,49 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($spawn_tokens | map(select((.tokens | type) != "object")) | length) as $st_nonobj_n
 
 # --- SPAWN-TOKEN-EVENT: dedup by agent_id, take-max processed (EC 11 / AC 16) --
-| ($spawn_tokens | group_by(.agent_id) | map(max_by((.tokens | objects | .processed) // 0))) as $stok
-| ($stok | map(.attempt_id) | map(select(. != null))) as $stok_ids
+| ($spawn_tokens | group_by(.agent_id) | map(max_by((.tokens | objects | .processed) // 0))) as $stok_by_agent
 | ($started | map(.attempt_id)) as $started_ids
 
-# specialist share (sum over the deduped set — each agent_id counted once)
+# --- F1 (audit): enforce the 1:1 attempt_id → agent_id invariant --------------
+# subagent-stop.sh admits a specialist on a MENTION gate (RUN_DIR + Attempt ID in
+# the spawn prompt, no identity check), so a foreign/duplicate subagent can log a
+# SECOND, distinct agent_id under a real attempt_id. The per-agent_id take-max
+# above keeps BOTH (each is a distinct agent_id), and — because both carry a real,
+# started attempt_id — the unattributed filter (which only flags null/unknown
+# attempt_ids) does NOT catch either. Result: foreign cost summed into a legit
+# attempt as "exact". Here we require exactly ONE agent_id per STARTED attempt_id:
+# among the records that claim one started attempt_id, keep the max-processed one
+# (deterministic; ties break on max processed then it is a single record) and
+# route the losers to a suspect set — never sum them. This mirrors the
+# timestamp-guard philosophy (distrust the extra, do not silently bless it).
+# Records with a null attempt_id, or an attempt_id that is not a started spawn,
+# are untouched here — they are already surfaced by the $unattributed filter.
+| ($stok_by_agent | group_by(.attempt_id)
+   | map(
+       # A collision group = a non-null, STARTED attempt_id claimed by >1 record.
+       # Bind the group's attempt_id first so the `index()` argument is not
+       # re-evaluated against $started_ids as its `.` (a jq indexing pitfall).
+       (.[0].attempt_id) as $aid
+       | if ($aid != null)
+            and (($started_ids | index($aid)) != null)
+            and (length > 1)
+         then { keep: [ max_by((.tokens | objects | .processed) // 0) ],
+                drop: ( (max_by((.tokens | objects | .processed) // 0)) as $w
+                        | map(select(.agent_id != $w.agent_id)) ) }
+         else { keep: ., drop: [] }
+         end)) as $stok_groups
+| ($stok_groups | map(.keep) | add // []) as $stok
+| ($stok_groups | map(.drop) | add // []) as $stok_collisions
+| ($stok | map(.attempt_id) | map(select(. != null))) as $stok_ids
+| (if ($stok_collisions | length) > 0
+   then ($stok_collisions | group_by(.attempt_id)
+         | map("attempt_id \(.[0].attempt_id) claimed by \(length + 1) distinct agent_ids "
+               + "(\([.[].agent_id] | join(", "))) — kept the max-processed one, "
+               + "routed \(length) extra(s) to unattributed (possible foreign/duplicate subagent under one attempt)")
+         | join("; "))
+   else null end) as $stok_collision_note
+
+# specialist share (sum over the 1:1 deduped set — foreign duplicates excluded)
 | ($stok | map((.tokens | objects | .processed) // 0) | add // 0) as $spec_processed
 | ($stok | map((.tokens | objects | .output) // 0)    | add // 0) as $spec_output
 
@@ -230,6 +268,28 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | (if $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
    else null end) as $rev_block_note
 
+# --- F3 (audit): re-derive `processed`, do not trust the field verbatim -------
+# Bug 3: the consumer summed each event's `processed` field as-authored, so a
+# forged / mis-composed line whose stated `processed` disagrees with its own
+# input+cache_creation+cache_read went unchecked. A hook-emitted event always
+# satisfies processed == input+cache_creation+cache_read (built that way in
+# bureau-token-lib.sh), so this never fires on a real event. When an event DOES
+# disagree, the component sum is authoritative: surface a naming `_note` so the
+# discrepancy is visible and the stated number is not silently blessed. Scanned
+# over the two sets that feed processed_total — the 1:1 specialist set $stok and
+# the conductor set $cond. Only OBJECT-form `tokens` are compared (scalar tokens
+# are already handled as 0 by the non-object tolerance, not an identity fault).
+| ([ ($stok[]?), ($cond[]?) ]
+   | map(select((.tokens | type) == "object"))
+   | map(select(
+        ((.tokens.processed // 0)
+         != ((.tokens.input // 0) + (.tokens.cache_creation // 0) + (.tokens.cache_read // 0))))))
+     as $processed_mismatch
+| (($processed_mismatch | length) > 0) as $processed_identity_bad
+| (if $processed_identity_bad
+   then "\($processed_mismatch | length) token event(s) have a `processed` that disagrees with input+cache_creation+cache_read — the component sum is authoritative, the stated `processed` is not trusted verbatim"
+   else null end) as $processed_identity_note
+
 # --- processed_total + confidence lattice (FR 9 / FR 10) ----------------------
 # processed_total stays BUILD-ONLY (spec + conductor). The Delegate/reviewer
 # gating cost is NOT build rework, so folding it into the rework_ratio /
@@ -241,7 +301,8 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($n_unmatched == 0) as $spec_ok
 | (if $cond_ok and $spec_ok then "exact" else "partial" end) as $pt_conf
 | ([ (if ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md" else empty end),
-     (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end)
+     (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
+     (if $processed_identity_note != null then $processed_identity_note else empty end)
    ]) as $pt_notes
 
 # conductor_tokens block confidence
@@ -446,7 +507,11 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
          confidence: (if ($active_conf == "exact" and $hw_conf == "exact") then "exact" else "partial" end)} end) as $avb
 
 # --- unattributed SPAWN-TOKEN-EVENTs (surfaced, still counted) ----------------
-| ($stok | map(. as $r | select(($r.attempt_id == null) or (($started_ids | index($r.attempt_id)) == null)))) as $unattributed
+# The null/unknown-attempt_id records PLUS the F1 collision losers (the extra
+# agent_ids that claimed a started attempt_id already owned by another record —
+# surfaced here so their cost is visible and NOT silently blessed as exact).
+| (($stok | map(. as $r | select(($r.attempt_id == null) or (($started_ids | index($r.attempt_id)) == null))))
+   + $stok_collisions) as $unattributed
 
 # --- spawn_tokens map keyed by attempt_id (for account-run.sh Step 6.6) -------
 | (reduce $pairs[] as $sp ({};
@@ -525,11 +590,18 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
   # whose `tokens` was a non-object (scalar) and so contributed 0 instead of
   # crashing — surfaced, not silently swallowed.
   | ($st_nonobj_n + $cond_nonobj_n + $del_nonobj_n + $rev_nonobj_n) as $nonobj_total
-  | . + (if (($parse_notes | length) > 0) or ($nonobj_total > 0)
-         then {_notes: ($parse_notes
-                        + (if $nonobj_total > 0
-                           then ["\($nonobj_total) token event(s) had a non-object (scalar) `tokens` field — counted as 0, not fatal"]
-                           else [] end))}
+  # Extra _notes breadcrumbs beyond the torn-line parse notes: the non-object
+  # advisory, the F1 attempt_id→agent_id collision note, and the F3
+  # processed-identity mismatch note — each surfaced so a reader sees it, never
+  # silently swallowed. All conditional, so a clean run adds no _notes key.
+  | ([ (if $nonobj_total > 0
+        then "\($nonobj_total) token event(s) had a non-object (scalar) `tokens` field — counted as 0, not fatal"
+        else empty end),
+       (if $stok_collision_note != null then $stok_collision_note else empty end),
+       (if $processed_identity_note != null then $processed_identity_note else empty end)
+     ]) as $extra_notes
+  | . + (if (($parse_notes | length) > 0) or (($extra_notes | length) > 0)
+         then {_notes: ($parse_notes + $extra_notes)}
          else {} end)
   # Advisory stderr line (nice-to-have): mirrors account-run.sh's WARNING lane.
   # `debug` writes ["DEBUG:", …] to STDERR and passes its input through unchanged
