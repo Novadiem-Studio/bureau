@@ -19,9 +19,13 @@
 # event line is skipped + recorded in _notes (EC 13 / torn-line tolerance),
 # never a crash. It mirrors account-run.sh's Step 6.2 per-line parse gate.
 #
-# FIVE-VALUE CONFIDENCE ENUM (schema 2): exact | estimated | inferred |
-# unavailable | partial. "partial" = the sum of the shares that are present,
-# with the pending shares named in a sibling _note.
+# SIX-VALUE CONFIDENCE ENUM (schema 2): exact | estimated | inferred |
+# unavailable | partial | suspect. "partial" = the sum of the shares that are
+# present, with the pending shares named in a sibling _note. "suspect" = the
+# figure is complete but its inputs are actively distrusted — used by the
+# timestamp-integrity guard on active_spawn_time_s when the narrative
+# SPAWN-EVENT times are detected as fabricated (see the guard below and
+# docs/run-accounting.md § B4).
 #
 # Portability: Bash 3.2 + jq on macOS. No associative arrays, no GNU-only date
 # flags, no file-locking CLI. All time arithmetic happens in jq via
@@ -204,7 +208,69 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 
 | ($pairs | map(select(.dur_conf == "exact")) | map(.dur_value) | add // 0) as $active_time
 | ($pairs | map(.dur_conf == "exact") | all) as $active_all_exact
-| (if $active_all_exact then "exact" else "partial" end) as $active_conf
+
+# --- timestamp-integrity guard: refuse to bless FABRICATED narrative times ----
+# active_spawn_time_s is summed from the *narrative* SPAWN-EVENT `at` fields, which
+# the Conductor (an LLM) writes and can fabricate when it does not shell out to
+# `date`. On run 20260709-liquid-glass-nav the narrative terminals were tidy round
+# hours 00:00→07:00 on the WRONG calendar date, so active_time = 43200s wore an
+# "exact" badge — a fabricated 12h. The unfakeable tell sat in the same log: the
+# hook-emitted SPAWN-TOKEN-EVENT `at` (subagent-stop.sh runs `date -u`) read the
+# real clock. Two tells force active_spawn_time_s off "exact":
+#
+#  (1) HOOK CROSS-CHECK (primary, strongest). For each attempt that has BOTH a
+#      narrative terminal `at` AND a same-attempt_id hook SPAWN-TOKEN-EVENT `at`,
+#      both mark ~spawn completion, so they should agree closely. TOLERANCE = 900s
+#      (15 min): generous headroom for the legitimate gap between when the
+#      SubagentStop hook fires (`date -u`) and when the Conductor separately logs
+#      its terminal SPAWN-EVENT line, while far tighter than the 12h / wrong-date
+#      fabrication. Different calendar date OR |Δ| > 900s ⇒ that attempt's narrative
+#      time is fabricated. Even ONE tainted attempt taints the whole active_time sum.
+#  (2) ALL-ROUND-HOUR (secondary — for when no hook time exists to compare). If
+#      there are >=2 narrative spawn timestamps (started + terminal `at`) and they
+#      ALL land exactly on :00:00 (epoch % 3600 == 0), that is fabrication — a real
+#      process does not repeatedly complete on the exact hour. A single coincidental
+#      :00:00 must NOT trip it (require ALL and >=2).
+#
+# The hook `at` per attempt_id (deduped SPAWN-TOKEN-EVENT set $stok, take-max), and
+# the narrative terminal `at` per attempt ($pairs). A per-attempt cross-check row:
+| ([ $pairs[]
+     | . as $p
+     | ($stok | map(select(.attempt_id == $p.attempt_id)) | .[0]) as $tok
+     | select($p.attempt_id != null and $tok != null)
+     | ($p.at | tsnum) as $narr
+     | ($tok.at | tsnum) as $hook
+     | select($narr != null and $hook != null)
+     | { attempt_id: $p.attempt_id,
+         narr: $p.at, hook: $tok.at,
+         delta_s: (($narr - $hook) | if . < 0 then -. else . end),
+         # UTC calendar date (YYYY-MM-DD) of each; a mismatch is itself a tell.
+         diff_date: (($narr | . - (. % 86400)) != ($hook | . - (. % 86400))) } ]) as $xcheck
+| ($xcheck | map(select(.diff_date or (.delta_s > 900)))) as $xcheck_bad
+| (($xcheck_bad | length) > 0) as $hook_disagree
+
+# (2) all-round-hour tell over the narrative spawn timestamps (started + terminal).
+| ([ $pairs[] | (.started_at | tsnum), (.at | tsnum) ] | map(select(. != null))) as $narr_ts
+| (($narr_ts | length) >= 2 and ($narr_ts | map(. % 3600 == 0) | all)) as $all_round_hour
+
+| ($hook_disagree or $all_round_hour) as $ts_fabricated
+| (if $hook_disagree
+   then ($xcheck_bad | .[0]) as $b
+     | "active_spawn_time_s: narrative SPAWN-EVENT time disagrees with hook SPAWN-TOKEN-EVENT time for attempt \($b.attempt_id) (narrative \($b.narr) vs hook \($b.hook)"
+       + (if $b.diff_date then ", different calendar date" else ", Δ\((($b.delta_s)/60|floor))m > 15m tolerance" end)
+       + ") — narrative times treated as fabricated, not exact"
+   elif $all_round_hour
+   then "active_spawn_time_s: all \($narr_ts | length) narrative SPAWN-EVENT timestamps land exactly on the round hour (:00:00) — treated as fabricated (LLM-typed), not exact"
+   else null end) as $ts_note
+
+# active_conf: "exact" only when every duration parsed AND no fabrication tell fired.
+# A fired tell forces "suspect" (a distrusted-but-present figure — NOT "partial",
+# which means incomplete data; see docs/run-accounting.md § B4). No consumer switches
+# on this field's confidence string (account-run.sh reads only `.value`; grep-verified),
+# so the new enum value is consumer-safe.
+| (if ($active_all_exact | not) then "partial"
+   elif $ts_fabricated then "suspect"
+   else "exact" end) as $active_conf
 
 # --- rework numerator: processed over spawns flagged rework:true (FR 9) -------
 | ($pairs | map(select(.rework == true) | .attempt_id)) as $rework_ids
@@ -297,8 +363,9 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
       confidence: $cond_conf
     } + (if $combined_note != null then {_note: $combined_note} else {} end)),
     wall_clock: {
-      active_spawn_time_s: {value: $active_time, confidence: $active_conf,
-        _semantics: "summed active time of individual spawns — not run wall-clock: parallel spawns sum to more than the wall-clock they overlapped in, and human-wait between spawns is excluded"},
+      active_spawn_time_s: ({value: $active_time, confidence: $active_conf,
+        _semantics: "summed active time of individual spawns — not run wall-clock: parallel spawns sum to more than the wall-clock they overlapped in, and human-wait between spawns is excluded"}
+        + (if $ts_note != null then {_note: $ts_note} else {} end)),
       minutes_per_loop: $minutes_per_loop
     },
     checkpoints: {

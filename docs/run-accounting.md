@@ -159,7 +159,7 @@ SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opu
 ```
 
 - **started line** gains `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`) and optionally `"rework": true` (omit the key when false — see `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
-- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward by the Conductor). The consumer derives `duration_s` from `terminal.at − started.at` using the started event's own `at` directly; the `started_at` field on the terminal line echoes that value and is informational. When either timestamp is absent, `wall_clock.active_spawn_time_s.confidence` degrades.
+- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward by the Conductor). The consumer derives `duration_s` from `terminal.at − started.at` using the started event's own `at` directly; the `started_at` field on the terminal line echoes that value and is informational. When either timestamp is absent, `wall_clock.active_spawn_time_s.confidence` degrades to `"partial"`. These narrative `at` values are Conductor-written (LLM), so `account-tokens.sh` runs a **timestamp-integrity guard**: it cross-checks each narrative terminal `at` against the same-`attempt_id` hook `SPAWN-TOKEN-EVENT` `at` (which the SubagentStop hook stamps with `date -u`, unfakeable). A different calendar date, a gap over 15 minutes, or every narrative spawn timestamp landing on the exact round hour marks the narrative times as fabricated and forces `active_spawn_time_s.confidence` to `"suspect"` (never `"exact"`) with a `_note` naming the tell.
 - `duration_s`, `turns`, and `tokens` are NOT on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook.
 
 ### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
@@ -306,7 +306,7 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 
 **`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when `account-tokens.sh` returns Bundle 11 token data (the `tokens_have_data` signal — five conditions checked in `scripts/account-run.sh § 9.5`). A re-run on a log with no Bundle 11 event lines stays at schema 1; a failed `account-tokens.sh` invocation (non-zero exit or non-JSON output) also leaves the version at 1.
 
-**Five-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
+**Six-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
 
 | Value | Meaning |
 |-------|---------|
@@ -315,8 +315,9 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 | `"partial"` | Some data present but incomplete (e.g. SPAWN-TOKEN-EVENTs matched but no final CONDUCTOR-TOKEN-EVENT). |
 | `"unavailable"` | No usable data found for this field. |
 | `"inferred"` | Derived by inference from a secondary source (e.g. model-tiers.json tier name rather than an explicit model name in model-routing.json). |
+| `"suspect"` | The figure is complete, but its inputs are actively distrusted — not merely incomplete. Currently emitted only by the timestamp-integrity guard on `wall_clock.active_spawn_time_s`: when the narrative `SPAWN-EVENT` times (LLM-written) disagree with the unfakeable hook `SPAWN-TOKEN-EVENT` times (shell `date -u`) by >15 min or land on a different calendar date, or when every narrative spawn timestamp lands on the exact round hour, the narrative times are treated as fabricated and the sum is downgraded from `"exact"` to `"suspect"` with a mandatory `_note` naming the tell. |
 
-`"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above).
+`"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). `"suspect"` was added to name the distinct case where the data is *present and complete* but *fabricated at the source* — a fabricated 12h duration is not "partial data", it is an untrustworthy figure. A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above); likewise a build that lets a fabricated-timestamp run wear `"exact"` on `active_spawn_time_s` is broken. No consumer switches on this field's confidence *string* (`account-run.sh` reads only `.value` to gate `tokens_have_data`), so adding the sixth value is consumer-safe.
 
 ---
 
