@@ -110,6 +110,7 @@ RUN_DIR=""
 NONCE=""
 written_at=""
 project_dir=""
+role=""
 _selected_count=0
 IFS='
 '
@@ -144,6 +145,12 @@ for _cand in $_candidates; do
       # legal state (legacy pointer / failed write — EC 2 fail-open): a
       # project_dir-less pointer falls straight through Step C.0.
       project_dir=$(printf '%s' "$_cj" | jq -r '.project_dir // empty' 2>/dev/null)
+      # role is OPTIONAL (#26a). Absent or "conductor" ⇒ CONDUCTOR-TOKEN-EVENT
+      # (every v1 run, every self-run — byte-identical). "delegate" ⇒ the Delegate
+      # top session in a v2 run enrolled its OWN pointer; emit DELEGATE-TOKEN-EVENT
+      # instead. Ownership-by-identity: only the Delegate's own transcript carries
+      # this pointer's nonce, so only it selects the role:delegate pointer.
+      role=$(printf '%s' "$_cj" | jq -r '.role // empty' 2>/dev/null)
     else
       echo "[conductor-stop] AMBIGUOUS: transcript matched a second pointer ($_cand); using first ($POINTER_FILE) only — nonce collision or duplicate enrolment" >&2
     fi
@@ -311,8 +318,14 @@ _bl_write_back() {
   #     The temp file lives beside the pointer so the mv is same-filesystem/atomic
   #     (mirrors scripts/account-run.sh's ".accounting.json.tmp.XXXXXX" pattern).
   tmp_ptr=$(mktemp "${POINTER_FILE}.tmp.XXXXXX" 2>/dev/null) || return 1
+  # Preserve run_dir/nonce/written_at/project_dir verbatim, add baseline. The
+  # optional role field (#26a) is carried through ONLY when present, so a plain
+  # conductor pointer's written-back content is byte-identical to pre-#26a (no
+  # spurious "role":null), while a role:delegate pointer keeps its role across
+  # the baseline write so later fires still emit DELEGATE-TOKEN-EVENT.
   if ! printf '%s' "$pointer_json" | jq -c --argjson baseline "$cand" \
-        '{run_dir: .run_dir, nonce: .nonce, written_at: .written_at, baseline: $baseline, project_dir: .project_dir}' \
+        '{run_dir: .run_dir, nonce: .nonce, written_at: .written_at, baseline: $baseline, project_dir: .project_dir}
+         + (if (.role // "") != "" then {role: .role} else {} end)' \
         > "$tmp_ptr" 2>/dev/null; then
     rm -f "$tmp_ptr" 2>/dev/null
     return 1
@@ -383,7 +396,18 @@ case "$baseline_state" in
     ;;
 esac
 
-# ── Step F: Append CONDUCTOR-TOKEN-EVENT ─────────────────────────────────────
+# ── Step F: Append the token event (role-aware prefix — #26a) ────────────────
+# Resolve the log-line prefix from the selected pointer's role. The arithmetic,
+# baseline machine, schema, session_id, and final handling are ALL identical for
+# both roles — only the prefix (and thus the account-tokens.sh rollup bucket)
+# differs. Default (role absent or "conductor") ⇒ CONDUCTOR-TOKEN-EVENT, keeping
+# every v1 / self-run byte-identical.
+if [ "$role" = "delegate" ]; then
+  EVENT_PREFIX="DELEGATE-TOKEN-EVENT"
+else
+  EVENT_PREFIX="CONDUCTOR-TOKEN-EVENT"
+fi
+
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 if [ "$baseline_is_legacy" = "true" ]; then
@@ -414,7 +438,7 @@ if [ -z "$event_line" ]; then
   exit 0
 fi
 
-locked_append "$RUN_DIR/log.md" "CONDUCTOR-TOKEN-EVENT: $event_line"
+locked_append "$RUN_DIR/log.md" "$EVENT_PREFIX: $event_line"
 
 # If the run is still open, nothing more to do — pointer stays in place.
 if [ "$final" = "false" ]; then

@@ -10,12 +10,18 @@
 # intermediate file that could race or leak). account-run.sh (Phase 5)
 # captures this stdout and merges it inside its own § 9 tmp pipeline.
 #
-# Reads four log.md line types (dedup + confidence rules per FR 8/9/10):
+# Reads six log.md line types (dedup + confidence rules per FR 8/9/10):
 #   SPAWN-EVENT:           started/terminal spawn records (pair by attempt_id)
 #   SPAWN-TOKEN-EVENT:     per-subagent token totals (dedup by agent_id take-max)
 #   CONDUCTOR-TOKEN-EVENT: per-session conductor totals (dedup by session_id
 #                          take-max, then sum across distinct sessions)
+#   DELEGATE-TOKEN-EVENT:  per-session Delegate-manager totals (#26a — mirror of
+#                          conductor: dedup by session_id take-max, sum across legs)
+#   REVIEWER-TOKEN-EVENT:  per-spawn cold-reviewer totals (#26b — dedup by spawn_id
+#                          take-max, then SUM across all spawn_ids; no baseline)
 #   CHECKPOINT-EVENT:      raised/resolved pairs (wait_s consumer-derived)
+# The three token-event prefixes are DISJOINT — a line has exactly one prefix, so
+# the three role buckets never double-count (the anti-double-count invariant).
 #
 # The consumer is a lock-free reader of log.md: a half-written or malformed
 # event line is skipped + recorded in _notes (EC 13 / torn-line tolerance),
@@ -52,6 +58,8 @@ trap 'rm -rf "$tmpd"' EXIT
 se_f="$tmpd/spawn_events.jsonl";  : > "$se_f"   # SPAWN-EVENT payloads
 st_f="$tmpd/spawn_tokens.jsonl";  : > "$st_f"   # SPAWN-TOKEN-EVENT payloads
 ct_f="$tmpd/conductor.jsonl";     : > "$ct_f"   # CONDUCTOR-TOKEN-EVENT payloads
+de_f="$tmpd/delegate.jsonl";      : > "$de_f"   # DELEGATE-TOKEN-EVENT payloads (#26a)
+rv_f="$tmpd/reviewers.jsonl";     : > "$rv_f"   # REVIEWER-TOKEN-EVENT payloads (#26b)
 cp_f="$tmpd/checkpoints.jsonl";   : > "$cp_f"   # CHECKPOINT-EVENT payloads
 nt_f="$tmpd/notes.jsonl";         : > "$nt_f"   # skipped-line _notes (JSONL of strings)
 
@@ -70,6 +78,15 @@ if [ -r "$LOG_MD" ]; then
         prefix="SPAWN-EVENT"; dest="$se_f"; payload="${line#SPAWN-EVENT: }" ;;
       "CONDUCTOR-TOKEN-EVENT: "*)
         prefix="CONDUCTOR-TOKEN-EVENT"; dest="$ct_f"; payload="${line#CONDUCTOR-TOKEN-EVENT: }" ;;
+      # DELEGATE- / REVIEWER- are disjoint exact prefixes (no shared stem with
+      # CONDUCTOR- or with each other). Each line has exactly one prefix, so the
+      # three roles are physically partitioned at parse time — THIS is the
+      # anti-double-count invariant (#26): a delegate line can never land in the
+      # conductor bucket, a reviewer line never in either. No cross-checking math.
+      "DELEGATE-TOKEN-EVENT: "*)
+        prefix="DELEGATE-TOKEN-EVENT"; dest="$de_f"; payload="${line#DELEGATE-TOKEN-EVENT: }" ;;
+      "REVIEWER-TOKEN-EVENT: "*)
+        prefix="REVIEWER-TOKEN-EVENT"; dest="$rv_f"; payload="${line#REVIEWER-TOKEN-EVENT: }" ;;
       "CHECKPOINT-EVENT: "*)
         prefix="CHECKPOINT-EVENT"; dest="$cp_f"; payload="${line#CHECKPOINT-EVENT: }" ;;
       *)
@@ -173,7 +190,52 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($cond | map((.tokens | objects | .output) // 0)         | add // 0) as $cond_output
 | ($cond | map(.turns // 0)                 | add // 0) as $cond_turns
 
+# --- DELEGATE-TOKEN-EVENT (#26a): mirror of the conductor block ----------------
+# Same shape as CONDUCTOR: dedup per session_id take-max on processed, sum across
+# legs, same non-object `tokens` tolerance, same leg-final confidence logic. The
+# Delegate top session behaves like a single long-lived Conductor session.
+| ($delegate | map(select((.tokens | type) != "object")) | length) as $del_nonobj_n
+| ($delegate | group_by(.session_id) | map(max_by((.tokens | objects | .processed) // 0))) as $del
+| ($delegate | group_by(.session_id) | map(map(.final == true) | any)) as $del_leg_finals
+| (($delegate | length) > 0 and ($del_leg_finals | all)) as $all_del_legs_final
+| ($del | length) as $del_legs
+| ($del | map((.tokens | objects | .input) // 0)          | add // 0) as $del_input
+| ($del | map((.tokens | objects | .cache_creation) // 0) | add // 0) as $del_cc
+| ($del | map((.tokens | objects | .cache_read) // 0)     | add // 0) as $del_cr
+| ($del | map((.tokens | objects | .processed) // 0)      | add // 0) as $del_processed
+| ($del | map((.tokens | objects | .output) // 0)         | add // 0) as $del_output
+| ($del | map(.turns // 0)                                | add // 0) as $del_turns
+| (if $all_del_legs_final then "exact"
+   elif ($delegate | length) > 0 then "partial"
+   else "unavailable" end) as $del_conf
+| (if $del_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for the Delegate top session"
+   elif $del_conf == "unavailable" then "no DELEGATE-TOKEN-EVENT lines present in log.md yet"
+   else null end) as $del_block_note
+
+# --- REVIEWER-TOKEN-EVENT (#26b): dedup per spawn_id take-max, SUM all spawns --
+# Each cold reviewer is a fresh one-shot — no leg/final/baseline concept. Dedup on
+# spawn_id (defensive against a torn re-log) then SUM across ALL spawn_ids (every
+# reviewer spawn is a distinct cost). Same non-object `tokens` tolerance.
+| ($reviewers | map(select((.tokens | type) != "object")) | length) as $rev_nonobj_n
+| ($reviewers | group_by(.spawn_id) | map(max_by((.tokens | objects | .processed) // 0))) as $rev
+| ($rev | length) as $rev_spawns
+| ($rev | map((.tokens | objects | .input) // 0)          | add // 0) as $rev_input
+| ($rev | map((.tokens | objects | .cache_creation) // 0) | add // 0) as $rev_cc
+| ($rev | map((.tokens | objects | .cache_read) // 0)     | add // 0) as $rev_cr
+| ($rev | map((.tokens | objects | .processed) // 0)      | add // 0) as $rev_processed
+| ($rev | map((.tokens | objects | .output) // 0)         | add // 0) as $rev_output
+| ($rev | map(.turns // 0)                                | add // 0) as $rev_turns
+# Each one-shot is complete by construction, so any present reviewer line is exact.
+| (if ($reviewers | length) > 0 then "exact" else "unavailable" end) as $rev_conf
+| (if $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
+   else null end) as $rev_block_note
+
 # --- processed_total + confidence lattice (FR 9 / FR 10) ----------------------
+# processed_total stays BUILD-ONLY (spec + conductor). The Delegate/reviewer
+# gating cost is NOT build rework, so folding it into the rework_ratio /
+# tokens_per_loop denominator would distort those ratios — it lives in its own
+# blocks instead. output_total (below) DOES fold all four roles (it is a raw
+# total, not a ratio denominator). [OQ-1: Conductor decision — build-only.]
 | ($spec_processed + $cond_processed) as $processed_total
 | ($all_legs_final) as $cond_ok
 | ($n_unmatched == 0) as $spec_ok
@@ -207,12 +269,35 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
    then "v2-integrated topology but zero CONDUCTOR-TOKEN-EVENT captured — the subagent-Conductor token capture did not fire (check the BUREAU_ROLE: conductor marker in the Delegate spawn prompt and the subagent-stop.sh conductor branch); conductor share is a real gap, not a clean zero"
    else null end) as $v2_gap_note
 
+# --- #26 sibling gap-notes (independent of the conductor gap; same pattern) ----
+# Delegate gap: integrated topology but zero DELEGATE-TOKEN-EVENT → the Delegate's
+# own pointer/emission did not fire. Reviewer gap: integrated topology with >=1
+# RESOLVED checkpoint but zero REVIEWER-TOKEN-EVENT → the Delegate did not append
+# reviewer usage. The reviewer gap is gated on >=1 resolved checkpoint so a v2 run
+# that has not hit a checkpoint yet does not false-fire. Annotate only — never
+# fabricate a number, never change confidence (already "unavailable", correct).
+| ($checkpoints | map(select(.status == "resolved")) | length) as $resolved_cp_n
+| (if ($delegate_topology == "integrated") and ($del_conf == "unavailable")
+   then "v2-integrated topology but zero DELEGATE-TOKEN-EVENT captured — the Delegate's own pointer/emission did not fire (check the role:delegate pointer enrolment in agents/delegate.md § Bootstrap and the conductor-stop.sh role branch); Delegate-manager share is a real gap, not a clean zero"
+   else null end) as $del_gap_note
+| (if ($delegate_topology == "integrated") and ($rev_conf == "unavailable") and ($resolved_cp_n > 0)
+   then "v2-integrated topology with \($resolved_cp_n) resolved checkpoint(s) but zero REVIEWER-TOKEN-EVENT captured — the Delegate did not append reviewer usage (check agents/delegate.md step 6.5 + scripts/append-reviewer-tokens.sh); reviewer share is a real gap, not a clean zero"
+   else null end) as $rev_gap_note
+
 # --- FR 5: merge cond-block note + suspicious note + v2-gap note (can co-fire) --
 | ([
     (if $cond_block_note != null then $cond_block_note else empty end),
     (if $suspicious_note != null then $suspicious_note else empty end),
     (if $v2_gap_note != null then $v2_gap_note else empty end)
   ] | if length > 0 then join("; ") else null end) as $combined_note
+
+# Merge each sibling block's own note with its gap note (each on its OWN block).
+| ([ (if $del_block_note != null then $del_block_note else empty end),
+     (if $del_gap_note   != null then $del_gap_note   else empty end)
+   ] | if length > 0 then join("; ") else null end) as $del_combined_note
+| ([ (if $rev_block_note != null then $rev_block_note else empty end),
+     (if $rev_gap_note   != null then $rev_gap_note   else empty end)
+   ] | if length > 0 then join("; ") else null end) as $rev_combined_note
 
 # --- per-spawn duration_s (consumer-derived, <=0 guard, both-parse rule) ------
 | ($started | map(
@@ -391,7 +476,7 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
       processed_total: ({value: $processed_total, confidence: $pt_conf}
                         + (if ($pt_notes | length) > 0 then {_note: ($pt_notes | join("; "))} else {} end)
                         + {_semantics: "processed sums per-turn cumulative usage (input + cache_creation + cache_read) across deduped messages — a billing-shaped figure that scales with turn count, not a unique-token count; use for before/after comparisons only"}),
-      output_total: {value: ($spec_output + $cond_output), confidence: "estimated"},
+      output_total: {value: ($spec_output + $cond_output + $del_output + $rev_output), confidence: "estimated"},
       rework_ratio: $rework_ratio,
       tokens_per_loop: $tokens_per_loop,
       unattributed_records: $unattributed
@@ -402,6 +487,18 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
       legs: $legs,
       confidence: $cond_conf
     } + (if $combined_note != null then {_note: $combined_note} else {} end)),
+    delegate_tokens: ({
+      tokens: {input: $del_input, cache_creation: $del_cc, cache_read: $del_cr, processed: $del_processed, output: $del_output},
+      turns: $del_turns,
+      legs: $del_legs,
+      confidence: $del_conf
+    } + (if $del_combined_note != null then {_note: $del_combined_note} else {} end)),
+    reviewer_tokens: ({
+      tokens: {input: $rev_input, cache_creation: $rev_cc, cache_read: $rev_cr, processed: $rev_processed, output: $rev_output},
+      turns: $rev_turns,
+      spawns: $rev_spawns,
+      confidence: $rev_conf
+    } + (if $rev_combined_note != null then {_note: $rev_combined_note} else {} end)),
     wall_clock: {
       active_spawn_time_s: ({value: $active_time, confidence: $active_conf,
         _semantics: "summed active time of individual spawns — not run wall-clock: parallel spawns sum to more than the wall-clock they overlapped in, and human-wait between spawns is excluded"}
@@ -424,10 +521,10 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
     spawn_tokens: $spawn_tokens_map
   }
   # Merge torn-line parse notes with a non-object-`tokens` advisory (both land in
-  # _notes). ($st_nonobj_n + $cond_nonobj_n) counts every SPAWN-TOKEN-EVENT /
-  # CONDUCTOR-TOKEN-EVENT whose `tokens` was a non-object (scalar) and so
-  # contributed 0 instead of crashing — surfaced, not silently swallowed.
-  | ($st_nonobj_n + $cond_nonobj_n) as $nonobj_total
+  # _notes). Counts every SPAWN-TOKEN / CONDUCTOR / DELEGATE / REVIEWER token event
+  # whose `tokens` was a non-object (scalar) and so contributed 0 instead of
+  # crashing — surfaced, not silently swallowed.
+  | ($st_nonobj_n + $cond_nonobj_n + $del_nonobj_n + $rev_nonobj_n) as $nonobj_total
   | . + (if (($parse_notes | length) > 0) or ($nonobj_total > 0)
          then {_notes: ($parse_notes
                         + (if $nonobj_total > 0
@@ -448,6 +545,8 @@ if jq -n \
   --slurpfile spawn_events "$se_f" \
   --slurpfile spawn_tokens "$st_f" \
   --slurpfile conductor "$ct_f" \
+  --slurpfile delegate "$de_f" \
+  --slurpfile reviewers "$rv_f" \
   --slurpfile checkpoints "$cp_f" \
   --slurpfile parse_notes "$nt_f" \
   --argjson critic_loops "$critic_loops_json" \

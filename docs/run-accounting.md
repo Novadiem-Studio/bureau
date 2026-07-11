@@ -147,7 +147,7 @@ run instead of losing it. Only a missing `RUN_DIR` itself is fatal.
 
 ## B2. Bundle 11 line types
 
-Four additional structured line types complement the SPAWN-EVENT (§ A). All four appear in `RUN_DIR/log.md`, are machine-parsed by `scripts/account-tokens.sh` and `scripts/account-run.sh`, and are backward-compatible (pre-Bundle-11 runs that contain none of these lines degrade cleanly — see EC 9 / AC 5).
+Additional structured line types complement the SPAWN-EVENT (§ A). All appear in `RUN_DIR/log.md`, are machine-parsed by `scripts/account-tokens.sh` and `scripts/account-run.sh`, and are backward-compatible (pre-Bundle-11 runs that contain none of these lines degrade cleanly — see EC 9 / AC 5). The token-event family now has **three disjoint role prefixes** — `CONDUCTOR-TOKEN-EVENT` (§ 3/3a), `DELEGATE-TOKEN-EVENT` (§ 3b, #26a), and `REVIEWER-TOKEN-EVENT` (§ 3c, #26b) — which partition into three separate rollup buckets. The disjoint prefixes ARE the anti-double-count invariant: each line has exactly one prefix, so no token is counted in two buckets.
 
 ### 1. SPAWN-EVENT enriched (Conductor-owned)
 
@@ -217,6 +217,43 @@ In a **v2-integrated (Delegate-driven)** run the Conductor runs as an Agent-tool
 - **Baseline store.** Because a subagent has no pointer file, the per-run baseline lives in a hook-owned dotfile `RUN_DIR/.conductor-subagent-baseline.json`, a top-level object keyed by `agent_id`. Two-row state machine: first leg records baseline = current cumulative (two-step write-back guard); later legs reuse it verbatim and emit the delta. Write failure degrades to baseline-0 for that leg (raw cumulative once), no retry — the same EC-3 residual conductor-stop accepts. The dotfile lives under `.bureau/runs/<slug>/`, which is already gitignored. (Test override: `BUREAU_SUBAGENT_BASELINE_FILE`.)
 - **`final`** uses the same `state.json#accounting.status` signal as conductor-stop (non-pending ⇒ `final:true`; missing/unreadable ⇒ fail-safe open). No self-refresh and no pointer rm — there is no pointer, and the Conductor runs `account-run.sh` inside its own final turn.
 - **Backstop guard.** `account-tokens.sh` reads `RUN_DIR/delegate-state.json#topology` (null-safe). When `topology == "integrated"` AND `conductor_tokens.confidence == "unavailable"` (zero conductor lines), it attaches a `_note` naming the capture gap — converting a silent zero into a named gap. Silent once capture works; inert on v1 / no-topology runs.
+
+#### 3b. DELEGATE-TOKEN-EVENT via conductor-stop.sh (v2-integrated runs — #26a)
+
+In a v2-integrated run the **Delegate is the top-level session**, so *its* Stop hook is `conductor-stop.sh`. The Conductor subagent is captured pointerlessly by `subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped. So the Delegate enrols its OWN per-run pointer tagged `"role":"delegate"`, keyed `<munged-run-dir>.delegate` (the role suffix keeps it distinct from any Conductor pointer for the same run — see § B3). `conductor-stop.sh` selects that pointer for the Delegate top session (only the Delegate's transcript carries its nonce) and, seeing `role == "delegate"`, emits a **DELEGATE-TOKEN-EVENT** instead of a CONDUCTOR-TOKEN-EVENT.
+
+```
+DELEGATE-TOKEN-EVENT: {"session_id":"<delegate top session_id>","at":"2026-07-11T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false,"baseline":{...}}
+```
+
+- **Identical machinery.** Same baseline/delta state machine, same `bureau-token-lib.sh` `compute_delta_line`/`compute_legacy_line` arithmetic, same schema, same `session_id` = top-session id, same `final` from `state.json#accounting.status`. ONLY the log-line PREFIX (and thus the rollup bucket) differs. `role` absent or `"conductor"` ⇒ the unchanged CONDUCTOR path (every v1 / self-run byte-identical). The `_bl_write_back` guard carries the `role` field through the baseline write so later fires still emit DELEGATE.
+- **Ownership by identity, not mention.** Only the Delegate's own transcript carries the `.delegate` pointer's nonce, so only it selects that pointer — no log-grep, no #22 reopening.
+
+### 3c. REVIEWER-TOKEN-EVENT (Delegate-appended, per cold-reviewer spawn — #26b)
+
+Each checkpoint the Delegate spawns a cold reviewer as `claude -p --output-format json`; the result envelope carries a `.usage` sibling (already parsed for the verdict). The Delegate appends one **REVIEWER-TOKEN-EVENT** per spawn via `scripts/append-reviewer-tokens.sh` (never hand-formatted — a hand-typed token line drifts).
+
+```
+REVIEWER-TOKEN-EVENT: {"checkpoint":"05","at":"2026-07-11T00:03:00Z","turns":4,"tokens":{"input":100,"cache_creation":200,"cache_read":300,"processed":600,"output":15},"spawn_id":"05-1"}
+```
+
+- **RAW usage, no baseline.** Each cold reviewer is a fresh one-shot — its `.usage` is the complete, non-cumulative cost of that single spawn, so the event carries the envelope usage directly (`processed = input + cache_creation + cache_read`), with no baseline/delta machinery (unlike the cumulative top sessions).
+- **Keyed by `checkpoint` + `spawn_id`.** A single checkpoint can spawn the reviewer more than once (artifact-hash re-spawn, or a `revise`→re-review cycle); each spawn gets a distinct `spawn_id` (`NN-<k>`, `k` per-spawn) and is counted once. The rollup dedups on `spawn_id` take-max (defensive against a torn re-log) then SUMS across all `spawn_id`s.
+- **Fail-safe.** An envelope lacking `.usage` (older CLI, error envelope) yields a zero-token event with a `_note` — a spawn is never silently uncounted.
+
+#### 3d. Three-bucket rollup (`account-tokens.sh` — #26)
+
+`account-tokens.sh` emits three disjoint role blocks. The prefixes partition the lines at parse time, so no line is counted twice.
+
+| Role | Log prefix | Dedup key | Aggregate | Output block |
+|------|-----------|-----------|-----------|--------------|
+| Conductor | `CONDUCTOR-TOKEN-EVENT` | `session_id` take-max, sum across legs | existing | `conductor_tokens` (unchanged) |
+| Delegate-manager | `DELEGATE-TOKEN-EVENT` | `session_id` take-max, sum across legs | mirror of conductor | `delegate_tokens` (`tokens`, `turns`, `legs`, `confidence`) |
+| Cold reviewers | `REVIEWER-TOKEN-EVENT` | `spawn_id` take-max, **sum across all spawn_ids** | one-shots | `reviewer_tokens` (`tokens`, `turns`, `spawns`, `confidence`) |
+
+- **`output_total`** folds all four roles (spec + conductor + delegate + reviewer) — it is a raw total.
+- **`processed_total`** stays **build-only** (spec + conductor) — it is the `rework_ratio` / `tokens_per_loop` denominator, and Delegate/reviewer gating cost is not build rework. Sum the four buckets' `processed` for a grand total. (OQ-1 — Conductor decision: build-only.)
+- **Gap notes** (siblings of the § 3a conductor v2-gap note, independent, can co-fire): on `topology == "integrated"`, `delegate_tokens` gets a `_note` when its confidence is `unavailable`; `reviewer_tokens` gets one when its confidence is `unavailable` AND ≥1 checkpoint resolved (so a run that hasn't hit a checkpoint yet doesn't false-fire). Inert on v1 / no-topology; silent once the lines are captured.
 
 ### 4. CHECKPOINT-EVENT (Conductor-written)
 

@@ -102,6 +102,37 @@ in v2 — the session IS the Delegate. To start:
    ```
    `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
    single-writer-per-file, AC16).
+3. **Enrol the Delegate's own token-capture pointer (#26a).** In a v2 run the Delegate IS the
+   top-level session, so *its* Stop hook is `conductor-stop.sh` — but the Conductor pointer
+   belongs to the Conductor subagent (which is captured pointerlessly by `subagent-stop.sh`).
+   Without its own pointer the Delegate's manager tokens are dropped. So the Delegate writes a
+   per-run pointer tagged `"role":"delegate"`, keyed by `<munged-run-dir>.delegate` (the role
+   suffix keeps it distinct from any Conductor pointer for the same run), and echoes it so the
+   nonce lands in the Delegate's transcript (the ownership credential). This reuses #25's
+   per-run-keyed directory:
+   ```sh
+   # Resolve the directory exactly as conductor-stop.sh does (BUREAU_POINTER_FILE forces
+   # single-file mode; else BUREAU_POINTER_DIR / default ~/.novadiem/active-runs/).
+   if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+     _del_pointer="$BUREAU_POINTER_FILE"      # test isolation / forced single-file
+   else
+     _del_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
+     mkdir -p "$_del_dir"
+     _del_key=$(printf '%s' "$RUN_DIR" | sed 's#[/.]#-#g')
+     _del_pointer="$_del_dir/${_del_key}.delegate"
+   fi
+   printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s","role":"delegate"}\n' \
+     "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
+     > "$_del_pointer"
+   cat "$_del_pointer"   # echo — places the nonce in the Delegate transcript (ownership credential)
+   ```
+   Then write the nonce-free enrolment log line to `RUN_DIR/log.md` (same discipline as the
+   Conductor): `Delegate pointer enrolled — role:delegate, nonce in pointer file and Delegate transcript only.`
+   `conductor-stop.sh` now selects THIS `.delegate` pointer for the Delegate top session (its
+   nonce is only in the Delegate's transcript) and emits a **DELEGATE-TOKEN-EVENT** (shared
+   baseline/delta arithmetic, distinct log prefix) instead of a CONDUCTOR-TOKEN-EVENT —
+   ownership-by-identity via the pointer's `role` field, not by grepping the log for a mention.
+   At archive, this `.delegate` pointer is removed alongside the run's other per-run pointer(s).
 
 ### Main manager loop
 
@@ -173,6 +204,29 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    the reviewer physically cannot read `RUN_DIR/log.md` — the leak is PREVENTED, not caught
    (AC13).
 6. Parse the JSON verdict from the reviewer's stdout.
+6.5. **Capture the cold reviewer's tokens (#26b).** The `claude -p --output-format json` envelope
+   you just parsed for the verdict carries a `.usage` sibling (`input_tokens`,
+   `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`) and `.num_turns` —
+   the reviewer's full one-shot cost, already in hand, no new spawn. Append one
+   **REVIEWER-TOKEN-EVENT** per reviewer spawn via the helper (never hand-format the token line —
+   a hand-typed JSON line drifts):
+   ```sh
+   scripts/append-reviewer-tokens.sh "$RUN_DIR" NN "NN-<k>" "$REVIEWER_ENVELOPE_JSON"
+   ```
+   - `NN` is this checkpoint; `NN-<k>` is a per-spawn discriminator where `k` increments per
+     reviewer spawn at checkpoint NN. A single checkpoint can spawn the reviewer more than once
+     (the step-7 artifact-hash re-spawn, or a `revise`→re-review cycle), and EACH spawn is a
+     distinct cost that must be counted once — so use a fresh `spawn_id` for every `claude -p`
+     you run, not just per checkpoint. `revise_counts[NN]` (plus any re-spawn count) is the
+     natural source for `k`; if you don't track re-spawns separately, pass a monotonic counter.
+   - `$REVIEWER_ENVELOPE_JSON` is the FULL envelope object, not just `.result`. The helper reads
+     `.usage` RAW (no baseline — each reviewer is a fresh one-shot whose usage is complete) and
+     falls back to a zero-token event with a `_note` if `.usage` is absent, so a spawn is never
+     silently uncounted.
+   - Call this for BOTH routine and integration checkpoints (both spawn a reviewer). Do NOT call
+     it when you escalate a fork to Robin WITHOUT a reviewer spawn (no reviewer, no reviewer
+     tokens). Emit it independent of the verdict routing below — a `revise` or `escalate` verdict
+     still cost reviewer tokens.
 7. Verify the artifact-hash binding (FR9): the verdict's `Artifact-hash` must equal the
    artifact's sha256. On mismatch, DISCARD the verdict and re-spawn the reviewer — never resume
    the Conductor with a mismatched verdict.
