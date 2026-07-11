@@ -273,9 +273,25 @@ not emit it is valid; the round-2 exclusion falls back to reading the `### Block
 
 ## B3. Pointer lifecycle (canonical — FR 6)
 
-The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTER_FILE` for test isolation) tracks the active bureau run across Stop hook fires.
+**Per-run-keyed directory (#25).** Each run keeps its OWN pointer file inside a directory `~/.novadiem/active-runs/` (overridable via `BUREAU_POINTER_DIR`), keyed by the munged `RUN_DIR` (every `/` and `.` → `-`). The old single global file `~/.novadiem/bureau-active-run` was a concurrency hazard: two overlapping runs (a self-run + a target-repo run, or two windows) clobbered each other's pointer, so a Conductor's Stop hook could read a sibling's pointer and drop its own tokens. With one file per run, each Conductor writes only its own key and each Stop hook SELECTS the file whose `nonce` + `run_dir` appear in its transcript.
 
-**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>","baseline":null}`. The `baseline` field is `null` at enrollment and is updated to a baseline object on the first Stop hook fire for the run (see state machine below).
+**Source precedence (the compatibility keystone), resolved identically by `conductor-stop.sh` (Step A.5) and the Conductor (`agents/orchestrator.md § Pointer lifecycle`):**
+
+| Condition | Mode | Behavior |
+|---|---|---|
+| `BUREAU_POINTER_FILE` set (non-empty) | **FORCED single-file** | The one named file is the sole candidate; no directory enumeration. Byte-for-byte the pre-#25 code path — every existing conductor-stop / delta-baseline fixture (they all set `BUREAU_POINTER_FILE`) is undisturbed. |
+| else `BUREAU_POINTER_DIR` set | directory at that root | One pointer file per run under the given directory (new fixtures set it to a `mktemp -d`). |
+| else | directory `~/.novadiem/active-runs/` | Default: one pointer file per run, keyed by munged `RUN_DIR`. |
+
+So `BUREAU_POINTER_FILE` means "force single-file mode at this path" and doubles as the test-isolation override it always was.
+
+**Stop-hook find-my-pointer (directory mode):** `conductor-stop.sh` enumerates the candidate files, reads each one's `run_dir`/`nonce`/`written_at` (skipping any with a missing required key), and greps the transcript for BOTH the candidate's `nonce` AND `run_dir` — the SAME ownership greps the single-file hook used, now applied as a SELECTOR. A transcript carries exactly one run's nonce+run_dir pair (the nonce is unique and appears only in that run's pointer and transcript), so at most one candidate matches; a hypothetical double match takes the first in a stable sort and emits one stderr diagnostic. No candidate selected → exit 0 (the correct outcome for a non-bureau Stop and for a sibling's pointer — reading it confers nothing without its nonce in your own transcript, so #22 ownership-by-mention is NOT reopened). Steps C.0 (project-dir gate) through G (baseline machine, compare-before-rm) are unchanged and run on the selected candidate as `$POINTER_FILE`.
+
+**Key = munged `RUN_DIR`, not the nonce:** a resumed leg has the same `RUN_DIR` → same file (no orphan-per-leg; the nonce may rotate on a write-fresh resume but the file key does not). Two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber). Because a per-run file is single-writer by construction (only that run ever writes its own key), the two-step write-back guard and compare-before-rm can never touch a sibling's pointer — the pre-#25 pre-check→mv race residual is removed in directory mode.
+
+**Cleanup:** normal close-out removes this run's file via Step G's compare-before-rm (unchanged). Archiving a run runs a janitor `rm -f "$_pointer_file"` (`agents/orchestrator.md § Pointer lifecycle`), bounding directory growth at "live + recently-crashed runs." A crashed run's lingering file is inert (its unique nonce is in no live transcript). Optional manual age-sweep: `find "$BUREAU_POINTER_DIR" -type f -mtime +7 -delete` (safe; no automated sweeper is shipped).
+
+**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>","baseline":null,"project_dir":"<cwd>"}`. The `baseline` field is `null` at enrollment and is updated to a baseline object on the first Stop hook fire for the run (see state machine below). The content schema is unchanged by #25 — only the file's location (a keyed file in a directory) changed. (A `"role"` field is added by #26a for the Delegate's own pointer — see § 3b.)
 
 **Baseline state machine:** `conductor-stop.sh` inspects the pointer's `baseline` field after every Stop fire to decide how to compute the run-scoped delta. `jq has("baseline")` distinguishes an absent key (pre-Bundle-16 pointer) from an explicit `null` (Bundle-16 enrolled, not yet fired). See `scripts/conductor-stop.sh § Step E.5` for the implementation.
 
@@ -308,7 +324,7 @@ The pointer file `~/.novadiem/bureau-active-run` (overridable via `BUREAU_POINTE
 
 **Bounded capture:** once removed, later Stop fires in the same session find no pointer and exit 0. A single run produces at most one `final: true` line.
 
-**Stale pointer (crashed run):** retired by next run's startup overwrite, or by `rm "$_pointer_file"` at archive time. It never misattributes tokens to the wrong run because the nonce is unique per run.
+**Stale pointer (crashed run):** under per-run keying (#25) a crashed run leaves exactly its own keyed file in `~/.novadiem/active-runs/`; it is retired by the archive janitor `rm -f`, or lingers inertly. It never misattributes tokens to the wrong run because the nonce is unique per run — a stale file is selected only by a Stop hook whose transcript carries its nonce, i.e. only its own dead session, which never fires again.
 
 ---
 

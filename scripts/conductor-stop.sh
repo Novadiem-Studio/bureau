@@ -13,9 +13,12 @@
 #
 # Fail-safe ladder (checked in order; first miss → exit 0 silently):
 #   A   stop_hook_active guard — prevents hook re-entry loops
-#   A.5 resolve pointer path (BUREAU_POINTER_FILE or default)
-#   B   pointer file present and valid JSON with three required keys
-#   C   both NONCE and RUN_DIR present in transcript file content
+#   A.5 resolve pointer SOURCE (single file via BUREAU_POINTER_FILE override,
+#       else the per-run directory BUREAU_POINTER_DIR / default active-runs/)
+#   B   at least one candidate pointer present and valid JSON with required keys
+#   C   ownership-select: pick the candidate whose NONCE and RUN_DIR are both
+#       present in this session's transcript content (the grep that once read the
+#       single file now SELECTS across the directory — see #25)
 #   D   RUN_DIR exists as a directory AND RUN_DIR/log.md is readable
 #
 # Portability: Bash 3.2 + jq on macOS. No set -e (hooks must always
@@ -36,53 +39,122 @@ if [ "$stop_hook_active" = "true" ]; then
   exit 0
 fi
 
-# ── Step A.5: Resolve pointer path ──────────────────────────────────────────
-# Specified once here; used for ALL pointer reads, existence checks, and the
-# compare-before-rm removal in Step G(3). Tests set BUREAU_POINTER_FILE to a
-# path inside a temp dir so no fixture touches the real ~/.novadiem directory.
-POINTER_FILE="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
-ACCOUNT_RUN_SH="${BUREAU_ACCOUNT_RUN_SH:-$SCRIPT_DIR/account-run.sh}"
-
-# ── Step B: Read and validate the pointer file ──────────────────────────────
-# The pointer file is one-line JSON:
-#   {"run_dir":"<abs path>","nonce":"<token>","written_at":"<ISO-8601>"}
-if [ ! -e "$POINTER_FILE" ]; then
-  exit 0  # No active bureau run — silent no-op
-fi
-
-pointer_json=$(cat "$POINTER_FILE" 2>/dev/null)
-if [ -z "$pointer_json" ]; then
-  echo "[conductor-stop] pointer file unreadable or empty: $POINTER_FILE" >&2
-  exit 0
-fi
-
-RUN_DIR=$(printf '%s' "$pointer_json" | jq -r '.run_dir // empty' 2>/dev/null)
-NONCE=$(printf '%s' "$pointer_json" | jq -r '.nonce // empty' 2>/dev/null)
-written_at=$(printf '%s' "$pointer_json" | jq -r '.written_at // empty' 2>/dev/null)
-# project_dir is OPTIONAL — read it, but do NOT add it to the required-keys guard
-# below. Its absence is a legal state (legacy pointer or failed write — EC 2
-# fail-open): a project_dir-less pointer falls straight through Step C.0.
-project_dir=$(printf '%s' "$pointer_json" | jq -r '.project_dir // empty' 2>/dev/null)
-
-if [ -z "$RUN_DIR" ] || [ -z "$NONCE" ] || [ -z "$written_at" ]; then
-  echo "[conductor-stop] pointer file missing required keys (run_dir/nonce/written_at): $POINTER_FILE" >&2
-  exit 0
-fi
-
-# ── Step C: Ownership check (content-grep on transcript file) ───────────────
-# The transcript path is the confirmed field name from docs/run-accounting.md.
-# The transcript file lives at a munged-cwd path like:
-#   ~/.claude/projects/-Users-robin-Code-novadiem-bureau/<session-id>.jsonl
-# This path NEVER contains RUN_DIR or NONCE — a path-based check would always
-# fail and silently drop all conductor records. The check must grep FILE CONTENT.
+# ── Step A.5: Resolve pointer SOURCE (single-file override OR per-run dir) ────
+# #25 — pointer concurrency. The pointer used to be one global file shared by
+# every run; two overlapping runs clobbered each other. Now each run keeps its
+# own pointer file inside a directory, keyed by its munged RUN_DIR, and this hook
+# SELECTS the one that belongs to THIS session (the ownership grep — nonce +
+# run_dir in the transcript — is the selector).
 #
-# Check 1: nonce must be present in transcript content.
-# Check 2: RUN_DIR must be present in transcript content.
-# If EITHER fails → exit 0. This closes EC 14: an eval/inspection session
-# whose transcript contains RUN_DIR but NOT the nonce exits 0 here.
+# Precedence (the compatibility keystone — see docs/run-accounting.md § B3):
+#   1. BUREAU_POINTER_FILE set (non-empty) → FORCED single-file legacy mode: the
+#      one named file is the sole candidate, no directory enumeration. This is
+#      the pre-#25 code path byte-for-byte, so every existing conductor-stop /
+#      delta-baseline fixture (they all set BUREAU_POINTER_FILE) is undisturbed.
+#   2. Else → directory mode rooted at BUREAU_POINTER_DIR (default active-runs/).
+#      Every candidate file in the directory is a selection candidate.
+ACCOUNT_RUN_SH="${BUREAU_ACCOUNT_RUN_SH:-$SCRIPT_DIR/account-run.sh}"
+POINTER_DIR="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
+
+# Build the candidate list. In single-file mode the list is exactly the one file.
+# In directory mode it is every regular file directly under POINTER_DIR (a
+# stable sort makes the "two matched → take first" tie-break deterministic).
+_candidates=""
+if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+  # FORCED single-file mode — legacy path, byte-identical to pre-#25.
+  if [ -e "$BUREAU_POINTER_FILE" ]; then
+    _candidates="$BUREAU_POINTER_FILE"
+  fi
+else
+  # Directory mode. Enumerate the per-run pointer files (if any).
+  if [ -d "$POINTER_DIR" ]; then
+    for _c in "$POINTER_DIR"/*; do
+      [ -f "$_c" ] || continue      # skip the literal glob when dir is empty
+      _candidates="$_candidates
+$_c"
+    done
+  fi
+fi
+
+# ── Step B: at least one candidate present ───────────────────────────────────
+# No candidate at all → no active bureau run (empty dir, missing dir, or the
+# single override file absent) → silent no-op, exactly like a missing pointer.
+if [ -z "$_candidates" ]; then
+  exit 0
+fi
+
+# The transcript is needed to SELECT the owning candidate, so resolve it before
+# the ownership loop (in single-file mode this is the same read the pre-#25 code
+# did at Step C, just moved a few lines earlier — no behavior change).
 transcript_path=$(printf '%s' "$stdin_json" | jq -r '.transcript_path // empty' 2>/dev/null)
 if [ -z "$transcript_path" ] || [ ! -r "$transcript_path" ]; then
   exit 0  # No readable transcript — silent no-op
+fi
+
+# ── Step C: Ownership-SELECT the owning candidate ────────────────────────────
+# For each candidate: read run_dir/nonce/written_at (skip if any required key is
+# missing — same guard as the pre-#25 single-file read); then the SAME two greps
+# that used to prove ownership on the one file now SELECT the matching file. A
+# transcript carries exactly one run's nonce+run_dir pair (the nonce is unique
+# and appears only in that run's pointer and that run's transcript), so at most
+# one candidate matches; if a bug produced two matches we take the first in the
+# stable list and emit ONE stderr diagnostic, never processing two.
+#
+# Selection uses BOTH greps (nonce AND run_dir) — this is ownership-by-identity,
+# not by mention (#22): reading a sibling's pointer file confers nothing, because
+# you must carry its unique nonce in your OWN transcript, which only its own
+# Conductor session does.
+POINTER_FILE=""
+pointer_json=""
+RUN_DIR=""
+NONCE=""
+written_at=""
+project_dir=""
+_selected_count=0
+IFS='
+'
+for _cand in $_candidates; do
+  [ -n "$_cand" ] || continue
+  [ -e "$_cand" ] || continue
+  _cj=$(cat "$_cand" 2>/dev/null)
+  [ -n "$_cj" ] || continue
+  _run_dir=$(printf '%s' "$_cj" | jq -r '.run_dir // empty' 2>/dev/null)
+  _nonce=$(printf '%s' "$_cj" | jq -r '.nonce // empty' 2>/dev/null)
+  _written_at=$(printf '%s' "$_cj" | jq -r '.written_at // empty' 2>/dev/null)
+  # Missing required keys → not a selectable pointer (same guard as pre-#25).
+  if [ -z "$_run_dir" ] || [ -z "$_nonce" ] || [ -z "$_written_at" ]; then
+    # In forced single-file mode preserve the pre-#25 diagnostic (a malformed
+    # single pointer used to log this exact line before exiting 0).
+    if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+      echo "[conductor-stop] pointer file missing required keys (run_dir/nonce/written_at): $_cand" >&2
+    fi
+    continue
+  fi
+  # Ownership = the two greps, now used to SELECT.
+  if grep -qF -- "$_nonce" "$transcript_path" 2>/dev/null \
+     && grep -qF -- "$_run_dir" "$transcript_path" 2>/dev/null; then
+    _selected_count=$((_selected_count + 1))
+    if [ "$_selected_count" -eq 1 ]; then
+      POINTER_FILE="$_cand"
+      pointer_json="$_cj"
+      RUN_DIR="$_run_dir"
+      NONCE="$_nonce"
+      written_at="$_written_at"
+      # project_dir is OPTIONAL — read it, but do NOT gate on it. Its absence is a
+      # legal state (legacy pointer / failed write — EC 2 fail-open): a
+      # project_dir-less pointer falls straight through Step C.0.
+      project_dir=$(printf '%s' "$_cj" | jq -r '.project_dir // empty' 2>/dev/null)
+    else
+      echo "[conductor-stop] AMBIGUOUS: transcript matched a second pointer ($_cand); using first ($POINTER_FILE) only — nonce collision or duplicate enrolment" >&2
+    fi
+  fi
+done
+unset IFS
+
+# No candidate owned by this session → the correct outcome for every non-bureau
+# Stop and for a sibling's pointer (its nonce is not in this transcript).
+if [ -z "$POINTER_FILE" ]; then
+  exit 0
 fi
 
 # ── Step C.0: Project-dir ownership gate (FR 2, FR 6) ────────────────────────
@@ -107,14 +179,10 @@ if [ -n "$project_dir" ]; then
     exit 0
   fi
 fi
-# If project_dir is empty: fall straight through to the nonce-grep (EC 2 legacy path).
-
-if ! grep -qF -- "$NONCE" "$transcript_path" 2>/dev/null; then
-  exit 0
-fi
-if ! grep -qF -- "$RUN_DIR" "$transcript_path" 2>/dev/null; then
-  exit 0
-fi
+# If project_dir is empty: fall straight through (EC 2 legacy path). The nonce +
+# run_dir ownership grep already ran as the Step C selector — a candidate can
+# only be $POINTER_FILE here if both were present in this transcript, so the
+# pre-#25 standalone re-grep is now subsumed by selection and not repeated.
 
 # ── Step D: Verify RUN_DIR is usable ────────────────────────────────────────
 if [ ! -d "$RUN_DIR" ] || [ ! -r "$RUN_DIR/log.md" ]; then

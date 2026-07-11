@@ -153,15 +153,21 @@ Empty `matcher` means fires for all sessions (same behaviour as the `statusLine`
 
 `scripts/account-tokens.sh` parses `SPAWN-TOKEN-EVENT:` and `CONDUCTOR-TOKEN-EVENT:` lines from a run's `log.md`, deduplicates by `agent_id` (take-max on `processed`), and emits a structured token summary. `scripts/account-run.sh` calls it at close-out to build `accounting.json`, merging the Bundle 11 token data with the SPAWN-EVENT-derived work-shape. Full grammar and examples: `docs/run-accounting.md § B2`.
 
-### Pointer file (`~/.novadiem/bureau-active-run`)
+### Pointer files (`~/.novadiem/active-runs/`) — per-run keyed (#25)
 
-A one-line JSON file `{"run_dir":"<abs path>","nonce":"<uuid>","written_at":"<ISO-8601>"}` written by the Conductor at run start and echoed to stdout (the echo places the nonce in the session transcript so `conductor-stop.sh` can verify ownership). The Conductor does NOT remove it at close-out — removal happens inside `conductor-stop.sh` after the one-shot `final: true` capture.
+Each run keeps its OWN one-line JSON pointer file inside `~/.novadiem/active-runs/`, keyed by the munged `RUN_DIR` (every `/` and `.` → `-`). Content: `{"run_dir":"<abs path>","nonce":"<uuid>","written_at":"<ISO-8601>","baseline":null,"project_dir":"<cwd>"}` (the Delegate's own pointer adds `"role":"delegate"` — #26a). Written by the Conductor at run start and echoed to stdout (the echo places the nonce in the session transcript so `conductor-stop.sh` can verify ownership). The Conductor does NOT remove it at close-out — removal happens inside `conductor-stop.sh` after the one-shot `final: true` capture. This replaced the old single global file `~/.novadiem/bureau-active-run`, which two overlapping runs clobbered.
 
-If the pointer lingers after a crashed run: the next run's startup overwrites it harmlessly (the nonce is unique, so no mis-attribution), or remove it manually with `rm ~/.novadiem/bureau-active-run`. An orphaned pointer never causes a false-positive capture: `conductor-stop.sh` verifies both the `run_dir` AND `nonce` appear in the current session's transcript content before writing anything.
+`conductor-stop.sh` SELECTS its owning file: it greps the transcript for a candidate's `nonce` AND `run_dir` (the same ownership check the single file used, now used to pick the right file out of the directory). An orphaned/sibling pointer never causes a false-positive capture: a Stop hook only selects the file whose nonce is in its own transcript.
 
-Override `BUREAU_POINTER_FILE` to a temp-dir path in test fixtures so they never touch `~/.novadiem`:
+If pointers linger after crashed runs: remove the stale files manually (`rm -f ~/.novadiem/active-runs/*`), or use the safe age-sweep `find ~/.novadiem/active-runs -type f -mtime +7 -delete`. Archiving a run removes just its own keyed file.
+
+**Test isolation / forced single-file:** set `BUREAU_POINTER_FILE` to a temp-dir path — this forces the legacy single-file mode at that exact path (the pre-#25 code path, byte-for-byte), which is why every existing conductor-stop / delta-baseline fixture stays green:
 ```sh
-export BUREAU_POINTER_FILE="$(mktemp -d)/bureau-active-run"
+export BUREAU_POINTER_FILE="$(mktemp -d)/bureau-active-run"   # forced single-file mode
+```
+Or exercise directory mode against a temp root with `BUREAU_POINTER_DIR`:
+```sh
+export BUREAU_POINTER_DIR="$(mktemp -d)"   # per-run files under this dir
 ```
 
 ### ROLLBACK / UNREGISTER (W11)
@@ -170,9 +176,9 @@ To cleanly disable these hooks machine-wide:
 
 1. Open `~/.claude/settings.json` and remove the `"SubagentStop"` and `"Stop"` entries from the `"hooks"` block (leave the `"statusLine"` key and any other keys untouched).
 2. Confirm hooks exit silently: `echo '{"agent_transcript_path":""}' | bash scripts/subagent-stop.sh` should produce no output and exit 0.
-3. Optionally remove a lingering pointer: `rm -f ~/.novadiem/bureau-active-run`.
+3. Optionally remove lingering pointers: `rm -f ~/.novadiem/active-runs/*` (#25 per-run keyed dir).
 
-**Important — read-pointer-equals-enrolment:** Reading the pointer at run start (the echo step) is what places the nonce in the Conductor session's transcript — it is the ownership credential for future Stop fires. After removing the hooks, any remaining pointer is harmless: unrelated sessions do not carry the nonce, so `conductor-stop.sh` (now removed from hooks) would exit 0 at the ownership check regardless. You may `rm ~/.novadiem/bureau-active-run` at any time without affecting any active session's Stop fires (they will simply find no pointer and exit 0). Rolling back does not require ending or restarting any running Claude sessions.
+**Important — read-pointer-equals-enrolment:** Reading the pointer at run start (the echo step) is what places the nonce in the Conductor session's transcript — it is the ownership credential for future Stop fires. After removing the hooks, any remaining pointer is harmless: unrelated sessions do not carry the nonce, so `conductor-stop.sh` (now removed from hooks) would exit 0 at the ownership check regardless. You may `rm -f ~/.novadiem/active-runs/*` at any time without affecting any active session's Stop fires (they will simply find no matching pointer and exit 0). Rolling back does not require ending or restarting any running Claude sessions.
 
 ---
 

@@ -450,15 +450,25 @@ as the archive `mv` (EC 12).
 
 The pointer file tracks the active bureau run so `conductor-stop.sh` can attribute the Conductor's own token usage.
 
-**Path resolution:**
+**Path resolution (#25 — per-run-keyed directory).** Each run keeps its OWN pointer file inside a directory, keyed by its munged `RUN_DIR`, so two overlapping runs (a self-run + a target-repo run, or two windows) never clobber each other's pointer. The precedence — this is the compatibility keystone shared with `conductor-stop.sh`:
 ```sh
-_pointer_file="${BUREAU_POINTER_FILE:-$HOME/.novadiem/bureau-active-run}"
+# 1. BUREAU_POINTER_FILE set  → FORCED single-file mode at that exact path (the
+#    pre-#25 behavior, byte-for-byte — this is what run fixtures set).
+# 2. Else                     → directory mode: one file per run, keyed by the
+#    munged RUN_DIR, under BUREAU_POINTER_DIR (default ~/.novadiem/active-runs/).
+if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+  _pointer_file="$BUREAU_POINTER_FILE"
+else
+  _pointer_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
+  _ptr_key=$(printf '%s' "$RUN_DIR" | sed 's#[/.]#-#g')   # munge / and . → -
+  _pointer_file="$_pointer_dir/$_ptr_key"
+fi
 ```
-`BUREAU_POINTER_FILE` exists solely for test isolation — run fixtures set it to a temp path so they never touch the real `~/.novadiem` directory. Default behavior (BUREAU_POINTER_FILE unset) is unchanged.
+`BUREAU_POINTER_FILE` exists solely for test isolation and now doubles as the forced-single-file override — run fixtures set it to a temp path so they never touch the real `~/.novadiem` directory, and doing so keeps them on the exact pre-#25 code path. `BUREAU_POINTER_DIR` overrides the directory root the same way (new fixtures set it to a `mktemp -d`). Default behavior (both unset) is a per-run file under `~/.novadiem/active-runs/`. The key is the munged `RUN_DIR` (not the nonce): a resumed leg of the same run has the same `RUN_DIR` → same file (no orphan-per-leg); two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber).
 
 **At run start** (alongside step 4 — run-dir creation):
 ```sh
-mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem exists (or override's parent)
+mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem/active-runs/ exists (or override's parent)
 # Write one-line JSON (five fields — project_dir is $(pwd -P), the Conductor's cwd,
 # which conductor-stop.sh munges and matches against the transcript path):
 printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
@@ -505,7 +515,7 @@ Pointer enrolled — nonce written to pointer file and conductor transcript only
 
 **At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
 
-**At archive:** if `"$_pointer_file"` exists and its `run_dir` matches the run being archived → `rm "$_pointer_file"`. Otherwise leave it (a different run may have already enrolled).
+**At archive (#25 janitor):** remove THIS run's per-run pointer file — `rm -f "$_pointer_file"` (recompute `_pointer_file` from the archived run's `RUN_DIR` via the path-resolution block above, so the munged key matches). Under per-run keying `$_pointer_file` is single-writer — only this run ever wrote its own key — so the `rm -f` can never touch a sibling's pointer; the pre-#25 "compare run_dir first" caution is now structurally unnecessary. This bounds directory growth at "live + recently-crashed runs" rather than "every run ever." A lingering per-run file is inert regardless (a stale pointer only ever matches a Stop hook whose transcript carries its unique nonce — i.e. only its own dead session, which never fires again).
 
 ## Checkpoint format
 
