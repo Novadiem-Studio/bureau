@@ -132,7 +132,13 @@ in v2 — the session IS the Delegate. To start:
    nonce is only in the Delegate's transcript) and emits a **DELEGATE-TOKEN-EVENT** (shared
    baseline/delta arithmetic, distinct log prefix) instead of a CONDUCTOR-TOKEN-EVENT —
    ownership-by-identity via the pointer's `role` field, not by grepping the log for a mention.
-   At archive, this `.delegate` pointer is removed alongside the run's other per-run pointer(s).
+   **Cleanup.** Like the Conductor pointer, do NOT remove `"$_del_pointer"` at close-out — the
+   post-close-out Stop fire must still find it to write the Delegate's `final:true` capture (its
+   compare-before-rm then removes it). It is also removed at archive by the `#25/#26a janitor`
+   (`agents/orchestrator.md § Pointer lifecycle` — `rm -f "${_pointer_file}.delegate"`). If you
+   tear the v2 session down without going through that archive path, `rm -f "$_del_pointer"`
+   yourself so no `.delegate` file lingers (a lingering one is inert — its nonce is in no live
+   transcript — but leave nothing stale).
 
 ### Main manager loop
 

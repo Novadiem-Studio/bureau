@@ -515,7 +515,12 @@ Pointer enrolled — nonce written to pointer file and conductor transcript only
 
 **At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
 
-**At archive (#25 janitor):** remove THIS run's per-run pointer file — `rm -f "$_pointer_file"` (recompute `_pointer_file` from the archived run's `RUN_DIR` via the path-resolution block above, so the munged key matches). Under per-run keying `$_pointer_file` is single-writer — only this run ever wrote its own key — so the `rm -f` can never touch a sibling's pointer; the pre-#25 "compare run_dir first" caution is now structurally unnecessary. This bounds directory growth at "live + recently-crashed runs" rather than "every run ever." A lingering per-run file is inert regardless (a stale pointer only ever matches a Stop hook whose transcript carries its unique nonce — i.e. only its own dead session, which never fires again).
+**At archive (#25/#26a janitor):** remove THIS run's per-run pointer file(s) — recompute `_pointer_file` from the archived run's `RUN_DIR` via the path-resolution block above (so the munged key matches), then:
+```sh
+rm -f "$_pointer_file"              # the Conductor pointer (bare munged-run-dir key)
+rm -f "${_pointer_file}.delegate"   # the Delegate's role:delegate pointer (#26a), if any
+```
+In single-file mode (`BUREAU_POINTER_FILE` set) `${_pointer_file}.delegate` simply does not exist, so the second `rm -f` is a harmless no-op. Under per-run keying each file is single-writer — only this run ever wrote its own key(s) — so the `rm -f`s can never touch a sibling's pointer; the pre-#25 "compare run_dir first" caution is now structurally unnecessary. This bounds directory growth at "live + recently-crashed runs" rather than "every run ever." A lingering per-run file is inert regardless (a stale pointer only ever matches a Stop hook whose transcript carries its unique nonce — i.e. only its own dead session, which never fires again).
 
 ## Checkpoint format
 

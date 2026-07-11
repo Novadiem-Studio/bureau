@@ -864,6 +864,8 @@ if [ -x "$TOKENS_SCRIPT" ]; then
         # detectable error gets a stderr warning + a distinguishing _tokens_note.
         tokens_have_data=$(printf '%s' "$tokens_json" | jq -r '
             ((.conductor_tokens.confidence // "unavailable") != "unavailable")
+            or ((.delegate_tokens.confidence // "unavailable") != "unavailable")
+            or ((.reviewer_tokens.confidence // "unavailable") != "unavailable")
             or ((.checkpoints.entries | length) > 0)
             or ((.wall_clock.active_spawn_time_s.value // 0) != 0)
             or ((.tokens.processed_total.value // 0) != 0)
@@ -880,9 +882,18 @@ if [ -x "$TOKENS_SCRIPT" ]; then
             # (pre-eval-hardening Challenger W1). Conditional so a clean run adds no
             # `_notes` key and stays byte-for-byte unchanged (`$tok._notes // []` is
             # `[]` when absent → length 0 → the empty-object branch, no key added).
+            # delegate_tokens / reviewer_tokens (#26) forward alongside
+            # conductor_tokens — account-tokens.sh always emits all three role
+            # blocks (a v1 run gets the two new ones as unavailable/zero blocks,
+            # exactly like conductor_tokens today). Without this forwarding the two
+            # new blocks are dropped at the merge and never reach accounting.json,
+            # defeating #26's "done when" (a v2 run's accounting.json must carry the
+            # Delegate + reviewer shares). Additive keys the consumers tolerate.
             jq --argjson tok "$tokens_json" \
                '. + {tokens: $tok.tokens,
                      conductor_tokens: $tok.conductor_tokens,
+                     delegate_tokens: $tok.delegate_tokens,
+                     reviewer_tokens: $tok.reviewer_tokens,
                      wall_clock: $tok.wall_clock,
                      checkpoints: $tok.checkpoints}
                   + (if (($tok._notes // []) | length) > 0
