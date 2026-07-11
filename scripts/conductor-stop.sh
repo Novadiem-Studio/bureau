@@ -322,23 +322,9 @@ if [ "$baseline_is_legacy" = "true" ]; then
   # Legacy branch (absent baseline key OR the EC-3 write-fail fallback): emit the
   # exact pre-Bundle-16 6-key shape — byte-for-byte identical to today's output on
   # the same input (FR 6, AC 6). No baseline key, no _note. Do NOT reorder keys.
-  event_line=$(printf '%s' "$usage_json" | jq -c \
-    --arg session_id "$session_id" \
-    --arg at "$now" \
-    --argjson final "$final" \
-    '{
-      session_id: $session_id,
-      at: $at,
-      turns: .turns,
-      tokens: {
-        input: .input,
-        cache_creation: .cache_creation,
-        cache_read: .cache_read,
-        processed: .processed,
-        output: .output
-      },
-      final: $final
-    }' 2>/dev/null) || event_line=""
+  # Arithmetic lives in bureau-token-lib.sh (compute_legacy_line) — one source of
+  # truth shared with the subagent-Conductor emitter.
+  event_line=$(compute_legacy_line "$usage_json" "$session_id" "$now" "$final") || event_line=""
 else
   # Non-legacy branch: subtract the baseline per field from the raw cumulative and
   # clamp each delta ≥ 0 (input/cache_creation/cache_read/output/turns). Re-derive
@@ -347,51 +333,12 @@ else
   # satisfied by construction (FR 2). Attach the baseline object (OQ 4, audit) and,
   # if any field clamped, a _note naming each clamped field with its raw/baseline
   # pair (FR 4 / EC 2). Key order: session_id, at, turns, tokens, final, baseline,
-  # then _note last (only when a clamp fired).
-  event_line=$(printf '%s' "$usage_json" | jq -c \
-    --arg session_id "$session_id" \
-    --arg at "$now" \
-    --argjson final "$final" \
-    --argjson b_input "$baseline_input" \
-    --argjson b_cache_creation "$baseline_cache_creation" \
-    --argjson b_cache_read "$baseline_cache_read" \
-    --argjson b_output "$baseline_output" \
-    --argjson b_turns "$baseline_turns" \
-    --argjson baseline "$baseline_obj_json" \
-    '
-    (.input          - $b_input)          as $raw_input          |
-    (.cache_creation - $b_cache_creation) as $raw_cache_creation |
-    (.cache_read     - $b_cache_read)     as $raw_cache_read     |
-    (.output         - $b_output)         as $raw_output         |
-    (.turns          - $b_turns)          as $raw_turns          |
-    (if $raw_input          < 0 then 0 else $raw_input          end) as $c_input          |
-    (if $raw_cache_creation < 0 then 0 else $raw_cache_creation end) as $c_cache_creation |
-    (if $raw_cache_read     < 0 then 0 else $raw_cache_read     end) as $c_cache_read     |
-    (if $raw_output         < 0 then 0 else $raw_output         end) as $c_output         |
-    (if $raw_turns          < 0 then 0 else $raw_turns          end) as $c_turns          |
-    ($c_input + $c_cache_creation + $c_cache_read) as $c_processed |
-    ([ (if $raw_input          < 0 then "clamped input (raw \(.input) < baseline \($b_input)) to 0" else empty end),
-       (if $raw_cache_creation < 0 then "clamped cache_creation (raw \(.cache_creation) < baseline \($b_cache_creation)) to 0" else empty end),
-       (if $raw_cache_read     < 0 then "clamped cache_read (raw \(.cache_read) < baseline \($b_cache_read)) to 0" else empty end),
-       (if $raw_output         < 0 then "clamped output (raw \(.output) < baseline \($b_output)) to 0" else empty end),
-       (if $raw_turns          < 0 then "clamped turns (raw \(.turns) < baseline \($b_turns)) to 0" else empty end)
-     ]) as $notes |
-    {
-      session_id: $session_id,
-      at: $at,
-      turns: $c_turns,
-      tokens: {
-        input: $c_input,
-        cache_creation: $c_cache_creation,
-        cache_read: $c_cache_read,
-        processed: $c_processed,
-        output: $c_output
-      },
-      final: $final,
-      baseline: $baseline
-    }
-    + (if ($notes | length) > 0 then {"_note": ($notes | join("; "))} else {} end)
-    ' 2>/dev/null) || event_line=""
+  # then _note last (only when a clamp fired). Arithmetic lives in
+  # bureau-token-lib.sh (compute_delta_line) — one source of truth shared with the
+  # subagent-Conductor emitter.
+  event_line=$(compute_delta_line "$usage_json" "$session_id" "$now" "$final" \
+    "$baseline_input" "$baseline_cache_creation" "$baseline_cache_read" \
+    "$baseline_output" "$baseline_turns" "$baseline_obj_json") || event_line=""
 fi
 
 if [ -z "$event_line" ]; then
