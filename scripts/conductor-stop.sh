@@ -363,7 +363,23 @@ case "$baseline_state" in
     ;;
   object)
     _bl_sid=$(printf '%s' "$pointer_json" | jq -r '.baseline.session_id // ""' 2>/dev/null) || _bl_sid=""
-    if [ -n "$_bl_sid" ] && [ "$_bl_sid" = "$session_id" ]; then
+    # F5 (audit): a baseline object with a WRONG-TYPE numeric field (e.g.
+    # {"input":"oops",...}) passes the `type == "object"` state gate above but is
+    # NOT safe to reuse: `.input // 0` returns "oops" (jq `//` catches null/false,
+    # NOT a wrong type), and compute_delta_line's `--argjson b_input "oops"` is
+    # invalid JSON → the compose fails → zero events appended and the corrupt
+    # baseline LEFT INTACT → permanent accounting loss every future fire. Detect
+    # it here: every numeric field must pass `numbers`. When the check fails we
+    # fall through to the EC-4 re-record branch, which rewrites a CLEAN baseline
+    # via _bl_write_back (self-heal) and emits a correct fresh-leg event — the
+    # same self-heal path fixture 145 pins for an unparseable pointer. A VALID
+    # baseline (all numeric fields numbers) still reuses verbatim — no happy-path
+    # change (fixtures 92/93/95/96/99 stay green).
+    _bl_numeric_ok=$(printf '%s' "$pointer_json" | jq -r \
+      '(.baseline
+        | [.input, .cache_creation, .cache_read, .processed, .output, .turns]
+        | map(numbers) | length == 6)' 2>/dev/null) || _bl_numeric_ok="false"
+    if [ -n "$_bl_sid" ] && [ "$_bl_sid" = "$session_id" ] && [ "$_bl_numeric_ok" = "true" ]; then
       # Same session — reuse the recorded baseline verbatim (FR 3).
       _bl_obj=$(printf '%s' "$pointer_json" | jq -c \
         '.baseline | {session_id: (.session_id // ""),
@@ -382,9 +398,11 @@ case "$baseline_state" in
         baseline_is_legacy="false"
       fi
     else
-      # EC 4 — baseline tagged with a different (or missing) session_id: re-record
-      # a fresh baseline for THIS session so the resumed leg is not clamped to ~0
-      # by subtracting the prior session's (large) baseline.
+      # EC 4 — baseline tagged with a different (or missing) session_id, OR a
+      # wrong-type baseline (F5, $_bl_numeric_ok false): re-record a fresh clean
+      # baseline for THIS session so the resumed leg is not clamped to ~0 by
+      # subtracting the prior session's (large) baseline, and so a corrupt
+      # baseline is self-healed rather than stranded.
       _bl_cand=$(_bl_candidate)
       if _bl_write_back "$_bl_cand"; then
         baseline_obj_json="$_bl_cand"

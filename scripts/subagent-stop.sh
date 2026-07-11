@@ -243,10 +243,26 @@ if [ "$is_conductor" = "true" ]; then
   }
 
   # Read the recorded baseline object for THIS agent_id (empty if absent).
+  #
+  # F5 (audit): a baseline slot that is a valid JSON object but carries a
+  # WRONG-TYPE numeric field (e.g. {"input":"oops",...}) must be treated as
+  # ABSENT — not reused. Reused, `.input // 0` yields "oops" (jq `//` catches
+  # null/false, NOT a wrong type), and compute_delta_line's `--argjson b_input
+  # "oops"` is invalid JSON → the compose fails → zero events appended and the
+  # corrupt baseline LEFT INTACT → permanent accounting loss on every future
+  # fire. The `(<all numeric fields> | numbers)` type-check below rejects such a
+  # slot, so it falls through to the FIRST-LEG path, which overwrites this
+  # agent's slot with a clean baseline (self-heal — the same path fixture 145
+  # exercises for an unparseable file). A VALID slot (every numeric field a
+  # number) is still returned verbatim — no behavior change on the happy path.
   cond_bl_existing=""
   if [ -r "$BASELINE_FILE" ]; then
     cond_bl_existing=$(jq -c --arg aid "$agent_id" \
-      'if (type == "object") and (has($aid)) and ((.[$aid] | type) == "object") then .[$aid] else empty end' \
+      'if (type == "object") and (has($aid)) and ((.[$aid] | type) == "object")
+          and (.[$aid]
+               | [.input, .cache_creation, .cache_read, .processed, .output, .turns]
+               | map(numbers) | length == 6)
+       then .[$aid] else empty end' \
       "$BASELINE_FILE" 2>/dev/null) || cond_bl_existing=""
   fi
 
