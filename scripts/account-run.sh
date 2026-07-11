@@ -949,9 +949,24 @@ if [ -x "$TOKENS_SCRIPT" ]; then
             # (c) Bump schema_version to 2 — the merge succeeded and the output now
             # carries the Bundle 11 sections.
             jq '.schema_version = 2' "$tmp_out" > "${tmp_out}.v2" && mv "${tmp_out}.v2" "$tmp_out"
+        else
+            # Valid JSON but no token data → legacy-only re-run. Leave schema at 1
+            # and emit today's schema unchanged — EXCEPT (F4, audit) when the
+            # fragment carries a non-empty `_notes` breadcrumb. That is the case of
+            # a run whose ONLY token data was a malformed scalar event (all totals
+            # zero, no conductor line, unparseable spawn timestamps): tokens_have_data
+            # is false so the schema-2 merge is skipped, yet account-tokens.sh DID
+            # emit a `_notes` breadcrumb about the malformed event. Without this the
+            # breadcrumb is dropped and the run is indistinguishable from a genuine
+            # legacy no-token run. Attach `_notes` as a top-level breadcrumb while
+            # keeping schema_version at 1 (do NOT flip to schema 2 — AC 5 backward-
+            # compat for a GENUINE legacy run must hold, and a legacy run has no
+            # `_notes`, so this stays inert there). One conditional.
+            if printf '%s' "$tokens_json" | jq -e '((._notes // []) | length) > 0' >/dev/null 2>&1; then
+                jq --argjson tok "$tokens_json" '. + {_notes: $tok._notes}' \
+                    "$tmp_out" > "${tmp_out}.nnote" && mv "${tmp_out}.nnote" "$tmp_out"
+            fi
         fi
-        # else: valid JSON but no token data → legacy-only re-run. Leave schema at 1,
-        # emit today's schema unchanged (no _note — AC 5 "output unchanged").
     else
         # account-tokens.sh present+executable but the invocation failed or emitted
         # non-JSON — a detectable error (broken SCRIPT_DIR co-location, a jq fault in
