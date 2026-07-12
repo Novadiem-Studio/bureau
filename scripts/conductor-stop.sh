@@ -456,6 +456,7 @@ if [ -z "$event_line" ]; then
   exit 0
 fi
 
+# OWNERSHIP-GATE: secret-nonce + project_dir select (Steps A.5-C.0)
 locked_append "$RUN_DIR/log.md" "$EVENT_PREFIX: $event_line"
 
 # If the run is still open, nothing more to do — pointer stays in place.

@@ -133,5 +133,6 @@ if [ -z "$EVENT_LINE" ]; then
   exit 0
 fi
 
+# OWNERSHIP-GATE: none-self — Delegate-driven, caller-attested (no hook self-gate)
 locked_append "$LOG_MD" "REVIEWER-TOKEN-EVENT: $EVENT_LINE"
 exit 0

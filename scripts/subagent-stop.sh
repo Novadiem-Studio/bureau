@@ -349,6 +349,7 @@ if [ "$is_conductor" = "true" ]; then
   # ── Step 9 (conductor): append CONDUCTOR-TOKEN-EVENT, exit 0 ────────────────
   # No self-refresh and no pointer rm (there is no pointer for a subagent
   # Conductor; the Conductor runs account-run.sh inside its own final turn — DQ 1/2).
+  # OWNERSHIP-GATE: agent_id == delegate-state.json#conductor_agent_id (Step 8.0). Residual: inherits Step-6 agent_id-from-basename fallback (out of model).
   locked_append "$run_dir/log.md" "CONDUCTOR-TOKEN-EVENT: $event_line"
   exit 0
 fi
@@ -490,6 +491,7 @@ if [ -z "$event_line" ]; then
 fi
 
 # ── Step 9: Append to log.md ─────────────────────────────────────────────────
+# OWNERSHIP-GATE: run nonce in transcript (Step 4.7)
 locked_append "$run_dir/log.md" "SPAWN-TOKEN-EVENT: $event_line"
 
 exit 0
