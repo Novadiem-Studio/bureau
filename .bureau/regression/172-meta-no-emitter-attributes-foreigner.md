@@ -1,4 +1,4 @@
-name: class-closure Guard 1 (no emitter attributes a foreigner) — every TRANSCRIPT-READING token emitter (E1 conductor-stop, E2 subagent-stop conductor branch, E3 subagent-stop specialist branch) driven with a FOREIGN identity emits ZERO attribution and still exits 0; E4 (reviewer) is OUT of scope by construction (caller-attested, reads no transcript)
+name: class-closure Guard 1 (no emitter attributes a foreigner) — every TRANSCRIPT-READING token emitter (E1 conductor-stop, E2/E2b subagent-stop conductor branch, E3 subagent-stop specialist branch) driven with a FOREIGN identity emits ZERO attribution and still exits 0; E2b covers the Step 8.0 S3 edge (topology=integrated but no conductor_agent_id → fail-closed); E4 (reviewer) is OUT of scope by construction (caller-attested, reads no transcript)
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT
@@ -14,7 +14,8 @@ command: |
   #
   # THE THREE TRANSCRIPT-READING EMITTERS and the credential each foreign-drive strips:
   #   E1  conductor-stop.sh          — secret run nonce in transcript (Steps A.5-C.0)
-  #   E2  subagent-stop.sh conductor — agent_id == delegate-state#conductor_agent_id (Step 8.0)
+  #   E2  subagent-stop.sh conductor — agent_id == delegate-state#conductor_agent_id (Step 8.0 S1)
+  #   E2b subagent-stop.sh conductor — S3: topology=integrated but NO conductor_agent_id → fail-closed (Step 8.0 S3)
   #   E3  subagent-stop.sh spawn     — secret run nonce in transcript (Step 4.7)
   #
   # E4 (append-reviewer-tokens.sh, REVIEWER-TOKEN-EVENT) is OUT of scope BY
@@ -73,6 +74,31 @@ command: |
   [ "$cn" = "0" ] || { cat "$RUN_E2/log.md"; fail "E2 foreign attributed as Conductor — $cn CONDUCTOR-TOKEN-EVENT (expected 0)"; }
   [ "$sn" = "0" ] || { cat "$RUN_E2/log.md"; fail "E2 foreign fell through to specialist — $sn SPAWN-TOKEN-EVENT (expected 0)"; }
 
+  # ── E2b foreign (v2 conductor branch, topology=integrated, NO credential) ─────
+  # E2 above always supplied conductor_agent_id (exercises Step 8.0 S1 reject). It
+  # does NOT exercise S3 — an integrated run MISSING the credential with a foreigner
+  # presenting the public marker. Here delegate-state.json declares integrated but
+  # OMITS conductor_agent_id (a write-ordering gap). A foreign transcript carries the
+  # PUBLIC BUREAU_ROLE: conductor marker + RUN_DIR. Step 8.0 State S3 must FAIL-CLOSED:
+  # neither CONDUCTOR nor SPAWN attribution, hook exit 0. (The class guard missed this
+  # because E2 always supplied a credential — S3 was unenumerated.)
+  RUN_E2B="$TMPF/e2b-run"; mkdir -p "$RUN_E2B"; touch "$RUN_E2B/log.md"
+  echo '{"accounting":{"status":"complete"}}' > "$RUN_E2B/state.json"
+  echo '{"topology":"integrated","active_checkpoint":"01","revise_counts":{},"revision_cap":2}' > "$RUN_E2B/delegate-state.json"   # NOTE: no conductor_agent_id
+  jq -cn --arg rp "$RUN_E2B" \
+    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $rp + "\ntopology: integrated\nBUREAU_ROLE: conductor\n")}}' \
+    > "$TMPF/e2b.jsonl"
+  printf '%s\n' \
+    '{"type":"assistant","message":{"id":"msg-A","usage":{"input_tokens":9999,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":500},"content":[{"type":"tool_use"}]}}' \
+    >> "$TMPF/e2b.jsonl"
+  echo '{"agent_transcript_path":"'"$TMPF/e2b.jsonl"'","agent_id":"agent-FOREIGN-e2b"}' \
+    | bash "$ROOT/scripts/subagent-stop.sh" 2>/dev/null
+  rc=$?; [ "$rc" = "0" ] || fail "E2b hook exited $rc (must be 0)"
+  cn=$(grep -c "^CONDUCTOR-TOKEN-EVENT:" "$RUN_E2B/log.md" 2>/dev/null); cn=${cn:-0}
+  sn=$(grep -c "^SPAWN-TOKEN-EVENT:" "$RUN_E2B/log.md" 2>/dev/null); sn=${sn:-0}
+  [ "$cn" = "0" ] || { cat "$RUN_E2B/log.md"; fail "E2b integrated-no-credential foreigner attributed as Conductor — $cn CONDUCTOR-TOKEN-EVENT (expected 0)"; }
+  [ "$sn" = "0" ] || { cat "$RUN_E2B/log.md"; fail "E2b foreigner fell through to specialist — $sn SPAWN-TOKEN-EVENT (expected 0)"; }
+
   # ── E1 foreign (top-session conductor/delegate, mention-only, absent nonce) ───
   # The OWNER's live run: a real run dir with log.md, enrolled in the pointer with its
   # secret nonce N (the public run_dir path is mentionable; the nonce is NOT). The
@@ -109,10 +135,13 @@ command: |
   #      SPAWN-TOKEN-EVENT → E3 assertion fails.
   #  E2: delete the Step 8.0 identity gate (the agent_id != conductor_agent_id reject)
   #      → the foreigner is attributed as the Conductor → E2 assertion fails.
+  #  E2b: delete the S3 `elif [ "$_cond_topology" = "integrated" ]` fail-closed arm
+  #      → the integrated-no-credential foreigner falls to the S2 marker fail-open →
+  #      it is attributed by the public BUREAU_ROLE marker → E2b assertion fails.
   #  E1: neutralize the Steps A.5-C ownership-select nonce match → the foreigner's
   #      transcript emits a CONDUCTOR/DELEGATE-TOKEN-EVENT → E1 assertion fails.
   # Neutralizing ANY ONE emitter's gate makes THAT emitter's foreign attribution
   # appear and fails this fixture — the all-emitters class property.
-expected: exit 0; stdout "PASS"; each of the three transcript-reading token emitters (E1 conductor-stop, E2 subagent-stop conductor branch, E3 subagent-stop specialist branch), driven with a foreign identity (wrong/absent nonce for E1/E3; agent_id != conductor_agent_id for E2), emits ZERO attribution and still exits 0. E4 (reviewer) is out of scope by construction (reads no transcript). Mutation-test: neutralizing any one emitter's ownership gate re-attributes that foreigner and fails this fixture.
+expected: exit 0; stdout "PASS"; each of the three transcript-reading token emitters (E1 conductor-stop, E2/E2b subagent-stop conductor branch, E3 subagent-stop specialist branch), driven with a foreign identity (wrong/absent nonce for E1/E3; agent_id != conductor_agent_id for E2; topology=integrated with NO conductor_agent_id for E2b), emits ZERO attribution and still exits 0. E4 (reviewer) is out of scope by construction (reads no transcript). Mutation-test: neutralizing any one emitter's ownership gate — including deleting the Step 8.0 S3 fail-closed arm — re-attributes that foreigner and fails this fixture.
 phase: 04 · feature — class-closure Guard 1 (no emitter attributes a foreigner meta-fixture)
 owner: conductor-stop.sh + subagent-stop.sh transcript-reading ownership gates (class 1 closure; all-emitters foreign-drive)

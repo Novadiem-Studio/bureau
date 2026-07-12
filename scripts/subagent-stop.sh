@@ -165,24 +165,49 @@ if [ "$is_conductor" = "true" ]; then
   #      the gate is CLOSED: our own $agent_id MUST equal it. Equal → proceed.
   #      Differ → FOREIGN: emit NOTHING (no CONDUCTOR event, and do NOT fall through
   #      to attribute as a specialist either), stderr note + exit 0.
-  #   2/3. delegate-state.json ABSENT / unreadable / lacks conductor_agent_id (a
-  #      legacy / pre-v2 run — which has no conductor-subagent to impersonate anyway)
-  #      → fail-OPEN: proceed as today. A missing credential must not reject the one
-  #      real capture path a legacy run has. The distinguisher is credential EXISTENCE,
-  #      never "$agent_id mismatch", so a foreigner cannot force the carve-out.
+  #   S1. delegate-state.json present, readable, non-empty .conductor_agent_id →
+  #      the gate is CLOSED: our own $agent_id MUST equal it. Equal → proceed.
+  #      Differ → FOREIGN: emit NOTHING (no CONDUCTOR event, and do NOT fall through
+  #      to attribute as a specialist either), stderr note + exit 0.
+  #   S3. delegate-state.json PRESENT and declares topology:"integrated" but carries
+  #      NO/empty conductor_agent_id → this is NOT a legacy run: the run's own state
+  #      says v2. A window where topology:integrated exists but conductor_agent_id
+  #      does not is a write-ordering gap or tampering, never a pre-v2 run. Fail-
+  #      CLOSED: do NOT attribute by the public BUREAU_ROLE marker. Emit NOTHING,
+  #      exit 0 — leaving the conductor share confidence:"unavailable" so
+  #      account-tokens.sh's :363 v2-gap guard fires ("a real gap, not a clean zero").
+  #      Fail-open here would risk a WRONG attribution (a foreigner's tokens summed as
+  #      the dominant bucket) — unrecoverable and un-noted; fail-closed costs only an
+  #      unavailable bucket, which is recovered by S1 when conductor_agent_id lands.
+  #   S2. delegate-state.json ABSENT / unreadable / present-but-NOT-integrated and no
+  #      credential (a genuine legacy / pre-v2 run — which has no conductor-subagent to
+  #      impersonate anyway) → fail-OPEN: proceed as today. A missing credential must
+  #      not reject the one real capture path a legacy run has. The distinguisher for
+  #      fail-open is "is this genuinely a legacy run" (no delegate-state, or one that
+  #      does not declare integrated), never "$agent_id mismatch", so a foreigner
+  #      cannot force the carve-out.
+  _cond_topology=""
   _cond_expected_agent_id=""
   if [ -r "$run_dir/delegate-state.json" ]; then
+    _cond_topology=$(jq -r 'if (type=="object") and ((.topology|type)=="string") then .topology else "" end' "$run_dir/delegate-state.json" 2>/dev/null) || _cond_topology=""
     _cond_expected_agent_id=$(jq -r '.conductor_agent_id // empty' "$run_dir/delegate-state.json" 2>/dev/null) || _cond_expected_agent_id=""
   fi
   if [ -n "$_cond_expected_agent_id" ]; then
-    # State 1 — gate CLOSED. Require identity match.
+    # S1 — gate CLOSED. Require identity match.
     if [ "$agent_id" != "$_cond_expected_agent_id" ]; then
       echo "[subagent-stop] conductor ownership gate: agent_id '$agent_id' != delegate-state.json conductor_agent_id '$_cond_expected_agent_id' for RUN_DIR $run_dir — not attributing as Conductor (foreign transcript carrying only the public BUREAU_ROLE marker)" >&2
       exit 0
     fi
+    # match → proceed into the conductor branch (unchanged).
+  elif [ "$_cond_topology" = "integrated" ]; then
+    # S3 — delegate-state PRESENT and says integrated, but NO conductor_agent_id.
+    # NOT a legacy run — the run's own state declares v2. Fail-CLOSED.
+    echo "[subagent-stop] conductor ownership gate: RUN_DIR $run_dir declares topology=integrated but delegate-state carries no conductor_agent_id — refusing to attribute by public BUREAU_ROLE marker (v2 run must not fail-open); leaving conductor share unattributed so account-tokens.sh's v2-gap guard fires" >&2
+    exit 0
   else
-    # State 2/3 — no conductor_agent_id credential (legacy/pre-v2 run) → fail-open.
-    echo "[subagent-stop] conductor ownership gate: no conductor_agent_id in delegate-state.json for RUN_DIR $run_dir — attributing by marker (pre-v2/legacy run fail-open)" >&2
+    # S2 — no conductor_agent_id credential AND topology not integrated
+    # (legacy/pre-v2 run) → fail-open.
+    echo "[subagent-stop] conductor ownership gate: no conductor_agent_id and topology not integrated for RUN_DIR $run_dir — attributing by marker (pre-v2/legacy run fail-open)" >&2
   fi
 
   # ═════════════════════════════════════════════════════════════════════════
