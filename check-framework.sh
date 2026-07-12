@@ -306,6 +306,34 @@ for f in scripts/*.sh; do
   fi
 done
 
+echo "== unguarded jq on STATE_JSON (F4 structural guard, OQ-3)"
+# The F4 abort was a single unguarded jq on $STATE_JSON at STATEMENT scope
+# (account-run.sh:589, `memory_type=$(jq -r … "$STATE_JSON")` with no 2>/dev/null): a
+# corrupt/non-object state.json made that jq exit non-zero, which under `set -euo
+# pipefail` aborted the whole script BEFORE any accounting.json was written. Fixture
+# 177 is the behavioral standing guard; this is the STRUCTURAL one, so a future edit
+# that reintroduces an unguarded top-level jq read of state.json trips CI instead of
+# silently reopening F4.
+#
+# The rule (mirrors the real safe/unsafe split in account-run.sh): a jq read of
+# "$STATE_JSON" / state.json that begins at COLUMN 0 (statement scope, not lexically
+# nested inside an already-validated `if`/`case` block) MUST either carry `2>/dev/null`
+# OR be the `jq -e 'type=="object"'` validate-once itself. Every legitimately-safe
+# read in account-run.sh is EITHER indented (nested inside a block whose condition
+# already type-gated the object) OR is the validator OR already has `2>/dev/null`; the
+# F4 bug was the one column-0, unguarded, non-validator read. Scoped to the accounting
+# scripts that read the run's state.json under set -e.
+for scr in scripts/account-run.sh scripts/account-tokens.sh; do
+  [[ -f "$scr" ]] || continue
+  # Column-0 lines (no leading whitespace) that call jq AND read STATE_JSON/state.json.
+  while IFS= read -r badline; do
+    # exempt: the validate-once guard itself, and any line already carrying 2>/dev/null.
+    printf '%s' "$badline" | grep -qE "type *== *\"object\"" && continue
+    printf '%s' "$badline" | grep -qE '2>/dev/null|2> */dev/null' && continue
+    err "unguarded jq on state.json at statement scope in $scr — reintroduces F4 (a corrupt state.json aborts the script under set -e before accounting.json is written). Add 2>/dev/null (and a fallback), or gate it behind a validated-object precondition: ${badline}"
+  done < <(grep -nE '^jq .*(\$STATE_JSON|state\.json)|^[a-zA-Z_][a-zA-Z0-9_]*=\$\(jq .*(\$STATE_JSON|state\.json)' "$scr" || true)
+done
+
 echo "== state template JSON"
 if ! python3 -c "import json; json.load(open('templates/state.json'))"; then
   err "templates/state.json does not parse as JSON"
