@@ -8,6 +8,10 @@ command: |
   printf '%s\n' '{}' > "$RP/state.json"
   # session A fires twice (500 then 900, both mid-run final:false); session B
   # fires once (400, final:true). Collapse A to 900 (take-max), sum across A+B.
+  # NOTE: this fixture is retired (skipped by run.sh) and its inline components are
+  # identity-INCONSISTENT with its stated processed, so its 1300 assertion predates
+  # the ingest processed-derivation (F3) and would no longer hold if run. The live
+  # coverage is the migrated successors 104/106 (consistent inputs, same guarantees).
   printf '%s\n' \
     'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:01:00Z","turns":10,"tokens":{"input":1,"cache_creation":1,"cache_read":1,"processed":500,"output":1},"final":false}' \
     'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:05:00Z","turns":20,"tokens":{"input":2,"cache_creation":2,"cache_read":2,"processed":900,"output":2},"final":false}' \
