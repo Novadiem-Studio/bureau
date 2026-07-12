@@ -11,7 +11,7 @@ command: |
   printf '%s\n' \
     'SPAWN-EVENT: {"role":"mage","agent":"The Mage","configured_model":"sonnet","actual_model":"sonnet","attempt":1,"attempt_id":"mage-1","status":"started","at":"2026-07-11T00:00:00Z","rework":false}' \
     'SPAWN-EVENT: {"role":"mage","agent":"The Mage","configured_model":"sonnet","actual_model":"sonnet","attempt":1,"attempt_id":"mage-1","status":"complete","at":"2026-07-11T00:01:00Z","started_at":"2026-07-11T00:00:00Z"}' \
-    'SPAWN-TOKEN-EVENT: {"attempt_id":"mage-1","agent_id":"agent-m1","at":"2026-07-11T00:01:00Z","turns":2,"tokens":{"input":1,"cache_creation":1,"cache_read":1,"processed":500,"output":7}}' \
+    'SPAWN-TOKEN-EVENT: {"attempt_id":"mage-1","agent_id":"agent-m1","at":"2026-07-11T00:01:00Z","turns":2,"tokens":{"input":200,"cache_creation":150,"cache_read":150,"processed":500,"output":7}}' \
     'CONDUCTOR-TOKEN-EVENT: {"session_id":"c1","at":"2026-07-11T00:02:00Z","turns":3,"tokens":{"input":10,"cache_creation":5,"cache_read":5,"processed":20,"output":2},"final":true}' \
     > "$RP/log.md"
   out=$(bash "$ROOT/scripts/account-tokens.sh" "$RP") || { rm -rf "$TMPF"; exit 1; }

@@ -141,8 +141,88 @@ JQ_PROG=$(cat <<'JQ'
 # pitfall (bare unquoted string failing JSON import) cannot occur.
 def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null end;
 
+# ── Ingest normalization (F2 + F3): validate ONCE, here, so every downstream
+# computation — spawn/specialist, conductor, delegate, reviewer, dedup, totals,
+# and the spawn_tokens map account-run.sh enriches — sees clean data. Enforcing
+# the invariants at the ingest boundary (not at every use) closes F2 (a malformed
+# field isolates instead of aborting the whole pass to schema-1) and F3 (processed
+# is derived for ALL buckets at once, no per-bucket guard to remember). ──────────
+def coerce_tokens:
+  # Accept only an OBJECT tokens; a scalar/absent tokens becomes the zero object.
+  # Coerce each numeric field with `numbers // 0` (a string/object/null field → 0;
+  # a legit 0 survives — `//` only substitutes on null/false/empty, and `0 | numbers`
+  # is 0), then DERIVE processed authoritatively from the coerced components. A
+  # stored `.processed` is an ASSERTION, never authority: record disagreement so
+  # the F3 identity note can fire.
+  (if type == "object" then . else {} end) as $t
+  | ($t.input          | numbers // 0) as $in
+  | ($t.cache_creation | numbers // 0) as $cc
+  | ($t.cache_read     | numbers // 0) as $cr
+  | ($t.output         | numbers // 0) as $out
+  | ($t.processed) as $stated
+  | ($in + $cc + $cr) as $derived
+  | { input: $in, cache_creation: $cc, cache_read: $cr,
+      processed: $derived, output: $out,
+      _stated_processed: $stated };
+
+def normalize_event:
+  . as $e
+  | (.tokens | coerce_tokens) as $tk
+  # turns: coerce to a number (a string/object/null → 0).
+  | (.turns | numbers // 0) as $turns
+  # Type-gate every value later used as a jq object KEY or group_by key.
+  # A non-string attempt_id/agent_id/session_id/spawn_id is ISOLATED: replaced
+  # with null (→ unattributed / a clean null group), never allowed to reach the
+  # spawn_tokens_map reduce as a non-string ("Cannot use object as object key").
+  | (if (.attempt_id | type) == "string" then .attempt_id else null end) as $aid
+  | (if (.agent_id   | type) == "string" then .agent_id   else null end) as $gid
+  | (if (.session_id | type) == "string" then .session_id else null end) as $sid
+  | (if (.spawn_id   | type) == "string" then .spawn_id   else null end) as $pid
+  # Malformed / disagreement breadcrumbs, collected per-event so the pass can
+  # surface them. The "stated processed != derived" breadcrumb is the F3 signal:
+  # a stored processed (numeric or not) that disagrees with the derived component
+  # sum. The F3 identity note below re-sources itself from this breadcrumb.
+  | ([ (if ($e.tokens | type) != "object" and ($e.tokens != null)
+          then "non-object tokens coerced to zero" else empty end),
+       # An object-form tokens whose input/cache_creation/cache_read/output was
+       # present but NON-numeric (string/object): coerced to 0 (which also averts
+       # the "string and number cannot be added" jq crash) — surface it.
+       (if ($e.tokens | type) == "object"
+           and ([ ($e.tokens.input), ($e.tokens.cache_creation),
+                  ($e.tokens.cache_read), ($e.tokens.output) ]
+                | map(select((. != null) and (type != "number"))) | length) > 0
+          then "non-numeric token field coerced to zero" else empty end),
+       (if ($tk._stated_processed != null) and ($tk._stated_processed != $tk.processed)
+          then "stated processed \($tk._stated_processed) != derived \($tk.processed)" else empty end),
+       (if ($e.attempt_id != null) and (($e.attempt_id | type) != "string")
+          then "non-string attempt_id isolated to null" else empty end),
+       (if ($e.agent_id   != null) and (($e.agent_id   | type) != "string")
+          then "non-string agent_id isolated to null" else empty end)
+     ]) as $malformed
+  | $e
+    + { tokens: ($tk | del(._stated_processed)),
+        turns: $turns, attempt_id: $aid, agent_id: $gid,
+        session_id: $sid, spawn_id: $pid }
+    # keep the raw _note if the emitter already wrote one (clamp notes etc.);
+    # append a normalization breadcrumb (a DISTINCT field, _norm_note, so it never
+    # collides with the emitter-written _note the $*_event_notes collectors read)
+    # only when we actually coerced/isolated something.
+    + (if ($malformed | length) > 0
+       then { _norm_note: ($malformed | join("; ")) } else {} end);
+
+# Rebind the five event streams through the normalizer BY SHADOWING the outer
+# $name — from here down every reference to $spawn_events/$spawn_tokens/$conductor/
+# $delegate/$reviewers is lexically inside the shadow and reads normalized data, so
+# the ~40 downstream read-sites are untouched. This block MUST precede any $started/
+# $stok/$cond/$del/$rev binding.
+($spawn_events | map(normalize_event)) as $spawn_events
+| ($spawn_tokens | map(normalize_event)) as $spawn_tokens
+| ($conductor    | map(normalize_event)) as $conductor
+| ($delegate     | map(normalize_event)) as $delegate
+| ($reviewers    | map(normalize_event)) as $reviewers
+
 # --- Specialist spawns: started (deduped by attempt_id, first) + terminals ----
-($spawn_events | map(select(.status == "started")) | group_by(.attempt_id) | map(.[0])) as $started
+| ($spawn_events | map(select(.status == "started")) | group_by(.attempt_id) | map(.[0])) as $started
 | ($spawn_events | map(select(
       .status == "complete" or .status == "no-handoff"
       or .status == "failed" or .status == "terminated"))) as $terminals
@@ -300,17 +380,15 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 # forged / mis-composed line whose stated `processed` disagrees with its own
 # input+cache_creation+cache_read went unchecked. A hook-emitted event always
 # satisfies processed == input+cache_creation+cache_read (built that way in
-# bureau-token-lib.sh), so this never fires on a real event. When an event DOES
-# disagree, the component sum is authoritative: surface a naming `_note` so the
-# discrepancy is visible and the stated number is not silently blessed. Scanned
-# over the two sets that feed processed_total — the 1:1 specialist set $stok and
-# the conductor set $cond. Only OBJECT-form `tokens` are compared (scalar tokens
-# are already handled as 0 by the non-object tolerance, not an identity fault).
+# bureau-token-lib.sh), so this never fires on a real event. The normalization
+# pass now DERIVES processed authoritatively at ingest (the summed value is
+# already the component sum), but the identity NOTE must still fire so a forged/
+# mis-composed line is visible. Re-source it from the pass: an event whose
+# `_norm_note` records a "stated processed … != derived" disagreement is a
+# mismatch. Scanned over the two sets that feed processed_total — the 1:1
+# specialist set $stok and the conductor set $cond.
 | ([ ($stok[]?), ($cond[]?) ]
-   | map(select((.tokens | type) == "object"))
-   | map(select(
-        ((.tokens.processed // 0)
-         != ((.tokens.input // 0) + (.tokens.cache_creation // 0) + (.tokens.cache_read // 0))))))
+   | map(select((._norm_note // "") | test("stated processed"))))
      as $processed_mismatch
 | (($processed_mismatch | length) > 0) as $processed_identity_bad
 | (if $processed_identity_bad
@@ -625,17 +703,24 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
     },
     spawn_tokens: $spawn_tokens_map
   }
-  # Merge torn-line parse notes with a non-object-`tokens` advisory (both land in
-  # _notes). Counts every SPAWN-TOKEN / CONDUCTOR / DELEGATE / REVIEWER token event
-  # whose `tokens` was a non-object (scalar) and so contributed 0 instead of
-  # crashing — surfaced, not silently swallowed.
-  | ($st_nonobj_n + $cond_nonobj_n + $del_nonobj_n + $rev_nonobj_n) as $nonobj_total
-  # Extra _notes breadcrumbs beyond the torn-line parse notes: the non-object
+  # Merge torn-line parse notes with the normalization advisory (both land in
+  # _notes). The normalization pass records a `_norm_note` on any event whose
+  # `tokens` was a non-object (scalar), whose numeric field was a string/object,
+  # or whose attempt_id/agent_id was a non-string — each coerced/isolated to a
+  # safe value instead of crashing the pass (F2). Count them across ALL FIVE
+  # normalized sets so a malformed event in any role bucket is surfaced, not
+  # silently swallowed. (The old per-block $*_nonobj_n counters now see the
+  # NORMALIZED set — always an object — so they read 0; this is the re-sourced
+  # replacement.)
+  | ([ $spawn_events[]?, $spawn_tokens[]?, $conductor[]?, $delegate[]?, $reviewers[]? ]
+      | map(select(has("_norm_note")))) as $norm_events
+  | ($norm_events | length) as $norm_total
+  # Extra _notes breadcrumbs beyond the torn-line parse notes: the normalization
   # advisory, the F1 attempt_id→agent_id collision note, and the F3
   # processed-identity mismatch note — each surfaced so a reader sees it, never
   # silently swallowed. All conditional, so a clean run adds no _notes key.
-  | ([ (if $nonobj_total > 0
-        then "\($nonobj_total) token event(s) had a non-object (scalar) `tokens` field — counted as 0, not fatal"
+  | ([ (if $norm_total > 0
+        then "\($norm_total) token event(s) had a malformed field (non-object tokens / non-numeric numeric / non-string id) — coerced/isolated to safe values, not fatal"
         else empty end),
        (if $stok_collision_note != null then $stok_collision_note else empty end),
        (if $processed_identity_note != null then $processed_identity_note else empty end)
@@ -646,9 +731,9 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
   # Advisory stderr line (nice-to-have): mirrors account-run.sh's WARNING lane.
   # `debug` writes ["DEBUG:", …] to STDERR and passes its input through unchanged
   # on stdout, so the single-value JSON fragment account-run.sh captures is
-  # untouched. Gated on $nonobj_total so a clean run emits nothing.
-  | if $nonobj_total > 0
-    then debug("[account-tokens] NOTE: skipped \($nonobj_total) malformed (non-object) token event(s)")
+  # untouched. Gated on $norm_total so a clean run emits nothing.
+  | if $norm_total > 0
+    then debug("[account-tokens] NOTE: coerced/isolated \($norm_total) malformed token event(s)")
     else . end
 JQ
 )

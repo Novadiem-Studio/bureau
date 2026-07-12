@@ -9,11 +9,13 @@ command: |
   # final:true. Under FR 4 (all legs must finalize), sess-A has no final:true ->
   # $all_legs_final = false -> confidence "partial". sess-A collapses to 900
   # (take-max), sess-B 400 -> cross-session sum 1300. This supersedes fixture 75's
-  # second assertion and fixture 73's confidence assertion.
+  # second assertion and fixture 73's confidence assertion. Components are
+  # identity-consistent (processed = input+cache_creation+cache_read) so the
+  # ingest-derivation is a no-op and take-max(900>500) is preserved.
   printf '%s\n' \
-    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:01:00Z","turns":10,"tokens":{"input":1,"cache_creation":1,"cache_read":1,"processed":500,"output":1},"final":false}' \
-    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:05:00Z","turns":20,"tokens":{"input":2,"cache_creation":2,"cache_read":2,"processed":900,"output":2},"final":false}' \
-    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-B","at":"2026-07-05T00:09:00Z","turns":8,"tokens":{"input":3,"cache_creation":3,"cache_read":3,"processed":400,"output":3},"final":true}' \
+    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:01:00Z","turns":10,"tokens":{"input":100,"cache_creation":150,"cache_read":250,"processed":500,"output":1},"final":false}' \
+    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-A","at":"2026-07-05T00:05:00Z","turns":20,"tokens":{"input":300,"cache_creation":300,"cache_read":300,"processed":900,"output":2},"final":false}' \
+    'CONDUCTOR-TOKEN-EVENT: {"session_id":"sess-B","at":"2026-07-05T00:09:00Z","turns":8,"tokens":{"input":100,"cache_creation":150,"cache_read":150,"processed":400,"output":3},"final":true}' \
     > "$RP/log.md"
   out=$(bash "$ROOT/scripts/account-tokens.sh" "$RP") || { rm -rf "$TMPF"; exit 1; }
   echo "$out" | jq -e '
