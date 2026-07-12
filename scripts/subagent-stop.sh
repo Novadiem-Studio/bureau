@@ -186,13 +186,31 @@ if [ "$is_conductor" = "true" ]; then
   #      fail-open is "is this genuinely a legacy run" (no delegate-state, or one that
   #      does not declare integrated), never "$agent_id mismatch", so a foreigner
   #      cannot force the carve-out.
+  #   S4. delegate-state.json PRESENT but UNPARSEABLE / not a JSON object → this is
+  #      NOT absent and NOT a parseable legacy run: present-but-corrupt. We cannot
+  #      confirm this is a genuine pre-v2 run, so we must not fail-open on the public
+  #      marker. Fail-CLOSED — same posture as S3. HIGHEST precedence: a corrupt file
+  #      yields empty topology + empty credential, which would otherwise land in S2's
+  #      else (fail-open). The parse-check (jq -e 'type=="object"', rc-based) fails on
+  #      BOTH an unparseable file and a valid-JSON non-object — exactly the two corrupt
+  #      shapes — and is DISTINCT from the field reads below (which read content, not
+  #      validity). Mirrors the B8 usage-snapshot validate-once pattern.
   _cond_topology=""
   _cond_expected_agent_id=""
+  _cond_ds_corrupt="false"
   if [ -r "$run_dir/delegate-state.json" ]; then
+    if ! jq -e 'type == "object"' "$run_dir/delegate-state.json" >/dev/null 2>&1; then
+      _cond_ds_corrupt="true"      # present but unparseable OR not an object
+    fi
     _cond_topology=$(jq -r 'if (type=="object") and ((.topology|type)=="string") then .topology else "" end' "$run_dir/delegate-state.json" 2>/dev/null) || _cond_topology=""
     _cond_expected_agent_id=$(jq -r '.conductor_agent_id // empty' "$run_dir/delegate-state.json" 2>/dev/null) || _cond_expected_agent_id=""
   fi
-  if [ -n "$_cond_expected_agent_id" ]; then
+  if [ "$_cond_ds_corrupt" = "true" ]; then
+    # S4 — present-but-unparseable/non-object delegate-state. Fail-CLOSED at highest
+    # precedence. Cannot confirm legacy → refuse to attribute by the public marker.
+    echo "[subagent-stop] conductor ownership gate: RUN_DIR $run_dir has a present-but-unparseable delegate-state.json — cannot confirm legacy; refusing to attribute by public BUREAU_ROLE marker (fail-closed). Leaving conductor share unattributed so account-tokens.sh's v2-gap guard fires." >&2
+    exit 0
+  elif [ -n "$_cond_expected_agent_id" ]; then
     # S1 — gate CLOSED. Require identity match.
     if [ "$agent_id" != "$_cond_expected_agent_id" ]; then
       echo "[subagent-stop] conductor ownership gate: agent_id '$agent_id' != delegate-state.json conductor_agent_id '$_cond_expected_agent_id' for RUN_DIR $run_dir — not attributing as Conductor (foreign transcript carrying only the public BUREAU_ROLE marker)" >&2
