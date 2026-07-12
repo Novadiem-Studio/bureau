@@ -55,10 +55,26 @@ esac
 
 command -v jq >/dev/null 2>&1 || die "jq is required but not found on PATH"
 
-# ── 2. state.json — HARD FAIL if wholly absent, DEGRADE if thin ───────────────
+# ── 2. state.json — HARD FAIL if wholly absent, DEGRADE if thin/corrupt ───────
 
 STATE_JSON="$RUN_DIR/state.json"
 [ -f "$STATE_JSON" ] || die "state.json not found in RUN_DIR — not a valid framework run dir: $RUN_DIR"
+
+# F4 (B6): validate-once, early. A present-but-corrupt state.json (unparseable OR a
+# valid-JSON non-object — e.g. a JSON array, or a half-written interrupted run) is the
+# abnormal case terminal accounting exists to CAPTURE: degrade every state-derived
+# field to unavailable and STILL emit accounting.json (schema_version 1) with a
+# top-level _state_note. The ONLY hard-fail stays "wholly absent" (line 61 above) —
+# that is "not a framework run dir", a caller error, not an abnormal run. `jq -e
+# 'type=="object"'` (rc-based, 2>/dev/null) fails on BOTH corrupt shapes; it mirrors
+# the B8 usage-snapshot validate-once precedent. Every downstream state.json read is
+# already `2>/dev/null`-guarded and takes its unavailable else-branch when corrupt, so
+# the only remaining unguarded read (the Step 8 memory_type at ~589) is guarded below.
+if jq -e 'type == "object"' "$STATE_JSON" >/dev/null 2>&1; then
+    STATE_CORRUPT="false"
+else
+    STATE_CORRUPT="true"
+fi
 
 slug=$(basename "$RUN_DIR")
 
@@ -586,7 +602,17 @@ spawn_attempt_ids_json=$(printf '%s' "$pass2_result" | jq -c '[.spawns[].attempt
 
 # ── 8. memory block — four scenarios; state.json#memory is the single switch ──
 
-memory_type=$(jq -r 'if has("memory") then (.memory | type) else "absent" end' "$STATE_JSON")
+# F4 (B6): this was the ONE unguarded jq on $STATE_JSON. On a corrupt state.json it
+# aborted the whole script under `set -e` (exit 5, no accounting.json) — the reproduced
+# F4. Guard it: when STATE_CORRUPT, skip the read entirely and take the new "corrupt"
+# case arm (all-unavailable, like the non-object arm). The `2>/dev/null || memory_type=
+# "corrupt"` also catches a file that passed the early object-check but raced to
+# corruption between reads (defensive).
+if [ "$STATE_CORRUPT" = "true" ]; then
+    memory_type="corrupt"
+else
+    memory_type=$(jq -r 'if has("memory") then (.memory | type) else "absent" end' "$STATE_JSON" 2>/dev/null) || memory_type="corrupt"
+fi
 
 case "$memory_type" in
   "absent")
@@ -660,6 +686,21 @@ case "$memory_type" in
               )
           }' "$STATE_JSON")
       fi
+      ;;
+  "corrupt")
+      # F4 (B6): state.json itself is present but not a parseable JSON object — the
+      # memory fields cannot be extracted. Same all-unavailable block as the non-object
+      # arm, with a note naming the corrupt state.json (distinct from "memory is not an
+      # object", which is a valid state.json with a bad .memory).
+      memory_json=$(jq -n '{
+          retrieval_count:         {value:null, confidence:"unavailable"},
+          writes_proposed:         {value:null, confidence:"unavailable"},
+          writes_accepted:         {value:null, confidence:"unavailable"},
+          conflicts_flagged:       {value:null, confidence:"unavailable"},
+          digest_freshness:        {value:null, confidence:"unavailable"},
+          memory_preflight_passed: {value:null, confidence:"unavailable"},
+          "_note": "state.json is present but not a parseable JSON object — memory fields cannot be extracted"
+      }')
       ;;
   *)
       # Scenario 3: non-object (string/number/bool/array/null) → all six unavailable + _note.
@@ -798,6 +839,17 @@ jq -n \
 if [ -n "$memory_json" ]; then
     jq --argjson mem "$memory_json" '. + {memory: $mem}' "$tmp_out" > "${tmp_out}.mem" \
         && mv "${tmp_out}.mem" "$tmp_out"
+fi
+
+# F4 (B6): when state.json is corrupt, add a top-level _state_note breadcrumb so a
+# reader sees WHY every state-derived field is unavailable (conditional merge, like
+# _close_out_warning). schema_version stays 1 (the base assembly wrote it), all the
+# per-field guards took their unavailable else-branches, and the run still emitted an
+# artifact — the whole point of the degrade.
+if [ "$STATE_CORRUPT" = "true" ]; then
+    jq '. + {"_state_note": "state.json present but not a parseable JSON object — accounting degraded to schema_version 1, all state-derived fields unavailable"}' \
+        "$tmp_out" > "${tmp_out}.snote" \
+        && mv "${tmp_out}.snote" "$tmp_out"
 fi
 
 # ── 9.5 Bundle 11 — enforcement gate + token-metrics merge ────────────────────
