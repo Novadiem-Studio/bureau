@@ -313,6 +313,87 @@ if [ "$is_conductor" = "true" ]; then
   exit 0
 fi
 
+# ── Step 4.7: Specialist ownership gate (idea #27 — nonce-in-transcript) ──────
+# SPECIALIST PATH ONLY. The conductor branch already proved ownership by its own
+# means and RETURNED above (Step 8/9, `exit 0` at the end of the conductor block),
+# so control only reaches here for a specialist SPAWN-TOKEN-EVENT.
+#
+# The hole this closes: Steps 3+5 attribute a subagent purely because its first
+# user message text contains "RUN_DIR: <this run>" + "Attempt ID: <role>-<n>".
+# Any same-run subagent that echoed/quoted the spawn prompt (a nested helper, a
+# re-spawn reusing the slug, a self-run analysis spawn that read log.md) is
+# attributed — ownership-by-mention (class #22), still open for SPECIALIST tokens.
+# This gate is the capture-time identity check conductor-stop.sh already has: it
+# proves the subagent really carries THIS run's SECRET nonce, which lives ONLY in
+# the run's pointer file and the transcripts of sessions genuinely spawned for the
+# run (the Conductor puts it in the `Run nonce:` line of every specialist prompt —
+# orchestrator.md). The nonce is NEVER in log.md, so a log-reader cannot forge it.
+#
+# Nonce source = the existing per-run nonce from the pointer (reuse, mirroring
+# conductor-stop — NOT a fresh per-spawn nonce, which would need the registry the
+# idea forbids). RESIDUAL: the run nonce is shared across a run's specialists, so
+# it does NOT by itself distinguish specialist-A from specialist-B within one run;
+# that residual is owned by account-tokens.sh's kept attempt_id->agent_id 1:1
+# dedup (fixture 157, defense-in-depth), NOT by this gate. (docs/run-accounting.md)
+#
+# Pointer resolution reuses the #25 precedence EXACTLY as conductor-stop Step A.5:
+#   1. BUREAU_POINTER_FILE set (non-empty) -> that one file (forced single-file).
+#   2. Else -> directory mode: BUREAU_POINTER_DIR (default ~/.novadiem/active-runs)
+#      keyed by the munged $run_dir (sed 's#[/.]#-#g', same munge orchestrator.md
+#      /account-run.sh write with). subagent-stop.sh already knows the exact
+#      $run_dir from the transcript, so it addresses the pointer DIRECTLY by key —
+#      no directory enumeration and no ownership-select loop (simpler than
+#      conductor-stop, which must DISCOVER which run it is).
+#
+# Three states, decided in this order (Q4):
+#   1. Pointer resolves AND has a non-empty .nonce (normal, every live run):
+#      the nonce MUST be present in the transcript. Present -> attribute.
+#      ABSENT -> REJECT (do not append, exit 0). This is the closed gate.
+#   2. Pointer does NOT resolve at all (file absent for $run_dir): legacy/archived
+#      run, no pointer to verify against -> fail-OPEN, attribute by mention as
+#      before, with a stderr note. SAFE: a foreign subagent cannot REMOVE the
+#      pointer (only the run lifecycle writes/removes it), so it can never force
+#      this carve-out on a live run; a live run always hits state 1.
+#   3. Pointer resolves but .nonce is empty/malformed (corrupt pointer): fold into
+#      state-2 fail-open (a pointer with no usable nonce is effectively no pointer)
+#      so a corrupt pointer degrades to accept-by-mention, not silent data loss.
+#
+# The distinguisher for the carve-out is POINTER EXISTENCE, never "nonce absent
+# from transcript" — keying the fallback on transcript content would reopen the
+# hole (a foreigner would just omit the nonce and take the fallback).
+_ptr_pointer_file=""
+if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+  # FORCED single-file mode — legacy path, same as conductor-stop.
+  _ptr_pointer_file="$BUREAU_POINTER_FILE"
+else
+  _ptr_pointer_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
+  _ptr_key=$(printf '%s' "$run_dir" | sed 's#[/.]#-#g')   # munge / and . -> -
+  _ptr_pointer_file="$_ptr_pointer_dir/$_ptr_key"
+fi
+
+if [ -f "$_ptr_pointer_file" ]; then
+  # Pointer exists → read its nonce.
+  _ptr_nonce=$(jq -r '.nonce // empty' "$_ptr_pointer_file" 2>/dev/null) || _ptr_nonce=""
+  if [ -n "$_ptr_nonce" ]; then
+    # State 1 — the gate is CLOSED. The nonce MUST be in this subagent's own
+    # transcript. -qF (fixed string), byte-identical to conductor-stop's grep.
+    if grep -qF -- "$_ptr_nonce" "$transcript_path" 2>/dev/null; then
+      : # OWNED — fall through to the SPECIALIST BRANCH and append as today.
+    else
+      # FOREIGN — the subagent read RUN_DIR (Step 3 matched) but never received
+      # the nonce. Do NOT append. Hooks always exit 0.
+      echo "[subagent-stop] specialist ownership gate: nonce for RUN_DIR $run_dir not found in subagent transcript — not attributing (foreign/duplicate subagent or un-migrated in-flight run)" >&2
+      exit 0
+    fi
+  else
+    # State 3 — pointer present but nonce empty/malformed → fold into fail-open.
+    echo "[subagent-stop] specialist ownership gate: pointer for RUN_DIR $run_dir has no usable nonce — attributing by mention (corrupt-pointer fail-open)" >&2
+  fi
+else
+  # State 2 — no pointer for this run (legacy/archived) → fail-open by mention.
+  echo "[subagent-stop] specialist ownership gate: no pointer file for RUN_DIR $run_dir — attributing by mention (pointer-less legacy/archived run fail-open)" >&2
+fi
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  SPECIALIST BRANCH (unchanged) — compose a SPAWN-TOKEN-EVENT line.
 # ═══════════════════════════════════════════════════════════════════════════

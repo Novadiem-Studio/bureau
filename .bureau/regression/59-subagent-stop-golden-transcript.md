@@ -6,10 +6,20 @@ command: |
   mkdir -p "$RUN_PATH"
   touch "$RUN_PATH/log.md"
 
+  # #27 specialist ownership gate: write a per-run pointer (munged RUN_DIR key)
+  # carrying a nonce, and put that nonce in the spawn prompt so the gate opens
+  # (state 1: pointer present + nonce present in transcript → attribute).
+  export BUREAU_POINTER_DIR="$TMPF/active-runs"
+  mkdir -p "$BUREAU_POINTER_DIR"
+  NONCE="golden-nonce-$(date +%s)-abcdef"
+  PTR_KEY=$(printf '%s' "$RUN_PATH" | sed 's#[/.]#-#g')
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"2026-07-11T00:00:00Z","project_dir":"%s"}\n' \
+    "$RUN_PATH" "$NONCE" "$TMPF" > "$BUREAU_POINTER_DIR/$PTR_KEY"
+
   # Real Claude Code schema: {"type":"user","message":{"role":"user","content":"<string>"}}
-  # Spawn prompt: RUN_DIR + Attempt ID
-  jq -cn --arg run_path "$RUN_PATH" \
-    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $run_path + "\nAttempt ID: mage-1\n")}}' \
+  # Spawn prompt: RUN_DIR + Attempt ID + Run nonce
+  jq -cn --arg run_path "$RUN_PATH" --arg nonce "$NONCE" \
+    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $run_path + "\nAttempt ID: mage-1\nRun nonce: " + $nonce + "\n")}}' \
     > "$TMPF/golden-transcript.jsonl"
 
   # msg-A: 3 lines (identical cumulative usage), one tool_use block

@@ -5,10 +5,19 @@ command: |
   RUN_PATH="$TMPF/run"
   mkdir -p "$RUN_PATH"
   touch "$RUN_PATH/log.md"
+  # #27 ownership gate keys on the pointer/nonce, NOT on Attempt ID — so a
+  # no-attempt-id-but-OWNED subagent still passes the gate and still emits its
+  # (attempt_id null + _note) SPAWN-TOKEN-EVENT. Provide the pointer + nonce.
+  export BUREAU_POINTER_DIR="$TMPF/active-runs"
+  mkdir -p "$BUREAU_POINTER_DIR"
+  NONCE="no-attempt-nonce-$(date +%s)-aabbcc"
+  PTR_KEY=$(printf '%s' "$RUN_PATH" | sed 's#[/.]#-#g')
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"2026-07-11T00:00:00Z","project_dir":"%s"}\n' \
+    "$RUN_PATH" "$NONCE" "$TMPF" > "$BUREAU_POINTER_DIR/$PTR_KEY"
   # Real Claude Code schema: {"type":"user","message":{"role":"user","content":"<string>"}}
-  # Transcript: first message has RUN_DIR but NO "Attempt ID:" line
-  jq -cn --arg run_path "$RUN_PATH" \
-    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $run_path + "\nInstructions without attempt id")}}' \
+  # Transcript: first message has RUN_DIR + Run nonce but NO "Attempt ID:" line
+  jq -cn --arg run_path "$RUN_PATH" --arg nonce "$NONCE" \
+    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $run_path + "\nRun nonce: " + $nonce + "\nInstructions without attempt id")}}' \
     > "$TMPF/t.jsonl"
   printf '%s\n' '{"type":"assistant","message":{"id":"msg-X","usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3},"content":[{"type":"text"}]}}' \
     >> "$TMPF/t.jsonl"

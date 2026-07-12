@@ -7,12 +7,21 @@ command: |
   touch "$RUN_PATH/log.md"
   echo '{"accounting":{"status":"complete"}}' > "$RUN_PATH/state.json"
 
-  # Adversarial first user message: carries RUN_DIR + Attempt ID (a real
+  # #27 ownership gate: pointer (munged RUN_DIR key) with nonce + nonce in prompt,
+  # so this real specialist passes the gate and still emits its SPAWN-TOKEN-EVENT.
+  export BUREAU_POINTER_DIR="$TMPF/active-runs"
+  mkdir -p "$BUREAU_POINTER_DIR"
+  NONCE="plain-spec-nonce-$(date +%s)-778899"
+  PTR_KEY=$(printf '%s' "$RUN_PATH" | sed 's#[/.]#-#g')
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"2026-07-11T00:00:00Z","project_dir":"%s"}\n' \
+    "$RUN_PATH" "$NONCE" "$TMPF" > "$BUREAU_POINTER_DIR/$PTR_KEY"
+
+  # Adversarial first user message: carries RUN_DIR + Attempt ID + Run nonce (a real
   # specialist spawn) AND mentions the word "conductor" in prose, but NO
   # anchored `BUREAU_ROLE: conductor` line. The anchored-exact grep must NOT
   # match the prose mention.
-  jq -cn --arg rp "$RUN_PATH" \
-    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $rp + "\nRole mode: feature\nAttempt ID: mage-1\nReview the Conductor'"'"'s plan and report to the conductor loop.\n")}}' \
+  jq -cn --arg rp "$RUN_PATH" --arg nonce "$NONCE" \
+    '{"type":"user","message":{"role":"user","content":("RUN_DIR: " + $rp + "\nRole mode: feature\nAttempt ID: mage-1\nRun nonce: " + $nonce + "\nReview the Conductor'"'"'s plan and report to the conductor loop.\n")}}' \
     > "$TMPF/t.jsonl"
   printf '%s\n' \
     '{"type":"assistant","message":{"id":"msg-A","usage":{"input_tokens":100,"cache_creation_input_tokens":200,"cache_read_input_tokens":300,"output_tokens":10},"content":[{"type":"tool_use"}]}}' \

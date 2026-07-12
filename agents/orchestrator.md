@@ -193,9 +193,10 @@ WORKTREE: <absolute worktree path — build/execute prompts only; omit for plann
 Workflow: <selected workflow id>
 Role mode: <mode for this spawn, e.g. feature, execute-plan, design-build, brief, ingest, review>
 Attempt ID: <role>-<attempt>
+Run nonce: <this run's secret nonce — copy verbatim from the run's pointer file>
 ```
 
-The `Attempt ID:` line is the literal string `scripts/subagent-stop.sh` greps from the spawn prompt to pair the spawn's `SPAWN-TOKEN-EVENT` record to its `SPAWN-EVENT`; omit it and the spawn's tokens land unattributed in `tokens.unattributed_records`.
+The `Attempt ID:` line is the literal string `scripts/subagent-stop.sh` greps from the spawn prompt to pair the spawn's `SPAWN-TOKEN-EVENT` record to its `SPAWN-EVENT`; omit it and the spawn's tokens land unattributed in `tokens.unattributed_records`. The `Run nonce:` line carries this run's secret nonce (the value in the run's pointer file, enrolled at run-start — see "At run start" below); `scripts/subagent-stop.sh` greps it from the subagent's transcript to prove the subagent was really spawned for THIS run before attributing its `SPAWN-TOKEN-EVENT` (specialist ownership gate — idea #27). Without it a same-run subagent that merely echoed the spawn prompt (a nested helper, a re-spawn quoting the slug, a self-run analysis spawn) would be attributed by mention alone. **Copy it verbatim into every specialist spawn prompt's first user message ONLY — NEVER write the nonce to `log.md`, and NEVER echo it in a `SPAWN-EVENT` line** (either reopens the ownership-by-mention hole: a log-reader could forge it). The nonce lives only in the pointer file and the transcripts of sessions genuinely spawned for the run.
 
 ```
 1. Read in full and adopt as your role:
@@ -436,6 +437,7 @@ Seven required keys: `role`, `agent`, `configured_model`, `actual_model`, `attem
 - **started line** gains: `"at": "<ISO-8601 UTC — $(date -u +%Y-%m-%dT%H:%M:%SZ)>"` and optionally `"rework": true` (see rework rule below; omit the key if false).
 - **terminal line** gains: `"at": "<ISO-8601 UTC>"` and `"started_at": "<the started line's at value, carried forward>"`.
 - `duration_s`, `turns`, and `tokens` are **NOT** on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook (`docs/run-accounting.md § B2`).
+- **The run nonce is NEVER on a SPAWN-EVENT line or anywhere in `log.md`** — the seven required keys carry no nonce; keep it that way. The `Run nonce:` value goes in the specialist's spawn prompt ONLY (it is the secret the #27 ownership gate greps from the subagent's transcript); putting it on any log line would reopen the ownership-by-mention hole (a `log.md`-reader could forge it).
 
 **Rework flag rule ("redo, not re-sequence"):** Set `rework: true` on the **started** line ONLY when this spawn REDOES a deliverable an earlier spawn already attempted — specifically: a Challenger-blocker re-spawn (the Architect re-spawned to fix blockers on spec.md/plan.md it already produced), a retried failed or no-handoff spawn, or a corrected-design re-spawn. `rework` is NEVER set on a role's first build of any deliverable, even if it is that role's Nth spawn of the run. A role spawned on successive distinct prompts — e.g. the Mage building prompts 5, 6, 7 in sequence (attempt 1/2/3, each a first build of a different prompt) — is NOT rework. Rule: flag the spawn that re-does a deliverable — never the reviewer that triggered the redo, and never the Nth first-build in a sequence.
 
