@@ -145,6 +145,46 @@ now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # ── Step 8: Compose the event line — fork on the Step 4.5 classification ──────
 if [ "$is_conductor" = "true" ]; then
+  # ── Step 8.0: Conductor ownership gate (Finding 1 — audit round 2) ──────────
+  # The `BUREAU_ROLE: conductor` marker (Step 4.5) is a PUBLIC anchored line in the
+  # Delegate's spawn prompt. On its own it proves nothing: a foreign transcript that
+  # merely carries `RUN_DIR: <this run>` + `BUREAU_ROLE: conductor` (both public,
+  # both echo-able) would be attributed as the Conductor — the dominant cost bucket.
+  # The #27 nonce gate (Step 4.7) is SPECIALIST-ONLY and never reached here, so this
+  # branch was ungated. Close it with the exact conductor credential.
+  #
+  # Credential = delegate-state.json#conductor_agent_id (written by agents/delegate.md
+  # step 2, immediately after it spawns the Conductor subagent; an archived v2 run
+  # shows "conductor_agent_id":"a99267bdd8d314cc3"). NOT the run nonce: the Delegate's
+  # conductor spawn prompt has NO `Run nonce:` line, and the run nonce is shared across
+  # specialists — a nonce grep would FALSE-REJECT the real Conductor. conductor_agent_id
+  # is the one field that names THIS subagent's own agent_id (already read at Step 6).
+  #
+  # Three states (mirror the #27 specialist gate's pointer-existence carve-out):
+  #   1. delegate-state.json present, readable, non-empty .conductor_agent_id →
+  #      the gate is CLOSED: our own $agent_id MUST equal it. Equal → proceed.
+  #      Differ → FOREIGN: emit NOTHING (no CONDUCTOR event, and do NOT fall through
+  #      to attribute as a specialist either), stderr note + exit 0.
+  #   2/3. delegate-state.json ABSENT / unreadable / lacks conductor_agent_id (a
+  #      legacy / pre-v2 run — which has no conductor-subagent to impersonate anyway)
+  #      → fail-OPEN: proceed as today. A missing credential must not reject the one
+  #      real capture path a legacy run has. The distinguisher is credential EXISTENCE,
+  #      never "$agent_id mismatch", so a foreigner cannot force the carve-out.
+  _cond_expected_agent_id=""
+  if [ -r "$run_dir/delegate-state.json" ]; then
+    _cond_expected_agent_id=$(jq -r '.conductor_agent_id // empty' "$run_dir/delegate-state.json" 2>/dev/null) || _cond_expected_agent_id=""
+  fi
+  if [ -n "$_cond_expected_agent_id" ]; then
+    # State 1 — gate CLOSED. Require identity match.
+    if [ "$agent_id" != "$_cond_expected_agent_id" ]; then
+      echo "[subagent-stop] conductor ownership gate: agent_id '$agent_id' != delegate-state.json conductor_agent_id '$_cond_expected_agent_id' for RUN_DIR $run_dir — not attributing as Conductor (foreign transcript carrying only the public BUREAU_ROLE marker)" >&2
+      exit 0
+    fi
+  else
+    # State 2/3 — no conductor_agent_id credential (legacy/pre-v2 run) → fail-open.
+    echo "[subagent-stop] conductor ownership gate: no conductor_agent_id in delegate-state.json for RUN_DIR $run_dir — attributing by marker (pre-v2/legacy run fail-open)" >&2
+  fi
+
   # ═════════════════════════════════════════════════════════════════════════
   #  CONDUCTOR BRANCH — emit a CONDUCTOR-TOKEN-EVENT (baseline/delta), not a
   #  SPAWN-TOKEN-EVENT. The Conductor subagent is resumed at every checkpoint,
@@ -314,9 +354,15 @@ if [ "$is_conductor" = "true" ]; then
 fi
 
 # ── Step 4.7: Specialist ownership gate (idea #27 — nonce-in-transcript) ──────
-# SPECIALIST PATH ONLY. The conductor branch already proved ownership by its own
-# means and RETURNED above (Step 8/9, `exit 0` at the end of the conductor block),
-# so control only reaches here for a specialist SPAWN-TOKEN-EVENT.
+# SPECIALIST PATH ONLY. The conductor branch proved ownership by its own means —
+# the Step 8.0 conductor ownership gate (audit round 2): $agent_id must equal
+# delegate-state.json#conductor_agent_id, or, on a pre-v2/legacy run with no
+# delegate-state credential, it fails open — and then RETURNED above (`exit 0` at
+# the end of the conductor block). So control only reaches here for a specialist
+# SPAWN-TOKEN-EVENT. (The conductor branch does NOT use this specialist nonce gate:
+# the Delegate's conductor spawn prompt carries no `Run nonce:` line and the run
+# nonce is shared across specialists, so a nonce grep would false-reject the real
+# Conductor — conductor_agent_id is the exact per-subagent credential instead.)
 #
 # The hole this closes: Steps 3+5 attribute a subagent purely because its first
 # user message text contains "RUN_DIR: <this run>" + "Attempt ID: <role>-<n>".
