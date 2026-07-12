@@ -91,11 +91,27 @@ EVENT_LINE=$(printf '%s' "$ENVELOPE" | jq -c \
         _note: "reviewer envelope had no .usage block — emitted zero-token event so the spawn is not silently uncounted"
       }
     else
-      ($u.input_tokens // 0)                as $in  |
-      ($u.cache_creation_input_tokens // 0) as $cc  |
-      ($u.cache_read_input_tokens // 0)     as $cr  |
-      ($u.output_tokens // 0)               as $out |
-      {
+      # B15 (minor): `numbers // 0`, NOT `// 0`. `//` only substitutes on
+      # null/false/empty — a STRING field (e.g. "input_tokens":"1234") passes through
+      # `// 0` unchanged, then the `$in + $cc + $cr` add throws "string and number
+      # cannot be added", the whole per-envelope jq fails, EVENT_LINE goes empty, and
+      # the line-116 fallback emits an all-zero event with the WRONG note ("not
+      # parseable JSON" — but the envelope WAS parseable), discarding the good sibling
+      # fields. `numbers // 0` coerces a non-number field to 0 INLINE: the add never
+      # crashes, the good siblings (cache_creation, cache_read, output) survive, and
+      # processed is derived correctly. A coerced field is surfaced via _note below
+      # instead of being silently zeroed — but the envelope is NOT collapsed.
+      ($u.input_tokens                | numbers // 0) as $in  |
+      ($u.cache_creation_input_tokens | numbers // 0) as $cc  |
+      ($u.cache_read_input_tokens     | numbers // 0) as $cr  |
+      ($u.output_tokens               | numbers // 0) as $out |
+      # Which of the four usage fields were PRESENT but non-numeric (coerced to 0)?
+      ([ (if (($u.input_tokens // null) != null) and (($u.input_tokens | type) != "number") then "input_tokens" else empty end),
+         (if (($u.cache_creation_input_tokens // null) != null) and (($u.cache_creation_input_tokens | type) != "number") then "cache_creation_input_tokens" else empty end),
+         (if (($u.cache_read_input_tokens // null) != null) and (($u.cache_read_input_tokens | type) != "number") then "cache_read_input_tokens" else empty end),
+         (if (($u.output_tokens // null) != null) and (($u.output_tokens | type) != "number") then "output_tokens" else empty end)
+       ]) as $coerced |
+      ({
         checkpoint: $checkpoint,
         at: $at,
         turns: $turns,
@@ -108,6 +124,9 @@ EVENT_LINE=$(printf '%s' "$ENVELOPE" | jq -c \
         },
         spawn_id: $spawn_id
       }
+      + (if ($coerced | length) > 0
+         then {_note: ("non-numeric usage field(s) coerced to zero: " + ($coerced | join(", ")) + " — good sibling fields preserved")}
+         else {} end))
     end
   ' 2>/dev/null)
 
