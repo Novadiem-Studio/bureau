@@ -665,6 +665,21 @@ def normalize_event:
    else 0 end) as $total_loops
 
 # --- checkpoints: pair raised/resolved by id, derive wait_s -------------------
+# OQ-2 (the F1 sibling): checkpoints group_by(.id) and pair raised↔resolved on .id.
+# A malformed (non-string) checkpoint .id would group_by(null) and collapse two
+# distinct malformed checkpoints into one (same failure as F1's spawn_id), and a
+# malformed id feeding a downstream object key could crash. Apply the SAME isolate
+# primitive: a PRESENT-but-wrong-typed .id → a distinct synthetic string key
+# `__malformed__id__<ord>` (ord = pre-group index, taken here before any group_by so
+# it is unique); an absent/valid-string id is kept verbatim (byte-identity on valid
+# input — a clean checkpoint corpus is unchanged). Lower stakes than the token streams
+# (wait_s, not token cost), so no confidence downgrade — just no-collapse + no-crash.
+| ($checkpoints
+   | to_entries
+   | map(.value
+         + {id: (if (.value.id | type) == "string" then .value.id
+                   elif (.value.id == null) then null
+                   else "__malformed__id__\(.key)" end)})) as $checkpoints
 | ($checkpoints | map(select(.status == "raised"))   | group_by(.id) | map(.[0])) as $raised
 | ($checkpoints | map(select(.status == "resolved"))) as $resolved
 | ($raised | map(
