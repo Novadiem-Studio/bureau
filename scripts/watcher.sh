@@ -319,6 +319,7 @@ process_request() {
   # no-op inside the gate (exit 0, no file); the guard here keeps the routine path
   # from spawning the subprocess at all, preserving v1 behavior.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
+    gate_err="$CHECKPOINTS_DIR/$NN.gate-err.log"
     sh "$SCRIPT_DIR/integration-gate.sh" \
       --checkpoint-type   "$REQ_CHECKPOINT_TYPE" \
       --worktree-path     "$REQ_WORKTREE_PATH" \
@@ -326,7 +327,30 @@ process_request() {
       --claimed-gates     "$REQ_CLAIMED_GATES_RAW" \
       --known-flaky-gates "$REQ_KNOWN_FLAKY_RAW" \
       --state-json        "$RUN_DIR/state.json" \
-      --out               "$CTX"
+      --out               "$CTX" 2> "$gate_err"
+    gate_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+      # #28 — CONSUME the gate exit code. integration-gate.sh fails CLOSED
+      # (exit 2, no file written) on a write failure (fixture 154). Spawning a
+      # reviewer now would review missing/partial evidence, so this is a hard
+      # stop for THIS checkpoint: escalate with the gate's own reason (the same
+      # notify+poison idiom the spawn-failure ceiling uses at ~411), and RETURN
+      # before staging the Delegate spawn. Do NOT bump failcount — that counter
+      # bounds retriable reviewer-spawn hiccups (~397-416); a gate fail-closed is
+      # not retriable, it is poison-marked once. Over-escalation guard: only a
+      # NON-ZERO gate exit reaches here — a routine checkpoint never enters this
+      # `if` block (REQ_CHECKPOINT_TYPE guard), and a successful gate (exit 0,
+      # file written) proceeds to the normal reviewer/verdict path below.
+      gate_reason="$(tail -1 "$gate_err" 2>/dev/null)"
+      echo "watcher: integration-gate.sh exited $gate_rc for $NN — escalating, not spawning reviewer" >&2
+      sh "$SCRIPT_DIR/notify-escalation.sh" "$NN" "$RUN_DIR" \
+        "integration gate failed closed (exit $gate_rc) for checkpoint $NN: ${gate_reason:-no reason captured} — attended intervention needed" \
+        || true
+      : > "$failed_marker"
+      rm -rf "$CTX"
+      rm -rf "$lock_dir"
+      return
+    fi
   fi
 
   # ── build the task prompt (names files by ABSOLUTE $CTX path; never log.md) ─

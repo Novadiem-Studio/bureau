@@ -350,6 +350,11 @@ Escalate on — and ONLY on — one of these signals. If none applies, do not es
 8. Unexpected scope expansion, or a change overlapping Robin's unrelated work.
 9. The Conductor is on a spec-compliant but doctrine-violating path (over-engineering, or
    machinery a convention already covers).
+10. The integration gate for this checkpoint failed to produce evidence — a non-zero
+    `integration-gate.sh` exit, or an absent `integration-results.json` when an integration gate
+    was requested. (Do not escalate on a *present* results file carrying an ordinary red gate —
+    that is a `revise`/`escalate` decided by the five-step verifying checklist, not a gate
+    failure.)
 
 ## Verdict
 
@@ -379,6 +384,18 @@ read scope (v1: `NN-request.md`; v2: the CONDUCTOR-RETURN block) — neither is 
 The watcher writes `integration-results.json` ONLY for integration checkpoints, so
 present ⇒ verifying mode; absent ⇒ run the existing critic checklist above unchanged
 (FR-B14-10). Do NOT check for `checkpoint-type` in any staged file to determine mode.
+
+**Gate-failure is an escalate, not a degrade.** This "absent ⇒ routine" degrade applies ONLY
+when integration mode was **not** requested for this checkpoint. When THIS checkpoint's
+`checkpoint-subtype` is `integration` (the manager requested an integration gate — you read this
+from the CONDUCTOR-RETURN block in the manager step that ran the gate, not from `$CTX`), a
+**non-zero exit from `integration-gate.sh`** OR an **absent `integration-results.json`** is NOT a
+signal to fall back to the routine critic checklist. It means the gate failed to produce evidence.
+Emit `escalate` with `Escalation`: "integration gate failed to produce evidence (non-zero exit or
+missing results file) — cannot verify integration; attended intervention needed." Do not run the
+routine checklist and do not emit `proceed`/`revise`. This is escalation signal 10; the
+over-escalation carve-out (a *present* results file carrying an ordinary red gate is a normal
+`revise`/`escalate` from the verifying checklist, not a gate failure) is stated with that signal.
 
 In verifying mode, your source of truth is `integration-results.json`. You do NOT run
 commands; `--tools "Read"` is unchanged. The watcher ran the canonical gate set and
