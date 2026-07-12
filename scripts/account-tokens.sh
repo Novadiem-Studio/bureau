@@ -170,14 +170,49 @@ def normalize_event:
   | (.tokens | coerce_tokens) as $tk
   # turns: coerce to a number (a string/object/null → 0).
   | (.turns | numbers // 0) as $turns
-  # Type-gate every value later used as a jq object KEY or group_by key.
-  # A non-string attempt_id/agent_id/session_id/spawn_id is ISOLATED: replaced
-  # with null (→ unattributed / a clean null group), never allowed to reach the
-  # spawn_tokens_map reduce as a non-string ("Cannot use object as object key").
-  | (if (.attempt_id | type) == "string" then .attempt_id else null end) as $aid
-  | (if (.agent_id   | type) == "string" then .agent_id   else null end) as $gid
-  | (if (.session_id | type) == "string" then .session_id else null end) as $sid
-  | (if (.spawn_id   | type) == "string" then .spawn_id   else null end) as $pid
+  # $ord = the stable pre-group array index of THIS record within its stream,
+  # threaded in by the rebind (`._ord` set by `to_entries|map(.value+{_ord:.key})`).
+  # It is what makes each synthetic isolate key UNIQUE per record, so two malformed
+  # records in the same stream stay TWO distinct group keys (F1 no-collapse), never
+  # a single shared sink that would re-collapse them. `_ord` is deleted from the
+  # emitted record so it never leaks into downstream reads or the output.
+  | (.["_ord"] // 0) as $ord
+  # ISOLATE, don't coerce-to-null. Every value later used as a jq object KEY or a
+  # group_by key must be a LEGAL, UNIQUE key on a malformed record. A non-string
+  # (or absent) attempt_id/agent_id/session_id/spawn_id is isolated to a DISTINCT
+  # synthetic string key `__malformed__<field>__<ord>`:
+  #   - a legal object key (fixes F3: "Cannot use null/object as object key"), and
+  #   - unique per record (fixes F1: two malformed records no longer group_by(null)
+  #     into ONE bucket — each keeps its own synthetic key).
+  # A valid string id is kept VERBATIM (byte-identity on valid input — the gate).
+  # A PRESENT-but-wrong-typed id (object/number/bool) isolates to a synthetic key.
+  # An ABSENT/null id stays null: it never was a key on this record (a SPAWN-TOKEN-
+  # EVENT has no session_id/spawn_id; a CONDUCTOR has no spawn_id). Keeping null→null
+  # is what preserves byte-identity — every stream's records get exactly the same
+  # null id-fields they got before, only a PRESENT malformed value now becomes a
+  # synthetic string instead of null. The F1 vector (an object spawn_id on a reviewer)
+  # is a present-but-wrong-typed value, so it is caught here. Uniform across all four
+  # keys: wrong-type → synthetic, null → null.
+  | (if (.attempt_id | type) == "string" then .attempt_id
+       elif (.attempt_id == null) then null
+       else "__malformed__attempt_id__\($ord)" end) as $aid
+  | (if (.agent_id   | type) == "string" then .agent_id
+       elif (.agent_id == null) then null
+       else "__malformed__agent_id__\($ord)" end) as $gid
+  | (if (.session_id | type) == "string" then .session_id
+       elif (.session_id == null) then null
+       else "__malformed__session_id__\($ord)" end) as $sid
+  | (if (.spawn_id   | type) == "string" then .spawn_id
+       elif (.spawn_id == null) then null
+       else "__malformed__spawn_id__\($ord)" end) as $pid
+  # $isolated is true when this record's key field was isolated to a synthetic key
+  # (wrong-typed for attempt/agent; wrong-typed OR absent for session/spawn). It is
+  # tagged onto the record and AND'd (via the per-stream $*_isolated flags) into every
+  # confidence gate so a bucket that absorbed an isolated record is never `exact`.
+  | ((($aid | type) == "string" and ($aid | startswith("__malformed__")))
+     or (($gid | type) == "string" and ($gid | startswith("__malformed__")))
+     or (($sid | type) == "string" and ($sid | startswith("__malformed__")))
+     or (($pid | type) == "string" and ($pid | startswith("__malformed__")))) as $isolated
   # Malformed / disagreement breadcrumbs, collected per-event so the pass can
   # surface them. The "stated processed != derived" breadcrumb is the F3 signal:
   # a stored processed (numeric or not) that disagrees with the derived component
@@ -195,14 +230,25 @@ def normalize_event:
        (if ($tk._stated_processed != null) and ($tk._stated_processed != $tk.processed)
           then "stated processed \($tk._stated_processed) != derived \($tk.processed)" else empty end),
        (if ($e.attempt_id != null) and (($e.attempt_id | type) != "string")
-          then "non-string attempt_id isolated to null" else empty end),
+          then "non-string attempt_id isolated to a synthetic key" else empty end),
        (if ($e.agent_id   != null) and (($e.agent_id   | type) != "string")
-          then "non-string agent_id isolated to null" else empty end)
+          then "non-string agent_id isolated to a synthetic key" else empty end),
+       # session_id / spawn_id: extend _norm_note coverage (AC-5). A present-but-
+       # wrong-typed session_id/spawn_id isolates to a synthetic key and is surfaced
+       # (the F1 vector: an object spawn_id on a reviewer).
+       (if ($e.session_id != null) and (($e.session_id | type) != "string")
+          then "non-string session_id isolated to a synthetic key" else empty end),
+       (if ($e.spawn_id   != null) and (($e.spawn_id   | type) != "string")
+          then "non-string spawn_id isolated to a synthetic key" else empty end)
      ]) as $malformed
-  | $e
+  | ($e | del(.["_ord"]))
     + { tokens: ($tk | del(._stated_processed)),
         turns: $turns, attempt_id: $aid, agent_id: $gid,
         session_id: $sid, spawn_id: $pid }
+    # tag the record so the per-stream isolation flags can force any bucket that
+    # absorbed it off `exact`. Only added when actually isolated, so a clean record
+    # is byte-identical.
+    + (if $isolated then { _isolated: true } else {} end)
     # keep the raw _note if the emitter already wrote one (clamp notes etc.);
     # append a normalization breadcrumb (a DISTINCT field, _norm_note, so it never
     # collides with the emitter-written _note the $*_event_notes collectors read)
@@ -215,11 +261,26 @@ def normalize_event:
 # $delegate/$reviewers is lexically inside the shadow and reads normalized data, so
 # the ~40 downstream read-sites are untouched. This block MUST precede any $started/
 # $stok/$cond/$del/$rev binding.
-($spawn_events | map(normalize_event)) as $spawn_events
-| ($spawn_tokens | map(normalize_event)) as $spawn_tokens
-| ($conductor    | map(normalize_event)) as $conductor
-| ($delegate     | map(normalize_event)) as $delegate
-| ($reviewers    | map(normalize_event)) as $reviewers
+#
+# `to_entries | map(.value + {_ord: .key} | normalize_event)` threads the stable
+# pre-group array index into each record as `_ord` (which normalize_event embeds in
+# any synthetic isolate key and then deletes). The index is taken HERE, BEFORE any
+# group_by, so it is unique within the stream — the invariant F1 relies on. On a
+# clean stream `_ord` is set then immediately deleted and no synthetic key is minted,
+# so the emitted records are byte-identical to `map(normalize_event)`.
+($spawn_events | to_entries | map(.value + {_ord: .key} | normalize_event)) as $spawn_events
+| ($spawn_tokens | to_entries | map(.value + {_ord: .key} | normalize_event)) as $spawn_tokens
+| ($conductor    | to_entries | map(.value + {_ord: .key} | normalize_event)) as $conductor
+| ($delegate     | to_entries | map(.value + {_ord: .key} | normalize_event)) as $delegate
+| ($reviewers    | to_entries | map(.value + {_ord: .key} | normalize_event)) as $reviewers
+# Per-stream isolation flags: true when ANY record in the stream was isolated to a
+# synthetic key. AND'd (via `| not`) into each block's confidence gate so a bucket
+# that absorbed a malformed/isolated record is NOT blessed as `exact`. On a clean
+# corpus all four are false, so every confidence string is byte-identical (AC-11).
+| (($reviewers    | map(select(.["_isolated"] == true)) | length) > 0) as $rev_isolated
+| (($conductor    | map(select(.["_isolated"] == true)) | length) > 0) as $cond_isolated
+| (($delegate     | map(select(.["_isolated"] == true)) | length) > 0) as $del_isolated
+| (($spawn_tokens | map(select(.["_isolated"] == true)) | length) > 0) as $spec_isolated
 
 # --- Specialist spawns: started (deduped by attempt_id, first) + terminals ----
 | ($spawn_events | map(select(.status == "started")) | group_by(.attempt_id) | map(.[0])) as $started
@@ -336,11 +397,14 @@ def normalize_event:
 # to "partial" (data present but degraded). Carry the note regardless of zero/non-zero;
 # downgrade ONLY on the zero-with-note case — a legit non-zero clamp note stays exact.
 | (($del_processed == 0) and ($del_event_notes != null)) as $del_zero_with_note
-| (if $all_del_legs_final and ($del_zero_with_note | not) then "exact"
-   elif $all_del_legs_final and $del_zero_with_note then "partial"
+# $del_isolated (a malformed/absent session_id leg isolated to a synthetic key) is
+# AND'd into exact too — an isolated leg is a distinct real cost routed to its own
+# bucket, so the summed block is no longer trustworthy-as-exact.
+| (if $all_del_legs_final and ($del_zero_with_note | not) and ($del_isolated | not) then "exact"
    elif ($delegate | length) > 0 then "partial"
    else "unavailable" end) as $del_conf
 | (if ($all_del_legs_final and $del_zero_with_note) then "delegate block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
+   elif ($del_isolated and ($delegate | length) > 0) then "one or more delegate record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $del_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for the Delegate top session"
    elif $del_conf == "unavailable" then "no DELEGATE-TOKEN-EVENT lines present in log.md yet"
    else null end) as $del_block_note
@@ -368,10 +432,15 @@ def normalize_event:
 # Downgrade to "partial" only on the zero-with-note case; a legit non-zero block with
 # no note stays "exact" byte-unchanged.
 | (($rev_processed == 0) and ($rev_event_notes != null)) as $rev_zero_with_note
-| (if ($reviewers | length) > 0 and ($rev_zero_with_note | not) then "exact"
-   elif ($reviewers | length) > 0 and $rev_zero_with_note then "partial"
+# $rev_isolated (a malformed/absent spawn_id record isolated to a synthetic key —
+# the F1 vector) is AND'd in too: a block that absorbed an isolated reviewer must
+# NOT read exact (the isolated spawn is a distinct real cost that was routed to its
+# own bucket, so the block is no longer a complete, trustworthy sum).
+| (if ($reviewers | length) > 0 and ($rev_zero_with_note | not) and ($rev_isolated | not) then "exact"
+   elif ($reviewers | length) > 0 then "partial"
    else "unavailable" end) as $rev_conf
 | (if ($rev_zero_with_note and ($reviewers | length) > 0) then "reviewer block rolled up to zero tokens but at least one event carried a _note (a missing-usage fallback) — not blessed as exact"
+   elif ($rev_isolated and ($reviewers | length) > 0) then "one or more reviewer record(s) had a malformed/absent spawn_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
    else null end) as $rev_block_note
 
@@ -404,9 +473,15 @@ def normalize_event:
 | ($spec_processed + $cond_processed) as $processed_total
 | ($all_legs_final) as $cond_ok
 | ($n_unmatched == 0) as $spec_ok
-| (if $cond_ok and $spec_ok then "exact" else "partial" end) as $pt_conf
+# A malformed attempt_id/agent_id in the specialist set already routes to
+# $unattributed and is excluded from $spec_processed, so the NUMBER is safe — but a
+# block that isolated a specialist record must not read exact, so fold $spec_isolated
+# (and, for the conductor share, $cond_isolated) into the processed_total gate.
+| (if $cond_ok and $spec_ok and ($spec_isolated | not) and ($cond_isolated | not) then "exact" else "partial" end) as $pt_conf
 | ([ (if ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md" else empty end),
      (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
+     (if $spec_isolated then "one or more specialist record(s) had a malformed attempt_id/agent_id — isolated to a distinct synthetic key and routed to unattributed; processed_total not blessed as exact" else empty end),
+     (if $cond_isolated then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic key; processed_total not blessed as exact" else empty end),
      (if $processed_identity_note != null then $processed_identity_note else empty end)
    ]) as $pt_notes
 
@@ -416,11 +491,13 @@ def normalize_event:
 # degraded). Carry the event note regardless; downgrade ONLY on the zero-with-note
 # case, so a legit non-zero clamp note stays "exact" and byte-unchanged.
 | (($cond_processed == 0) and ($cond_event_notes != null)) as $cond_zero_with_note
-| (if $all_legs_final and ($cond_zero_with_note | not) then "exact"
-   elif $all_legs_final and $cond_zero_with_note then "partial"
+# $cond_isolated (a malformed/absent session_id leg isolated to a synthetic key) is
+# AND'd into exact — an isolated leg is a distinct real cost routed to its own bucket.
+| (if $all_legs_final and ($cond_zero_with_note | not) and ($cond_isolated | not) then "exact"
    elif ($conductor | length) > 0 then "partial"
    else "unavailable" end) as $cond_conf
 | (if ($all_legs_final and $cond_zero_with_note) then "conductor block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
+   elif ($cond_isolated and ($conductor | length) > 0) then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
    elif $cond_conf == "unavailable" then "no CONDUCTOR-TOKEN-EVENT lines present in log.md yet"
    else null end) as $cond_block_note
@@ -632,7 +709,19 @@ def normalize_event:
    + $stok_collisions) as $unattributed
 
 # --- spawn_tokens map keyed by attempt_id (for account-run.sh Step 6.6) -------
-| (reduce $pairs[] as $sp ({};
+# §1.3 (F3): the reduce keys on $sp.attempt_id. Two guards on the input $pairs:
+#   1. `select(.attempt_id != null)` — defensive: even a future path that reintroduces
+#      a null key SKIPS rather than throwing "Cannot use null as object key".
+#   2. `select((.attempt_id | startswith("__malformed__")) | not)` — a started spawn
+#      whose attempt_id was isolated to a synthetic key must NOT be published as a real
+#      spawn_tokens map entry (account-run.sh's STEP A2 would pair it to a specialist
+#      row). It contributes 0 to the map, is noted, and is already surfaced via
+#      $unattributed / $norm_events. (On a clean corpus every attempt_id is a real
+#      string that does not start with "__malformed__", so the filter is a no-op and
+#      the map is byte-identical.)
+| (reduce ($pairs[]
+          | select(.attempt_id != null)
+          | select((.attempt_id | startswith("__malformed__")) | not)) as $sp ({};
     . + {
       ($sp.attempt_id): (
         ($stok | map(select(.attempt_id == $sp.attempt_id)) | max_by((.tokens | objects | .processed) // 0)) as $tok
