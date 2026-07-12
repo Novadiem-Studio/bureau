@@ -227,6 +227,12 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($cond | map((.tokens | objects | .processed) // 0)      | add // 0) as $cond_processed
 | ($cond | map((.tokens | objects | .output) // 0)         | add // 0) as $cond_output
 | ($cond | map(.turns // 0)                 | add // 0) as $cond_turns
+# Audit r2 (F3): carry each conductor event's own `._note` (e.g. a clamp note from
+# compute_delta_line: "clamped input (raw 100 < baseline 999) to 0") from the
+# deduped set into the block. The emitters write these correctly; the consumer must
+# SURFACE them, never silently drop. Collect over $cond (the take-max set actually
+# summed). Joined string, or null if no event carried a note.
+| ($cond | map(._note // empty) | if length > 0 then join("; ") else null end) as $cond_event_notes
 
 # --- DELEGATE-TOKEN-EVENT (#26a): mirror of the conductor block ----------------
 # Same shape as CONDUCTOR: dedup per session_id take-max on processed, sum across
@@ -243,10 +249,19 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($del | map((.tokens | objects | .processed) // 0)      | add // 0) as $del_processed
 | ($del | map((.tokens | objects | .output) // 0)         | add // 0) as $del_output
 | ($del | map(.turns // 0)                                | add // 0) as $del_turns
-| (if $all_del_legs_final then "exact"
+# Audit r2 (F3): carry each delegate event's own `._note` (clamp note) — same as conductor.
+| ($del | map(._note // empty) | if length > 0 then join("; ") else null end) as $del_event_notes
+# Confidence: exact only when all legs final AND not (zero-tokens-with-note). A clamp
+# note that rolled the block to zero must NOT be blessed as exact (audit r2 F3): downgrade
+# to "partial" (data present but degraded). Carry the note regardless of zero/non-zero;
+# downgrade ONLY on the zero-with-note case — a legit non-zero clamp note stays exact.
+| (($del_processed == 0) and ($del_event_notes != null)) as $del_zero_with_note
+| (if $all_del_legs_final and ($del_zero_with_note | not) then "exact"
+   elif $all_del_legs_final and $del_zero_with_note then "partial"
    elif ($delegate | length) > 0 then "partial"
    else "unavailable" end) as $del_conf
-| (if $del_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for the Delegate top session"
+| (if ($all_del_legs_final and $del_zero_with_note) then "delegate block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
+   elif $del_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for the Delegate top session"
    elif $del_conf == "unavailable" then "no DELEGATE-TOKEN-EVENT lines present in log.md yet"
    else null end) as $del_block_note
 
@@ -263,9 +278,21 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
 | ($rev | map((.tokens | objects | .processed) // 0)      | add // 0) as $rev_processed
 | ($rev | map((.tokens | objects | .output) // 0)         | add // 0) as $rev_output
 | ($rev | map(.turns // 0)                                | add // 0) as $rev_turns
-# Each one-shot is complete by construction, so any present reviewer line is exact.
-| (if ($reviewers | length) > 0 then "exact" else "unavailable" end) as $rev_conf
-| (if $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
+# Audit r2 (F2): carry each reviewer event's own `._note` — append-reviewer-tokens.sh
+# writes one on a `.usage`-less envelope ("reviewer envelope had no .usage block …").
+# The consumer must SURFACE it, never drop. Collect over $rev (the summed set).
+| ($rev | map(._note // empty) | if length > 0 then join("; ") else null end) as $rev_event_notes
+# Each one-shot is complete by construction, so a present reviewer line is exact —
+# UNLESS the block rolled up to zero tokens AND at least one event carried a _note (a
+# missing-usage fallback): a zero-washed-as-exact is exactly the bug (audit r2 F2).
+# Downgrade to "partial" only on the zero-with-note case; a legit non-zero block with
+# no note stays "exact" byte-unchanged.
+| (($rev_processed == 0) and ($rev_event_notes != null)) as $rev_zero_with_note
+| (if ($reviewers | length) > 0 and ($rev_zero_with_note | not) then "exact"
+   elif ($reviewers | length) > 0 and $rev_zero_with_note then "partial"
+   else "unavailable" end) as $rev_conf
+| (if ($rev_zero_with_note and ($reviewers | length) > 0) then "reviewer block rolled up to zero tokens but at least one event carried a _note (a missing-usage fallback) — not blessed as exact"
+   elif $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
    else null end) as $rev_block_note
 
 # --- F3 (audit): re-derive `processed`, do not trust the field verbatim -------
@@ -306,10 +333,17 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
    ]) as $pt_notes
 
 # conductor_tokens block confidence
-| (if $all_legs_final then "exact"
+# Audit r2 (F3): a clamp `_note` (e.g. all fields clamped to 0) that rolls the block
+# to zero tokens must NOT wear "exact" — downgrade to "partial" (data present but
+# degraded). Carry the event note regardless; downgrade ONLY on the zero-with-note
+# case, so a legit non-zero clamp note stays "exact" and byte-unchanged.
+| (($cond_processed == 0) and ($cond_event_notes != null)) as $cond_zero_with_note
+| (if $all_legs_final and ($cond_zero_with_note | not) then "exact"
+   elif $all_legs_final and $cond_zero_with_note then "partial"
    elif ($conductor | length) > 0 then "partial"
    else "unavailable" end) as $cond_conf
-| (if $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
+| (if ($all_legs_final and $cond_zero_with_note) then "conductor block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
+   elif $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
    elif $cond_conf == "unavailable" then "no CONDUCTOR-TOKEN-EVENT lines present in log.md yet"
    else null end) as $cond_block_note
 
@@ -346,18 +380,24 @@ def tsnum: if type == "string" then (try fromdateiso8601 catch null) else null e
    else null end) as $rev_gap_note
 
 # --- FR 5: merge cond-block note + suspicious note + v2-gap note (can co-fire) --
+# Audit r2 (F3): $cond_event_notes (each event's own clamp `_note`) is folded in here
+# too, so a clamp warning SURFACES on the block instead of being silently dropped.
 | ([
     (if $cond_block_note != null then $cond_block_note else empty end),
+    (if $cond_event_notes != null then $cond_event_notes else empty end),
     (if $suspicious_note != null then $suspicious_note else empty end),
     (if $v2_gap_note != null then $v2_gap_note else empty end)
   ] | if length > 0 then join("; ") else null end) as $combined_note
 
-# Merge each sibling block's own note with its gap note (each on its OWN block).
-| ([ (if $del_block_note != null then $del_block_note else empty end),
-     (if $del_gap_note   != null then $del_gap_note   else empty end)
+# Merge each sibling block's own note with its gap note AND its event-level `_note`s
+# (audit r2 F2/F3) — each on its OWN block, each surfaced.
+| ([ (if $del_block_note  != null then $del_block_note  else empty end),
+     (if $del_event_notes != null then $del_event_notes else empty end),
+     (if $del_gap_note    != null then $del_gap_note    else empty end)
    ] | if length > 0 then join("; ") else null end) as $del_combined_note
-| ([ (if $rev_block_note != null then $rev_block_note else empty end),
-     (if $rev_gap_note   != null then $rev_gap_note   else empty end)
+| ([ (if $rev_block_note  != null then $rev_block_note  else empty end),
+     (if $rev_event_notes != null then $rev_event_notes else empty end),
+     (if $rev_gap_note    != null then $rev_gap_note    else empty end)
    ] | if length > 0 then join("; ") else null end) as $rev_combined_note
 
 # --- per-spawn duration_s (consumer-derived, <=0 guard, both-parse rule) ------
