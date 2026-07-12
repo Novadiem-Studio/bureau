@@ -250,6 +250,62 @@ for agent in agents/*.md; do
   fi
 done
 
+echo "== token-emit ownership coverage"
+# Guard 1 (class-closure): every *-TOKEN-EVENT locked_append emit site must carry a
+# governing `# OWNERSHIP-GATE:` marker naming the credential that proves the transcript
+# it just read is really this run's. Two audit rounds each re-found the SAME class — a
+# NEW emitter shipped un-gated (ownership-by-mention). This lint makes it impossible to
+# add a token emitter without a conscious ownership decision: you must write a marker,
+# and any emit in a file OUTSIDE the known set trips the "new emitter" check.
+#
+# The marker proves a CLAIM was made, not that it is TRUE (a lying marker would pass) —
+# correctness of the three real gates is proved behaviorally by fixture 172. This lint's
+# job is the demonstrated failure mode: forgetting. See spec .bureau/runs/20260711-class-closure.
+#
+# Emit-site detector: a NON-COMMENT line calling `locked_append` whose appended string is
+# a token event — matched by a literal `TOKEN-EVENT` (E2/E3/E4) OR the `EVENT_PREFIX`
+# variable (E1 conductor-stop.sh, whose prefix is `$EVENT_PREFIX` = CONDUCTOR/DELEGATE-
+# TOKEN-EVENT). Leading-`#` comment lines are stripped first so a prose mention of
+# `locked_append` (append-reviewer-tokens.sh:10) is never counted.
+OWNERSHIP_EMITTERS=(scripts/conductor-stop.sh scripts/subagent-stop.sh scripts/append-reviewer-tokens.sh)
+
+# Count emit sites and markers per known emitter; require markers >= emits (count-parity).
+# Coarse on purpose (no fragile line-window): its guarantee is "you cannot add a 4th emit
+# to these scripts without adding a marker," which count-parity delivers.
+for emitter in "${OWNERSHIP_EMITTERS[@]}"; do
+  if [[ ! -f "$emitter" ]]; then
+    err "token-emit ownership: known emitter $emitter is missing — update OWNERSHIP_EMITTERS in check-framework.sh"
+    continue
+  fi
+  # Emit sites: non-comment locked_append lines referencing a token event.
+  emit_count=$(grep -vE '^[[:space:]]*#' "$emitter" \
+    | grep -E 'locked_append' \
+    | grep -cE 'TOKEN-EVENT|EVENT_PREFIX' || true)
+  emit_count=${emit_count:-0}
+  # Markers: `# OWNERSHIP-GATE:` with a NON-EMPTY body after the colon (a bare marker
+  # naming no credential does not satisfy — the author must name what gates the emit).
+  marker_count=$(grep -cE '^[[:space:]]*# *OWNERSHIP-GATE:[[:space:]]*[^[:space:]]' "$emitter" || true)
+  marker_count=${marker_count:-0}
+  if [[ "$marker_count" -lt "$emit_count" ]]; then
+    err "token-emit ownership: $emitter has $emit_count *-TOKEN-EVENT emit site(s) but only $marker_count '# OWNERSHIP-GATE:' marker(s) with a non-empty body — every emit branch must name the credential that gates it"
+  fi
+done
+
+# New-file escape hatch: any *-TOKEN-EVENT emit in a scripts/*.sh OUTSIDE the known set
+# is a brand-new emitter the count-parity check above cannot see. Flag it so a future
+# emitter anywhere trips the lint until it is registered above and marked.
+for f in scripts/*.sh; do
+  [[ -e "$f" ]] || continue
+  known=0
+  for emitter in "${OWNERSHIP_EMITTERS[@]}"; do
+    [[ "$f" == "$emitter" ]] && known=1 && break
+  done
+  [[ "$known" -eq 1 ]] && continue
+  if grep -vE '^[[:space:]]*#' "$f" | grep -E 'locked_append' | grep -qE 'TOKEN-EVENT|EVENT_PREFIX'; then
+    err "new token emitter $f not in the ownership-coverage known set — add it to OWNERSHIP_EMITTERS in check-framework.sh and place an '# OWNERSHIP-GATE:' marker on its emit branch"
+  fi
+done
+
 echo "== state template JSON"
 if ! python3 -c "import json; json.load(open('templates/state.json'))"; then
   err "templates/state.json does not parse as JSON"
