@@ -551,6 +551,7 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
         entry_agent=$(printf '%s' "$entry_json" | jq -r '.agent')
         entry_attempt=$(printf '%s' "$entry_json" | jq -r '.attempt')
         # attempt_id is NOT emitted — internal pairing/dedup key only.
+        entry_attempt_id=$(printf '%s' "$entry_json" | jq -r '.attempt_id // empty')
         entry_reported_status=$(printf '%s' "$entry_json" | jq -r '.reported_status')
         entry_am_conf=$(printf '%s' "$entry_json" | jq -r '.actual_model_conf')
         # actual_model_val: raw JSON value (may be null or string) — use jq for safe access.
@@ -569,6 +570,30 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
             cfg_note=""
         fi
 
+        # FR 12: model-vs-routing divergence detection.
+        # Ground truth: the re-resolved configured_model from model-routing.json (cfg_val_raw),
+        # NOT the logged configured_model field on the SPAWN-EVENT (which is Conductor-authored).
+        # actual_model: from the SPAWN-EVENT's actual_model_val.
+        entry_actual_model=$(printf '%s' "$entry_json" | jq -r '.actual_model_val // empty')
+        divergence_note=""
+        if [ -n "$entry_actual_model" ] && [ "$entry_actual_model" != "null" ] \
+           && [ "$cfg_conf" != "unavailable" ] \
+           && [ "$entry_actual_model" != "$cfg_val_raw" ]; then
+            # Candidate divergence — check for a matching MODEL-OVERRIDE: line in log.md.
+            # Grep with PATH pinned (EC 10 ugrep guard):
+            PATH=/usr/bin:$PATH
+            override_match=$(grep "^MODEL-OVERRIDE:" "$RUN_DIR/log.md" 2>/dev/null \
+              | jq -Rrs --arg aid "$entry_attempt_id" --arg cfg "$cfg_val_raw" --arg act "$entry_actual_model" '
+                  [split("\n")[] | select(startswith("MODEL-OVERRIDE:")) |
+                   ltrimstr("MODEL-OVERRIDE: ") | try fromjson catch null |
+                   select(type == "object" and .attempt_id == $aid
+                          and .configured == $cfg and .actual == $act)] | length > 0
+                ')
+            if [ "$override_match" != "true" ]; then
+                divergence_note="model divergence without override: role=$entry_role configured=$cfg_val_raw actual=$entry_actual_model"
+            fi
+        fi
+
         # One {value,confidence}-formatted specialist_spawns entry. attempt_id NOT emitted.
         printf '%s' "$entry_json" | jq -c \
             --arg role "$entry_role" \
@@ -580,6 +605,7 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
             --argjson am_val "$entry_am_val" \
             --arg am_conf "$entry_am_conf" \
             --arg status "$entry_reported_status" \
+            --arg divergence_note "$divergence_note" \
             '{role: {value: $role, confidence: "exact"},
               agent: {value: $agent, confidence: "exact"},
               attempt: {value: $attempt, confidence: "exact"},
@@ -587,8 +613,15 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
                                  + if ($cfg_conf == "unavailable" and ($cfg_note | length) > 0)
                                    then {"_note": $cfg_note} else {} end),
               actual_model: {value: $am_val, confidence: $am_conf},
-              reported_status: {value: $status, confidence: "exact"}}'
+              reported_status: {value: $status, confidence: "exact"}}
+             + (if ($divergence_note | length) > 0 then {_note: $divergence_note} else {} end)'
     done | jq -s '.' 2>/dev/null || echo '[]')
+
+# FR 12: top-level divergence flag when any specialist spawn had a divergence note.
+model_divergence_top=""
+if printf '%s' "$specialist_spawns_json" | jq -e 'any(.[]; has("_note") and (._note | test("model divergence")))' >/dev/null 2>&1; then
+    model_divergence_top="one or more specialist spawns had a configured/actual model divergence without a logged MODEL-OVERRIDE: line"
+fi
 
 # Parallel attempt_id array, index-aligned with specialist_spawns_json above: both
 # iterate pass2_result.spawns[] in the same sorted (_order) sequence, so entry i in
@@ -786,6 +819,7 @@ jq -n \
   --argjson quota_gauge_val "$quota_gauge_val" \
   --argjson spawns "$specialist_spawns_json" \
   --arg spawns_note "$final_spawns_note" \
+  --arg model_divergence_top "$model_divergence_top" \
   '{ schema_version: 1,
      run: {
        slug:           {value: $slug, confidence: "exact"},
@@ -833,6 +867,7 @@ jq -n \
      }
    }
    + (if ($spawns_note | length) > 0 then {"_specialist_spawns_note": $spawns_note} else {} end)
+   + (if ($model_divergence_top | length) > 0 then {"_model_divergence_note": $model_divergence_top} else {} end)
   ' > "$tmp_out"
 
 # Conditionally add the memory block when present.

@@ -324,6 +324,27 @@ not emit it is valid; the round-2 exclusion falls back to reading the `### Block
 
 ---
 
+### 6. MODEL-OVERRIDE: (Conductor-written, when needed)
+
+Written to `log.md` by the Conductor when a specialist is deliberately spawned at a model
+that differs from `model-routing.json` (e.g. a manual escalation to opus when routing says
+sonnet). Required for the divergence check (`account-run.sh` FR 12) to distinguish a
+legitimate escalation from a protocol violation.
+
+Format: `MODEL-OVERRIDE:` followed by compact JSON on its own line:
+
+```
+MODEL-OVERRIDE: {"role":"<role>","attempt_id":"<attempt_id>","configured":"<model-routing value>","actual":"<model used>","reason":"<free text>","at":"<iso8601>"}
+```
+
+Match key: `attempt_id` (stable per-spawn id). A `MODEL-OVERRIDE:` line whose `attempt_id`,
+`configured`, and `actual` all match the divergent `SPAWN-EVENT` suppresses the divergence
+note. No `MODEL-OVERRIDE:` line means accounting flags the divergence as a protocol violation
+(loud note, exit 0). Zero `MODEL-OVERRIDE:` lines on a clean run (no divergence) is valid
+and degrades gracefully.
+
+---
+
 ## B3. Pointer lifecycle (canonical — FR 6)
 
 **Per-run-keyed directory (#25).** Each run keeps its OWN pointer file inside a directory `~/.novadiem/active-runs/` (overridable via `BUREAU_POINTER_DIR`), keyed by the munged `RUN_DIR` (every `/` and `.` → `-`). The old single global file `~/.novadiem/bureau-active-run` was a concurrency hazard: two overlapping runs (a self-run + a target-repo run, or two windows) clobbered each other's pointer, so a Conductor's Stop hook could read a sibling's pointer and drop its own tokens. With one file per run, each Conductor writes only its own key and each Stop hook SELECTS the file whose `nonce` + `run_dir` appear in its transcript.
