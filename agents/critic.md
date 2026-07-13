@@ -102,6 +102,23 @@ from context.
 [What genuinely holds up — be specific, not just "looks good"]
 ```
 
+### Verdict record
+
+Create `mkdir -p "$RUN_DIR/verdicts/"` and write one JSON record to
+`RUN_DIR/verdicts/<attempt_id>.json`.
+File-target modes (`spec-plan`, `prompts`, `verification`) hash every artifact named in your `## Inputs` block fresh at write time with `shasum -a 256 "$path" | awk '{print $1}'` (fallback: `sha256sum "$path" | awk '{print $1}'`);
+if any named input is missing, write no record and append `CHALLENGER FLAG: verdict record not written — artifact not found: <path>` to `log.md`.
+Diff-target modes (`build-diff`, `code-review`) bind one change-set object from target repo `R`
+(`state.json#target_repo` or the spawn prompt) using the pinned invocations below.
+- Working tree: `base_sha = git -C "$R" rev-parse HEAD`; `diff_sha = git -C "$R" diff "$base_sha" | shasum -a 256 | awk '{print $1}'`.
+- Committed range A..B: `base_sha = git -C "$R" rev-parse <A>`; `target_sha = git -C "$R" rev-parse <B>`; `diff_sha = git -C "$R" diff "$base_sha" "$target_sha" | shasum -a 256 | awk '{print $1}'`.
+- Branch head: `base_sha = git -C "$R" merge-base HEAD <branch>`; `target_sha = git -C "$R" rev-parse <branch>`; `diff_sha = git -C "$R" diff "$base_sha" "$target_sha" | shasum -a 256 | awk '{print $1}'`.
+Populate exactly: `attempt_id`, `review_mode`, `reviewed_artifacts`, `blocker_ids`, `blockers`, `warnings`, derived `verdict`, and `timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`;
+blockers use citations shaped as `{"kind":"presence","path":"<abs_path>","anchor":"<greppable string ≥15 chars>"}` or `{"kind":"absence","path":"<abs_path>","missing":"<description>"}`.
+Validate with inline `python3` before writing: all 8 fields, valid `review_mode`/`verdict` enums, derived-verdict consistency, and kind-required citation fields;
+on failure write no record and append `CHALLENGER FLAG: verdict record not written — validation failed: <reason>` to `log.md`.
+Write atomically via `TMPF="$RUN_DIR/verdicts/.${attempt_id}.json.tmp"` then `mv "$TMPF" "$RUN_DIR/verdicts/${attempt_id}.json"`; on write or move failure append `CHALLENGER FLAG: verdict record not written — write failed: <reason>`.
+
 You report and rate. You do **not** pick a verdict or decide what gets fixed — that's the
 The Conductor's call (see "Adjudicating The Challenger's findings" in `orchestrator.md`).
 

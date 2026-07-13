@@ -53,3 +53,4 @@ When spawned to review an actual code diff, apply the same cold standard against
   A valid waiver (naming failing case + reason + Robin's explicit acceptance) closes 15b for
   that specific case only. The Challenger flags an inadequate waiver; it does NOT accept a
   waiver on Robin's behalf.
+Write `RUN_DIR/verdicts/<attempt_id>.json` per `agents/critic.md § Verdict record` (`review_mode: build-diff`; diff-target: bind the reviewed change via the pinned `git -C R diff <base_sha> [<target_sha>] | shasum -a 256 | awk '{print $1}'` invocation).

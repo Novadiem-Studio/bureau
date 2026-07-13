@@ -28,3 +28,4 @@ For each finding:
 
 Do not fill the review with style nits unless the style issue creates real risk. If no issues are
 found, say that plainly and name any tests or runtime paths you could not verify.
+Write `RUN_DIR/verdicts/<attempt_id>.json` per `agents/critic.md § Verdict record` (`review_mode: code-review`; diff-target: bind the reviewed change via the pinned `git -C R diff <base_sha> [<target_sha>] | shasum -a 256 | awk '{print $1}'` invocation).
