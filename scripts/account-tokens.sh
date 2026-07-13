@@ -203,6 +203,7 @@ def normalize_event($required):
             and ((.attempt_id // "") == "")
          then "__malformed__attempt_id__\($ord)"
        elif (.attempt_id == null) then null
+       elif (.attempt_id == "") then ""
        else "__malformed__attempt_id__\($ord)" end) as $aid
   | (if (.agent_id | type) == "string" and (.agent_id != "")
          then .agent_id
@@ -210,6 +211,7 @@ def normalize_event($required):
             and ((.agent_id // "") == "")
          then "__malformed__agent_id__\($ord)"
        elif (.agent_id == null) then null
+       elif (.agent_id == "") then ""
        else "__malformed__agent_id__\($ord)" end) as $gid
   | (if (.session_id | type) == "string" and (.session_id != "")
          then .session_id
@@ -217,6 +219,7 @@ def normalize_event($required):
             and ((.session_id // "") == "")
          then "__malformed__session_id__\($ord)"
        elif (.session_id == null) then null
+       elif (.session_id == "") then ""
        else "__malformed__session_id__\($ord)" end) as $sid
   | (if (.spawn_id | type) == "string" and (.spawn_id != "")
          then .spawn_id
@@ -224,6 +227,7 @@ def normalize_event($required):
             and ((.spawn_id // "") == "")
          then "__malformed__spawn_id__\($ord)"
        elif (.spawn_id == null) then null
+       elif (.spawn_id == "") then ""
        else "__malformed__spawn_id__\($ord)" end) as $pid
   # $isolated is true when this record's key field was isolated to a synthetic key
   # (wrong-typed for attempt/agent; wrong-typed OR absent for session/spawn). It is
@@ -350,6 +354,19 @@ def normalize_event($required):
 | (($conductor    | map(select(.["_isolated"] == true)) | length) > 0) as $cond_isolated
 | (($delegate     | map(select(.["_isolated"] == true)) | length) > 0) as $del_isolated
 | (($spawn_tokens | map(select(.["_isolated"] == true)) | length) > 0) as $spec_isolated
+# FIX 1 (cause-accurate block notes): for each stream that has isolated records,
+# detect whether the isolation was due to an absent/null tokens field (A4 breadcrumb)
+# vs a malformed/absent id (id-cause). Used to branch the block note text so the
+# diagnostic names the actual cause instead of always saying "session_id".
+| (($conductor | map(select(.["_isolated"] == true)
+       | select((._norm_note // "") | test("absent tokens field"))) | length) > 0)
+     as $cond_isolated_tokens_absent
+| (($delegate  | map(select(.["_isolated"] == true)
+       | select((._norm_note // "") | test("absent tokens field"))) | length) > 0)
+     as $del_isolated_tokens_absent
+| (($reviewers | map(select(.["_isolated"] == true)
+       | select((._norm_note // "") | test("absent tokens field"))) | length) > 0)
+     as $rev_isolated_tokens_absent
 
 # --- Specialist spawns: started (deduped by attempt_id, first) + terminals ----
 | ($spawn_events | map(select(.status == "started")) | group_by(.attempt_id) | map(.[0])) as $started
@@ -473,7 +490,11 @@ def normalize_event($required):
    elif ($delegate | length) > 0 then "partial"
    else "unavailable" end) as $del_conf
 | (if ($all_del_legs_final and $del_zero_with_note) then "delegate block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
-   elif ($del_isolated and ($delegate | length) > 0) then "one or more delegate record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
+   elif ($del_isolated and ($delegate | length) > 0)
+        and $del_isolated_tokens_absent
+     then "one or more delegate record(s) had an absent/null tokens object on a token event — isolated, block not blessed as exact"
+   elif ($del_isolated and ($delegate | length) > 0)
+     then "one or more delegate record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $del_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for the Delegate top session"
    elif $del_conf == "unavailable" then "no DELEGATE-TOKEN-EVENT lines present in log.md yet"
    else null end) as $del_block_note
@@ -509,7 +530,11 @@ def normalize_event($required):
    elif ($reviewers | length) > 0 then "partial"
    else "unavailable" end) as $rev_conf
 | (if ($rev_zero_with_note and ($reviewers | length) > 0) then "reviewer block rolled up to zero tokens but at least one event carried a _note (a missing-usage fallback) — not blessed as exact"
-   elif ($rev_isolated and ($reviewers | length) > 0) then "one or more reviewer record(s) had a malformed/absent spawn_id — isolated to a distinct synthetic bucket, block not blessed as exact"
+   elif ($rev_isolated and ($reviewers | length) > 0)
+        and $rev_isolated_tokens_absent
+     then "one or more reviewer record(s) had an absent/null tokens object on a token event — isolated, block not blessed as exact"
+   elif ($rev_isolated and ($reviewers | length) > 0)
+     then "one or more reviewer record(s) had a malformed/absent spawn_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
    else null end) as $rev_block_note
 
@@ -550,7 +575,11 @@ def normalize_event($required):
 | ([ (if ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md" else empty end),
      (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
      (if $spec_isolated then "one or more specialist record(s) had a malformed attempt_id/agent_id — isolated to a distinct synthetic key and routed to unattributed; processed_total not blessed as exact" else empty end),
-     (if $cond_isolated then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic key; processed_total not blessed as exact" else empty end),
+     (if $cond_isolated and $cond_isolated_tokens_absent
+        then "one or more conductor record(s) had an absent/null tokens object on a token event — isolated; processed_total not blessed as exact"
+        elif $cond_isolated
+        then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic key; processed_total not blessed as exact"
+        else empty end),
      (if $processed_identity_note != null then $processed_identity_note else empty end)
    ]) as $pt_notes
 
@@ -566,7 +595,11 @@ def normalize_event($required):
    elif ($conductor | length) > 0 then "partial"
    else "unavailable" end) as $cond_conf
 | (if ($all_legs_final and $cond_zero_with_note) then "conductor block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
-   elif ($cond_isolated and ($conductor | length) > 0) then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
+   elif ($cond_isolated and ($conductor | length) > 0)
+        and $cond_isolated_tokens_absent
+     then "one or more conductor record(s) had an absent/null tokens object on a token event — isolated, block not blessed as exact"
+   elif ($cond_isolated and ($conductor | length) > 0)
+     then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
    elif $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
    elif $cond_conf == "unavailable" then "no CONDUCTOR-TOKEN-EVENT lines present in log.md yet"
    else null end) as $cond_block_note
