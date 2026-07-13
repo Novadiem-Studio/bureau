@@ -57,16 +57,15 @@ accounting) if ANY of these hold:
   `null`; `attempt` must be an integer ≥ 1);
 - a required string key is **empty** (`role`, `agent`, `configured_model`, `attempt_id`
   must be non-empty);
-- `attempt_id` does not equal the composite `"<role>-<attempt>"`;
+- `attempt_id` does not START WITH `"<role>-"` (role-prefix rule);
 - `status` is not one of the five legal values.
 
 Also rejected before parsing keys: a line whose payload is not exactly one JSON value, or
 is a JSON value that is not an object. Every rejection is noted in the accounting output,
 never silently dropped.
 
-`attempt_id` is the deterministic composite `"<role>-<attempt>"` — e.g. `"architect-1"`,
-and `"architect-2"` for a re-spawn. No UUID, no external state; it is built from `role` and
-`attempt` so the started/terminated pair always share the same id.
+`attempt_id` is role-prefixed — e.g. `"architect-1"`, and `"architect-2"` for a re-spawn;
+any suffix after the hyphen is permitted.
 
 The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
 
@@ -305,7 +304,7 @@ one-line description of the blocker).
 the fix was verified; equals `round` for a same-round fix, higher for a cross-round fix).
 
 **`id` format:** `"r<round>-b<n>"` — deterministic and stable across the `raised`→`closed`
-pair. Mirrors the `attempt_id = "<role>-<attempt>"` convention (§ A). The stable id is what
+pair. Mirrors the `attempt_id` role-prefix convention (§ A). The stable id is what
 makes the `raised`/`closed` pair grep-recoverable: `grep 'BLOCKER-EVENT:' log.md | grep
 '"id":"r1-b1"'` returns exactly the raise line and the close line for that blocker.
 

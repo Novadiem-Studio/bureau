@@ -89,15 +89,10 @@ new run proceeds to the steps below.
 
 Write the resolved value to `state.json#target_repo`: an absolute path, or the literal string `"(no-target)"`.
 
-4. Create this run's **run dir**:
-   - If `target_repo` is a real path `R`: run `mkdir -p R/.bureau/runs/<yyyymmdd>-<task-slug>/`, then run `scripts/ensure-bureau-ignored.sh R` before the first artifact write. Self-run needs no special case — when `R` == the install, artifacts land in `<install>/.bureau/runs/<slug>/`.
-   - If `target_repo` is `"(no-target)"`: create `<install>/output/runs/<yyyymmdd>-<task-slug>/` (FR 14 fallback — today's behavior, unchanged).
-   Initialize `state.json` (from `templates/state.json`, which now carries `target_repo`) and `log.md`. Pass the resolved absolute path as **`RUN_DIR`** in every spawn prompt.
-   Also write the initial `output/studio/runs-index/<slug>.json` entry (status: `"not_started"`, the seven fields from `state.json`). **Before writing, run `mkdir -p output/studio/runs-index/` and `mkdir -p output/studio/runs-index/archive/` to ensure both directories exist** — `output/studio/runs-index/` is not created by any earlier step and does not exist in a fresh install, so the first atomic write would fail without it. This is the call-site that makes "after a targeted run is created, the index contains an entry" hold (AC 13). Write atomically: write to `output/studio/runs-index/.<slug>.json.tmp`, then `mv` to `output/studio/runs-index/<slug>.json`. Validate with `python3 -c "import json,sys; json.load(open('<entry>'))" && echo OK`.
-5. Run `scripts/resolve-model-routing.sh`; copy `~/.novadiem/resolved-model-routing.json` to
-   `RUN_DIR/model-routing.json`. Spawn using resolved role routing — see
-   `config/runtimes/README.md` and `config/model-experiments/README.md`. Legacy Claude-only
-   installs may finish in place with `scripts/resolve-model-tiers.sh` and `RUN_DIR/model-tiers.json`.
+4-5. **New run:** `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`
+   performs the full opening ceremony: directory creation, .gitignore update, state.json init,
+   log.md init, runs-index entry, model-routing resolution, and pointer enrolment.
+   See `scripts/run-start.sh --help` for the step sequence.
 6. **Triage the task** against `workflows/index.md` and run the matching workflow (see
    "Triage: pick a workflow first" in `agents/orchestrator.md`). The default `feature`
    workflow spawns Analizer 2000 → The Architect → Analizer 2000 (reconciliation) → The Challenger → The Cleric → The Spellwright
