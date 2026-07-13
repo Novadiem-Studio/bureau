@@ -610,16 +610,22 @@ def normalize_event($required):
    then "\($legs) conductor legs detected with no resume evidence in state.json — verify all are legitimate conductor legs; a foreign session may have been captured."
    else null end) as $suspicious_note
 
-# --- v2 capture-gap backstop: integrated topology but zero conductor lines -----
-# When the Delegate declared an integrated (v2) run AND no CONDUCTOR-TOKEN-EVENT
-# was captured (confidence "unavailable"), the subagent-Conductor capture did not
-# fire — a REAL gap, not a clean zero. Annotate only: never fabricate a number,
-# never change confidence (already "unavailable", which is correct). Inert on v1 /
-# no-topology runs (a v1 run with a legitimately-pending share keeps the
-# conductor-share-pending note). Once the primary fix works this stays silent.
-| (if ($delegate_topology == "integrated") and ($cond_conf == "unavailable")
-   then "v2-integrated topology but zero CONDUCTOR-TOKEN-EVENT captured — the subagent-Conductor token capture did not fire (check the BUREAU_ROLE: conductor marker in the Delegate spawn prompt and the subagent-stop.sh conductor branch); conductor share is a real gap, not a clean zero"
-   else null end) as $v2_gap_note
+# --- Topology-agnostic zero-conductor gate (FR 4) ----------------------------
+# Fires whenever $cond_conf == "unavailable" (zero CONDUCTOR-TOKEN-EVENT lines),
+# regardless of topology. Two sub-cases distinguish protocol failure from a
+# capture that is legitimately still pending:
+#   - No "Pointer enrolled" line in log.md → run-start.sh never enrolled the
+#     pointer; zero conductor events is a protocol failure, not a clean zero.
+#   - "Pointer enrolled" line present → pointer was enrolled; the Stop hook has
+#     not yet fired (close-out still in flight, or the run is pending).
+# The pointer_enrolled signal is pre-computed in bash (grep, PATH-pinned) and
+# passed as a jq --arg so the gate is ugrep-immune (EC 10).
+| (if ($cond_conf == "unavailable") then
+    (if $pointer_enrolled == "no"
+     then "protocol failure — pointer enrolment never ran; zero CONDUCTOR-TOKEN-EVENT is not a clean zero"
+     else "capture still pending — close-out Stop hook not yet fired; CONDUCTOR-TOKEN-EVENT not captured"
+     end)
+   else null end) as $zero_conductor_note
 
 # --- #26 sibling gap-notes (independent of the conductor gap; same pattern) ----
 # Delegate gap: integrated topology but zero DELEGATE-TOKEN-EVENT → the Delegate's
@@ -636,14 +642,14 @@ def normalize_event($required):
    then "v2-integrated topology with \($resolved_cp_n) resolved checkpoint(s) but zero REVIEWER-TOKEN-EVENT captured — the Delegate did not append reviewer usage (check agents/delegate.md step 6.5 + scripts/append-reviewer-tokens.sh); reviewer share is a real gap, not a clean zero"
    else null end) as $rev_gap_note
 
-# --- FR 5: merge cond-block note + suspicious note + v2-gap note (can co-fire) --
+# --- FR 5: merge cond-block note + suspicious note + zero-conductor note (can co-fire) --
 # Audit r2 (F3): $cond_event_notes (each event's own clamp `_note`) is folded in here
 # too, so a clamp warning SURFACES on the block instead of being silently dropped.
 | ([
     (if $cond_block_note != null then $cond_block_note else empty end),
     (if $cond_event_notes != null then $cond_event_notes else empty end),
     (if $suspicious_note != null then $suspicious_note else empty end),
-    (if $v2_gap_note != null then $v2_gap_note else empty end)
+    (if $zero_conductor_note != null then $zero_conductor_note else empty end)
   ] | if length > 0 then join("; ") else null end) as $combined_note
 
 # Merge each sibling block's own note with its gap note AND its event-level `_note`s
@@ -949,6 +955,17 @@ def normalize_event($required):
 JQ
 )
 
+# --- FR 4: pre-compute pointer-enrolled signal (ugrep guard) ------------------
+# grep is PATH-pinned so ugrep (which may be aliased as grep on this machine)
+# does not produce a false-negative for a boundary pattern (EC 10).
+PATH=/usr/bin:$PATH
+_pointer_enrolled_line="Pointer enrolled — nonce written to pointer file"
+if grep -qF "$_pointer_enrolled_line" "$RUN_DIR/log.md" 2>/dev/null; then
+  _pointer_enrolled="yes"
+else
+  _pointer_enrolled="no"
+fi
+
 if jq -n \
   --slurpfile spawn_events "$se_f" \
   --slurpfile spawn_tokens "$st_f" \
@@ -960,6 +977,7 @@ if jq -n \
   --argjson critic_loops "$critic_loops_json" \
   --argjson resumed_legs "$resumed_legs" \
   --arg delegate_topology "$delegate_topology" \
+  --arg pointer_enrolled "$_pointer_enrolled" \
   "$JQ_PROG"; then
   exit 0
 else
