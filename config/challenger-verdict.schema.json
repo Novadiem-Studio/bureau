@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Challenger verdict",
+  "description": "Manual enforcement sites: scripts/verdict-gate.sh (gate) and the Challenger's write-time python3 check (agents/critic.md § Verdict record). Keep the manual checks and this schema in sync by hand.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attempt_id",
+    "review_mode",
+    "reviewed_artifacts",
+    "blocker_ids",
+    "blockers",
+    "warnings",
+    "verdict",
+    "timestamp"
+  ],
+  "properties": {
+    "attempt_id": {
+      "type": "string"
+    },
+    "review_mode": {
+      "type": "string",
+      "enum": ["spec-plan", "prompts", "build-diff", "code-review", "verification"]
+    },
+    "reviewed_artifacts": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "title": "File-target",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": { "type": "string" },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          {
+            "title": "Diff-target",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "base_ref", "base_sha", "target_ref", "diff_sha"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["diff-target"] },
+              "base_ref": { "type": "string" },
+              "base_sha": { "type": "string" },
+              "target_ref": { "type": "string" },
+              "diff_sha": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "blocker_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "summary", "citation"],
+        "properties": {
+          "id": { "type": "string" },
+          "summary": { "type": "string" },
+          "citation": {
+            "oneOf": [
+              {
+                "title": "Presence citation",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "path", "anchor"],
+                "properties": {
+                  "kind": { "type": "string", "enum": ["presence"] },
+                  "path": { "type": "string" },
+                  "anchor": { "type": "string" }
+                }
+              },
+              {
+                "title": "Absence citation",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "path", "missing"],
+                "properties": {
+                  "kind": { "type": "string", "enum": ["absence"] },
+                  "path": { "type": "string" },
+                  "missing": { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["APPROVED", "BLOCKED", "APPROVED_WITH_WARNINGS"]
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp"
+    }
+  }
+}
