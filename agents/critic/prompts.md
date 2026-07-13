@@ -93,3 +93,4 @@ Check for:
   A valid waiver (naming failing case + reason + Robin's explicit acceptance) closes 15b for
   that specific case only. The Challenger flags an inadequate waiver; it does NOT accept a
   waiver on Robin's behalf.
+Write `RUN_DIR/verdicts/<attempt_id>.json` per `agents/critic.md § Verdict record` (`review_mode: prompts`; file-target modes only: hash each named `## Inputs` artifact fresh; diff-target modes bind the change set instead).

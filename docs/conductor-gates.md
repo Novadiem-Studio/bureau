@@ -16,6 +16,25 @@ The Challenger pokes holes and rates them. It does NOT decide what to do about t
 you are the judge. Its handoff gives you `BLOCKERS` (would build the wrong thing), `WARNINGS`
 (real but survivable), and `SOLID`, each rooted in requirements / architecture / prompts.
 
+**Pre-adjudication gate (required — not Conductor-discretionary):**
+Before reading any Challenger findings, run:
+```bash
+bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"
+```
+where `$attempt_id` is the `attempt_id` from the just-completed Challenger SPAWN-EVENT.
+
+- **Exit 0 (`gate: clean`):** proceed to adjudication below.
+- **Exit non-zero (DEFECT line(s)):** do NOT adjudicate. Append a note to `log.md`
+  describing the DEFECT(s), then re-spawn the Challenger against the current artifact
+  revisions. A stale-hash or absent record is NEVER adjudicated — treat it as if the
+  review did not happen. This is a hard rule; there is no "findings seem fine anyway"
+  override.
+
+**Pre-change run tolerance (AC-14 / EC-9 / FR-10):** if `RUN_DIR/verdicts/` does not
+exist (a run started before this feature shipped), proceed to adjudication on prose
+alone and append a note to `log.md`: `NOTE: verdict records absent (pre-change run);
+adjudicating on prose.` New Challenger spawns on a resumed old run must produce records.
+
 Decide, finding by finding:
 
 - **Each blocker** -> default to going back and fixing it. Override only if you can state

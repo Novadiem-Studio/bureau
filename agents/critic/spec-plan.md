@@ -227,3 +227,4 @@ by this pipeline and caught only by later human review. Walk them explicitly:
   run, or just prose?
 - **Persona/voice consistency** — if the product has a voice or persona the domain says
   matters, does the architecture actually preserve it on the must-ship path?
+Write `RUN_DIR/verdicts/<attempt_id>.json` per `agents/critic.md § Verdict record` (`review_mode: spec-plan`; file-target modes only: hash each named `## Inputs` artifact fresh; diff-target modes bind the change set instead).
