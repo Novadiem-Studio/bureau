@@ -560,6 +560,34 @@ else
   warn "~/.claude/settings.json not found — statusLine wiring cannot be verified; budget snapshot may not update"
 fi
 
+# Hook-wiring gate (FR 11, AC-17). Hard-fails when SubagentStop/Stop hooks are missing
+# or their target scripts are absent/non-executable. Uses jq for all settings.json
+# parsing (ugrep-immune — EC 10). The statusLine block above uses bare grep only for an
+# advisory warn; this gate hard-fails so it must NOT use bare grep.
+if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
+  err "~/.claude/settings.json not found — SubagentStop and Stop hook wiring cannot be verified; token capture will not fire"
+else
+  # Read SubagentStop hook commands using jq (ugrep-immune):
+  subagent_cmd=$(jq -r '[.hooks.SubagentStop[]?.hooks[]?.command] | join("\n")' "$CLAUDE_SETTINGS" 2>/dev/null || echo "")
+  stop_cmd=$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | join("\n")' "$CLAUDE_SETTINGS" 2>/dev/null || echo "")
+
+  # Suffix check using jq endswith (NOT grep) (AC-17 compliance):
+  subagent_ok=$(printf '%s' "$subagent_cmd" | jq -Rrs 'split("\n") | any(endswith("scripts/subagent-stop.sh"))')
+  stop_ok=$(printf '%s' "$stop_cmd" | jq -Rrs 'split("\n") | any(endswith("scripts/conductor-stop.sh"))')
+
+  if [[ "$subagent_ok" != "true" ]]; then
+    err "SubagentStop hook missing or scripts/subagent-stop.sh not wired — token capture will not fire"
+  elif [[ ! -f "$ROOT/scripts/subagent-stop.sh" ]] || [[ ! -x "$ROOT/scripts/subagent-stop.sh" ]]; then
+    err "SubagentStop hook wired but $ROOT/scripts/subagent-stop.sh does not exist or is not executable — token capture will not fire"
+  fi
+
+  if [[ "$stop_ok" != "true" ]]; then
+    err "Stop hook missing or scripts/conductor-stop.sh not wired — conductor token capture will not fire"
+  elif [[ ! -f "$ROOT/scripts/conductor-stop.sh" ]] || [[ ! -x "$ROOT/scripts/conductor-stop.sh" ]]; then
+    err "Stop hook wired but $ROOT/scripts/conductor-stop.sh does not exist or is not executable — conductor token capture will not fire"
+  fi
+fi
+
 if [[ "$errors" -gt 0 ]]; then
   echo "== $errors check(s) failed" >&2
   exit 1

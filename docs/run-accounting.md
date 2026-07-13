@@ -57,16 +57,15 @@ accounting) if ANY of these hold:
   `null`; `attempt` must be an integer ≥ 1);
 - a required string key is **empty** (`role`, `agent`, `configured_model`, `attempt_id`
   must be non-empty);
-- `attempt_id` does not equal the composite `"<role>-<attempt>"`;
+- `attempt_id` does not START WITH `"<role>-"` (role-prefix rule);
 - `status` is not one of the five legal values.
 
 Also rejected before parsing keys: a line whose payload is not exactly one JSON value, or
 is a JSON value that is not an object. Every rejection is noted in the accounting output,
 never silently dropped.
 
-`attempt_id` is the deterministic composite `"<role>-<attempt>"` — e.g. `"architect-1"`,
-and `"architect-2"` for a re-spawn. No UUID, no external state; it is built from `role` and
-`attempt` so the started/terminated pair always share the same id.
+`attempt_id` is role-prefixed — e.g. `"architect-1"`, and `"architect-2"` for a re-spawn;
+any suffix after the hyphen is permitted.
 
 The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
 
@@ -305,7 +304,7 @@ one-line description of the blocker).
 the fix was verified; equals `round` for a same-round fix, higher for a cross-round fix).
 
 **`id` format:** `"r<round>-b<n>"` — deterministic and stable across the `raised`→`closed`
-pair. Mirrors the `attempt_id = "<role>-<attempt>"` convention (§ A). The stable id is what
+pair. Mirrors the `attempt_id` role-prefix convention (§ A). The stable id is what
 makes the `raised`/`closed` pair grep-recoverable: `grep 'BLOCKER-EVENT:' log.md | grep
 '"id":"r1-b1"'` returns exactly the raise line and the close line for that blocker.
 
@@ -321,6 +320,27 @@ spawn) and `bureau-run-eval` (the `blocker-replay` no-regression check). NOT par
 to today's prose-only blocker tracking (FR 9). A run that predates this line type or does
 not emit it is valid; the round-2 exclusion falls back to reading the `### Blockers` /
 `COMPLETION-CHECK:(b)` prose, exactly as today.
+
+---
+
+### 6. MODEL-OVERRIDE: (Conductor-written, when needed)
+
+Written to `log.md` by the Conductor when a specialist is deliberately spawned at a model
+that differs from `model-routing.json` (e.g. a manual escalation to opus when routing says
+sonnet). Required for the divergence check (`account-run.sh` FR 12) to distinguish a
+legitimate escalation from a protocol violation.
+
+Format: `MODEL-OVERRIDE:` followed by compact JSON on its own line:
+
+```
+MODEL-OVERRIDE: {"role":"<role>","attempt_id":"<attempt_id>","configured":"<model-routing value>","actual":"<model used>","reason":"<free text>","at":"<iso8601>"}
+```
+
+Match key: `attempt_id` (stable per-spawn id). A `MODEL-OVERRIDE:` line whose `attempt_id`,
+`configured`, and `actual` all match the divergent `SPAWN-EVENT` suppresses the divergence
+note. No `MODEL-OVERRIDE:` line means accounting flags the divergence as a protocol violation
+(loud note, exit 0). Zero `MODEL-OVERRIDE:` lines on a clean run (no divergence) is valid
+and degrades gracefully.
 
 ---
 

@@ -468,21 +468,9 @@ fi
 ```
 `BUREAU_POINTER_FILE` exists solely for test isolation and now doubles as the forced-single-file override — run fixtures set it to a temp path so they never touch the real `~/.novadiem` directory, and doing so keeps them on the exact pre-#25 code path. `BUREAU_POINTER_DIR` overrides the directory root the same way (new fixtures set it to a `mktemp -d`). Default behavior (both unset) is a per-run file under `~/.novadiem/active-runs/`. The key is the munged `RUN_DIR` (not the nonce): a resumed leg of the same run has the same `RUN_DIR` → same file (no orphan-per-leg); two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber).
 
-**At run start** (alongside step 4 — run-dir creation):
-```sh
-mkdir -p "$(dirname "$_pointer_file")"   # ensure ~/.novadiem/active-runs/ exists (or override's parent)
-# Write one-line JSON (five fields — project_dir is $(pwd -P), the Conductor's cwd,
-# which conductor-stop.sh munges and matches against the transcript path):
-printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
-  "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
-  > "$_pointer_file"
-# Echo the written line — ownership credential:
-cat "$_pointer_file"
-# Enrollment log line — NONCE-FREE (reading the log must not confer ownership).
-# Write this EXACT line to "$RUN_DIR/log.md" (do NOT substitute the nonce value into it):
-#   Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership.
-```
-The echo places the nonce in this session's transcript content so `conductor-stop.sh`'s ownership check can verify it. The enrollment log line is deliberately nonce-free: the pointer file and the transcript are the only two places the nonce ever appears.
+**At run start:** `scripts/run-start.sh` performs pointer enrolment (writes the five-field
+pointer, echoes it to stdout for the nonce credential, writes the nonce-free enrolment log
+line). See its source for the exact block.
 
 **On resume:** read `"$_pointer_file"`. There are two sub-paths, and both rejoin at a shared tail:
 

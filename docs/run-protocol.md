@@ -21,12 +21,10 @@ The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-targ
   `Run dir:` line, or a slug already present at `output/runs/<slug>/`), use it **verbatim**
   — whether it lives at `output/runs/` or `.bureau/runs/`. Skip steps (1)–(3). An existing
   run dir is sticky and is never relocated or migrated.
-- **(1) NEW run: resolve `target_repo`** — walk the target-resolution precedence (see
-  `CLAUDE.md` "On start"), write the resolved value to `state.json#target_repo`.
-- **(2) Create RUN_DIR from the resolved target** — `mkdir -p R/.bureau/runs/<slug>/` for a
-  real `R`, or `output/runs/<slug>/` for `"(no-target)"`.
-- **(3) Copy `templates/state.json` + init `log.md`.** Pass the resolved absolute path as
-  **`RUN_DIR`** in every spawn prompt.
+- **(1)-(3) New runs:** run `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id>
+  --slug <slug>`; see its `--help` for the full step sequence (target resolution, dir
+  creation, state/log init, index write, model-routing, pointer enrolment). Pass the
+  resolved absolute path as **`RUN_DIR`** in every spawn prompt.
 
 Two runs on repo `R` use distinct slugs — `R/.bureau/runs/<slug-A>/` vs
 `R/.bureau/runs/<slug-B>/` — so they never collide (FR 13, AC 12).
@@ -119,31 +117,11 @@ All three of these have bitten real runs:
   `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`
   If you re-set a key, find and remove the old occurrence — never append a second copy.
 
-### Index write (same cadence as `state.json`)
+### Index write
 
-After every `state.json` write and its validation, project the run's current state into
-`output/studio/runs-index/<slug>.json`:
-
-```json
-{
-  "slug": "<slug>",
-  "repo": "<state.json#target_repo>",
-  "run_dir": "<absolute RUN_DIR>",
-  "status": "<derived — see run-level status derivation below>",
-  "phase": "<state.json#phase>",
-  "last_updated": "<state.json#last_updated>",
-  "workflow": "<state.json#workflow>"
-}
-```
-
-Six fields copied verbatim from `state.json` (using `target_repo` for `repo` — NOT
-`git.repo`, which is `null` on planning runs); one field derived (`status`, per the
-derivation table below). Before the first index write in a session, run
-`mkdir -p output/studio/runs-index/ && mkdir -p output/studio/runs-index/archive/`
-— the directory is not created by any prior framework step and does not exist in a fresh
-install. Write atomically: temp `.<slug>.json.tmp` then `mv`. Validate the entry file the
-same way as `state.json`. Per-run files are the concurrency mechanism — no lock needed
-(EC 13).
+Owned by `scripts/run-start.sh` (step 7). The entry carries the seven-field shape
+{slug, repo, run_dir, status, phase, last_updated, workflow} written atomically
+(.tmp → mv) and validated with python3 json.load.
 
 > **Not committed.** `output/studio/runs-index/` and the derived
 > `output/studio/runs-snapshot.json` are **gitignored** local runtime cache — per-run
