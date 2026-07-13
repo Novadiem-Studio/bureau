@@ -25,7 +25,7 @@ FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUN_DIR="$1"
 if [ -z "$RUN_DIR" ]; then
   echo "Usage: spawn-gate.sh <RUN_DIR>" >&2
-  exit 1
+  exit 2
 fi
 
 # ── Step 2: Resolve pointer file path ─────────────────────────────────────────

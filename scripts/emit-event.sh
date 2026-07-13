@@ -71,10 +71,40 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# ── Helper: validate numeric flags — accept only non-negative integers ──────────
+# Usage: validate_numeric <flag-name> <value>
+# Exits 1 if value is non-numeric (nothing emitted to stdout).
+validate_numeric() {
+  _vn_flag="$1"
+  _vn_val="$2"
+  case "$_vn_val" in
+    ''|*[!0-9]*)
+      printf 'invalid value: %s must be a non-negative integer (got: %s)\n' "$_vn_flag" "$_vn_val" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # ── Helper: emit missing-field error and exit 1 (nothing to stdout) ────────────
 missing() {
   printf 'missing field: %s\n' "$1" >&2
   exit 1
+}
+
+# ── Helper: post-composition guard — exit 1 if payload is empty or not a JSON object ──
+# Usage: guard_payload <payload-var> <event-type>
+# Prints nothing to stdout on failure; emits error to stderr; exits 1.
+guard_payload() {
+  _gp_payload="$1"
+  _gp_type="$2"
+  if [ -z "$_gp_payload" ]; then
+    printf 'emit-event: %s composition produced empty payload\n' "$_gp_type" >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "$_gp_payload" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf 'emit-event: %s composition produced invalid JSON\n' "$_gp_type" >&2
+    exit 1
+  fi
 }
 
 # ── Dispatch on event type ─────────────────────────────────────────────────────
@@ -89,6 +119,8 @@ case "$event_type" in
     [ -n "$attempt" ]          || missing "attempt"
     [ -n "$attempt_id" ]       || missing "attempt_id"
     [ -n "$status" ]           || missing "status"
+    # Numeric validation — must happen before jq composition
+    validate_numeric "--attempt" "$attempt"
     # Compose JSON with jq — no hand-typed JSON (EC rule: shell computes, jq composes)
     payload=$(jq -cn \
       --arg    role             "$role" \
@@ -107,6 +139,7 @@ case "$event_type" in
         attempt_id:       $attempt_id,
         status:           $status,
         at:               $at}')
+    guard_payload "$payload" "spawn-event"
     printf 'SPAWN-EVENT: %s\n' "$payload"
     ;;
 
@@ -121,6 +154,7 @@ case "$event_type" in
           --arg status "$status" \
           --arg at     "$at" \
           '{id: $id, status: $status, at: $at}')
+        guard_payload "$payload" "checkpoint-event/raised"
         ;;
       resolved)
         [ -n "$decision" ] || missing "decision"
@@ -130,9 +164,10 @@ case "$event_type" in
           --arg decision "$decision" \
           --arg at       "$at" \
           '{id: $id, status: $status, decision: $decision, at: $at}')
+        guard_payload "$payload" "checkpoint-event/resolved"
         ;;
       *)
-        printf 'missing field: status must be raised or resolved (got: %s)\n' "$status" >&2
+        printf 'invalid value: status must be raised or resolved (got: %s)\n' "$status" >&2
         exit 1
         ;;
     esac
@@ -144,6 +179,8 @@ case "$event_type" in
     [ -n "$round" ]  || missing "round"
     [ -n "$id" ]     || missing "id"
     [ -n "$status" ] || missing "status"
+    # Numeric validation — must happen before jq composition
+    validate_numeric "--round" "$round"
     case "$status" in
       raised)
         [ -n "$root" ] || missing "root"
@@ -156,10 +193,12 @@ case "$event_type" in
           --arg     gist   "$gist" \
           --arg     at     "$at" \
           '{round: $round, id: $id, status: $status, root: $root, gist: $gist, at: $at}')
+        guard_payload "$payload" "blocker-event/raised"
         ;;
       closed)
         [ -n "$fix_ref" ]        || missing "fix_ref"
         [ -n "$closed_at_round" ] || missing "closed_at_round"
+        validate_numeric "--closed-at-round" "$closed_at_round"
         payload=$(jq -cn \
           --argjson round           "$round" \
           --arg     id              "$id" \
@@ -168,9 +207,10 @@ case "$event_type" in
           --argjson closed_at_round "$closed_at_round" \
           --arg     at              "$at" \
           '{round: $round, id: $id, status: $status, fix_ref: $fix_ref, closed_at_round: $closed_at_round, at: $at}')
+        guard_payload "$payload" "blocker-event/closed"
         ;;
       *)
-        printf 'missing field: blocker-event status must be raised or closed (got: %s)\n' "$status" >&2
+        printf 'invalid value: blocker-event status must be raised or closed (got: %s)\n' "$status" >&2
         exit 1
         ;;
     esac

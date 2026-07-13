@@ -45,7 +45,10 @@ FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── Step 1: Parse args ────────────────────────────────────────────────────────
 
 usage() {
-  sed -n '14,18p' "$0" | sed 's/^# \{0,1\}//'
+  cat >&2 <<'EOF'
+Usage:
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+EOF
   exit 1
 }
 
@@ -72,7 +75,10 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || { echo "run-start: missing argument: --slug" >&2; exit 1; }
       SLUG="$2"; shift 2 ;;
     --help|-h)
-      sed -n '14,18p' "$0" | sed 's/^# \{0,1\}//'
+      cat <<'EOF'
+Usage:
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+EOF
       exit 0 ;;
     *)
       echo "run-start: unknown argument: $1" >&2; usage ;;
@@ -102,9 +108,18 @@ fi
 mkdir -p "$RUN_DIR" || { echo "run-start: failed to create RUN_DIR: $RUN_DIR" >&2; exit 1; }
 
 # All subsequent failures trigger the EC 2 rollback.
+# EC 2 invariant: removes ONLY the RUN_DIR this invocation created, plus any
+# runs-index entry (committed or .tmp) written during this ceremony so a failed
+# run-start leaves NO trace in the index.
 rollback() {
   echo "run-start: rolling back RUN_DIR: $RUN_DIR" >&2
   rm -rf "$RUN_DIR"
+  # Remove any runs-index artifacts written by this invocation (EC 2).
+  # RUNS_INDEX and SLUG may not be set yet if failure occurs before step 7,
+  # so guard each removal — the variables resolve at call time.
+  if [ -n "${RUNS_INDEX:-}" ] && [ -n "${SLUG:-}" ]; then
+    rm -f "$RUNS_INDEX/.$SLUG.json.tmp" "$RUNS_INDEX/$SLUG.json"
+  fi
   exit 1
 }
 
@@ -139,7 +154,7 @@ python3 -c "import json,sys; json.load(open('$STATE_PATH'))" \
 # ── Step 6: Initialize log.md via log-append.sh ───────────────────────────────
 
 bash "$FRAMEWORK_ROOT/scripts/log-append.sh" "$RUN_DIR" \
-    "Run started — slug: $SLUG, target: $TARGET, workflow: $WORKFLOW" \
+    "Run started — slug: $SLUG, target: $TARGET, workflow: $WORKFLOW" >/dev/null \
   || { echo "ERROR: log-append.sh failed" >&2; rollback; }
 
 # ── Step 7: Write runs-index entry (atomic) ───────────────────────────────────
@@ -149,11 +164,23 @@ mkdir -p "$RUNS_INDEX" "$RUNS_INDEX/archive" \
   || { echo "ERROR: failed to create runs-index dir" >&2; rollback; }
 
 INDEX_ENTRY="$RUNS_INDEX/$SLUG.json"
-jq -n --arg slug "$SLUG" --arg run_dir "$RUN_DIR" --arg target "$TARGET" \
-       --arg workflow "$WORKFLOW" \
-       '{slug: $slug, run_dir: $run_dir, target_repo: $target, workflow: $workflow,
-         status: "not_started", created_at: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
-         task: ""}' \
+# Seven-field projection per docs/run-protocol.md § Index write:
+#   slug, repo (target_repo), run_dir, status (derived), phase, last_updated, workflow
+# Status derivation: template default (phase_status=pending, phases_complete=[]) → "not_started"
+jq -n \
+  --arg slug        "$SLUG" \
+  --arg repo        "$(jq -r '.target_repo // ""' "$STATE_PATH")" \
+  --arg run_dir     "$RUN_DIR" \
+  --arg phase       "$(jq -r '.phase // "not_started"' "$STATE_PATH")" \
+  --argjson last_updated "$(jq '.last_updated' "$STATE_PATH")" \
+  --arg workflow    "$(jq -r '.workflow // ""' "$STATE_PATH")" \
+  '{slug: $slug,
+    repo: $repo,
+    run_dir: $run_dir,
+    status: "not_started",
+    phase: $phase,
+    last_updated: $last_updated,
+    workflow: $workflow}' \
   > "$RUNS_INDEX/.$SLUG.json.tmp" \
   || { echo "ERROR: failed to build runs-index entry" >&2; rollback; }
 
@@ -210,7 +237,7 @@ cat "$_pointer_file"
 
 # Enrolment log line — nonce-free (reading the log must not confer ownership).
 bash "$FRAMEWORK_ROOT/scripts/log-append.sh" "$RUN_DIR" \
-  "Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership." \
+  "Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership." >/dev/null \
   || { echo "ERROR: log-append.sh failed for enrolment line" >&2; rollback; }
 
 exit 0

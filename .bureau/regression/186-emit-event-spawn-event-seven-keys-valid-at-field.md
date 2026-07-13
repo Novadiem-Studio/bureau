@@ -53,8 +53,23 @@ command: |
   grep -q "missing field" "$TMPF/stderr.txt" \
     || { echo "FAIL: stderr does not contain 'missing field' (got: $(cat "$TMPF/stderr.txt"))"; exit 1; }
 
+  # Case C: non-numeric --attempt — exit non-zero AND stdout empty (blocker fix)
+  out_c=$(bash "$ROOT/scripts/emit-event.sh" spawn-event \
+    --role analyst --agent "Analizer 2000" \
+    --configured-model sonnet --actual-model sonnet \
+    --attempt abc --attempt-id analyst-1 --status started 2>"$TMPF/stderr_c.txt")
+  rc_c=$?
+  [ "$rc_c" -ne 0 ] || { echo "FAIL: emit-event.sh exited 0 for non-numeric --attempt (expect non-zero)"; exit 1; }
+
+  # stdout must be EMPTY — no torn SPAWN-EVENT prefix line
+  [ -z "$out_c" ] || { echo "FAIL: stdout is not empty for non-numeric --attempt (got: $out_c)"; exit 1; }
+
   echo "PASS"
   # Mutation note: remove the [ -n "$configured_model" ] || missing "configured_model"
   # guard from emit-event.sh. Then the missing-field invocation in Case B succeeds (exit 0)
   # and emits a SPAWN-EVENT line with a blank configured_model value. Case B rc_b assertion
   # fails (was non-zero, now 0) and the empty-stdout assertion fails.
+  # Mutation note (Case C): remove the validate_numeric "--attempt" call from emit-event.sh.
+  # Then "abc" passes through to jq --argjson which fails, leaving $payload empty, but
+  # without the guard_payload check the script would print "SPAWN-EVENT: " (torn line) and
+  # exit 0 — the rc_c non-zero assertion and the empty-stdout assertion both fail.
