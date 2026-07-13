@@ -165,7 +165,7 @@ def coerce_tokens:
       processed: $derived, output: $out,
       _stated_processed: $stated };
 
-def normalize_event:
+def normalize_event($required):
   . as $e
   | (.tokens | coerce_tokens) as $tk
   # turns: coerce to a number (a string/object/null → 0).
@@ -193,16 +193,36 @@ def normalize_event:
   # synthetic string instead of null. The F1 vector (an object spawn_id on a reviewer)
   # is a present-but-wrong-typed value, so it is caught here. Uniform across all four
   # keys: wrong-type → synthetic, null → null.
-  | (if (.attempt_id | type) == "string" then .attempt_id
+  # FR 5 (required fields): for a field in $required, an absent/null OR empty-string
+  # value also isolates to a synthetic key (EC 4 — mirrors account-run.sh's three-mode
+  # rule for SPAWN-EVENT). SPAWN-EVENT has $required == [] so its null branches are
+  # byte-identical to the old code. Token streams get per-stream required arrays.
+  | (if (.attempt_id | type) == "string" and (.attempt_id != "")
+         then .attempt_id
+       elif (($required | index("attempt_id")) != null)
+            and ((.attempt_id // "") == "")
+         then "__malformed__attempt_id__\($ord)"
        elif (.attempt_id == null) then null
        else "__malformed__attempt_id__\($ord)" end) as $aid
-  | (if (.agent_id   | type) == "string" then .agent_id
+  | (if (.agent_id | type) == "string" and (.agent_id != "")
+         then .agent_id
+       elif (($required | index("agent_id")) != null)
+            and ((.agent_id // "") == "")
+         then "__malformed__agent_id__\($ord)"
        elif (.agent_id == null) then null
        else "__malformed__agent_id__\($ord)" end) as $gid
-  | (if (.session_id | type) == "string" then .session_id
+  | (if (.session_id | type) == "string" and (.session_id != "")
+         then .session_id
+       elif (($required | index("session_id")) != null)
+            and ((.session_id // "") == "")
+         then "__malformed__session_id__\($ord)"
        elif (.session_id == null) then null
        else "__malformed__session_id__\($ord)" end) as $sid
-  | (if (.spawn_id   | type) == "string" then .spawn_id
+  | (if (.spawn_id | type) == "string" and (.spawn_id != "")
+         then .spawn_id
+       elif (($required | index("spawn_id")) != null)
+            and ((.spawn_id // "") == "")
+         then "__malformed__spawn_id__\($ord)"
        elif (.spawn_id == null) then null
        else "__malformed__spawn_id__\($ord)" end) as $pid
   # $isolated is true when this record's key field was isolated to a synthetic key
@@ -213,6 +233,12 @@ def normalize_event:
      or (($gid | type) == "string" and ($gid | startswith("__malformed__")))
      or (($sid | type) == "string" and ($sid | startswith("__malformed__")))
      or (($pid | type) == "string" and ($pid | startswith("__malformed__")))) as $isolated
+  # FR 6 / A4: when $required is non-empty (token streams only; SPAWN-EVENT has
+  # $required == []) AND raw .tokens is absent or null → isolate the record. This rides
+  # the existing $*_isolated → block-gate confidence path (AS 5). SPAWN-EVENT
+  # ($required == []) is structurally excluded (EC 6).
+  | (($required | length) > 0 and (($e.tokens // null) == null)) as $tokens_absent
+  | (if $tokens_absent then true else $isolated end) as $isolated
   # Malformed / disagreement breadcrumbs, collected per-event so the pass can
   # surface them. The "stated processed != derived" breadcrumb is the F3 signal:
   # a stored processed (numeric or not) that disagrees with the derived component
@@ -239,8 +265,47 @@ def normalize_event:
        (if ($e.session_id != null) and (($e.session_id | type) != "string")
           then "non-string session_id isolated to a synthetic key" else empty end),
        (if ($e.spawn_id   != null) and (($e.spawn_id   | type) != "string")
-          then "non-string spawn_id isolated to a synthetic key" else empty end)
+          then "non-string spawn_id isolated to a synthetic key" else empty end),
+       # FR 5 (D): absent-required-id isolation breadcrumbs (never silent). Fires
+       # only when the field was in $required AND the computed id is a synthetic key.
+       (if (($required | index("attempt_id")) != null)
+            and (($aid | type) == "string") and ($aid | startswith("__malformed__attempt_id"))
+          then "absent attempt_id isolated to a synthetic key" else empty end),
+       (if (($required | index("agent_id")) != null)
+            and (($gid | type) == "string") and ($gid | startswith("__malformed__agent_id"))
+          then "absent agent_id isolated to a synthetic key" else empty end),
+       (if (($required | index("session_id")) != null)
+            and (($sid | type) == "string") and ($sid | startswith("__malformed__session_id"))
+          then "absent session_id isolated to a synthetic key" else empty end),
+       (if (($required | index("spawn_id")) != null)
+            and (($pid | type) == "string") and ($pid | startswith("__malformed__spawn_id"))
+          then "absent spawn_id isolated to a synthetic key" else empty end),
+       # FR 6 / A4: absent tokens field on a token event (never silent).
+       (if $tokens_absent
+          then "absent tokens field on a token event — not blessed as exact" else empty end)
      ]) as $malformed
+  # FR 6 / A6: partial tokens object — detect absent components and processed
+  # disagreement from the RAW .tokens object (not $tk, which coerces absent → 0).
+  # REUSES $tk._stated_processed and $tk.processed from coerce_tokens (AS 5 reuse).
+  # Only fires when $required is non-empty (token streams) AND tokens is an object.
+  | (if (($required | length) > 0) and (($e.tokens | type) == "object")
+     then
+       ([ "input","cache_creation","cache_read","output" ]
+        | map(select((($e.tokens[.] // null) | type) != "number"))) as $absent_components
+       | (($tk._stated_processed != null)
+          and ($tk._stated_processed != $tk.processed)) as $disagreement
+       | if (($absent_components | length) > 0) or $disagreement
+         then {
+           _tokens_partial: true,
+           _partial_fields: ($absent_components
+             + (if $disagreement then ["processed"] else [] end))
+         }
+         + { _a6_note: (if ($absent_components | length) > 0
+               then "partial tokens object — \($absent_components | length) component(s) absent"
+               else "stated processed disagrees with component sum" end) }
+         else {}
+         end
+     else {} end) as $a6_partial
   | ($e | del(.["_ord"]))
     + { tokens: ($tk | del(._stated_processed)),
         turns: $turns, attempt_id: $aid, agent_id: $gid,
@@ -249,12 +314,16 @@ def normalize_event:
     # absorbed it off `exact`. Only added when actually isolated, so a clean record
     # is byte-identical.
     + (if $isolated then { _isolated: true } else {} end)
+    # A6 partial fields — additive, not overwriting.
+    + (if ($a6_partial | has("_tokens_partial")) then {_tokens_partial: true} else {} end)
+    + (if ($a6_partial | has("_partial_fields")) then {_partial_fields: $a6_partial._partial_fields} else {} end)
     # keep the raw _note if the emitter already wrote one (clamp notes etc.);
     # append a normalization breadcrumb (a DISTINCT field, _norm_note, so it never
     # collides with the emitter-written _note the $*_event_notes collectors read)
     # only when we actually coerced/isolated something.
-    + (if ($malformed | length) > 0
-       then { _norm_note: ($malformed | join("; ")) } else {} end);
+    + (if (($malformed | length) > 0) or ($a6_partial | has("_a6_note"))
+       then { _norm_note: ([$malformed[], (if ($a6_partial | has("_a6_note")) then $a6_partial._a6_note else empty end)] | join("; ")) }
+       else {} end);
 
 # Rebind the five event streams through the normalizer BY SHADOWING the outer
 # $name — from here down every reference to $spawn_events/$spawn_tokens/$conductor/
@@ -268,11 +337,11 @@ def normalize_event:
 # group_by, so it is unique within the stream — the invariant F1 relies on. On a
 # clean stream `_ord` is set then immediately deleted and no synthetic key is minted,
 # so the emitted records are byte-identical to `map(normalize_event)`.
-($spawn_events | to_entries | map(.value + {_ord: .key} | normalize_event)) as $spawn_events
-| ($spawn_tokens | to_entries | map(.value + {_ord: .key} | normalize_event)) as $spawn_tokens
-| ($conductor    | to_entries | map(.value + {_ord: .key} | normalize_event)) as $conductor
-| ($delegate     | to_entries | map(.value + {_ord: .key} | normalize_event)) as $delegate
-| ($reviewers    | to_entries | map(.value + {_ord: .key} | normalize_event)) as $reviewers
+($spawn_events | to_entries | map(.value + {_ord: .key} | normalize_event([]))) as $spawn_events
+| ($spawn_tokens | to_entries | map(.value + {_ord: .key} | normalize_event(["agent_id","attempt_id"]))) as $spawn_tokens
+| ($conductor    | to_entries | map(.value + {_ord: .key} | normalize_event(["session_id"]))) as $conductor
+| ($delegate     | to_entries | map(.value + {_ord: .key} | normalize_event(["session_id"]))) as $delegate
+| ($reviewers    | to_entries | map(.value + {_ord: .key} | normalize_event(["spawn_id"]))) as $reviewers
 # Per-stream isolation flags: true when ANY record in the stream was isolated to a
 # synthetic key. AND'd (via `| not`) into each block's confidence gate so a bucket
 # that absorbed a malformed/isolated record is NOT blessed as `exact`. On a clean
@@ -677,8 +746,10 @@ def normalize_event:
 | ($checkpoints
    | to_entries
    | map(.value
-         + {id: (if (.value.id | type) == "string" then .value.id
-                   elif (.value.id == null) then null
+         + {id: (if (.value.id | type) == "string" and (.value.id != "")
+                     then .value.id
+                   elif (.value.id == null) or (.value.id == "")
+                     then "__malformed__id__\(.key)"
                    else "__malformed__id__\(.key)" end)})) as $checkpoints
 | ($checkpoints | map(select(.status == "raised"))   | group_by(.id) | map(.[0])) as $raised
 | ($checkpoints | map(select(.status == "resolved"))) as $resolved
@@ -751,6 +822,9 @@ def normalize_event:
             # unmatched spawn), so account-run.sh's `$stk.tokens | with_entries`
             # enrichment never receives a scalar and crashes downstream.
             tokens: (if ($tok != null and (($tok.tokens | type) == "object")) then $tok.tokens else null end),
+            # FR 6 / A6: carry _partial_fields from the normalized record so
+            # account-run.sh's with_entries confidence projection can read $stk._partial_fields.
+            _partial_fields: (if $tok != null then ($tok._partial_fields // null) else null end),
             rework: $sp.rework
           }
       )

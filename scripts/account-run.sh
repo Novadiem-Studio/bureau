@@ -991,8 +991,12 @@ if [ -x "$TOKENS_SCRIPT" ]; then
                       + (if $stk.turns      != null then {turns:      {value: $stk.turns,      confidence: "exact"}} else {} end)
                       + (if $stk.tokens     != null
                          then {tokens: ($stk.tokens
-                                 | with_entries(.value = {value: .value,
-                                     confidence: (if .key == "output" then "estimated" else "exact" end)}))}
+                                 | with_entries(
+                                     .key as $k
+                                     | .value = {value: .value,
+                                         confidence: (if $k == "output" then "estimated"
+                                                      elif (($stk._partial_fields // []) | index($k)) != null then "partial"
+                                                      else "exact" end)}))}
                          else {} end)
                     end
                 ]
