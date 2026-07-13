@@ -120,7 +120,7 @@ All three of these have bitten real runs:
 ### Index write
 
 Owned by `scripts/run-start.sh` (step 7). The entry carries the seven-field shape
-(slug, run_dir, target_repo, workflow, status, created_at, task) written atomically
+{slug, repo, run_dir, status, phase, last_updated, workflow} written atomically
 (.tmp → mv) and validated with python3 json.load.
 
 > **Not committed.** `output/studio/runs-index/` and the derived
