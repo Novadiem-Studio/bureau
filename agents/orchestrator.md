@@ -309,9 +309,7 @@ Record the exit code and any defect lines in `RUN_DIR/log.md`.
 > **Full protocol:** `docs/conductor-gates.md`
 > This module owns adjudication and hard boundaries. This section is the reminder.
 
-**Adjudication rule:** The Challenger finds; The Conductor decides. Blockers default to fix
-unless explicitly overruled with logged reasoning. Route fixes to the role that owns the root
-cause; checkpoint product/scope decisions and max-loop overflow.
+**Adjudication rule:** Run `scripts/verdict-gate.sh` first; a non-zero exit routes to re-review before adjudicating. The Challenger finds; The Conductor decides. Blockers default to fix unless explicitly overruled with logged reasoning. Route fixes to the role that owns the root cause; checkpoint product/scope decisions and max-loop overflow.
 
 **Canon/promotion gate:** when any canon/process surface is touched, the Challenger spawn prompt
 MUST include the `Promotion to canon: yes/no` declaration block. `yes` requires a fresh
@@ -602,7 +600,7 @@ artifact text — the fix must be in the file, not just acknowledged in the log.
 checks by re-reading each Blocker's cited location. Where `BLOCKER-EVENT:` lines are present (Phase-1 gap-close, `docs/run-accounting.md § B2.5`),
 the mechanical half is: every `status:"raised"` line in the ledger has a matching
 `status:"closed"` line with the same `id` — run `grep 'BLOCKER-EVENT:' RUN_DIR/log.md`
-and confirm no raised id is missing its closed pair. Where `BLOCKER-EVENT:` lines are
+and confirm no raised id is missing its closed pair. Where `verdicts/<attempt_id>.json` exists for a Challenger spawn, also confirm its `blocker_ids` matches the set of closed `BLOCKER-EVENT` ids in `log.md`. Where absent (pre-change run or opted-out), the prose check above suffices. Where `BLOCKER-EVENT:` lines are
 absent (pre-Phase-1 run, opted-out run), fall back to the prose check: every `### Blockers`
 block in the log has a Conductor adjudication line. In both cases the "fix is real" half is
 the Challenger re-review. If the ledger and the `### Blockers` prose disagree on count, the
