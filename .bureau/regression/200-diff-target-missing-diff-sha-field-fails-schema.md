@@ -23,7 +23,7 @@ command: |
   EOF
   out=$(bash "$ROOT/scripts/verdict-gate.sh" "$RUN_DIR" challenger-1 2>&1); rc=$?
   [ "$rc" -eq 1 ] || { echo "FAIL: verdict-gate exited $rc (expected 1): $out"; exit 1; }
-  printf '%s\n' "$out" | grep -q "schema-violation" || { echo "FAIL: expected schema-violation, got: $out"; exit 1; }
+  printf '%s\n' "$out" | grep -q "diff-target missing field" || { echo "FAIL: expected diff-target missing field, got: $out"; exit 1; }
   echo "PASS"
   # Mutation note: add "diff_sha":"$DIFF_SHA" to the diff-target element. The gate exits 0,
   # so the grep for "schema-violation" fails.
