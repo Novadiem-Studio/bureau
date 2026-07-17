@@ -1,5 +1,5 @@
-name: run-reopen ceremony — status reset to pending, pointer written with recovered baseline, log line appended
-phase: 05 · conductor-capture-lifecycle (Lever 2)
+name: run-reopen ceremony — status reset to pending, pointer written with recovered baseline and project_dir=invocation cwd, log line appended
+phase: 05 · conductor-capture-lifecycle (Lever 2 + W2 rework)
 owner: scripts/run-reopen.sh
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
@@ -7,6 +7,11 @@ command: |
   RP="$TMPF/r"
   PF="$TMPF/ptr"
   mkdir -p "$RP"
+  # Capture the expected project_dir: the cwd at invocation time (pwd -P).
+  # run-reopen.sh writes pointer.project_dir from pwd -P at the moment it runs;
+  # conductor-stop.sh's ownership gate compares this to the firing session's
+  # transcript cwd. For the gate to arm correctly, both must be the same.
+  EXPECTED_CWD=$(pwd -P)
   # state.json: accounting.status = "complete" (post-close-out)
   printf '%s\n' '{"accounting":{"status":"complete"}}' > "$RP/state.json"
   # log.md: one CONDUCTOR-TOKEN-EVENT with a baseline object (non-legacy shape)
@@ -42,8 +47,18 @@ command: |
     || { echo "FAIL: re-open log line not appended"; rm -rf "$TMPF"; exit 1; }
   PATH=/usr/bin:$PATH grep -qF "$nonce" "$RP/log.md" \
     && { echo "FAIL: nonce appeared in log.md (must never appear)"; rm -rf "$TMPF"; exit 1; }
+  # (4) W2: pointer.project_dir must equal the cwd at invocation time (pwd -P).
+  # run-reopen.sh writes pointer.project_dir from pwd -P; conductor-stop.sh's
+  # ownership gate requires this to match the firing session's transcript cwd.
+  ptr_project_dir=$(jq -r '.project_dir // ""' "$PF" 2>/dev/null)
+  [ "$ptr_project_dir" = "$EXPECTED_CWD" ] \
+    || { echo "FAIL: pointer.project_dir ($ptr_project_dir) != invocation cwd ($EXPECTED_CWD)"; rm -rf "$TMPF"; exit 1; }
   rm -rf "$TMPF"
   echo "PASS"
-  # Mutation: remove the baseline-recovery block in run-reopen.sh so the pointer
-  # always gets baseline:null. Then bl_type = "null" and the type assertion fails.
-expected: exit 0; stdout "PASS"; accounting.status="pending"; pointer baseline is an object with session_id="sess-A"; nonce in stdout; nonce absent from log.md
+  # Mutation proofs:
+  # (a) Remove the baseline-recovery block in run-reopen.sh so the pointer always
+  #     gets baseline:null. Then bl_type = "null" and the type assertion fails.
+  # (b) Remove the `project_dir` write from run-reopen.sh (e.g. drop the --arg
+  #     project_dir line from the jq call in Step 5). Then ptr_project_dir is
+  #     empty/"" or absent, != EXPECTED_CWD, and assertion (4) fails.
+expected: exit 0; stdout "PASS"; accounting.status="pending"; pointer baseline is an object with session_id="sess-A"; nonce in stdout; nonce absent from log.md; pointer.project_dir equals the invocation cwd
