@@ -447,6 +447,29 @@ def normalize_event($required):
 | ($conductor | group_by(.session_id) | map(max_by((.tokens | objects | .processed) // 0))) as $cond
 | ($conductor | group_by(.session_id) | map(map(.final == true) | any)) as $leg_finals
 | (($conductor | length) > 0 and ($leg_finals | all)) as $all_legs_final
+# --- Staleness guard (Lever 1): conductor final:true at T must cover ALL run activity --
+# If the max `at` of hook-stamped SPAWN-TOKEN-EVENT records (unfakeable; preferred anchor)
+# — or, when no SPAWN-TOKEN-EVENTs exist, the max `at` of SPAWN-EVENT started records
+# (fallback) — postdates the max `at` of all final:true CONDUCTOR-TOKEN-EVENTs, the
+# capture predates real run activity and must NOT wear "exact". Malformed/absent `at`
+# fields are skipped gracefully (tsnum returns null; null values are excluded from max
+# by `map(select(. != null))`). When no qualifying later-activity timestamp is found OR
+# no final:true `at` can be parsed, the stale flag stays false — byte-identical to today.
+| ($conductor | map(select(.final == true) | (.at | tsnum)) | map(select(. != null)) | max // null) as $cond_final_max_at
+# Preferred anchor: hook-stamped SPAWN-TOKEN-EVENT `at` values (set $stok, already
+# normalized above). Fallback: SPAWN-EVENT started `at` when no SPAWN-TOKEN-EVENTs exist.
+# $spawn_events at this point is the normalized set; $stok is the deduped token set.
+| ([ $stok[] | (.at | tsnum) ] | map(select(. != null))) as $stok_ts
+| (if ($stok_ts | length) > 0
+   then ($stok_ts | max)
+   else ([ $spawn_events[] | select(.status == "started") | (.at | tsnum) ] | map(select(. != null)) | max // null)
+   end) as $later_activity_at
+| ($cond_final_max_at != null and $later_activity_at != null and $later_activity_at > $cond_final_max_at) as $cond_stale
+| (if $cond_stale
+   then (($cond_final_max_at | todate) as $cap_ts
+         | ($later_activity_at | todate) as $act_ts
+         | "conductor-capture-stale: run extended past close-out (final capture \($cap_ts) predates later run activity at \($act_ts))")
+   else null end) as $cond_stale_note
 | ($cond | length) as $legs
 | ($cond | map((.tokens | objects | .input) // 0)          | add // 0) as $cond_input
 | ($cond | map((.tokens | objects | .cache_creation) // 0) | add // 0) as $cond_cc
@@ -565,14 +588,19 @@ def normalize_event($required):
 # blocks instead. output_total (below) DOES fold all four roles (it is a raw
 # total, not a ratio denominator). [OQ-1: Conductor decision — build-only.]
 | ($spec_processed + $cond_processed) as $processed_total
-| ($all_legs_final) as $cond_ok
+# $cond_ok: true only when all legs are final AND the capture is not stale.
+# The stale guard flows through here so processed_total.confidence also degrades
+# when the conductor capture predates later run activity (constraint v, repro.md §8).
+| ($all_legs_final and ($cond_stale | not)) as $cond_ok
 | ($n_unmatched == 0) as $spec_ok
 # A malformed attempt_id/agent_id in the specialist set already routes to
 # $unattributed and is excluded from $spec_processed, so the NUMBER is safe — but a
 # block that isolated a specialist record must not read exact, so fold $spec_isolated
 # (and, for the conductor share, $cond_isolated) into the processed_total gate.
 | (if $cond_ok and $spec_ok and ($spec_isolated | not) and ($cond_isolated | not) then "exact" else "partial" end) as $pt_conf
-| ([ (if ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md" else empty end),
+| ([ (if ($cond_ok | not) and $cond_stale then $cond_stale_note
+       elif ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md"
+       else empty end),
      (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
      (if $spec_isolated then "one or more specialist record(s) had a malformed attempt_id/agent_id — isolated to a distinct synthetic key and routed to unattributed; processed_total not blessed as exact" else empty end),
      (if $cond_isolated and $cond_isolated_tokens_absent
@@ -591,7 +619,7 @@ def normalize_event($required):
 | (($cond_processed == 0) and ($cond_event_notes != null)) as $cond_zero_with_note
 # $cond_isolated (a malformed/absent session_id leg isolated to a synthetic key) is
 # AND'd into exact — an isolated leg is a distinct real cost routed to its own bucket.
-| (if $all_legs_final and ($cond_zero_with_note | not) and ($cond_isolated | not) then "exact"
+| (if $all_legs_final and ($cond_zero_with_note | not) and ($cond_isolated | not) and ($cond_stale | not) then "exact"
    elif ($conductor | length) > 0 then "partial"
    else "unavailable" end) as $cond_conf
 | (if ($all_legs_final and $cond_zero_with_note) then "conductor block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
@@ -600,6 +628,7 @@ def normalize_event($required):
      then "one or more conductor record(s) had an absent/null tokens object on a token event — isolated, block not blessed as exact"
    elif ($cond_isolated and ($conductor | length) > 0)
      then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic bucket, block not blessed as exact"
+   elif $cond_stale then $cond_stale_note
    elif $cond_conf == "partial" then "final-leg-capture-pending: post-close-out Stop hook has not yet fired for this run"
    elif $cond_conf == "unavailable" then "no CONDUCTOR-TOKEN-EVENT lines present in log.md yet"
    else null end) as $cond_block_note

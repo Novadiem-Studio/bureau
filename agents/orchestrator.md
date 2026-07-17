@@ -503,6 +503,8 @@ Pointer enrolled — nonce written to pointer file and conductor transcript only
 
 **At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
 
+**Re-opening a closed run:** when a run continues past a completed close-out (e.g. a build phase starts after planning-phase accounting finished), the pointer has already been removed and further Stop fires are silenced. Run `scripts/run-reopen.sh <RUN_DIR>` before spawning the first build-phase agent. The script resets `accounting.status` to `"pending"`, recovers the original baseline from the last non-legacy CONDUCTOR-TOKEN-EVENT in log.md, and re-enrolls the pointer — so subsequent Stop fires emit per-turn events using the whole-run baseline, and the eventual final capture covers the complete run.
+
 **At archive (#25/#26a janitor):** remove THIS run's per-run pointer file(s) — recompute `_pointer_file` from the archived run's `RUN_DIR` via the path-resolution block above (so the munged key matches), then:
 ```sh
 rm -f "$_pointer_file"              # the Conductor pointer (bare munged-run-dir key)
