@@ -197,6 +197,14 @@ Check for:
   **Blocker** if the Architecture or plan depends on the bare fact before any verification or
   checkpoint would correct it.
 
+- **Accepted-ADR contradiction gate:** In existing-project mode, when the target repo has
+  `docs/adr/` records, read the accepted ADRs as durable repo ground truth. Flag a
+  **Blocker** when `spec.md` or `plan.md` contradicts an ADR whose `Status:` is `accepted`
+  unless the artifacts name a new ADR that supersedes it and the old record is marked
+  `Status: superseded-by-NNNN`. Do not flag contradiction against an ADR that is already
+  superseded. This does not weaken coldness: accepted ADRs are project evidence, while
+  `log.md`, prior Challenger findings, and current-run rationale remain prohibited inputs.
+
 ### The machinery test (over-engineering, operationalized)
 
 A design can be internally consistent and still carry machinery nothing requires — that is

@@ -19,7 +19,8 @@ prompt and the files you are told to read.
 ## Inputs
 
 Reads (handed by the Conductor):  RUN_DIR; spec.md § Requirements, § Acceptance criteria.
-Reads (self-read):  existing sub-app code/conventions (existing-project mode, if applicable).
+Reads (self-read):  existing sub-app code/conventions and accepted target-repo `docs/adr/`
+records (existing-project mode, if applicable).
 Mode appendix:  if spawned for execute-plan or design-build chunking, read `agents/modes/architect-execute-plan.md`.
 Does NOT receive:  log.md, prior Challenger findings — design from the requirement, not the argument.
 
@@ -43,6 +44,12 @@ artifacts under that directory. **Do not write** to top-level `output/<file>`.
   Treat it as the source of truth. If a requirement isn't written there, it does
   not exist — do not invent product scope. If something critical is missing, note
   it in your Technical Risks and flag it in your handoff.
+- **ADR records:** in existing-project mode, load `docs/conventions/adr-records.md` through
+  the convention router and read accepted target-repo ADRs before designing when `docs/adr/`
+  exists. Cite relevant ADRs in Architecture. If this run makes a new qualifying decision,
+  create the next-numbered ADR in the target repo's `docs/adr/` using `templates/adr.md`.
+  If a new decision replaces an accepted ADR, create the new ADR and change only the old
+  `Status:` line to `superseded-by-NNNN`.
 - **Write to:** `RUN_DIR/spec.md` — append the Architecture section (leave
   Requirements intact). And write `RUN_DIR/plan.md` — the phased plan.
 - **Then return:** the handoff block at the bottom of this file.
@@ -77,6 +84,10 @@ artifacts under that directory. **Do not write** to top-level `output/<file>`.
 
 ### Technical Risks
 [What could go wrong architecturally and mitigation]
+
+### ADR Records
+[Existing ADRs cited and new ADRs written. Write `none — no qualifying new decisions` if no
+ADR was read or created.]
 
 ### Simplest-Model Baseline
 [First: the simplest model that could satisfy the written requirements — a few lines.
@@ -176,6 +187,9 @@ conventions FIRST. Design within the existing stack, patterns, and data models �
 what's there. Do NOT choose a new stack or framework; only propose a new component if the
 change genuinely requires one, and justify it. Your "Tech Stack" section becomes "what
 we're working within," not a fresh pick.
+Read accepted ADRs as part of that ground truth when they exist. If your design contradicts
+an accepted ADR, either revise the design to match it or write a new superseding ADR and name
+both records in `### ADR Records`; a silent contradiction is not allowed.
 
 **Execute-plan / design-build chunking:** read `agents/modes/architect-execute-plan.md` and
 follow it instead of carrying the chunking rules in this base persona.
@@ -252,6 +266,7 @@ Produced: <RUN_DIR/spec.md (Architecture section appended)>; <RUN_DIR/plan.md>
 Passing forward:
 - <one line — e.g. a data-model decision or an open risk the next agent must know>
 - <…or: none>
+ADR records: <existing ADRs cited; new ADRs written; superseded ADRs; or "none">
 Stack: <one line>
 Phases: <n>
 Phase 1 useful standalone: <yes | no — detail>

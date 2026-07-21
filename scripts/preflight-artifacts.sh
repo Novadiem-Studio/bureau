@@ -159,6 +159,73 @@ read_target_repo() {
   printf '%s' "$val"
 }
 
+# ── (j) ADR record shape ──────────────────────────────────────────────────────
+# Target-repo ADRs are append-only project memory.  The semantic question of
+# whether a decision deserved an ADR remains a review concern; this gate checks
+# only the deterministic file shape.
+
+check_adr_records() {
+  local target_repo_val
+  target_repo_val="$(read_target_repo)"
+  [ -n "$target_repo_val" ] || return
+
+  local dir
+  dir="$target_repo_val/docs/adr"
+  [ -d "$dir" ] || return
+
+  local nums="$WORK/adr_nums.txt"
+  > "$nums"
+
+  local f base rel num status ref
+  for f in "$dir"/*.md; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    rel="docs/adr/$base"
+    num="$(printf '%s\n' "$base" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)-.*/\1/p')"
+    [ -n "$num" ] && printf '%s\n' "$num" >> "$nums"
+
+    if ! printf '%s\n' "$base" | grep -qE '^[0-9][0-9][0-9][0-9]-[a-z0-9][a-z0-9-]*[.]md$'; then
+      add_defect "${rel}:0 — adr-filename — expected NNNN-lowercase-slug.md"
+    fi
+
+    if [ -z "$num" ] || ! grep -qE "^# ADR-${num}: .+" "$f"; then
+      add_defect "${rel}:1 — adr-heading — heading must match filename number as '# ADR-${num:-NNNN}: Short Title'"
+    fi
+
+    if ! grep -qE '^Status: (accepted|superseded-by-[0-9][0-9][0-9][0-9])$' "$f"; then
+      add_defect "${rel}:2 — adr-status — missing or invalid Status: expected accepted or superseded-by-NNNN"
+    fi
+
+    if ! grep -qE '^Date: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$' "$f"; then
+      add_defect "${rel}:3 — adr-date — missing or invalid Date: expected YYYY-MM-DD"
+    fi
+
+    if ! grep -qE '^## Context$' "$f"; then
+      add_defect "${rel}:0 — adr-context-missing — missing required '## Context' heading"
+    fi
+
+    if ! grep -qE '^## Decision$' "$f"; then
+      add_defect "${rel}:0 — adr-decision-missing — missing required '## Decision' heading"
+    fi
+
+    status="$(grep -m1 '^Status: superseded-by-' "$f" 2>/dev/null || true)"
+    if [ -n "$status" ]; then
+      ref="$(printf '%s\n' "$status" | sed -n 's/^Status: superseded-by-\([0-9][0-9][0-9][0-9]\)$/\1/p')"
+      if [ -n "$ref" ] && ! ls "$dir/${ref}-"*.md >/dev/null 2>&1; then
+        add_defect "${rel}:2 — adr-superseded-target-missing — superseded target ADR-${ref} not found"
+      fi
+    fi
+  done
+
+  local dup dupes
+  dupes="$WORK/adr_dupes.txt"
+  sort "$nums" | uniq -d > "$dupes"
+  while IFS= read -r dup || [ -n "$dup" ]; do
+    [ -n "$dup" ] || continue
+    add_defect "docs/adr/${dup}-*.md:0 — adr-number-duplicate — duplicate ADR number ${dup}"
+  done < "$dupes"
+}
+
 # ── (h) Convention citations ──────────────────────────────────────────────────
 # Scans non-fenced, non-heading, non-ID-definition lines for a compound
 # structural term from the closed keyword set immediately adjacent to a
@@ -467,6 +534,7 @@ fi
 # round1: spec.md + plan.md; also harmless at final.
 
 if [ "$PHASE" = "round1" ] || [ "$PHASE" = "final" ]; then
+  check_adr_records
   check_convention_citations "$SPEC"
   check_convention_citations "$PLAN"
 fi

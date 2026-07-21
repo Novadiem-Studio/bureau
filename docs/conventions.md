@@ -27,6 +27,8 @@ only the module whose trigger matches the work.
   waivers, or convention retirement/supersession.
 - `docs/conventions/failure-signatures.md` — recording failure signatures, checking recurrence,
   or closing the lessons-append gate.
+- `docs/conventions/adr-records.md` — reading, writing, auditing, or reconciling target-repo
+  `docs/adr/` decision records.
 
 If a module is not triggered, do not read it "just in case." The old broad
 `Convention: docs/conventions.md` pointer means: load this router first, then only the matching

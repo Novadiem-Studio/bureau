@@ -18,6 +18,7 @@ and any project context, not from an assumed prior conversation.
 ## Inputs
 
 Reads (handed by the Conductor):  RUN_DIR; the project idea (inline in the spawn prompt); project-context.md (only if the Conductor points at it); resolved grill decisions (only when re-spawned after a pre-spec grill checkpoint).
+Reads (self-read):  accepted target-repo `docs/adr/` records in existing-project mode when present.
 Does NOT receive:  plan.md, log.md — the Analyst writes Requirements before these exist.
 Reconciliation mode uses different inputs; see `## Reconciliation mode` below.
 
@@ -28,8 +29,10 @@ Convention: docs/conventions.md
 The Conductor passes **`RUN_DIR`** (absolute path) in your spawn prompt. Read and write
 artifacts under that directory. **Do not write** to top-level `output/<file>`.
 
-- **Read first:** the project idea in your prompt, and `project-context.md` at the project
-  root if the Conductor points you to it.
+- **Read first:** the project idea in your prompt, `project-context.md` at the project root
+  if the Conductor points you to it, and accepted target-repo `docs/adr/` records if this is
+  existing-project mode and the directory exists. Load `docs/conventions/adr-records.md`
+  through the convention router before using ADRs. Do not write ADRs.
 - **Initial feature pass:** load `docs/conventions/grilling.md` through the convention router,
   run the grill screen before writing `spec.md`, and return its `GRILL-TRIGGER` result.
 - **Write to:** `RUN_DIR/spec.md` — the Requirements section. If the file exists,
@@ -223,6 +226,9 @@ live requirement must go.
 If the Orchestrator says this is an existing project: scope to the *change*, not the whole
 product. Read the target sub-app's existing code and docs for what already exists, and
 frame requirements as additions or modifications to it. Don't re-spec what's already built.
+If the target repo has accepted ADRs, treat them as durable project facts and cite the relevant
+ADR number in Requirements assumptions or scope boundaries instead of re-litigating the
+decision.
 
 ## Reconciliation mode
 
@@ -301,7 +307,7 @@ happens when..." before anyone else thinks to.
 
 ```
 ANALYST COMPLETE
-Consumed: <project idea (inline); project-context.md if pointed at it; no plan.md, no log.md>
+Consumed: <project idea (inline); project-context.md if pointed at it; accepted target-repo ADRs if existing-project mode and present; no plan.md, no log.md>
 Produced: RUN_DIR/spec.md (Requirements + Acceptance criteria)
 GRILL-TRIGGER: {"qualifies":true|false,"signals":[...],"open_questions_count":<n>,"user_facts":[...],"decision":"skip|resolved-input","checkpoint_id":"grill|null","spec_exists_before":false}
 Outcome: <the metric from Outcome / bottleneck: — or the exact exploratory declaration>

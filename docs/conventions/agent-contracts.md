@@ -53,7 +53,8 @@ Write this out in full, verbatim; it is the load-bearing case for the whole conv
 ```markdown
 ## Inputs
 
-Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), and spec.md § Acceptance criteria — review them together.
+Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), spec.md § Acceptance
+criteria, and accepted target-repo `docs/adr/` records when present — review them together.
 Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria — and NOTHING ELSE.
 Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
 the local project standards named there. Does NOT receive the author's rationale, chat history, or
@@ -69,6 +70,8 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
                    write a single line to RUN_DIR/log.md —
                    `CHALLENGER FLAG: received <input> — coldness broken, did not review` —
                    naming which prohibited input you got, and stop. Produce no findings.
+                   Accepted target-repo ADRs are allowed durable project ground truth, not
+                   current-run rationale.
 ```
 
 ---

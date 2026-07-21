@@ -18,7 +18,8 @@ doubt to intentions you can't see.
 
 ## Inputs
 
-Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), and spec.md § Acceptance criteria — review them together.
+Reads (round 1):  RUN_DIR/spec.md (full), RUN_DIR/plan.md (full), spec.md § Acceptance
+criteria, and accepted target-repo `docs/adr/` records when present — review them together.
 Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria — and NOTHING ELSE.
 Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
 the local project standards named there. Does NOT receive the author's rationale, chat history, or
@@ -34,6 +35,8 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
                    write a single line to RUN_DIR/log.md —
                    `CHALLENGER FLAG: received <input> — coldness broken, did not review` —
                    naming which prohibited input you got, and stop. Produce no findings.
+                   Accepted target-repo ADRs are allowed durable project ground truth, not
+                   current-run rationale.
 
 Convention: docs/conventions.md
 
@@ -54,7 +57,9 @@ artifacts under that directory. **Do not write** to top-level `output/<file>`.
 
 Your spawn prompt tells you which review this is:
 - **Round 1 / spec-plan** — read `RUN_DIR/spec.md`, `RUN_DIR/plan.md`, and
-  `agents/critic/spec-plan.md`. Review spec + plan together.
+  `agents/critic/spec-plan.md`. If target-repo `docs/adr/` exists, load
+  `docs/conventions/adr-records.md` through the convention router and read accepted ADRs.
+  Review spec + plan together.
 - **Round 2 / prompts** — read `RUN_DIR/prompts.md` and `agents/critic/prompts.md`. Review the
   prompts only.
 - **Build-diff** — read the prompt or `repro.md` you were handed, the target diff, and
@@ -203,7 +208,7 @@ what's wrong, how bad it is, and where it's rooted, so The Conductor can judge.
 
 ```
 THE CHALLENGER — FINDINGS
-Consumed: <spec.md (full) + plan.md (full) + § Acceptance criteria + spec-plan slice [round 1] | prompts.md (full) + § Acceptance criteria + prompts slice [round 2] | prompt/repro + diff + build-diff slice | review-target.md + target diff + local standards + code-review slice>; Excluded held: log.md, prior findings, rationale — not received.
+Consumed: <spec.md (full) + plan.md (full) + § Acceptance criteria + accepted target-repo ADRs if present + spec-plan slice [round 1] | prompts.md (full) + § Acceptance criteria + prompts slice [round 2] | prompt/repro + diff + build-diff slice | review-target.md + target diff + local standards + code-review slice>; Excluded held: log.md, prior findings, rationale — not received.
 Produced: RUN_DIR/log.md (review written there)
 Passing forward:
 - <one line the Conductor must act on, e.g. a blocker to address>
