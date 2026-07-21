@@ -26,14 +26,18 @@ per-sub-app skills the affected surface needs.
 **Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `log.md`, `state.json`, and
 `repro.md` — the captured repro + located cause that step 1 records and step 4 re-runs. `repro.md`
 is its own artifact (separate from `log.md`) so the Conductor can hand it to the cold Challenger
-without the run log; it is what keeps the review cold. The fix itself lands as a reviewed diff in
-this run's **git worktree**, merged to the dev/integration branch at close-out. No `spec.md`, no
-`plan.md`, no `prompts.md`.
+without the run log; it is what keeps the review cold. `repro.md` is also the single home for
+the regression-test record: test path, pre-fix red evidence, post-fix green evidence, or the
+explicit no-correct-seam finding. The fix itself lands as a reviewed diff in this run's **git
+worktree**, merged to the dev/integration branch at close-out. No `spec.md`, no `plan.md`, no
+`prompts.md`.
 
-**Leans on skills:** **novadiem-engineering** (cross-project coding standards — loaded by the
-coder and The Challenger so the fix and its review hold the same bar) + the project's `testing`
-skill, if it has one, for the verify step (reuse its run commands; don't reinvent them) + the
-per-sub-app skills the affected surface needs. Load the skill, don't duplicate its runbook.
+**Leans on skills:** `docs/conventions/diagnosing-bugs.md` (red-capable feedback loop,
+minimise, hypothesise/instrument, regression-test seam/home rule) + **novadiem-engineering**
+(cross-project coding standards — loaded by the coder and The Challenger so the fix and its
+review hold the same bar) + the project's `testing` skill, if it has one, for the verify step
+(reuse its run commands; don't reinvent them) + the per-sub-app skills the affected surface
+needs. Load the skill, don't duplicate its runbook.
 
 ## Steps
 
@@ -41,18 +45,25 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model routing" 
 `agents/orchestrator.md`). Sequential — wait for each handoff before the next. Pass `RUN_DIR` as
 an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
 
-1. **Analizer 2000** (Reproduce, **standard**) — reproduce the bug FIRST, before anything is
-   touched (don't fix blind); capture the reproduction as the failing command / test / steps so it
-   becomes the acceptance test; then locate the root cause (file + symbol + why) and name the
-   affected sub-app / domain and the coder who owns it → `RUN_DIR/repro.md` (captured repro +
-   located cause + affected domain) — a separate artifact from `log.md` so the cold Challenger can
-   read it in step 4 without the run log (the Conductor may log a one-line decision to `log.md`)
+1. **Analizer 2000** (Reproduce, **standard**) — load
+   `docs/conventions/diagnosing-bugs.md`. Reproduce the bug FIRST, before anything is touched
+   (don't fix blind); capture a red-capable feedback loop as the failing command / test / steps
+   so it becomes the acceptance test; minimise the repro; then locate the root cause (file +
+   symbol + why) and name the affected sub-app / domain and the coder who owns it →
+   `RUN_DIR/repro.md` (captured repro + minimised scenario + located cause + affected domain +
+   candidate regression seam) — a separate artifact from `log.md` so the cold Challenger can read
+   it in step 4 without the run log (the Conductor may log a one-line decision to `log.md`).
+   If the cause is still foggy after minimising, use the diagnosing-bugs hypothesis/probe loop:
+   3-5 falsifiable hypotheses, targeted instrumentation only, debug prefixes, cleanup proof. If
+   probes require code edits, ask the Conductor to create the worktree early and run them there;
+   never instrument the integration branch checkout.
    - reproduced + cause located: proceed.
    - cannot reproduce, or the cause is unclear: `[CHECKPOINT]`.
    - the cause spans two coders' domains (not one bug): `[CHECKPOINT]` (human decides: split into
      two `bug-fix` runs, or escalate to `feature`).
-2. **Worktree** (before step 3) — create an isolated git worktree for this run (see
-   `docs/git-worktree.md`). From the **target repo** named in step 1 / the workspace map:
+2. **Worktree** (before step 3, or earlier if step 1 needed temporary probes) — create an
+   isolated git worktree for this run (see `docs/git-worktree.md`). From the **target repo**
+   named in step 1 / the workspace map:
 
    ```bash
    <FRAMEWORK>/scripts/run-worktree.sh create \
@@ -77,18 +88,28 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
    single-handed is exactly what this stop exists to prevent. Keep the fix reviewable: if the
    smallest honest fix becomes a broad refactor, a multi-surface rewrite, or a large surprise
    diff, stop and report that the bug is bigger than the located cause. The Conductor chooses
-   whether to split it or escalate.
+   whether to split it or escalate. Load `docs/conventions/diagnosing-bugs.md`. Before applying
+   the fix, turn the minimised repro into a committed regression test at the correct target-repo
+   home: Bureau targets use a `.bureau/regression/NNN-slug.md` fixture; app targets use the app's
+   own test suite named by the local `testing` skill / `CLAUDE.md` / sub-app convention. Run it
+   on the pre-fix code and record the red command/output in `RUN_DIR/repro.md`; then apply the fix
+   and record the green command/output. If no correct seam exists, do not fake a shallow test:
+   write `Regression test: none — no correct seam` in `RUN_DIR/repro.md`, with attempted seams
+   and the follow-up needed to make the bug lockable.
 4. **The Challenger** (Critic, **strong**, fresh context required) — cold-review the fix diff (in
    `WORKTREE`) against `RUN_DIR/repro.md` (the captured repro + located cause); it does **NOT**
-   receive `log.md`, the fix rationale, or the coder's reasoning (coldness): does it fix the located
-   cause (not just mask the symptom)? does it touch only what the cause requires? is the diff small
-   and coherent enough for a real review? any regression risk? → `log.md`, findings
+   receive `log.md`, the fix rationale, or the coder's reasoning (coldness): does it fix the
+   located cause (not just mask the symptom)? does the regression test exist in the correct
+   per-repo home and prove pre-fix red → post-fix green, or is the no-correct-seam finding real?
+   does it touch only what the cause requires? is the diff small and coherent enough for a real
+   review? any regression risk? → `log.md`, findings
    - **The Conductor adjudicates**: route the fix back to the coder (max 2x — `max_critic_loops`),
      accept, or `[CHECKPOINT]`.
-   - **Then verify** (Conductor): re-run the repro captured in `RUN_DIR/repro.md` — it must now PASS — and run the
-     project's existing test pass (lean on the `testing` skill if the project has one; reuse its
-     commands) to confirm no regression. The fix is not accepted until the original repro passes
-     and the suite is green.
+   - **Then verify** (Conductor): re-run the repro captured in `RUN_DIR/repro.md` — it must now
+     PASS — and run the project's existing test pass (lean on the `testing` skill if the project
+     has one; reuse its commands) to confirm no regression. The fix is not accepted until the
+     original repro passes, the regression-test record is present (or the no-correct-seam finding
+     is explicit and reviewed), and the suite is green.
    - **Close out** at the `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`): human
      go, then merge the worktree to the **dev/integration branch only**, then `run-worktree.sh remove`
      (on conflict: `[CHECKPOINT]`); check for new packages after the merge and install into the

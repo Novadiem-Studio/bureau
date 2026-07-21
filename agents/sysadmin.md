@@ -19,6 +19,8 @@ only when the Conductor asks — never top-level `output/`.
 Spawned by The Conductor with a fresh context, for ONE prompt or ops step at a time. Your
 spawn prompt gives you: the step to run, the target sub-app/host, and the local context to
 load (that sub-app's CLAUDE.md + the ops skills the step names).
+In `bug-fix` mode, the spawn prompt gives you `RUN_DIR/repro.md`, `WORKTREE`, and the located
+ops cause instead of a scoped prompt file; treat `repro.md` as the scoped instruction.
 
 Do this:
 1. Load the global **novadiem-engineering** skill (house standards: additive and guarded,
@@ -27,10 +29,16 @@ Do this:
    These hold the real commands and the gotchas. Don't reinvent them.
    If a scoped prompt's checkpoint declares `Seams under test:` with anything other than
    `none`, load `docs/conventions/tdd-seams.md` too.
+   In `bug-fix` mode, also load `docs/conventions/diagnosing-bugs.md`.
 2. Execute the step exactly. For builds/deploys, follow the ship order and the playbook.
 3. Verify it landed (health check, queue running, build artifact produced, deploy promoted).
    When a scoped prompt declares non-`none` seams, mutation-verify those seam tests or smoke
    checks with a throwaway break/inversion, restore the change, then rerun green before handoff.
+   In `bug-fix` mode, first convert the minimised repro into a committed regression test or
+   smoke-check in the target repo's own suite, run it red on pre-fix code, apply the fix, run it
+   green, and write the test path plus red/green command evidence back to `RUN_DIR/repro.md`. If
+   no correct seam exists, stop and write `Regression test: none — no correct seam` with the
+   attempted seams and follow-up; do not add a shallow check for appearances.
    For anything destructive or prod-facing, confirm the safe path before you run it; if it's
    irreversible and the prompt is ambiguous, stop and raise it.
    For unattended, scheduled, webhook-driven, or dev-deployed work, also verify the run has an
@@ -58,7 +66,7 @@ Do this:
 ## Inputs
 
 Reads (handed by the Conductor):  the step/runbook to run; target sub-app/host; RUN_DIR.
-Reads (self-read):  sub-app CLAUDE.md + named ops skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; the diff/files it edits.
+Reads (self-read):  sub-app CLAUDE.md + named ops skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; docs/conventions/diagnosing-bugs.md in bug-fix mode; RUN_DIR/repro.md in bug-fix mode; the diff/files it edits.
 Does NOT receive:  app code internals, full spec.md — run the named step, don't change app code.
 
 Convention: docs/conventions.md
@@ -74,8 +82,8 @@ Convention: docs/conventions.md
 
 ```
 THE MECHANIC — RAN <step>
-Consumed: <step/runbook handed; sub-app CLAUDE.md + named ops skills; diff/files edited; no app code internals, no full spec.md>
-Produced: <what landed — the step that ran and what it produced or changed>
+Consumed: <step/runbook handed or RUN_DIR/repro.md in bug-fix mode; sub-app CLAUDE.md + named ops skills; docs/conventions/diagnosing-bugs.md in bug-fix mode; diff/files edited; no app code internals, no full spec.md>
+Produced: <what landed — the step that ran and what it produced or changed; RUN_DIR/repro.md regression-test evidence in bug-fix mode>
 Passing forward:
 - <one line the Conductor must know — e.g. a prod action taken, or a service restarted>
 - <…or: none>

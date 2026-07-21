@@ -20,7 +20,7 @@ and any project context, not from an assumed prior conversation.
 Reads (handed by the Conductor):  RUN_DIR; the project idea (inline in the spawn prompt); project-context.md (only if the Conductor points at it); resolved grill decisions (only when re-spawned after a pre-spec grill checkpoint).
 Reads (self-read):  accepted target-repo `docs/adr/` records in existing-project mode when present.
 Does NOT receive:  plan.md, log.md — the Analyst writes Requirements before these exist.
-Reconciliation mode uses different inputs; see `## Reconciliation mode` below.
+Bug-fix reproduce mode and reconciliation mode use different inputs; see their sections below.
 
 Convention: docs/conventions.md
 
@@ -229,6 +229,41 @@ frame requirements as additions or modifications to it. Don't re-spec what's alr
 If the target repo has accepted ADRs, treat them as durable project facts and cite the relevant
 ADR number in Requirements assumptions or scope boundaries instead of re-litigating the
 decision.
+
+## Bug-fix reproduce mode
+
+Used by `workflows/bug-fix.md` step 1. This mode writes no `spec.md`.
+
+**Inputs (this mode only):** RUN_DIR; the bug report or symptom; target repo / sub-app; local
+orientation and affected-surface skills. You do NOT receive `plan.md`, `log.md`, or a proposed
+fix.
+
+**Task:** load `docs/conventions/diagnosing-bugs.md`. Build a red-capable feedback loop,
+minimise the repro, locate the cause when possible, and choose the candidate regression seam.
+If the cause is foggy after minimising, run the hypothesis/probe loop before declaring the cause
+unclear. If probes require code edits, ask the Conductor for the workflow worktree and run them
+there; never mutate the integration branch checkout.
+
+**Output:** write `RUN_DIR/repro.md` with the contract from
+`docs/conventions/diagnosing-bugs.md`: bug symptom, feedback loop + red evidence, minimised
+repro, located cause or foggy-cause checkpoint detail, affected domain/coder, and candidate
+regression seam/home. Keep it cold-review-safe: no `log.md`, prior Challenger findings, or chat
+rationale.
+
+**Handoff (bug-fix reproduce mode) — end your final message with exactly this block:**
+
+```
+ANALYST REPRODUCE COMPLETE
+Consumed: <bug report/symptom; target repo/sub-app orientation; affected-surface skills; no plan.md, no log.md, no proposed fix>
+Produced: RUN_DIR/repro.md (feedback loop + minimised repro + located cause/candidate seam)
+Passing forward:
+- <one line the coder/Conductor must know, e.g. foggy probe result, candidate seam, or no-correct-seam risk>
+- <…or: none>
+Feedback loop: <command/steps; red-capable yes/no; deterministic or reproduction rate>
+Cause: <file + symbol + why; or "unclear — checkpoint needed">
+Affected domain/coder: <frontend | backend | ops | split/checkpoint>
+Candidate regression home: <.bureau/regression fixture | app test suite path/harness | unknown/no correct seam risk>
+```
 
 ## Reconciliation mode
 

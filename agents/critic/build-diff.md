@@ -15,6 +15,15 @@ Check for:
 - Wrong sequence or contract drift against earlier accepted build parts.
 - Checkpoints that are absent, substituted with generic checks, or reported green without
   proving the behavior the prompt named.
+- **Bug-fix regression-test gate:** When reviewing a `bug-fix` diff, load
+  `docs/conventions/diagnosing-bugs.md` and check `RUN_DIR/repro.md` plus the diff. A missing
+  committed regression test is a **Blocker** unless `repro.md` explicitly says
+  `Regression test: none — no correct seam` and explains attempted seams, why each is too
+  shallow, and the follow-up needed to make the bug lockable. A regression test that lacks
+  pre-fix red evidence OR post-fix green evidence in `repro.md` is a **Blocker**. If the test
+  appears not to exercise the real bug pattern at the call site, flag it; mutation-verify when
+  the evidence is ambiguous. A valid no-correct-seam finding is at least a Standards warning
+  because the codebase cannot lock the bug down.
 
 ### Standards axis
 

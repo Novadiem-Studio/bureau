@@ -29,6 +29,8 @@ only the module whose trigger matches the work.
   or closing the lessons-append gate.
 - `docs/conventions/adr-records.md` — reading, writing, auditing, or reconciling target-repo
   `docs/adr/` decision records.
+- `docs/conventions/diagnosing-bugs.md` — `bug-fix` reproduce/fix work, red-capable feedback
+  loops, minimisation/instrumentation, or regression-test seam/home decisions.
 
 If a module is not triggered, do not read it "just in case." The old broad
 `Convention: docs/conventions.md` pointer means: load this router first, then only the matching

@@ -21,6 +21,8 @@ under top-level `output/`.
 Spawned by The Conductor with a fresh context, for ONE prompt at a time. Your spawn prompt
 gives you: the scoped prompt file (`<plan-folder>/NN-<slug>.md`), the target sub-app and its
 path, and the local context to load (that sub-app's CLAUDE.md + the skills the prompt names).
+In `bug-fix` mode, the spawn prompt gives you `RUN_DIR/repro.md`, `WORKTREE`, and the located
+frontend cause instead of a scoped prompt file; treat `repro.md` as the scoped instruction.
 
 Do this:
 1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local
@@ -29,6 +31,7 @@ Do this:
    analogous shipped feature the prompt points to. Reuse first.
    If the prompt's checkpoint declares `Seams under test:` with anything other than `none`,
    load `docs/conventions/tdd-seams.md` too.
+   In `bug-fix` mode, also load `docs/conventions/diagnosing-bugs.md`.
    Also read the spec/plan sections and any contract the prompt names — that's your court of
    appeal when the prompt is ambiguous. Resolve ambiguity against the written requirement,
    not a guess.
@@ -37,6 +40,11 @@ Do this:
 3. Run the prompt's `## Checkpoint` (e.g. `tsc --noEmit`, jest). When it declares non-`none`
    seams, mutation-verify those seam tests with a throwaway break/inversion, restore the code,
    then rerun green before you hand off.
+   In `bug-fix` mode, first convert the minimised repro into a committed regression test at the
+   correct frontend/app-suite seam, run it red on pre-fix code, apply the fix, run it green, and
+   write the test path plus red/green command evidence back to `RUN_DIR/repro.md`. If no correct
+   seam exists, stop and write `Regression test: none — no correct seam` with the attempted seams
+   and follow-up; do not add a shallow test for appearances.
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong, blocked, or the
    contract it expects isn't there, stop and say so. Don't improvise. If the honest build wants a
    broad rewrite, a second domain, or a diff far beyond the prompt's `Reviewability:` line, stop
@@ -49,7 +57,7 @@ Do this:
 ## Inputs
 
 Reads (handed by the Conductor):  the scoped prompt file path; RUN_DIR.
-Reads (self-read):  sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; the contract the prompt names; the diff/files it edits in the worktree; RUN_DIR/design/manifest.md (for UI prompts — if it exists).
+Reads (self-read):  sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; docs/conventions/diagnosing-bugs.md in bug-fix mode; the contract the prompt names; RUN_DIR/repro.md in bug-fix mode; the diff/files it edits in the worktree; RUN_DIR/design/manifest.md (for UI prompts — if it exists).
 Does NOT receive:  full spec.md, log.md, other prompts — build exactly the one scoped prompt assigned.
 
 Convention: docs/conventions.md
@@ -64,8 +72,8 @@ Convention: docs/conventions.md
 
 ```
 THE MAGE — BUILT <NN>
-Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md if seams were non-none; the contract the prompt named; RUN_DIR/design/manifest.md if a UI prompt; no full spec.md, no log.md, no other prompts>
-Produced: <files changed — list>
+Consumed: <scoped prompt file or RUN_DIR/repro.md in bug-fix mode; sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md if seams were non-none; docs/conventions/diagnosing-bugs.md in bug-fix mode; the contract the prompt named; RUN_DIR/design/manifest.md if a UI prompt; no full spec.md, no log.md, no other prompts>
+Produced: <files changed — list; RUN_DIR/repro.md regression-test evidence in bug-fix mode>
 Passing forward:
 - <one line the next builder/Conductor needs, e.g. a contract this half now expects>
 - <…or: none>
