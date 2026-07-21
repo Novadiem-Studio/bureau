@@ -206,16 +206,16 @@ refs:          <notary review path | none>
 Robin's call:  <populated only when an escalation resolves; else blank>
 ```
 
-The `artifact:` path field (not just hash) is required so a future cold auditor (v3 self-
-audit gate) can re-evaluate a `proceed` from the ledger entry alone without parsing other
+The `artifact:` path field (not just hash) is required so a future cold auditor for the
+self-audit gate can re-evaluate a `proceed` from the ledger entry alone without parsing other
 run files.
 
 ## Section 10: Attended-only constraint (FR 43)
 
-Until the self-audit gate (v3) exists and reads clean, the Delegate runs attended. This is
+Until the self-audit gate exists and reads clean, the Delegate runs attended. This is
 a constraint, not a TODO: "Do not run the Delegate loop unattended until FR 43's self-audit
 gate is implemented and has a clean run." No code implements this gate in this bundle; it is
-documented here as the v3 prerequisite.
+documented here as the unattended-operation prerequisite.
 
 ## Section 11: Done criteria
 
