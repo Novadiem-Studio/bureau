@@ -21,10 +21,12 @@ The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-targ
   `Run dir:` line, or a slug already present at `output/runs/<slug>/`), use it **verbatim**
   — whether it lives at `output/runs/` or `.bureau/runs/`. Skip steps (1)–(3). An existing
   run dir is sticky and is never relocated or migrated.
-- **(1)-(3) New runs:** run `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id>
-  --slug <slug>`; see its `--help` for the full step sequence (target resolution, dir
-  creation, state/log init, index write, model-routing, pointer enrolment). Pass the
-  resolved absolute path as **`RUN_DIR`** in every spawn prompt.
+- **(1)-(3) New runs:** direct Conductor mode runs
+  `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`. Delegate v2
+  mode runs the same command with `--no-pointer-echo`, then enrolls its own role:delegate
+  pointer before spawning the Conductor. See `run-start.sh --help` and
+  `agents/delegate.md § Bootstrap` for the full step sequence. Pass the resolved absolute path
+  as **`RUN_DIR`** in every spawn prompt.
 
 Two runs on repo `R` use distinct slugs — `R/.bureau/runs/<slug-A>/` vs
 `R/.bureau/runs/<slug-B>/` — so they never collide (FR 13, AC 12).

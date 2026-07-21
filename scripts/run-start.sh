@@ -11,11 +11,12 @@
 #   7. Write runs-index entry (atomic .tmp → mv; validate)
 #   8. Call resolve-model-routing.sh; roll back RUN_DIR on failure (EC 2)
 #   9. Pointer enrolment (FR 2): resolve pointer path, write pointer JSON,
-#      echo it to stdout (nonce credential — NEVER suppressed, NEVER stderr-only),
-#      append nonce-free enrolment log line
+#      echo it to stdout by default (nonce credential for direct-Conductor runs;
+#      Delegate v2 passes --no-pointer-echo so the bare pointer nonce does not
+#      enter the Delegate transcript), append nonce-free enrolment log line
 #
 # Usage:
-#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
 #
 # Arguments:
 #   <RUN_DIR>          absolute path where the new run dir will be created
@@ -47,10 +48,29 @@ FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 usage() {
   cat >&2 <<'EOF'
 Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
 EOF
   exit 1
 }
+
+print_help() {
+  cat <<'EOF'
+Usage:
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
+
+Options:
+  --no-pointer-echo  Write the normal bare run pointer but do not echo its nonce.
+                     Use only when a Delegate v2 top session is creating the run;
+                     the Conductor subagent will read the pointer privately before
+                     spawning specialists, and the Delegate will enroll/echo its
+                     own role:delegate pointer.
+EOF
+}
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  print_help
+  exit 0
+fi
 
 if [ "$#" -lt 1 ]; then
   echo "run-start: missing required argument: <RUN_DIR>" >&2
@@ -62,6 +82,7 @@ RUN_DIR="$1"; shift
 TARGET=""
 WORKFLOW=""
 SLUG=""
+POINTER_ECHO=1
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -74,11 +95,10 @@ while [ "$#" -gt 0 ]; do
     --slug)
       [ "$#" -ge 2 ] || { echo "run-start: missing argument: --slug" >&2; exit 1; }
       SLUG="$2"; shift 2 ;;
+    --no-pointer-echo)
+      POINTER_ECHO=0; shift ;;
     --help|-h)
-      cat <<'EOF'
-Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
-EOF
+      print_help
       exit 0 ;;
     *)
       echo "run-start: unknown argument: $1" >&2; usage ;;
@@ -230,14 +250,29 @@ printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_
   > "$_pointer_file" \
   || { echo "ERROR: failed to write pointer file" >&2; rollback; }
 
-# FR 2: nonce-echo to stdout — NEVER suppressed, NEVER stderr-only.
-# The nonce NEVER appears in log.md or any artifact other than the pointer file
-# and the Conductor's transcript.
-cat "$_pointer_file"
+# FR 2: nonce-echo to stdout for direct-Conductor runs — NEVER stderr-only.
+# Delegate v2 is the exception: the top session is the Delegate, so echoing the
+# bare Conductor/specialist pointer would put that nonce in the Delegate
+# transcript and let conductor-stop.sh misselect the bare pointer before the
+# role:delegate pointer. In that topology, the pointer is still written; the
+# Conductor subagent reads it privately before spawning specialists.
+if [ "$POINTER_ECHO" -eq 1 ]; then
+  # The nonce NEVER appears in log.md or any artifact other than the pointer file
+  # and the owning transcript.
+  cat "$_pointer_file"
+else
+  echo "run-start: pointer enrolled; bare pointer nonce echo suppressed for Delegate v2 startup" >&2
+fi
 
 # Enrolment log line — nonce-free (reading the log must not confer ownership).
+if [ "$POINTER_ECHO" -eq 1 ]; then
+  _enrolment_msg="Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership."
+else
+  _enrolment_msg="Pointer enrolled — nonce written to pointer file only; Delegate v2 suppressed bare nonce echo. Reading this log does not confer ownership."
+fi
+
 bash "$FRAMEWORK_ROOT/scripts/log-append.sh" "$RUN_DIR" \
-  "Pointer enrolled — nonce written to pointer file and conductor transcript only. Reading this log does not confer ownership." >/dev/null \
+  "$_enrolment_msg" >/dev/null \
   || { echo "ERROR: log-append.sh failed for enrolment line" >&2; rollback; }
 
 exit 0

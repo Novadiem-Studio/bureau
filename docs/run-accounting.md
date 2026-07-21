@@ -69,9 +69,10 @@ any suffix after the hyphen is permitted.
 
 The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
 
-The Conductor never emits a SPAWN-EVENT for itself: it runs in the main session, is never
-"spawned," so a `role:conductor` event is excluded from `specialist_spawns[]` (the script
-drops it with a note).
+The Conductor never emits a specialist SPAWN-EVENT for itself. In direct mode it is the
+top-level session; in Delegate v2 it is captured by the Conductor token rail, not by
+`specialist_spawns[]`. A `role:conductor` SPAWN-EVENT is excluded from `specialist_spawns[]`
+(the script drops it with a note).
 
 The event is emitted **twice per spawn**: `status:started` when you spawn, and one of
 `complete` / `no-handoff` / `failed` / `terminated` when the specialist terminates — both
@@ -186,7 +187,7 @@ These records are still counted into `tokens.processed_total` but cannot be pair
 `subagent-stop.sh` attributes a specialist SPAWN-TOKEN-EVENT only after a **capture-time identity check** (Step 4.7), the same check `conductor-stop.sh` already applies to conductor tokens. Without it, the hook attributed a subagent **purely by mention** — RUN_DIR + Attempt ID text in its first user message — so any same-run subagent that echoed the spawn prompt (a nested helper of a real specialist, a re-spawn reusing the slug, a self-run analysis spawn that quoted `log.md`) was attributed. That is the ownership-by-mention class #22 closed for the Conductor; #27 closes it for specialists.
 
 - **The gate.** After extracting `RUN_DIR` (Step 3) and `Attempt ID` (Step 5), the hook resolves the run's pointer by the **#25 precedence** — `BUREAU_POINTER_FILE` forces single-file mode; else directory mode `${BUREAU_POINTER_DIR:-~/.novadiem/active-runs}/<munged RUN_DIR>` (munge = every `/` and `.` → `-`, the same key the Conductor writes). Because `subagent-stop.sh` already knows the exact `RUN_DIR` from the transcript, it addresses the pointer **directly by key** — no directory enumeration, no ownership-select loop (simpler than `conductor-stop.sh`, which must discover which run it is). It reads `.nonce` and `grep -qF`s the subagent's own transcript for it.
-- **Nonce source = the existing per-run nonce (reuse, not a new per-spawn secret).** The run nonce already exists in the pointer, is already secret (never in `log.md`), and is already what `conductor-stop.sh` greps. A per-spawn nonce would need a registry keyed by `attempt_id` — exactly what idea #27 forbids. The Conductor puts this nonce in the `Run nonce:` line of every specialist spawn prompt (`agents/orchestrator.md`); it is **never written to `log.md` or a SPAWN-EVENT line**, so a subagent that only read `log.md` cannot obtain it.
+- **Nonce source = the existing per-run nonce (reuse, not a new per-spawn secret).** The run nonce already exists in the bare pointer and is already secret (never in `log.md`). In direct-Conductor runs it is also what `conductor-stop.sh` greps; in Delegate v2 runs `run-start.sh --no-pointer-echo` keeps it out of the Delegate transcript, and the Conductor subagent reads the bare pointer privately before specialist spawns. A per-spawn nonce would need a registry keyed by `attempt_id` — exactly what idea #27 forbids. The Conductor puts this nonce in the `Run nonce:` line of every specialist spawn prompt (`agents/orchestrator.md`); it is **never written to `log.md` or a SPAWN-EVENT line**, so a subagent that only read `log.md` cannot obtain it.
 - **Three states (decided in order).**
   1. **Pointer resolves AND has a non-empty `.nonce`** (every live run): the nonce **MUST** be in the transcript. Present → attribute (append as before). **Absent → REJECT** (no append, `exit 0` with a stderr note). This is the closed gate.
   2. **Pointer does not resolve at all** (no pointer file for `RUN_DIR`): legacy/archived run → fail **open**, attribute by mention with a stderr note. Safe because a foreign subagent **cannot remove** the pointer (only the run lifecycle writes/removes it), so it can never force this carve-out on a live run — a live run always hits state 1.
@@ -235,7 +236,7 @@ In a **v2-integrated (Delegate-driven)** run the Conductor runs as an Agent-tool
 
 #### 3b. DELEGATE-TOKEN-EVENT via conductor-stop.sh (v2-integrated runs — #26a)
 
-In a v2-integrated run the **Delegate is the top-level session**, so *its* Stop hook is `conductor-stop.sh`. The Conductor subagent is captured pointerlessly by `subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped. So the Delegate enrols its OWN per-run pointer tagged `"role":"delegate"`, keyed `<munged-run-dir>.delegate` (the role suffix keeps it distinct from any Conductor pointer for the same run — see § B3). `conductor-stop.sh` selects that pointer for the Delegate top session (only the Delegate's transcript carries its nonce) and, seeing `role == "delegate"`, emits a **DELEGATE-TOKEN-EVENT** instead of a CONDUCTOR-TOKEN-EVENT.
+In a v2-integrated run the **Delegate is the top-level session**, so *its* Stop hook is `conductor-stop.sh`. The Conductor subagent is captured pointerlessly by `subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped. Startup therefore has two pointers: `run-start.sh --no-pointer-echo` writes the normal bare pointer for the Conductor/specialist nonce rail, without echoing that nonce into the Delegate transcript; then the Delegate enrols its OWN per-run pointer tagged `"role":"delegate"`, keyed `<munged-run-dir>.delegate` (the role suffix keeps it distinct from the bare pointer — see § B3). `conductor-stop.sh` selects that `.delegate` pointer for the Delegate top session (only the Delegate's transcript carries its nonce) and, seeing `role == "delegate"`, emits a **DELEGATE-TOKEN-EVENT** instead of a CONDUCTOR-TOKEN-EVENT.
 
 ```
 DELEGATE-TOKEN-EVENT: {"session_id":"<delegate top session_id>","at":"2026-07-11T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false,"baseline":{...}}
@@ -362,7 +363,7 @@ So `BUREAU_POINTER_FILE` means "force single-file mode at this path" and doubles
 
 **Key = munged `RUN_DIR`, not the nonce:** a resumed leg has the same `RUN_DIR` → same file (no orphan-per-leg; the nonce may rotate on a write-fresh resume but the file key does not). Two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber). Because a per-run file is single-writer by construction (only that run ever writes its own key), the two-step write-back guard and compare-before-rm can never touch a sibling's pointer — the pre-#25 pre-check→mv race residual is removed in directory mode.
 
-**Cleanup:** normal close-out removes this run's file via Step G's compare-before-rm (unchanged). Archiving a run runs a janitor `rm -f "$_pointer_file"` (`agents/orchestrator.md § Pointer lifecycle`), bounding directory growth at "live + recently-crashed runs." A crashed run's lingering file is inert (its unique nonce is in no live transcript). Optional manual age-sweep: `find "$BUREAU_POINTER_DIR" -type f -mtime +7 -delete` (safe; no automated sweeper is shipped).
+**Cleanup:** direct-Conductor close-out removes the selected bare pointer via Step G's compare-before-rm (unchanged). In Delegate v2, the bare pointer is not selected by the Delegate top session because its nonce was never echoed there; archive cleanup removes both the bare pointer and the `.delegate` pointer via the janitor in `agents/orchestrator.md § Pointer lifecycle`. A crashed run's lingering file is inert (its unique nonce is in no live transcript). Optional manual age-sweep: `find "$BUREAU_POINTER_DIR" -type f -mtime +7 -delete` (safe; no automated sweeper is shipped).
 
 **Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>","baseline":null,"project_dir":"<cwd>"}`. The `baseline` field is `null` at enrollment and is updated to a baseline object on the first Stop hook fire for the run (see state machine below). The content schema is unchanged by #25 — only the file's location (a keyed file in a directory) changed. (A `"role"` field is added by #26a for the Delegate's own pointer — see § 3b.)
 
@@ -385,7 +386,12 @@ So `BUREAU_POINTER_FILE` means "force single-file mode at this path" and doubles
 
 **`BUREAU_ACCOUNT_RUN_SH`:** when this environment variable is set, `conductor-stop.sh` calls the named script at Step G(2) instead of `$SCRIPT_DIR/account-run.sh`. Unset behavior is identical — the default path resolves to `$SCRIPT_DIR/account-run.sh`. Primarily used for test injection (fixture-F / forced-failure shim).
 
-**Who writes it:** The Conductor, at run start and on resume (with echo to stdout for enrolment — see `agents/orchestrator.md § Pointer lifecycle`). The Conductor does NOT remove it.
+**Who writes it:** in direct-Conductor mode, the Conductor creates/echoes the bare pointer at
+run start and on resume (see `agents/orchestrator.md § Pointer lifecycle`). In Delegate v2,
+the Delegate creates the bare pointer through `run-start.sh --no-pointer-echo`, enrolls its own
+`.delegate` pointer, and the Conductor reads the bare pointer privately for specialist spawns.
+No role manually removes a live pointer before the terminal Stop capture; cleanup follows the
+rules above.
 
 **Nonce ownership check:** `conductor-stop.sh` greps the transcript FILE CONTENT for both the nonce and `run_dir` (a path-based check would fail — the transcript path never contains these values). This closes EC 14: a session whose transcript contains `run_dir` but not the nonce exits 0.
 

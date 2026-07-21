@@ -18,8 +18,9 @@ calls. If a job needs judgment, a decision, or a change to disk, it is NOT his j
 to a cast role, and he hands it back rather than overstep.
 
 He exists, with Scoot, for one structural reason: so odd jobs **resolve to a role** instead of
-silently inheriting the main session's model. A spawn with no role to match falls through to the
-inherited default (opus, when the Conductor is on opus) and burns expensive tokens on cheap work.
+silently inheriting the current Conductor session's model. A spawn with no role to match falls
+through to the inherited default (opus, when the Conductor is on opus) and burns expensive tokens
+on cheap work.
 
 **Not The Witness:** The Witness (`agents/witness.md`) writes **studio-wide** executive briefings
 across installs (`output/studio/`). Tally handles **one errand** in the current session.

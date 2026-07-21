@@ -64,52 +64,29 @@ persona-side view of it — read the bridge doc for the field schemas and the sc
 
 ### Bootstrap (starting a v2 session)
 
-Robin opens a session pointed at this persona (manager/relay mode). There is no launcher script
-in v2 — the session IS the Delegate. To start:
+Default Bureau entrypoint: when Robin asks to "get the bureau on this" (or any equivalent
+framework-start request), this top-level session runs as the Delegate in manager/relay mode. Do
+not require a separate "run as Delegate" incantation. Direct Conductor mode is a fallback only:
+explicit Robin request, legacy/non-integrated resume, or host/runtime inability to run v2.
 
-1. Spawn the Conductor as a resumable Agent-tool subagent. The spawn prompt's **first user
-   message** carries, each on its own line, literally:
-   ```
-   RUN_DIR: <abs RUN_DIR>
-   BUREAU_ROLE: conductor
-   ```
-   plus:
-   - the `topology: integrated` directive (OQ4 — the authoritative mode signal: *return to me
-     at each checkpoint; do not write NN-request.md, do not call await-verdict.sh, do not emit
-     an interactive [CHECKPOINT]*),
-   - the task and the full bureau CLAUDE.md context the Conductor needs.
+To start a new v2 run:
 
-   The two literal lines are the token-capture rail (they are NOT decoration):
-   - `RUN_DIR: <abs>` — the exact shape `scripts/subagent-stop.sh` Step 3 greps to identify the
-     bureau run this subagent belongs to. Without it the hook cannot resolve RUN_DIR and drops
-     the Conductor's tokens.
-   - `BUREAU_ROLE: conductor` — the marker `subagent-stop.sh` Step 4.5 matches (anchored,
-     case-sensitive) to classify this subagent as the Conductor and emit a **CONDUCTOR-TOKEN-EVENT**
-     (baseline/delta) instead of a specialist SPAWN-TOKEN-EVENT. This is ownership-by-identity
-     (the spawn prompt declares the role), not by grepping the log for a mention — same rail as a
-     specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn (step 2 below
-     references `RUN_DIR/delegate-state.json`), so no new ordering constraint.
-2. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
-   exactly its five fields:
-   ```json
-   {
-     "topology": "integrated",
-     "conductor_agent_id": "<id from the spawn>",
-     "active_checkpoint": null,
-     "revise_counts": {},
-     "revision_cap": 2
-   }
+1. Read `workflows/index.md`, triage the task to a workflow, resolve the target repo per
+   `docs/run-protocol.md`, derive the run slug, then create the run dir with the normal opening
+   ceremony **without echoing the bare pointer nonce into the Delegate transcript**:
+   ```sh
+   scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" --slug "$SLUG" --no-pointer-echo
    ```
-   `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
-   single-writer-per-file, AC16).
-3. **Enrol the Delegate's own token-capture pointer (#26a).** In a v2 run the Delegate IS the
+   This still writes the normal bare pointer at the munged `RUN_DIR` key. That pointer is the
+   specialist-spawn nonce source. The Conductor subagent reads it privately before spawning
+   specialists; the Delegate must never echo, log, or pass that bare nonce.
+2. **Enrol the Delegate's own token-capture pointer (#26a).** In a v2 run the Delegate IS the
    top-level session, so *its* Stop hook is `conductor-stop.sh` — but the Conductor pointer
-   belongs to the Conductor subagent (which is captured pointerlessly by `subagent-stop.sh`).
-   Without its own pointer the Delegate's manager tokens are dropped. So the Delegate writes a
-   per-run pointer tagged `"role":"delegate"`, keyed by `<munged-run-dir>.delegate` (the role
-   suffix keeps it distinct from any Conductor pointer for the same run), and echoes it so the
-   nonce lands in the Delegate's transcript (the ownership credential). This reuses #25's
-   per-run-keyed directory:
+   belongs to the Conductor/specialist rail. Without its own pointer the Delegate's manager
+   tokens are dropped. So the Delegate writes a per-run pointer tagged `"role":"delegate"`,
+   keyed by `<munged-run-dir>.delegate` (the role suffix keeps it distinct from the bare pointer),
+   and echoes it so the nonce lands in the Delegate's transcript (the ownership credential).
+   This reuses #25's per-run-keyed directory:
    ```sh
    # Resolve the directory exactly as conductor-stop.sh does (BUREAU_POINTER_FILE forces
    # single-file mode; else BUREAU_POINTER_DIR / default ~/.novadiem/active-runs/).
@@ -124,15 +101,50 @@ in v2 — the session IS the Delegate. To start:
    printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s","role":"delegate"}\n' \
      "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
      > "$_del_pointer"
-   cat "$_del_pointer"   # echo — places the nonce in the Delegate transcript (ownership credential)
+   cat "$_del_pointer"   # echo — places the Delegate pointer nonce in the Delegate transcript
    ```
    Then write the nonce-free enrolment log line to `RUN_DIR/log.md` (same discipline as the
    Conductor): `Delegate pointer enrolled — role:delegate, nonce in pointer file and Delegate transcript only.`
-   `conductor-stop.sh` now selects THIS `.delegate` pointer for the Delegate top session (its
-   nonce is only in the Delegate's transcript) and emits a **DELEGATE-TOKEN-EVENT** (shared
-   baseline/delta arithmetic, distinct log prefix) instead of a CONDUCTOR-TOKEN-EVENT —
-   ownership-by-identity via the pointer's `role` field, not by grepping the log for a mention.
-   **Cleanup.** Like the Conductor pointer, do NOT remove `"$_del_pointer"` at close-out — the
+   `conductor-stop.sh` selects this `.delegate` pointer for the Delegate top session and emits a
+   **DELEGATE-TOKEN-EVENT** (shared baseline/delta arithmetic, distinct log prefix).
+3. Spawn the Conductor as a resumable Agent-tool subagent. The spawn prompt's **first user
+   message** carries, each on its own line, literally:
+   ```
+   RUN_DIR: <abs RUN_DIR>
+   BUREAU_ROLE: conductor
+   ```
+   plus:
+   - the `topology: integrated` directive (OQ4 — the authoritative mode signal: *return to me
+     at each checkpoint; do not write NN-request.md, do not call await-verdict.sh, do not emit
+     an interactive [CHECKPOINT]*),
+   - the task and the full bureau CLAUDE.md context the Conductor needs;
+   - instruction to read the bare run pointer privately before the first specialist spawn and use
+     its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
+
+   The two literal lines are the token-capture rail (they are NOT decoration):
+   - `RUN_DIR: <abs>` — the exact shape `scripts/subagent-stop.sh` Step 3 greps to identify the
+     bureau run this subagent belongs to. Without it the hook cannot resolve RUN_DIR and drops
+     the Conductor's tokens.
+   - `BUREAU_ROLE: conductor` — the marker `subagent-stop.sh` Step 4.5 matches (anchored,
+     case-sensitive) to classify this subagent as the Conductor and emit a **CONDUCTOR-TOKEN-EVENT**
+     (baseline/delta) instead of a specialist SPAWN-TOKEN-EVENT. This is ownership-by-identity
+     (the spawn prompt declares the role), not by grepping the log for a mention — same rail as a
+     specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn, so no new
+     ordering constraint.
+4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
+   exactly its five fields:
+   ```json
+   {
+     "topology": "integrated",
+     "conductor_agent_id": "<id from the spawn>",
+     "active_checkpoint": null,
+     "revise_counts": {},
+     "revision_cap": 2
+   }
+   ```
+   `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
+   single-writer-per-file, AC16).
+   **Cleanup.** Like the bare pointer, do NOT remove `"$_del_pointer"` at close-out — the
    post-close-out Stop fire must still find it to write the Delegate's `final:true` capture (its
    compare-before-rm then removes it). It is also removed at archive by the `#25/#26a janitor`
    (`agents/orchestrator.md § Pointer lifecycle` — `rm -f "${_pointer_file}.delegate"`). If you

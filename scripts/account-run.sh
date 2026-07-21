@@ -465,7 +465,8 @@ else
           *) spawn_parse_errors+=("line $lineno: illegal status value: $status"); continue ;;
         esac
 
-        # The Conductor runs in the main session and is never spawned — exclude it.
+        # The Conductor is not a specialist spawn; direct mode is top-level, and
+        # Delegate v2 captures it on the Conductor token rail instead.
         if [ "$role" = "conductor" ]; then
             _specialist_spawns_note="${_specialist_spawns_note:+$_specialist_spawns_note; }line $lineno: conductor SPAWN-EVENT excluded (the Conductor is never a specialist spawn)"
             continue

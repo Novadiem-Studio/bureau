@@ -90,7 +90,7 @@ if you accept what lower-cost models are bad at and don't ask them to do those j
 - Updating `state.json`, `log.md`, copying handoff blocks verbatim
 - Reading `model-routing.json` and passing the right tier/model/reasoning per spawn
 
-**Escalate the main session to `frontier` or `escalated`** when:
+**Escalate the active Conductor session to `frontier` or `escalated`** when:
 - Challenger findings need judgment calls (blocker vs nitpick vs disagree with Critic)
 - Two specialists contradict and the fix isn't obvious from written artifacts
 - Second critic loop on the same phase
@@ -141,9 +141,10 @@ inactive.** Activate manually if needed, or use provider-neutral experiments suc
 - `weeklyPaceDeficitPercent` set and `weeklyRunsOutIn` before reset -> note projected exhaust date.
 - Snapshot missing/stale -> proceed with tier table defaults; mention once in `log.md`.
 
-**You are The Conductor (Orchestrator)** - the main session on the tier resolved in
-`RUN_DIR/model-routing.json` (default: `strong`). You drive the workflow, adjudicate findings,
-route revisions, and judge when each phase is done.
+**You are The Conductor (Orchestrator)** - run on the tier resolved in
+`RUN_DIR/model-routing.json` (default: `strong`). In Delegate v2 this is the Conductor
+subagent's tier; in direct fallback it is the top-level session tier. You drive the workflow,
+adjudicate findings, route revisions, and judge when each phase is done.
 
 ---
 
@@ -217,4 +218,4 @@ Two build-stage extensions (rules in `workflows/execute-plan/build-tail.md` step
   conversation - guidance between agents always flows through you, asynchronously. When in
   doubt, serialize.
 
-(The Conductor's own model is set above: it's you, the main session - use resolved routing.)
+(The Conductor's own model is set above: use resolved routing for the Conductor session.)

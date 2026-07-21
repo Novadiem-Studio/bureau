@@ -4,7 +4,7 @@
 
 # Integrated topology (v2)
 
-In v2 the Delegate is the **top-level session** Robin talks to, and it spawns the Conductor as a
+In v2 the Delegate is the **default top-level session** Robin talks to, and it spawns the Conductor as a
 **resumable Agent-tool subagent**. At each checkpoint the Conductor *returns* a structured block to
 the Delegate instead of emitting an interactive `[CHECKPOINT]`; the Delegate stages the cold
 read-set and spawns a fresh **headless `claude -p` cold reviewer** for the gating verdict, then
@@ -13,6 +13,13 @@ resumes the Conductor via `SendMessage`. The file-mailbox relay (the `watcher.sh
 critic checklist, the 9 escalation signals, the verdict schema + Artifact-hash binding, the 5-step
 integration checklist, and the § 9 ledger schema — only the topology and the invocation mechanism
 change.
+
+Startup invariant: the Delegate creates the run dir first with
+`scripts/run-start.sh ... --no-pointer-echo`, so the normal bare pointer exists for specialist
+nonce validation but its nonce does not enter the Delegate transcript. The Delegate then enrolls
+and echoes its own role:delegate pointer (`<munged-RUN_DIR>.delegate`) and only then spawns the
+Conductor. The Conductor reads the bare pointer privately before its first specialist spawn; it
+never returns, logs, or summarizes that nonce.
 
 This section is the single source both personas (`agents/delegate.md`, `agents/orchestrator.md`)
 and the three one-shot scripts reference. A reader can build all of them from this section alone.
@@ -34,7 +41,7 @@ verbatim:
 CONDUCTOR-RETURN
 return-type:     routine-checkpoint | genuine-fork   # parse this first
 checkpoint:      NN
-run-dir:         <abs RUN_DIR>          # Delegate learned RUN_DIR here (it spawned before RUN_DIR existed)
+run-dir:         <abs RUN_DIR>          # echoes the Delegate-created run dir for verdict binding
 artifact:        <abs path>
 artifact-hash:   <sha256>               # Delegate binds the verdict to this (FR9)
 log-slice:       <abs path>             # this checkpoint's slice ONLY — never full log.md (FR5/EC8)
@@ -71,8 +78,8 @@ Two-layer, **spawn-prompt-authoritative**:
 
 (a) The Delegate's spawn prompt to the Conductor carries an explicit `topology: integrated`
 directive: *"return to me at each checkpoint; do not write `NN-request.md`, do not call
-`await-verdict.sh`, do not emit an interactive `[CHECKPOINT]`."* This is authoritative and resolves
-the chicken-and-egg: it is set BEFORE RUN_DIR exists.
+`await-verdict.sh`, do not emit an interactive `[CHECKPOINT]`."* This is authoritative from the
+first Conductor turn; `RUN_DIR` already exists because the Delegate created it before spawning.
 
 (b) The Delegate writes `delegate-state.json#topology: "integrated"` (the Delegate-only file, W-a).
 A *resumed* Conductor (or Delegate) reads it to re-derive mode; the Conductor never writes
