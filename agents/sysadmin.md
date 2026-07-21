@@ -25,8 +25,12 @@ Do this:
    verify against ground truth, stay in scope, green before handoff) and the skills the step
    names (`docker`, `s3`, deploy playbook, `ios`/Android build, …), then follow their runbook.
    These hold the real commands and the gotchas. Don't reinvent them.
+   If a scoped prompt's checkpoint declares `Seams under test:` with anything other than
+   `none`, load `docs/conventions/tdd-seams.md` too.
 2. Execute the step exactly. For builds/deploys, follow the ship order and the playbook.
 3. Verify it landed (health check, queue running, build artifact produced, deploy promoted).
+   When a scoped prompt declares non-`none` seams, mutation-verify those seam tests or smoke
+   checks with a throwaway break/inversion, restore the change, then rerun green before handoff.
    For anything destructive or prod-facing, confirm the safe path before you run it; if it's
    irreversible and the prompt is ambiguous, stop and raise it.
    For unattended, scheduled, webhook-driven, or dev-deployed work, also verify the run has an
@@ -54,7 +58,7 @@ Do this:
 ## Inputs
 
 Reads (handed by the Conductor):  the step/runbook to run; target sub-app/host; RUN_DIR.
-Reads (self-read):  sub-app CLAUDE.md + named ops skills; the diff/files it edits.
+Reads (self-read):  sub-app CLAUDE.md + named ops skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; the diff/files it edits.
 Does NOT receive:  app code internals, full spec.md — run the named step, don't change app code.
 
 Convention: docs/conventions.md
@@ -76,7 +80,7 @@ Passing forward:
 - <one line the Conductor must know — e.g. a prod action taken, or a service restarted>
 - <…or: none>
 What ran: <step name or runbook ref>
-Verified: <green | red — detail>
+Verified: <green | red — detail; seam mutation verified yes/no/none>
 Review size: <changed files count + config/generated/artifact split; matches prompt Reviewability yes/no>
 Prod/irreversible actions taken: <list, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">

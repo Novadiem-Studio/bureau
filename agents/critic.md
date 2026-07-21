@@ -114,6 +114,14 @@ Diff-target modes (`build-diff`, `code-review`) bind one change-set object from 
 - Committed range A..B: `base_sha = git -C "$R" rev-parse <A>`; `target_sha = git -C "$R" rev-parse <B>`; `diff_sha = git -C "$R" diff "$base_sha" "$target_sha" | shasum -a 256 | awk '{print $1}'`.
 - Branch head: `base_sha = git -C "$R" merge-base HEAD <branch>`; `target_sha = git -C "$R" rev-parse <branch>`; `diff_sha = git -C "$R" diff "$base_sha" "$target_sha" | shasum -a 256 | awk '{print $1}'`.
 Populate exactly: `attempt_id`, `review_mode`, `reviewed_artifacts`, `blocker_ids`, `blockers`, `warnings`, derived `verdict`, and `timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`;
+`review_mode` is exactly one of `spec-plan`, `prompts`, `build-diff`, `code-review`, or
+`verification`. `verdict` is derived, never free-typed: `BLOCKED` when `blocker_ids` is
+non-empty, `APPROVED_WITH_WARNINGS` when there are no blockers and `warnings` is non-empty,
+and `APPROVED` when both arrays are empty. Do not write lowercase `pass`/`fail`/`clean`.
+`reviewed_artifacts` is always an array. File-target elements are
+`{"path":"<abs_path>","sha256":"<sha256>"}`. Diff-target elements are
+`{"kind":"diff-target","base_ref":"<ref>","base_sha":"<sha>","target_ref":"WORKING-TREE|<ref>","diff_sha":"<sha>"}`;
+do not write an object-shaped diff binding.
 blockers use citations shaped as `{"kind":"presence","path":"<abs_path>","anchor":"<greppable string ≥15 chars>"}` or `{"kind":"absence","path":"<abs_path>","missing":"<description>"}`.
 Validate with inline `python3` before writing: all 8 fields, valid `review_mode`/`verdict` enums, derived-verdict consistency, and kind-required citation fields;
 on failure write no record and append `CHALLENGER FLAG: verdict record not written — validation failed: <reason>` to `log.md`.
@@ -205,6 +213,8 @@ BLOCKERS (would build the wrong thing):
 - <issue> — <why it matters> — rooted in: <requirements | architecture | prompts>
 WARNINGS (real but survivable):
 - <issue> — <why> — <suggested fix>
+For build-diff mode only, group the two lists by `Spec-fidelity:` and `Standards:` so both
+axes are visible without cross-axis reranking.
 SOLID:
 - <what genuinely holds up>
 ```

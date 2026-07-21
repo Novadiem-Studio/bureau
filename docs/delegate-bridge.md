@@ -36,8 +36,8 @@ content.
 - `integration` iff the checkpoint is a merge to a persistent branch (`main`, `release`, or a
   long-lived feature branch that is itself the integration target). v1 implements this criterion
   only. Deploy-to-non-ephemeral-env and canon/fixture-promotion are deferred extensions.
-- `routine` for all other checkpoints: design review, spec review, plan review, phase-boundary
-  handoff, and per-prompt build/accept checkpoints.
+- `routine` for all other checkpoints: pre-spec grill, design review, spec review, plan
+  review, phase-boundary handoff, and per-prompt build/accept checkpoints.
 - Default for any unmapped phase: `routine`. A phase is integration only by explicit
   declaration, not by Delegate inference.
 
@@ -45,8 +45,15 @@ Phase mapping for v1:
 
 - `execute-plan` close-out merge (worktree to integration branch) → `integration`
 - `bug-fix` merge to main / integration branch → `integration`
-- `feature` runs (plan-type, no build/merge phase) → no integration checkpoints
+- `feature` runs (plan-type, no build/merge phase) → no integration checkpoints; a pre-spec
+  grill checkpoint, when present, is `checkpoint-type: routine`
 - deploy/promote phases → deferred; set as `routine` for now
+
+Do not invent `checkpoint-type: grill`. The checkpoint id may be `"grill"` for accounting and
+human readability, but the bridge type remains `routine` unless the checkpoint is an
+integration gate. If the content requires Robin to decide a material fork, the v2 Conductor uses
+the existing `genuine-fork` return shape and existing escalation signals; the bridge type system
+does not gain a new class.
 
 For `integration`, the request must also carry `worktree-path`, `base-ref`, and
 `claimed-gates`; `scope` is read from `state.json#scope` when present. The Conductor writes

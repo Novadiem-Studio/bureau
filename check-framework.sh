@@ -114,7 +114,7 @@ grep -Fq 'agents/critic/prompts.md' docs/external-action-boundary.md \
   || err "docs/external-action-boundary.md reciprocal note should name critic prompts slice"
 grep -Fq 'agents/critic/build-diff.md' docs/conductor-gates.md \
   || err "docs/conductor-gates.md reciprocal note should name critic build-diff slice"
-for module in agent-contracts workflow-authoring regression-fixtures canon-promotion failure-signatures; do
+for module in agent-contracts workflow-authoring regression-fixtures grilling tdd-seams fowler-smell-baseline canon-promotion failure-signatures; do
   [[ -f "docs/conventions/${module}.md" ]] \
     || err "missing docs/conventions/${module}.md"
   grep -Fq "docs/conventions/${module}.md" docs/conventions.md \

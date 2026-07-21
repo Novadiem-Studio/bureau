@@ -148,6 +148,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 **Routine checkpoint (`return-type: routine-checkpoint`):**
 
 1. Update `delegate-state.json`: `active_checkpoint = NN`, `conductor_agent_id = <current id>`.
+   A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
+   `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
 2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
    (FR14):
    ```sh

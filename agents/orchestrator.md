@@ -212,7 +212,8 @@ The `Attempt ID:` line is the literal string `scripts/subagent-stop.sh` greps fr
 
    Resolved from each role's `## Inputs` block — two worked examples:
    • Analizer 2000 (single input set): `<RUN_DIR>` + the project idea inline (and
-     `project-context.md` only if you are pointing the run at it). NOT plan.md/log.md —
+     `project-context.md` only if you are pointing the run at it). For a re-spawn after a
+     pre-spec grill checkpoint, also pass `Resolved grill decisions:`. NOT plan.md/log.md —
      the Analyst writes Requirements before they exist.
    • The Challenger / The Spellwright (multi-artifact set): The Challenger round 1 gets
      `<RUN_DIR>/spec.md` (full) + `<RUN_DIR>/plan.md` (full) + `spec.md § Acceptance
@@ -530,7 +531,9 @@ Awaiting your response before continuing.
 Raise a checkpoint only when:
 - An ambiguity genuinely can't be resolved from the artifacts, or
 - The Critic flagged a blocker that needs a product decision, or
-- You've hit `max_critic_loops` on the same agent.
+- You've hit `max_critic_loops` on the same agent, or
+- A qualifying `feature` run's initial Analyst pass returns a `GRILL CHECKPOINT REQUEST`
+  before `spec.md` exists.
 
 **CHECKPOINT-EVENT machine-readable lines** — append to `log.md` alongside the narrative checkpoint output:
 
@@ -544,6 +547,15 @@ At checkpoint RESOLVE:
 CHECKPOINT-EVENT: {"id":"<slug>","status":"resolved","at":"<date -u +%Y-%m-%dT%H:%M:%SZ>","decision":"<one-line Robin decision>"}
 ```
 `<slug>` is a short stable identifier for the checkpoint (e.g. `design-review`, `critic-blocker-2`). The consumer derives `wait_s` from `resolved.at − raised.at`; unavailable when raised-only.
+
+## Pre-spec grill checkpoint
+
+Full discipline: `docs/conventions/grilling.md`. When Analizer 2000 returns `GRILL CHECKPOINT
+REQUEST`, verify `RUN_DIR/spec.md` is absent or empty, append the `GRILL-TRIGGER:` line to
+`log.md`, raise one `[CHECKPOINT]` with phase `pre-spec grill` and `CHECKPOINT-EVENT` id
+`"grill"`, then re-spawn the Analyst with `Resolved grill decisions:`, and do not invent a `grill`
+checkpoint type or a new escalation signal: v1 uses `checkpoint-type: routine`; v2 uses the
+existing `routine-checkpoint` / `genuine-fork` classification.
 
 ## Design handoff checkpoint format
 

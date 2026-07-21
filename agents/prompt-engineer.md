@@ -19,6 +19,8 @@ review have already passed the Critic — treat them as approved and stable.
 Load the global **novadiem-engineering** skill first. The coder who runs each prompt loads it
 too, so you write to the same standards without restating the universal rules in every prompt
 (see "Name the coder's context" below).
+When a build prompt needs test coverage, load `docs/conventions/tdd-seams.md` and name the
+same discipline in the prompt instead of pasting the discipline body into the prompt.
 
 ## Inputs
 
@@ -72,6 +74,10 @@ top-level `output/<file>`.
 
 ```
 [The actual prompt text, written as if you are the developer speaking to Claude Code]
+
+## Checkpoint
+Seams under test: <named public seam(s), or "none — <short reason>">
+<exact verification commands; green before handoff>
 ```
 
 **Done when:** [Specific, testable completion criteria]
@@ -171,6 +177,10 @@ there. So every prompt must carry or name the context the work needs:
   repeat the universal rules (reuse first, additive/guarded, strict typing, green before
   done). DO name where a prompt touches one: a generated file to sync from source, the
   error/empty/loading states a screen must ship, a boundary the work must not cross.
+- **Declare seams in the checkpoint.** Every build prompt's `## Checkpoint` starts with
+  `Seams under test:`. Name the public behavior seam(s) the tests pin, or write
+  `Seams under test: none — <short reason>`. If the value is not `none`, tell the coder to
+  load `docs/conventions/tdd-seams.md` and mutation-verify those seam tests before handoff.
 - **Name the spec/plan sections** the prompt implements (e.g. "Spec: Architecture → Data
   Models → Invitation; Plan: Phase 2"), so the coder can resolve an ambiguity against the
   requirement instead of guessing.
@@ -238,7 +248,8 @@ wholly unchecked.**
 | 6. Async/sync signature | A code block defines or calls an I/O function (grep for `async`, `await`, `def `, route handler, `httpx`, `fetch`, saga/`useEffect`). | The signature matches what the framework expects: no blocking sync call in an async route; framework-async values (e.g. Next.js 15 `params` is a `Promise`) are awaited, not unwrapped sync. | `path:line` + the framework rule, or `mismatch — <detail>`. |
 | 7. Stale-name in prose | A capitalized identifier or proper-noun symbol appears in prompt **prose, outside any code block** — a counter name, config key, class, endpoint, or feature name referred to narratively (e.g. "increment the `ProcessedLeads` counter", "the Vesper module"). Trigger: any such named token in prose; grep the prose layer (lines not inside ` ``` ` fences) for capitalized/underscored identifiers. | grep the live code for each prose-named symbol; confirm the prompt's prose uses the name the code actually uses today — not a renamed, paraphrased, or stale one. This is the layer checks 3–6 can't see: they read code blocks; a stale name in prose slips past them. (Catches the gmail-llm "counter names in prose differ from real keys in code" case.) | `path:line` of the live name, or `stale — prose says <x>, code uses <y>`. |
 | 8. Code-volume | Any fenced block in a prompt's body exceeding 25 lines (the prompt-wrapper fence itself is not a trigger — count only fenced blocks nested within the prompt body) | Block is either a test fixture, a contract stub (signatures + types only, no logic), or a reference snippet explicitly labelled "for reference only." If none of these: flag it as a contracts-not-code violation. | block location (prompt N, line M), block type classification, or `violation — implementation code in prompt N` |
-| 9. Reuse `path:Symbol` in prompt prose (ADVISORY) | A prompt's prose (outside any fenced block) contains an active reuse verb (`reuse`/`reuses`/`reused`) governing a backticked code-symbol. Grep the prose layer of each prompt for the pattern. | Verify **by reading** that the claim names a greppable `path:Symbol` — not just a noun phrase. **No preflight script scans `prompts.md`** (the script checks `spec.md`+`plan.md` only), so there is no mechanical backstop for any of these obligations; the Spellwright self-checks by reading and the Challenger judges. Sub-clauses: (a) **Numeric consistency (ADVISORY):** if the same labeled quantity appears across two separate prompts in a shared-label context, confirm the values agree in context or add a disambiguating qualifier. (b) **Sub-app CLAUDE.md naming (ADVISORY):** if a prompt directs work on an existing sub-app and names a convention-bearing structural term (the Check-h set: `store slice`, `service class`, `db column`, etc.) adjacent to a backticked name, confirm a `CLAUDE.md §` / `novadiem-engineering §` / `no CLAUDE.md for` citation appears in the same prompt. None of these fire a preflight defect — all are self-check obligations. | `path:line` of the real definition, or `reuse-claim-no-symbol — <prompt N, prose line>` (self-check finding only, not a preflight emission). |
+| 9. Reuse `path:Symbol` in prompt prose (ADVISORY) | A prompt's prose (outside any fenced block) contains an active reuse verb (`reuse`/`reuses`/`reused`) governing a backticked code-symbol. Grep the prose layer of each prompt for the pattern. | Verify **by reading** that the claim names a greppable `path:Symbol` — not just a noun phrase. There is no mechanical backstop for this semantic claim; the seam-declaration preflight only checks that checkpoints name their seams. Sub-clauses: (a) **Numeric consistency (ADVISORY):** if the same labeled quantity appears across two separate prompts in a shared-label context, confirm the values agree in context or add a disambiguating qualifier. (b) **Sub-app CLAUDE.md naming (ADVISORY):** if a prompt directs work on an existing sub-app and names a convention-bearing structural term (the Check-h set: `store slice`, `service class`, `db column`, etc.) adjacent to a backticked name, confirm a `CLAUDE.md §` / `novadiem-engineering §` / `no CLAUDE.md for` citation appears in the same prompt. None of these fire a preflight defect — all are self-check obligations. | `path:line` of the real definition, or `reuse-claim-no-symbol — <prompt N, prose line>` (self-check finding only, not a preflight emission). |
+| 10. Seam declaration | Every prompt has a `## Checkpoint`. | Confirm the first checkpoint lines include `Seams under test:` with either named public seam(s) or `none — <reason>`. For non-`none` seams, confirm the checkpoint asks the coder to load `docs/conventions/tdd-seams.md` and mutation-verify the seam tests before handoff. This presence check is backed by `scripts/preflight-artifacts.sh --phase final`; the public-seam quality remains your self-check and the Challenger's review. | `prompts.md:<line>` / `<NN-*.md>:<line>` of each declaration, or `seam-declaration-missing — <prompt N>`. |
 
 **Output discipline.** Run every in-scope check. Surface only the **N's** and any **Y whose
 evidence was non-obvious** — never a wall of routine Y's. Each defect you **found and fixed**

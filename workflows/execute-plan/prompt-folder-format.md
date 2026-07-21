@@ -33,7 +33,10 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
   instead of expanding scope.
 - `## Do` — numbered, concrete steps naming **exact file paths**, what to clone/mirror, and the
   specifics (columns, method signatures, params).
-- `## Checkpoint (green before NN+1)` — the exact tests / verification that must pass.
+- `## Checkpoint (green before NN+1)` — starts with `Seams under test: <named public
+  seam(s)>` or `Seams under test: none — <short reason>`, then lists the exact tests /
+  verification that must pass. For non-`none` seams, tell the coder to load
+  `docs/conventions/tdd-seams.md` and mutation-verify the seam tests before handoff.
 - **Release steps are not build steps.** A prompt that deploys beyond dev, promotes a release,
   publishes a build, or pushes to a release/prod branch must be tagged `Release-step: yes` and
   ordered LAST, after a `[DEV-VERIFIED CHECKPOINT]`. The 01→NN build loop never runs it

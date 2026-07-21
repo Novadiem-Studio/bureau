@@ -8,6 +8,11 @@ Check for:
 - **Missing context** — a prompt that won't work without information not provided
 - **Wrong sequence** — prompts that are ordered incorrectly
 - **Untestable prompts** — no clear definition of what "done" looks like
+- **Missing seam declaration** — any build prompt checkpoint that lacks
+  `Seams under test:` (named public seam or explicit `none — <reason>`). For non-`none`
+  seams, verify the prompt names `docs/conventions/tdd-seams.md` and asks the coder to
+  mutation-verify the seam tests; bad seam choice is a Warning unless it makes the prompt
+  untestable or leaves a load-bearing behavior unpinned.
 - **Gap prompts** — phases of work that have no prompt covering them
 - **Tooling ambiguity** — external-service work that fails to name the expected CLI, skill, MCP,
   docs source, or runbook when that choice matters for repeatability

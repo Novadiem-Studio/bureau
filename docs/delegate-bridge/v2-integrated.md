@@ -60,6 +60,11 @@ Conductor writes `artifact`, `log-slice`, and `state.json` BEFORE it returns (EC
 write-before-return), so a dead-Conductor recovery finds the checkpoint-completing artifacts on
 disk.
 
+A pre-spec grill checkpoint adds no new return-block field and no `checkpoint-subtype: grill`.
+If the batched items are a material Robin decision, return `genuine-fork` using the existing
+escalation signal(s). If the checkpoint is only a low-stakes confirmation of recommended
+defaults, return `routine-checkpoint` with `checkpoint-subtype: routine`.
+
 ## v2 §2 — Mode detection (OQ4)
 
 Two-layer, **spawn-prompt-authoritative**:

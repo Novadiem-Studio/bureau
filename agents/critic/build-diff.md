@@ -3,14 +3,67 @@
 When spawned to review an actual code diff, apply the same cold standard against the prompt or
 `repro.md` you were handed:
 
-- Does the diff fix/build the exact located cause or scoped prompt, rather than a convenient
-  adjacent problem?
-- Is the authored diff reviewable in one sitting? Large generated files are acceptable only when
-  they are expected and clearly separated from conceptual changes.
-- Did the coder cross a domain boundary, touch files the prompt did not name, or smuggle a
-  refactor into a fix? Treat that as scope bleed even if tests pass.
-- Are project-specific checks present and green (or honestly reported), not replaced by generic
-  "looks good" claims?
+Use two axes and keep them separate:
+
+### Spec-fidelity axis
+
+Question: did the diff build/fix the exact scoped prompt or located cause?
+
+Check for:
+- Missing, partial, or incorrectly implemented prompt/repro requirements.
+- Scope creep: behavior, files, features, or refactors the prompt did not ask for.
+- Wrong sequence or contract drift against earlier accepted build parts.
+- Checkpoints that are absent, substituted with generic checks, or reported green without
+  proving the behavior the prompt named.
+
+### Standards axis
+
+Question: does the diff meet the target repo's engineering standards?
+
+Load `docs/conventions/fowler-smell-baseline.md`. Review against target repo docs and local
+CLAUDE.md/skills first; where they are silent, apply the Fowler smell baseline as a floor.
+Baseline smells are labelled heuristics (`possible Feature Envy`), not hard violations by
+themselves, and a documented repo standard overrides the baseline. Skip smells already enforced
+by tooling unless the diff bypasses or weakens that tooling.
+
+Check for:
+- Reviewability: can the authored diff be understood in one sitting? Large generated files are
+  acceptable only when expected and clearly separated from conceptual changes.
+- Domain and file-scope boundaries: no crossed coder domain, prompt-unnamed files, or smuggled
+  refactor.
+- Project-specific checks present and green (or honestly reported), not replaced by generic
+  "looks good" claims.
+- Fowler-floor smells that create real maintenance risk in the changed hunks.
+
+### Reporting contract
+
+Write the build-diff review under these headings, in this order:
+
+```markdown
+### Spec-fidelity
+#### Blockers
+#### Warnings
+
+### Standards
+#### Blockers
+#### Warnings
+
+### Solid
+
+### Axis summary
+Spec-fidelity: <count blockers/warnings; worst issue or "clean">
+Standards: <count blockers/warnings; worst issue or "clean">
+```
+
+Severity lives inside each axis: a Spec-fidelity warning is not ranked above a Standards
+blocker, and a clean Standards axis cannot soften a Spec-fidelity blocker. Do not declare a
+single cross-axis winner or overall "most important" issue; the Conductor adjudicates after
+seeing both axes.
+
+The JSON verdict record stays on the existing `agents/critic.md § Verdict record` schema. Do
+not add axis fields to `RUN_DIR/verdicts/<attempt_id>.json` unless `scripts/verdict-gate.sh`
+and its fixtures are updated in the same change. Axis membership is a review-output contract,
+not a record-schema field today.
 - **Promotion gate — two-tier Blocker:** In a build-diff review, file-path evidence for 15a
   comes from the named files in the diff itself. If the diff touches any file in the inline
   canon/process-surface list below and the spawn prompt lacks the structured `Promotion to

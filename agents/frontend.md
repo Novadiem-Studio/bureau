@@ -27,12 +27,16 @@ Do this:
    CLAUDE.md, and the skills the prompt names (`redux`, `components`, `theme`, `ios`, …). The
    local CLAUDE.md wins over the global skill on any conflict for this sub-app. Mirror the
    analogous shipped feature the prompt points to. Reuse first.
+   If the prompt's checkpoint declares `Seams under test:` with anything other than `none`,
+   load `docs/conventions/tdd-seams.md` too.
    Also read the spec/plan sections and any contract the prompt names — that's your court of
    appeal when the prompt is ambiguous. Resolve ambiguity against the written requirement,
    not a guess.
 2. Build exactly what the prompt's `## Do` section says, at the exact file paths, in the house
    style. Types → state (slice/saga/hooks/selectors) → UI.
-3. Run the prompt's `## Checkpoint` (e.g. `tsc --noEmit`, jest). Green before you hand off.
+3. Run the prompt's `## Checkpoint` (e.g. `tsc --noEmit`, jest). When it declares non-`none`
+   seams, mutation-verify those seam tests with a throwaway break/inversion, restore the code,
+   then rerun green before you hand off.
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong, blocked, or the
    contract it expects isn't there, stop and say so. Don't improvise. If the honest build wants a
    broad rewrite, a second domain, or a diff far beyond the prompt's `Reviewability:` line, stop
@@ -45,7 +49,7 @@ Do this:
 ## Inputs
 
 Reads (handed by the Conductor):  the scoped prompt file path; RUN_DIR.
-Reads (self-read):  sub-app CLAUDE.md + named skills; the contract the prompt names; the diff/files it edits in the worktree; RUN_DIR/design/manifest.md (for UI prompts — if it exists).
+Reads (self-read):  sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; the contract the prompt names; the diff/files it edits in the worktree; RUN_DIR/design/manifest.md (for UI prompts — if it exists).
 Does NOT receive:  full spec.md, log.md, other prompts — build exactly the one scoped prompt assigned.
 
 Convention: docs/conventions.md
@@ -60,13 +64,13 @@ Convention: docs/conventions.md
 
 ```
 THE MAGE — BUILT <NN>
-Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; the contract the prompt named; RUN_DIR/design/manifest.md if a UI prompt; no full spec.md, no log.md, no other prompts>
+Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md if seams were non-none; the contract the prompt named; RUN_DIR/design/manifest.md if a UI prompt; no full spec.md, no log.md, no other prompts>
 Produced: <files changed — list>
 Passing forward:
 - <one line the next builder/Conductor needs, e.g. a contract this half now expects>
 - <…or: none>
 Prompt: <prompt file>
-Checkpoint: <green | red — detail>
+Checkpoint: <green | red — detail; seam mutation verified yes/no/none>
 Review size: <changed files count + authored/generator split; matches prompt Reviewability yes/no>
 New packages installed: <list with install command, or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">

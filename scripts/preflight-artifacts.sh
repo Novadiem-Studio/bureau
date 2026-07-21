@@ -505,6 +505,109 @@ if [ "$PHASE" = "final" ]; then
   done < "$AC_DEFS"
 fi
 
+# ── (i) Seam declaration (--phase final only) ────────────────────────────────
+# Every build prompt checkpoint must declare the tested seam, or explicitly say
+# there is no seam for that prompt. This is the mechanical half of the
+# seam-first-testing rule; the semantic quality of the seam remains a review
+# concern.
+
+check_seam_declarations() {
+  local f="$1"
+  local fname
+  fname="$(basename "$f")"
+
+  local awk_out
+  awk_out="$(awk '
+  function hlevel(s,   t, i, c) {
+    t = s
+    sub(/^[[:space:]]+/, "", t)
+    c = 0
+    for (i = 1; i <= length(t); i++) {
+      if (substr(t, i, 1) == "#") c++
+      else break
+    }
+    return c
+  }
+  function flush_checkpoint() {
+    if (in_checkpoint && decl_n == 0) {
+      print checkpoint_n ":missing:" checkpoint_title
+    }
+    in_checkpoint = 0
+    decl_n = 0
+    checkpoint_n = 0
+    checkpoint_level = 0
+    checkpoint_title = ""
+  }
+  BEGIN {
+    in_checkpoint = 0
+    found_checkpoint = 0
+    decl_n = 0
+  }
+  {
+    n++
+    line = $0
+
+    if (line ~ /^[[:space:]]*#{2,6}[[:space:]]+Checkpoint([[:space:](]|:|-|$)/) {
+      flush_checkpoint()
+      in_checkpoint = 1
+      found_checkpoint = 1
+      checkpoint_n = n
+      checkpoint_level = hlevel(line)
+      checkpoint_title = line
+      next
+    }
+
+    if (in_checkpoint && line ~ /^[[:space:]]*#{1,6}[[:space:]]+/) {
+      level = hlevel(line)
+      if (level <= checkpoint_level) {
+        flush_checkpoint()
+      }
+    }
+
+    if (in_checkpoint && line ~ /^[[:space:]]*(-[[:space:]]*)?Seams under test:[[:space:]]*/) {
+      decl_n = n
+      rest = line
+      sub(/^[[:space:]]*(-[[:space:]]*)?Seams under test:[[:space:]]*/, "", rest)
+      if (rest ~ /^[[:space:]]*$/) {
+        print n ":empty:Seams under test declaration is empty"
+      }
+    }
+  }
+  END {
+    flush_checkpoint()
+    if (found_checkpoint == 0) {
+      print "0:no-checkpoint:no ## Checkpoint section found; add one with Seams under test"
+    }
+  }
+  ' "$f")"
+
+  local emit_line emit_n emit_type emit_detail
+  while IFS= read -r emit_line || [ -n "$emit_line" ]; do
+    [ -n "$emit_line" ] || continue
+    emit_n="${emit_line%%:*}"
+    rest="${emit_line#*:}"
+    emit_type="${rest%%:*}"
+    emit_detail="${rest#*:}"
+    case "$emit_type" in
+      missing)
+        add_defect "${fname}:${emit_n} — seam-declaration-missing — checkpoint lacks 'Seams under test:' declaration: ${emit_detail}"
+        ;;
+      empty)
+        add_defect "${fname}:${emit_n} — seam-declaration-empty — use 'Seams under test: <public seam...>' or 'Seams under test: none — <reason>'"
+        ;;
+      no-checkpoint)
+        add_defect "${fname}:${emit_n} — seam-declaration-missing — ${emit_detail}"
+        ;;
+    esac
+  done << EOF
+$awk_out
+EOF
+}
+
+if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
+  check_seam_declarations "$PROMPTS"
+fi
+
 # ── Output ────────────────────────────────────────────────────────────────────
 
 if [ -s "$DEFECTS" ]; then

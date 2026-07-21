@@ -25,7 +25,18 @@ Run these as spawned subagents (see "How to spawn an agent" and "Model routing" 
 `agents/orchestrator.md`). Sequential — wait for each handoff before the next. Pass
 `RUN_DIR` as an absolute path in every spawn prompt.
 
-1. **Analizer 2000** (Analyst, **standard**) — requirements, scope, edge cases → `spec.md` (Requirements)
+1. **Analizer 2000** (Analyst, **standard**) — grill screen first, then requirements, scope,
+   edge cases → `spec.md` (Requirements)
+
+   Initial feature runs use the loadable discipline in `docs/conventions/grilling.md`. Before
+   any `spec.md` artifact exists, the Analyst returns a `GRILL-TRIGGER:` line. If it returns
+   `decision:"skip"`, the same spawn writes Requirements and the Conductor logs the trigger
+   before continuing. If it returns `GRILL CHECKPOINT REQUEST`, the Analyst has written no
+   `spec.md`; the Conductor verifies that `RUN_DIR/spec.md` is absent or empty, appends the
+   trigger to `log.md`, raises the one batched pre-spec checkpoint with `CHECKPOINT-EVENT`
+   id `"grill"`, then re-spawns the Analyst with `Resolved grill decisions:` in the prompt.
+   The re-spawn writes Requirements and returns `decision:"resolved-input"`. The grill may
+   fire at most once per feature run.
 2. **The Architect** (**strong**) — system design + plan → `spec.md` (Architecture), `plan.md`
 3. **Analizer 2000** (reconciliation, **standard**) — reconcile Requirements against the Architecture; no-op if no Architecture section → `spec.md` (Requirements), `log.md` (RECONCILED: note)
 

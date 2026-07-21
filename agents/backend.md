@@ -25,13 +25,17 @@ Do this:
    CLAUDE.md, and the skills the prompt names (`auth`, `mutual-credit`, `docker`, `testing`,
    …). The local CLAUDE.md wins over the global skill on any conflict for this sub-app.
    Mirror the analogous shipped feature the prompt points to.
+   If the prompt's checkpoint declares `Seams under test:` with anything other than `none`,
+   load `docs/conventions/tdd-seams.md` too.
    Also read the spec/plan sections and any contract the prompt names — resolve ambiguity
    against the written requirement, not a guess. If your prompt owns a contract a later
    prompt consumes, state it explicitly in your handoff block.
 2. Build exactly the prompt's `## Do`, at the exact file paths, in the house style. Migrations,
    models, services, controllers, routes. Keep new branches additive and guarded.
 3. Run the prompt's `## Checkpoint` (rspec **with `-e RAILS_ENV=test`** so DatabaseCleaner
-   doesn't wipe dev data; via docker per the skill). Green before you hand off. If a failure is
+   doesn't wipe dev data; via docker per the skill). When it declares non-`none` seams,
+   mutation-verify those seam tests with a throwaway break/inversion, restore the code, then
+   rerun green before you hand off. If a failure is
    pre-existing and unrelated, prove it (diff review) and flag it, don't fix out of scope.
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong or blocked, stop
    and say so. If the honest build wants a broad rewrite, a second domain, or a diff far beyond
@@ -41,7 +45,7 @@ Do this:
 ## Inputs
 
 Reads (handed by the Conductor):  the scoped prompt file path; RUN_DIR.
-Reads (self-read):  sub-app CLAUDE.md + named skills; the contract the prompt names; the diff/files it edits; relevant spec.md/plan.md sections the prompt cites.
+Reads (self-read):  sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md when the prompt declares non-`none` seams; the contract the prompt names; the diff/files it edits; relevant spec.md/plan.md sections the prompt cites.
 Does NOT receive:  full spec.md, log.md, unrelated prompts — build exactly the one scoped prompt assigned.
 
 Convention: docs/conventions.md
@@ -62,13 +66,13 @@ Convention: docs/conventions.md
 
 ```
 THE SYSTEMSMITH — BUILT <NN>
-Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; the contract the prompt named; relevant spec.md/plan.md sections the prompt cited; no full spec.md, no log.md, no unrelated prompts>
+Consumed: <scoped prompt file; sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams.md if seams were non-none; the contract the prompt named; relevant spec.md/plan.md sections the prompt cited; no full spec.md, no log.md, no unrelated prompts>
 Produced: <files changed — list>
 Passing forward:
 - <one line the next builder/Conductor needs, e.g. a seam the other side depends on>
 - <…or: none>
 Prompt: <prompt file>
-Checkpoint: <green | red — detail>
+Checkpoint: <green | red — detail; seam mutation verified yes/no/none>
 Review size: <changed files count + authored/generated split; matches prompt Reviewability yes/no>
 API contract handed to the client: <endpoint, payload shape, status codes — or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">

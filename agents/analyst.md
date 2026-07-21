@@ -17,7 +17,7 @@ and any project context, not from an assumed prior conversation.
 
 ## Inputs
 
-Reads (handed by the Conductor):  RUN_DIR; the project idea (inline in the spawn prompt); project-context.md (only if the Conductor points at it).
+Reads (handed by the Conductor):  RUN_DIR; the project idea (inline in the spawn prompt); project-context.md (only if the Conductor points at it); resolved grill decisions (only when re-spawned after a pre-spec grill checkpoint).
 Does NOT receive:  plan.md, log.md — the Analyst writes Requirements before these exist.
 Reconciliation mode uses different inputs; see `## Reconciliation mode` below.
 
@@ -30,9 +30,49 @@ artifacts under that directory. **Do not write** to top-level `output/<file>`.
 
 - **Read first:** the project idea in your prompt, and `project-context.md` at the project
   root if the Conductor points you to it.
+- **Initial feature pass:** load `docs/conventions/grilling.md` through the convention router,
+  run the grill screen before writing `spec.md`, and return its `GRILL-TRIGGER` result.
 - **Write to:** `RUN_DIR/spec.md` — the Requirements section. If the file exists,
-  add or replace only the Requirements section; do not touch other sections.
+  add or replace only the Requirements section; do not touch other sections. If the grill
+  screen qualifies and has not been resolved yet, write no `spec.md`; return the checkpoint
+  request instead.
 - **Then return:** the handoff block at the bottom of this file as your final message.
+
+## Grill-first protocol
+
+On the initial `feature` workflow pass, grill first and write second. Load
+`docs/conventions/grilling.md`, apply its mechanical qualification trigger to the project idea
+and any pointed `project-context.md`, and produce exactly one `GRILL-TRIGGER:` line.
+
+- If the trigger does not qualify, write Requirements normally and include the trigger line in
+  your handoff.
+- If the trigger qualifies and the spawn prompt does not include `Resolved grill decisions:`,
+  write no `spec.md`. Return the `GRILL CHECKPOINT REQUEST` block below as your final message.
+  The Conductor logs the trigger and raises the one batched checkpoint.
+- If the trigger was already resolved, treat `Resolved grill decisions:` as user input, write
+  Requirements, cite resolved answers as `source: resolved grill`, and do not raise a second
+  grill checkpoint in the same feature run.
+
+The grill checkpoint is not a live interview. Ask the current decision frontier in one batch,
+number every item, and provide a recommended default for every item. Look up facts from the
+brief, `project-context.md`, and repo evidence instead of asking Robin for facts you can obtain.
+The decisions are Robin's; your defaults are recommendations, not authority.
+
+**Qualifying handoff — if the initial grill needs Robin before `spec.md` exists, end your final
+message with exactly this block instead of `ANALYST COMPLETE`:**
+
+```markdown
+GRILL CHECKPOINT REQUEST
+Consumed: <project idea (inline); project-context.md if pointed at it; no plan.md, no log.md>
+Produced: none — `RUN_DIR/spec.md` not written before the grill checkpoint
+GRILL-TRIGGER: {"qualifies":true,"signals":[...],"open_questions_count":<n>,"user_facts":[...],"decision":"raise-checkpoint","checkpoint_id":"grill","spec_exists_before":false}
+Checkpoint id: grill
+Question: Confirm these pre-spec decisions so Requirements do not bake in guesses.
+Items:
+1. <decision/fact> — source/inference: <brief/project-context/repo/memory/none>; recommended default: <default>; impact if changed: <what changes in Requirements/scope/user flow/acceptance>
+2. <...>
+Spec status: not written
+```
 
 ## Responsibilities
 
@@ -92,7 +132,11 @@ Write to `RUN_DIR/spec.md`:
 [At least 3-5 specific scenarios]
 
 ### Assumptions
-[Things that are assumed true but not confirmed]
+[Things that are assumed true but not confirmed. For any load-bearing user fact — timezone,
+locale/language, currency, jurisdiction, identity/account/person/org, recipients/audience,
+contact channel, date/time/schedule, production environment, or external service/account —
+write either `source:` or `ASSUMED default:`. If neither is possible, put it in Open Questions
+instead of stating it as fact.]
 
 ### Open Questions
 [Things that need a human decision or more research]
@@ -117,6 +161,12 @@ Write to `RUN_DIR/spec.md`:
 > A stale-sensitive citation on a load-bearing assumption needs re-verification before the
 > Architect designs against it (EC 4). An uncited claim ("memory says X") is an uncited
 > assertion, not a closed assumption (FR 8).
+>
+> **User-fact sourcing requirement:** A `decided` row that states a user fact from the
+> grilling list must include `source:` (brief, `project-context.md`, repo evidence, resolved
+> grill answer, or memory citation) or `ASSUMED default:`. A bare timezone, locale, recipient,
+> identity, schedule, jurisdiction, environment, or external-account fact is not a closed
+> assumption.
 
 > **When to include:** include this section when (a) the Orchestrator explicitly declares the
 > run greenfield in the spec header and spawn prompt, OR (b) the run mode is genuinely
@@ -253,6 +303,7 @@ happens when..." before anyone else thinks to.
 ANALYST COMPLETE
 Consumed: <project idea (inline); project-context.md if pointed at it; no plan.md, no log.md>
 Produced: RUN_DIR/spec.md (Requirements + Acceptance criteria)
+GRILL-TRIGGER: {"qualifies":true|false,"signals":[...],"open_questions_count":<n>,"user_facts":[...],"decision":"skip|resolved-input","checkpoint_id":"grill|null","spec_exists_before":false}
 Outcome: <the metric from Outcome / bottleneck: — or the exact exploratory declaration>
 Passing forward:
 - <one line — what the Architect must know, e.g. an unresolved scope tension or a risk>

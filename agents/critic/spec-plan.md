@@ -187,6 +187,16 @@ Check for:
   the Architect designs against it (EC 4). A stale-sensitive flag is not a resolution — it is
   an open re-verification obligation.
 
+- **User-fact provenance gate (grill companion):** When the spec states a load-bearing user
+  fact — timezone, locale/language, currency, jurisdiction, person/org/account identity,
+  recipients/audience/contact channel, date/time/schedule, production environment, or external
+  service/account — the claim must carry `source:` or `ASSUMED default:` in the Requirements
+  assumptions, Greenfield Assumptions table, or the requirement text itself. Valid sources are
+  the brief, `project-context.md`, direct repo evidence, resolved grill answers, or a memory
+  citation with the memory fields above. A bare user fact is a **Warning**. Escalate to
+  **Blocker** if the Architecture or plan depends on the bare fact before any verification or
+  checkpoint would correct it.
+
 ### The machinery test (over-engineering, operationalized)
 
 A design can be internally consistent and still carry machinery nothing requires — that is

@@ -17,6 +17,12 @@ only the module whose trigger matches the work.
   workflow registry hints, workflow parser step lines, or cast-name/tier/output arrows.
 - `docs/conventions/regression-fixtures.md` — creating, rerunning, promoting, retiring, or
   validating regression fixture files.
+- `docs/conventions/grilling.md` — initial Analyst pass in the `feature` workflow, pre-spec
+  grill checkpoints, and user-fact provenance in Requirements.
+- `docs/conventions/tdd-seams.md` — writing or executing build prompts whose checkpoint
+  declares `Seams under test:`; use it to choose public seams and mutation-verify seam tests.
+- `docs/conventions/fowler-smell-baseline.md` — build-diff Standards-axis reviews; use it
+  as the fixed smell floor when target-repo docs are silent or incomplete.
 - `docs/conventions/canon-promotion.md` — canon promotion, `battle-test.md` matrices,
   waivers, or convention retirement/supersession.
 - `docs/conventions/failure-signatures.md` — recording failure signatures, checking recurrence,

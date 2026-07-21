@@ -189,7 +189,7 @@ A read-only checker that validates artifact cross-references and embedded-snippe
 Two phases:
 
 - `round1` (default) — gates the Challenger spawn. Requires `spec.md` and `plan.md`; checks (a) artifact presence, (b) dangling ID cross-references in `plan.md`, (c) every FR defined in `spec.md` cited by ID in `plan.md`, (d) four forbidden snippet patterns in fenced blocks (`jq -e .` lone-dot gate, `flock`, `readarray`, `mapfile`), and (f) convention-citation (idea #18): a compound structural term (store-slice / db-column / saga / … the closed set in `check_convention_citations`) immediately adjacent to a backticked concrete name in `spec.md`/`plan.md` with no `CLAUDE.md §` / `novadiem-engineering §` / `no CLAUDE.md for` citation → `convention-uncited`; a citation whose file/heading does not resolve on disk → `convention-source-missing`. This is the one *semantic* producer gate; the reuse-claim and numeric-consistency checks are advisory producer self-check rows only (no script block — no deterministic grammar reaches zero false positives on real specs).
-- `final` — gates close-out. Adds `prompts.md` to the required set and extends checks (b) and (d) to `prompts.md`; also runs check (e): every AC defined in `spec.md` cited by ID in `plan.md` or `prompts.md`.
+- `final` — gates close-out. Adds `prompts.md` to the required set and extends checks (b) and (d) to `prompts.md`; also runs check (e): every AC defined in `spec.md` cited by ID in `plan.md` or `prompts.md`, and check (i): every prompt checkpoint declares `Seams under test:` with a named public seam or explicit `none`.
 
 Exit-code contract:
 
