@@ -22,7 +22,7 @@ Two rules:
 ## What this does
 
 For new Bureau runs, the **default main session is The Delegate**. The Delegate runs in
-attended v2 manager/relay mode, spawns **The Conductor** as a resumable subagent, and handles
+attended manager/relay mode, spawns **The Conductor** as a resumable subagent, and handles
 per-checkpoint flow/gating until a genuine fork needs Robin. The Conductor then spawns the
 specialist subagents — the cast below — each in its own fresh context. They take a raw project
 idea through to a complete spec, a phased plan, and a set of scoped prompts ready to execute in
@@ -37,7 +37,7 @@ argued, so its objections are real instead of agreeable.
 | Role | One-line job | When it runs | Status |
 |------|-------------|--------------|--------|
 | **The Notary** | External cold attestation on a sealed artifact packet | On-demand, when an artifact is high-stakes and sealed | Live (Bundle 05) |
-| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for new Bureau runs; attended until v3 self-audit gate | Live (Bundle 09/v2) |
+| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for new Bureau runs | Live |
 | **The Principal** | Robin's preference model — models what Robin would choose and acts on his behalf | Explicitly deferred; no placeholder, hook, or in-code comment in this bundle | Deferred (future) |
 
 The Delegate is a flow-and-gating role only (FR 44). It does not model Robin's preferences.
@@ -47,14 +47,14 @@ this table is the canonical guard. The Principal is explicitly not in scope for 
 ## Default entrypoint
 
 When Robin says "get the bureau on this," "start the agent framework," "run the bureau," or
-similar, start a **Delegate v2** run by default. Do not require Robin to ask for the Delegate
+similar, start with **The Delegate** by default. Do not require Robin to ask for the Delegate
 explicitly. Read `agents/delegate.md` and run in manager/relay mode; the Delegate is the
 top-level session and spawns the Conductor underneath it with `topology: integrated`.
 
 Use direct Conductor mode only when Robin explicitly asks to bypass Delegate, when resuming a
-legacy/non-integrated run, or when v2 is unavailable in the current host/runtime. If falling
-back, say why in one line, log the fallback in `RUN_DIR/log.md` when a run dir exists, then
-follow `agents/orchestrator.md` as the Conductor.
+legacy/non-integrated run, or when the integrated Delegate topology is unavailable in the
+current host/runtime. If falling back, say why in one line, log the fallback in `RUN_DIR/log.md`
+when a run dir exists, then follow `agents/orchestrator.md` as the Conductor.
 
 The Conductor remains the **dispatcher** inside the run: each task is triaged against the
 workflow registry (`workflows/index.md`) and routed to the right-sized workflow, not always
@@ -68,15 +68,15 @@ reference and scope each agent to the right sub-app, while building within the c
 
 ## On start
 
-**Default Delegate v2 path:**
+**Default Delegate path:**
 
-1. Read `agents/delegate.md`, then its required v2 contract:
+1. Read `agents/delegate.md`, then its required integrated-topology contract:
    `docs/delegate-bridge/v2-integrated.md`.
 2. If `~/.novadiem/usage-snapshot.json` exists, read `claude` quota once (optional;
    statusLine-owned — see `scripts/README.md`). Do not run any external usage command during the run.
 3. Read `workflows/index.md` and triage the task to a workflow before creating a new run dir.
 4. If `project-context.md` exists in the project root, read it for target-repo hints.
-5. Start via `agents/delegate.md § Bootstrap (starting a v2 session)`.
+5. Start via `agents/delegate.md § Bootstrap`.
 
 **Direct Conductor fallback path:** read `agents/orchestrator.md` core sections, then follow its
 **Startup read scope (token discipline)** to load only triggered modules. In direct fallback,
@@ -104,7 +104,7 @@ Write the resolved value to `state.json#target_repo`: an absolute path, or the l
 
 **New run:** direct Conductor mode uses
 `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`.
-Delegate v2 mode uses the same ceremony with `--no-pointer-echo`; see
+Delegate mode uses the same ceremony with `--no-pointer-echo`; see
 `agents/delegate.md § Bootstrap` for the full sequence. The script creates the run dir,
 .gitignore protection, `state.json`, `log.md`, runs-index entry, `model-routing.json`, and
 pointer enrolment.
