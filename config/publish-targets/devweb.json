@@ -1,0 +1,9 @@
+{
+  "repo": "/Users/robin/Code/novadiem/devweb",
+  "content_dir": "content/articles",
+  "build_cmd": "npx next build",
+  "live_url": "https://devweb.org",
+  "categories": ["frameworks", "memory", "engineering"],
+  "mdx_components": ["PullQuote", "RunTable"],
+  "build_check": "all-static"
+}

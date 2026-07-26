@@ -1,9 +1,10 @@
 # Workflow: write-article
 
-**When to use:** Robin wants to write a long-form article for **devweb.org** and run it
-through the full pipeline — outline → draft → higher-level improvement → a configurable chain
-of cross-model improvement passes (Grok et al., editable per run) → two humanizer passes →
-published MDX staged into devweb. Point it at a topic.
+**When to use:** Robin wants to write a long-form article and run it through the full pipeline —
+outline → draft → higher-level improvement → a configurable chain of cross-model improvement
+passes (Grok et al., editable per run) → two humanizer passes → MDX output. Point it at a
+topic. The publish destination is driven by an optional `RUN_DIR/publish-target.json`; if absent,
+the workflow produces `RUN_DIR/article.mdx` only with no build or push.
 
 **When NOT to use:** a quick edit to an already-published article (edit the `.mdx` directly);
 content that isn't a long-form article — a blog post, a tweet, a release note, an email
@@ -20,16 +21,22 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
 - A topic description — Robin provides it inline in the spawn or as a file path.
 - Optionally a per-run `RUN_DIR/article-passes.json`. If present, it **replaces**
   `config/article-passes.json` entirely for this run (not a merge — predictable and explicit).
+- Optionally a `RUN_DIR/publish-target.json`. If present, it drives: the category/section enum
+  (step 2), allowed MDX components (step 12), and the publish destination — repo path, content
+  dir, build command, and live URL (step 14). If absent, the workflow produces `RUN_DIR/article.mdx`
+  only; step 14 becomes article-only output with no build or push. Pre-built targets live in
+  `config/publish-targets/`; copy the relevant one to `RUN_DIR/publish-target.json` before
+  starting. `config/publish-targets/devweb.json` covers devweb.org.
 - `RUN_DIR` is set by the Conductor per `docs/run-protocol.md`.
 - The OpenRouter key in the keystore (`~/Documents/novadiem/keys/novadiem/openrouter.env`,
   provisioned by the chunk-02 build step), consumed by `scripts/model-pass.sh`. The script
   loud-fails (exit 4) if absent.
 - Out of scope: any live-web fact-check (figure-grounding is tool-free, against the draft's own
   cited sources); GPT/Gemini *direct* provider arms (v1 reaches them only via `openrouter:`).
-- In scope (standing-authorized): the workflow publishes live — it commits and pushes to `main`
-  (production deploy to https://devweb.org) automatically once the proofreader clears and the build
-  is green. See the Automation policy below. The dev→prod boundary is crossed under Robin's recorded
-  standing authorization, gated by the proofreader, not left as a manual release step.
+- In scope (standing-authorized): when a publish-target is configured, the workflow publishes live —
+  it commits and pushes to `main` automatically once the proofreader clears and the build is green.
+  See the Automation policy below. The dev→prod boundary is crossed under Robin's recorded standing
+  authorization, gated by the proofreader, not left as a manual release step.
 
 **Outputs:**
 - `RUN_DIR/angle.md` — the angle, working title, proposed pillar.
@@ -47,8 +54,9 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
   count, one-line "what changed"). The audit index.
 - `RUN_DIR/proofread.md` — the step-13 proofreader verdict (`CLEAR` | `HOLD`) + any concerns.
 - `RUN_DIR/article.mdx` — a copy of the final `versions/NN-article.mdx`, for the publish step.
-- Cross-repo: `devweb/content/articles/<slug>.mdx` — written + committed + pushed live in step 14,
-  automatically when the step-13 proofreader returns `CLEAR` and the build is green.
+- Cross-repo (when a publish-target is configured): `<repo>/<content_dir>/<slug>.mdx` — written +
+  committed + pushed live in step 14, automatically when the step-13 proofreader returns `CLEAR`
+  and the build (if `build_cmd` is set) is green. Omitted when no publish-target is present.
 - `RUN_DIR/log.md`, `RUN_DIR/state.json` — run narrative and close-out (step 15).
 
 **Leans on skills:** `humanizer` and `spiral-dynamics` — both loaded by The Counselor in its
@@ -72,12 +80,13 @@ gates. The only thing that halts a run is a *real problem*, never a preference:
   external action.
 - **Data custody / disclosure — resolved.** (a) Sending pre-publication drafts to OpenRouter/xAI is
   accepted. (b) The published article does **NOT** disclose cross-model editing.
-- **Live publish — standing-authorized.** The run commits and pushes to `main` (a production deploy
-  to live https://devweb.org via Vercel) automatically once the **proofreader clears** and the build
-  is green. This is an explicit, recorded standing authorization to cross the dev→prod boundary FOR
-  THIS WORKFLOW ON THIS LOW-STAKES SITE — not a silent boundary breach. Safeguards: the proofreader
-  step (a cold automated check that HOLDS on any real concern), the green-build gate, and easy
-  reversibility (Vercel instant rollback / `git revert` + push).
+- **Live publish — standing-authorized (when a publish-target is configured).** The run commits and
+  pushes to `main` automatically once the **proofreader clears** and the build (if `build_cmd` is
+  set) is green. This is an explicit, recorded standing authorization to cross the dev→prod boundary
+  FOR THIS WORKFLOW — not a silent boundary breach. Safeguards: the proofreader step (a cold
+  automated check that HOLDS on any real concern), the green-build gate, and easy reversibility
+  (`git revert` + push, or the target platform's rollback). When no publish-target is present, no
+  boundary is crossed — the deliverable is `RUN_DIR/article.mdx` only.
 - **The only stops are problems, not preferences:** (1) the **proofreader** finds a ship-blocking
   concern → hold just before commit + alert Robin; (2) `npm run build` fails → hold + surface;
   (3) config validation fails → hold + name the file. Nothing else waits for a human.
@@ -85,19 +94,21 @@ gates. The only thing that halts a run is a *real problem*, never a preference:
 ## Done criteria
 
 The run is complete when ALL hold (the success path — proofreader `CLEAR`):
-- `RUN_DIR/article.mdx` exists with valid frontmatter (the devweb Zod schema would accept it).
+- `RUN_DIR/article.mdx` exists with valid frontmatter.
 - The step-13 proofreader returned `CLEAR` (`RUN_DIR/proofread.md`).
-- `npm run build` in devweb exits 0 with the route table all-static (every route `○` or `●`,
-  **no `ƒ`**) — see step 14.
-- The article is committed and **pushed to `main`** — live on https://devweb.org (step 14c).
+- **If a publish-target is configured:** `build_cmd` (if set) exits 0 with any target-specific
+  checks passing — e.g. for devweb, all-static routes (every route `○` or `●`, no `ƒ`). The
+  article is committed and **pushed to `main`** — live at the target's `live_url` (step 14c).
+- **If no publish-target:** `RUN_DIR/article.mdx` is the deliverable; step 14 logs article-only
+  output and completes without build or push.
 - `RUN_DIR/log.md` carries: the figure-gate decision; the logged cross-model pass list; one
   `[EXTERNAL-ACTION]` line per cross-model call that actually fired; the proofreader verdict; the
-  push; and the step-15 close-out with the count of paid passes.
+  push (if applicable); and the step-15 close-out with the count of paid passes.
 - `RUN_DIR/state.json#accounting` is set (status `available` or, on failure, `unavailable`).
 
 **Held (not complete):** if the proofreader returned `HOLD`, the run is paused just before commit
-with Robin alerted (nothing written to devweb, nothing pushed) — resolve the named concerns, then
-re-run from step 13. A build failure (14b) halts the same way.
+with Robin alerted (nothing written to the target repo, nothing pushed) — resolve the named
+concerns, then re-run from step 13. A build failure (14b) halts the same way.
 
 ## Edge cases
 
@@ -179,10 +190,11 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    cross-article uniformity and feeds a self-imitation loop.
 
 2. **Action** — proceed automatically (no approval wait). The Counselor's `angle.md` records the
-   chosen angle, working title, and pillar (`frameworks` | `memory` | `engineering` — the devweb
-   `lib/pillars.ts` enum) for visibility, but the run does **not** stop for sign-off. The title +
-   pillar carry forward to the format/publish steps. (If the angle is wrong, Robin redirects after
-   seeing the result — cheap to redo; not a reason to hold the pipeline.)
+   chosen angle, working title, and category/section for visibility. If `RUN_DIR/publish-target.json`
+   is present and has a `categories` array, the category must be one of those values (e.g. devweb's
+   `frameworks | memory | engineering`). If no `categories` array is present, the Counselor proposes
+   freely. The title + category carry forward to the format/publish steps. (If the angle is wrong,
+   Robin redirects after seeing the result — cheap to redo; not a reason to hold the pipeline.)
 
 3. **The Scribe** (Outline, **standard**) → next version `NN-outline.md`
    Given `angle.md` + the approved working title + pillar. Produces a section-level outline —
@@ -299,12 +311,14 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     (The cold proofreader at step 13 still gates everything that follows.)
 
 12. **The Scribe** (Format, **standard**) — MDX + frontmatter → next version `NN-article.mdx`
-    Given the latest version (the final prose) + the approved slug + pillar. A mechanical transform
+    Given the latest version (the final prose) + the approved slug + category. A mechanical transform
     (no content edits): emits the next version as `NN-article.mdx` with correct frontmatter
-    (`title`, `dek`, `date` ISO, `pillar`, `slug` matching `^[a-z0-9-]+$`; optional `read` as an
-    integer, `draft`, `run`) and only the allowed MDX components — `<PullQuote>` and `<RunTable>`,
-    the ONLY two `devweb/components/mdx/index.ts` compiles. Any other JSX fails the devweb build.
-    The Conductor copies this final version to `RUN_DIR/article.mdx` for the publish step.
+    (`title`, `dek`, `date` ISO, `slug` matching `^[a-z0-9-]+$`; a `category`/`pillar` field using
+    the value from step 2; optional `read` as an integer, `draft`, `run`). For allowed MDX
+    components: if `RUN_DIR/publish-target.json` has an `mdx_components` array, only those
+    components may appear as JSX — any others will break the target's build. If no `mdx_components`
+    is set, avoid custom JSX components entirely and emit plain MDX. The Conductor copies this final
+    version to `RUN_DIR/article.mdx` for the publish step.
 
 13. **The Challenger** (Critic, **strong**, fresh context — proofreader / publish-concern) — the safety gate → `proofread.md`, verdict `CLEAR` | `HOLD`
     Reads ONLY the final `article.mdx` (the thing about to ship), cold. This is **not** a style or
@@ -327,19 +341,25 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
 
 14. **Action** — publish (write → build → commit → push live). Runs automatically only when step 13
     returned `CLEAR`.
-    a. Copy `RUN_DIR/article.mdx` → `/Users/robin/Code/novadiem/devweb/content/articles/<slug>.mdx`.
-    b. Run `npm run build` in `/Users/robin/Code/novadiem/devweb/`. The Zod schema validates the
-       frontmatter; the build must stay **all-static** (every route `○` or `●`, no `ƒ`). **If the
-       build fails, HALT** — surface the error and hold (do not commit). A broken build is an
-       error-stop, not a preference.
-    c. On a green build, **commit and push to `main`** (standing-authorized live publish — see
-       Automation policy):
+    **Read `RUN_DIR/publish-target.json`.** If it does not exist, this step is article-only output:
+    log `publish: article-only — no publish-target configured` to `RUN_DIR/log.md` and complete.
+    `RUN_DIR/article.mdx` is the deliverable. Skip 14a–c.
+    If it exists:
+    a. Copy `RUN_DIR/article.mdx` → `<repo>/<content_dir>/<slug>.mdx`
+       (values from the publish-target config).
+    b. If `build_cmd` is set: run it in `<repo>`. Apply any target-specific build checks
+       (`build_check`; for `"all-static"` this means every route must be `○` or `●`, no `ƒ`).
+       **If the build fails, HALT** — surface the error and hold (do not commit). A broken build
+       is an error-stop, not a preference. If `build_cmd` is null/absent, skip this sub-step.
+    c. On a green build (or if no build step), **commit and push to `main`** (standing-authorized
+       live publish — see Automation policy):
        ```
-       git add content/articles/<slug>.mdx
-       git commit -m "content: add '<title>' (<pillar> pillar)"
-       git push origin main      # → live on https://devweb.org (Vercel auto-deploy)
+       git -C <repo> add <content_dir>/<slug>.mdx
+       git -C <repo> commit -m "content: add '<title>' (<category> pillar)"
+       git -C <repo> push origin main      # → live at <live_url>
        ```
-       The article is now live. (Reversible via Vercel rollback / `git revert` + push if needed.)
+       The article is now live. (Reversible via `git revert` + push or the target platform's
+       rollback if needed.)
 
 15. **The Conductor** (**standard**) — close out + write the audit manifest + run accounting last → `manifest.md`, `log.md`, `state.json`
     Write **`RUN_DIR/manifest.md`** — the audit index: one row per `versions/` stage in order
