@@ -1,5 +1,20 @@
 .DS_Store
+.claude/
 .idea/
+reference/visionary-reference.png
+reference/cleric-reference.png
+config/calibration-exemplars/**
+!config/calibration-exemplars/
+!config/calibration-exemplars/index.md
+!config/calibration-exemplars/public-domain/
+!config/calibration-exemplars/public-domain/**
+config/calibration-exemplars.local/
+docs/exhibits/
+docs/evaluation/
+docs/exhibits.local/
+docs/evaluation.local/
+ideas/
+ideas.local/
 output/*
 !output/studio
 # The cross-run run-index is regenerable runtime cache (per-run pointers with machine-local
