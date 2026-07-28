@@ -10,7 +10,7 @@ into reliable, reusable, verifiable work through the Society of Specialists and 
 ## Overview
 
 This roadmap organizes framework evolution into prioritized bundles. The executable backlog
-lives in [ideas/agent-framework](../ideas/agent-framework/index.md); this document is the
+lives in Robin's private idea backlog; this document is the
 durable narrative view for framework docs.
 
 Rheo persistent memory is included as a boundary-respecting framework integration track
@@ -246,7 +246,7 @@ views, and temporal flows.
 
 ## Next Actions
 
-**Promoted 2026-06-22 — next after the in-flight Bundle 08:** Bundle 14 (Delegate verification gate at integration boundaries), as a `feature` run. Field-derived from the Track-3 merge, where a human had to re-execute the build's claims at the merge gate before it was safe. See `ideas/agent-framework/14-delegate-merge-gate-verification.md`.
+**Promoted 2026-06-22 — next after the in-flight Bundle 08:** Bundle 14 (Delegate verification gate at integration boundaries), as a `feature` run. Field-derived from the Track-3 merge, where a human had to re-execute the build's claims at the merge gate before it was safe. Detailed idea notes are private studio planning material.
 
 1. Complete and review Bundle 01a.
 2. Challenger-review existing Rheo Layer 0/4, route blockers, then hand deployment to The
@@ -258,5 +258,5 @@ views, and temporal flows.
 ## Maintenance
 
 This is a living framework document. Update it when a bundle is promoted, split, completed,
-or superseded. Keep detailed execution checklists in `ideas/agent-framework/`; keep this file
+or superseded. Keep detailed execution checklists in the private idea backlog; keep this file
 as the stable narrative roadmap.

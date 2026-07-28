@@ -40,6 +40,7 @@ while IFS= read -r line; do
 done < <(rg -n 'output/runs/<task>/|agent-framework/output/runs|~/Code/novadiem/bureau/output/runs|In the machinery: `output/runs' . \
   -g '*.md' \
   -g '!output/runs/**' \
+  -g '!docs/exhibits/**' \
   -g '!ideas/**' \
   -g '!AGENTS.md' \
   -g '!CLAUDE.md' \
@@ -71,8 +72,8 @@ grep -Fq 'docs/model-routing-and-cast.md' agents/orchestrator.md \
   || err "agents/orchestrator.md missing model-routing module pointer"
 grep -Fq 'agents/orchestrator.md` § Model routing, budget usage, and cast map' docs/model-routing-and-cast.md \
   || err "docs/model-routing-and-cast.md pointer-back should target the orchestrator summary heading"
-grep -Fq 'docs/model-routing-and-cast.md` § Host policy - Claude Code (current)' README.md \
-  || err "README.md should point Host policy readers at docs/model-routing-and-cast.md"
+grep -Fq '`docs/host-runtime.md`' README.md \
+  || err "README.md should point Host policy readers at docs/host-runtime.md"
 grep -Fq '| **The Delegate** | `agents/delegate.md` |' docs/model-routing-and-cast.md \
   || err "docs/model-routing-and-cast.md missing Delegate in cast map"
 grep -Fq '| The Delegate | `agents/delegate.md` |' AGENTS.md \
@@ -120,7 +121,7 @@ for module in agent-contracts workflow-authoring regression-fixtures grilling td
   grep -Fq "docs/conventions/${module}.md" docs/conventions.md \
     || err "docs/conventions.md missing router pointer for ${module}"
 done
-if rg -n 'docs/conventions[.]md §' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+if rg -n 'docs/conventions[.]md §' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!docs/exhibits/**' -g '!check-framework.sh' >/dev/null 2>&1; then
   err "stale docs/conventions.md § section reference; point at docs/conventions/<module>.md"
 fi
 grep -Fq 'Reads (mode slice):' docs/conventions/agent-contracts.md \
@@ -157,7 +158,7 @@ grep -Fq 'Close-out gates' workflows/execute-plan/build-tail.md \
   || err "execute-plan build-tail missing close-out gates"
 grep -Fq 'run-worktree' workflows/execute-plan/build-tail.md \
   || err "execute-plan build-tail should reference run-worktree"
-if rg -n 'workflows/execute-plan[.]md §|`execute-plan` § Prompt folder format|`execute-plan` § Production boundary|execute-plan[.]md` step [67]|execute-plan[.]md` carries in full' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!output/archive/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+if rg -n 'workflows/execute-plan[.]md §|`execute-plan` § Prompt folder format|`execute-plan` § Production boundary|execute-plan[.]md` step [67]|execute-plan[.]md` carries in full' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!output/archive/**' -g '!docs/exhibits/**' -g '!check-framework.sh' >/dev/null 2>&1; then
   err "stale execute-plan section reference; use execute-plan/prompt-folder-format.md or execute-plan/build-tail.md"
 fi
 if rg -n 'Prompt folder format' workflows/execute-plan.md >/dev/null 2>&1; then
@@ -185,10 +186,10 @@ grep -Fq '## Section 4: Staging' docs/delegate-bridge/watcher-v1.md \
   || err "docs/delegate-bridge/watcher-v1.md missing watcher staging section"
 grep -Fq 'docs/delegate-bridge.md § Checkpoint type classification' agents/orchestrator.md \
   || err "agents/orchestrator.md should link to docs/delegate-bridge.md § Checkpoint type classification"
-if rg -n 'docs/delegate-bridge\.md § checkpoint types' . -g '*.md' -g '!output/runs/**' >/dev/null 2>&1; then
+if rg -n 'docs/delegate-bridge\.md § checkpoint types' . -g '*.md' -g '!output/runs/**' -g '!docs/exhibits/**' >/dev/null 2>&1; then
   err "stale delegate-bridge checkpoint-types anchor reference"
 fi
-if rg -n 'docs/delegate-bridge[.]md § v2|docs/delegate-bridge[.]md § Integrated topology|docs/delegate-bridge[.]md` v2|docs/delegate-bridge[.]md § [346789]' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!check-framework.sh' >/dev/null 2>&1; then
+if rg -n 'docs/delegate-bridge[.]md § v2|docs/delegate-bridge[.]md § Integrated topology|docs/delegate-bridge[.]md` v2|docs/delegate-bridge[.]md § [346789]' . -g '*.md' -g '*.sh' -g '!output/runs/**' -g '!docs/exhibits/**' -g '!check-framework.sh' >/dev/null 2>&1; then
   err "stale delegate-bridge implementation reference; use v2-integrated.md or watcher-v1.md"
 fi
 if grep -n 'Read `agents/orchestrator.md` in full\.' AGENTS.md CLAUDE.md >/dev/null 2>&1; then
@@ -198,7 +199,9 @@ fi
 echo "== model routing policy"
 [[ -f config/model-policy.json ]] || err "missing legacy config/model-policy.json"
 [[ -f config/model-policy.v2.json ]] || err "missing config/model-policy.v2.json"
+[[ -f config/delegate-verdict.codex.schema.json ]] || err "missing strict Codex Delegate verdict schema"
 [[ -x scripts/resolve-model-routing.sh ]] || err "scripts/resolve-model-routing.sh missing or not executable"
+[[ -x scripts/run-cold-reviewer.sh ]] || err "scripts/run-cold-reviewer.sh missing or not executable"
 if [[ -f config/model-policy.v2.json ]]; then
   if ! jq -e '.version == 2 and (.tiers | index("standard")) and (.tiers | index("strong")) and (.tiers | index("frontier"))' config/model-policy.v2.json >/dev/null; then
     err "config/model-policy.v2.json missing required v2 tiers"
@@ -212,6 +215,12 @@ if [[ -f config/model-policy.v2.json ]]; then
     | select(($tiers | index(.value.default_tier)) == null)
     | .key
   ' config/model-policy.v2.json 2>/dev/null || true)
+  if ! jq -e '
+    .host_policy.openai.allowed_spawn_models
+    | index("gpt-5.6-terra") and index("gpt-5.6-sol")
+  ' config/model-policy.v2.json >/dev/null; then
+    err "config/model-policy.v2.json missing current Codex host policy"
+  fi
 fi
 for adapter in config/runtimes/*.json; do
   [[ -e "$adapter" ]] || continue
@@ -219,6 +228,12 @@ for adapter in config/runtimes/*.json; do
     err "$adapter missing runtime or complete tier mapping"
   fi
 done
+if ! jq -e '
+  [.tiers[]?.model] as $models
+  | ($models | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol"))
+' config/runtimes/openai.json >/dev/null; then
+  err "config/runtimes/openai.json should map every tier to gpt-5.6-terra or gpt-5.6-sol"
+fi
 for exp in config/model-experiments/*.json; do
   [[ -e "$exp" ]] || continue
   if ! jq -e '.id and (.overrides // {})' "$exp" >/dev/null; then
@@ -382,7 +397,7 @@ RESERVED_GENERIC=(util helper run test common misc shared tools lib core temp tm
 NAME_ALLOWLIST=(
   account-run await-verdict delegate-launcher install-usage-poller ledger-append
   notify-escalation poll-usage-snapshot preflight promote-fixtures resolve-model-routing
-  resolve-model-tiers run-worktree summary-gen sync-chatgpt-export verdict-write watcher
+  resolve-model-tiers run-cold-reviewer run-worktree summary-gen sync-chatgpt-export verdict-write watcher
   check-drift check-framework
   bug-fix code-review copy-review docs-reconcile execute-plan feature message-framing
   operational-build studio-briefing
@@ -541,6 +556,24 @@ done
 
 echo "== name lint: ${warnings} warnings"
 
+# Host-environment health is runtime-specific. Repository checks above always run.
+CHECK_RUNTIME="${NOVADIEM_MODEL_RUNTIME:-claude}"
+[[ "$CHECK_RUNTIME" == "codex" ]] && CHECK_RUNTIME="openai"
+
+if [[ "$CHECK_RUNTIME" == "openai" ]]; then
+  echo "== Codex host wiring"
+  if ! command -v codex >/dev/null 2>&1; then
+    err "Codex CLI not found — openai host runtime cannot spawn reviewers"
+  else
+    codex_exec_help="$(codex exec --help 2>/dev/null || true)"
+    for flag in --ephemeral --ignore-user-config --ignore-rules --output-schema; do
+      if ! printf '%s' "$codex_exec_help" | grep -Fq -- "$flag"; then
+        err "Codex CLI lacks required cold-reviewer flag: $flag"
+      fi
+    done
+  fi
+  warn "Codex manager/conductor/specialist token accounting is unavailable; cold-reviewer usage remains exact"
+else
 # StatusLine setup health (budget-feed health). The usage snapshot is now written by
 # scripts/statusline-usage.sh, wired as the Claude Code statusLine in ~/.claude/settings.json.
 # The retired launchd poller (com.novadiem.usage-snapshot) is gone. Warn if the statusLine
@@ -586,6 +619,7 @@ else
   elif [[ ! -f "$ROOT/scripts/conductor-stop.sh" ]] || [[ ! -x "$ROOT/scripts/conductor-stop.sh" ]]; then
     err "Stop hook wired but $ROOT/scripts/conductor-stop.sh does not exist or is not executable — conductor token capture will not fire"
   fi
+fi
 fi
 
 if [[ "$errors" -gt 0 ]]; then

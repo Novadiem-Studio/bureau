@@ -16,6 +16,18 @@ NOVADIEM_MODEL_RUNTIME=openai ./scripts/resolve-model-routing.sh
 Then copy `~/.novadiem/resolved-model-routing.json` into the run directory as
 `RUN_DIR/model-routing.json`.
 
+For a new run, prefer the opening ceremony so the runtime is captured from the
+start:
+
+```bash
+scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
+  --slug "$SLUG" --runtime openai --no-pointer-echo
+```
+
+`openai` means the Codex host adapter; `codex` is accepted as an alias by
+`run-start.sh`. Claude remains the default when `--runtime` is omitted. Host
+spawn/resume mappings and accounting guarantees live in `docs/host-runtime.md`.
+
 ## Local Aliases
 
 Canonical adapters may use symbolic model aliases when exact provider names are likely to drift.

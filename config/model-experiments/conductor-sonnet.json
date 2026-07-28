@@ -1,0 +1,13 @@
+{
+  "id": "conductor-sonnet",
+  "description": "Manual: run the Conductor on the standard/economical tier instead of the strong tier. On Claude this historically meant Sonnet; on Codex/OpenAI it maps through the selected runtime.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "conductor": "standard"
+  },
+  "conductor_notes": [
+    "conductor-standard experiment active: Conductor is on the runtime's standard/economical tier. Escalate to the runtime's strong/frontier tier for hard adjudication, second critic loops, or CHECKPOINT decisions."
+  ]
+}

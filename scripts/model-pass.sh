@@ -25,7 +25,7 @@
 #   2   provider error (non-2xx HTTP, curl failure, or .error in the response body)
 #   3   integrity check failed (finish_reason != "stop", empty/whitespace content,
 #       or output byte count outside 50%-300% of input)
-#   4   keystore key missing (openrouter.env absent or OPENROUTER_API_KEY empty)
+#   4   OpenRouter key missing (OPENROUTER_API_KEY absent and no configured keystore)
 #
 # v1 routes the openrouter: provider prefix ONLY. The prefix is the extension seam:
 # an openai:/anthropic: direct arm is added only when a model OpenRouter cannot proxy
@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-readonly KEYSTORE="${HOME}/Documents/novadiem/keys/novadiem/openrouter.env"
+readonly KEYSTORE="${OPENROUTER_KEYSTORE:-}"
 readonly OPENROUTER_URL="https://openrouter.ai/api/v1/chat/completions"
 readonly MAX_TIME=120
 readonly MAX_TOKENS=8192
@@ -104,12 +104,14 @@ case "$MODEL_SPEC" in
     ;;
 esac
 
-# ── keystore (loud-fail if absent; never echo the secret) ───────────────────────
+# ── OpenRouter key (loud-fail if absent; never echo the secret) ─────────────────
 
-[ -f "$KEYSTORE" ] || die 4 "keystore not found: $KEYSTORE (prompt 02 populates it; copy OPENROUTER_API_KEY there)"
-# shellcheck disable=SC1090
-. "$KEYSTORE"
-[ -n "${OPENROUTER_API_KEY:-}" ] || die 4 "OPENROUTER_API_KEY empty or unset after sourcing $KEYSTORE"
+if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -n "$KEYSTORE" ]; then
+  [ -f "$KEYSTORE" ] || die 4 "keystore not found: $KEYSTORE"
+  # shellcheck disable=SC1090
+  . "$KEYSTORE"
+fi
+[ -n "${OPENROUTER_API_KEY:-}" ] || die 4 "OPENROUTER_API_KEY empty or unset; export it or set OPENROUTER_KEYSTORE"
 
 # ── input byte count (load-bearing for the length-delta check) ──────────────────
 # wc -c counts bytes (not characters), which is what we compare output against.

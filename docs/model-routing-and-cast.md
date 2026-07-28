@@ -32,10 +32,21 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 4. At each spawn, use `model-routing.json` -> `roles.<role>` for tier, model, reasoning effort,
    and fresh-context requirements. Do not rely on workflow prose alone.
 
-**Runtime selection:** default `claude`. Set `NOVADIEM_MODEL_RUNTIME=openai`, `claude`, `openrouter`, or
-`hermes` when needed.
+**Runtime selection:** default `claude`. New Codex runs use
+`scripts/run-start.sh ... --runtime openai`; the lower-level resolver also accepts
+`NOVADIEM_MODEL_RUNTIME=openai`. `openrouter` and `hermes` currently have routing adapters but
+no native Bureau host transport, so they cannot drive a run yet. See `docs/host-runtime.md`.
 
-### Host policy - Claude Code (current)
+### Host policy - Codex
+
+Codex maps `cheap`/`standard` to **gpt-5.6-terra** and
+`strong`/`frontier`/`escalated` to **gpt-5.6-sol**, increasing reasoning effort by tier.
+Every Codex spawn uses the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with
+`fork_context: false` in the current host), explicit `model`, and explicit `reasoning_effort`.
+Resume retained agents with `multi_agent_v1.send_input`.
+The full transport, reviewer isolation, and accounting matrix is in `docs/host-runtime.md`.
+
+### Host policy - Claude Code
 
 **Haiku, sonnet, and opus for defaults; fable for escalation only.** Fable was re-enabled
 Jul 2026 for the `frontier` / `escalated` tiers — do not use it as a first-pass default, and do

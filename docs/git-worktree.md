@@ -18,14 +18,14 @@ global framework install; code changes happen only inside the worktree.
 Clone once: `git@github.com:rheos/bureau.git`. Run from any project:
 
 ```bash
-cd ~/Code/novadiem/oriva          # target repo workspace — not the framework
+cd ~/Code/example-target          # target repo workspace — not the framework
 claude
 ```
 
 ```
-Read ~/Code/novadiem/bureau/CLAUDE.md and start the agent framework.
-Project context: /Users/robin/Code/novadiem/oriva/project-context.md
-Run dir: /Users/robin/Code/novadiem/oriva/.bureau/runs/20260612-oriva-auth/
+Read ~/Code/bureau/CLAUDE.md and start the agent framework.
+Project context: /path/to/target/project-context.md
+Run dir: /path/to/target/.bureau/runs/20260612-target-auth/
 ```
 
 ## Project config
@@ -109,7 +109,7 @@ one worktree. Stagger test DB / docker steps if both hit shared infra.
     "repo": "/path/to/repo",
     "base_branch": "devel",
     "branch": "bureau/20260612-oriva-auth",
-    "worktree_path": "/Users/robin/.bureau/worktrees/oriva/20260612-oriva-auth",
+    "worktree_path": "<home>/.bureau/worktrees/target/20260612-target-auth",
     "merge_policy": "end_of_job",
     "run_slug": "20260612-oriva-auth",
     "prompts_merged": [],

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # append-reviewer-tokens.sh — emit a REVIEWER-TOKEN-EVENT for one cold-reviewer
 # spawn (#26b). Called by the Delegate manager after each per-checkpoint
-# `claude -p --output-format json` reviewer returns.
+# provider-normalized one-shot reviewer returns.
 #
 # WHY A HELPER (not an inline LLM-formatted line): the Delegate persona is prose,
 # and a hand-formatted token JSON line is exactly the kind of thing that drifts
@@ -27,9 +27,8 @@
 #                    single checkpoint can spawn the reviewer more than once via
 #                    hash-mismatch re-spawn or a revise cycle; each is a distinct
 #                    cost and MUST be counted once)
-#   <envelope-json>  the FULL `claude -p --output-format json` result envelope
-#                    (the same object the Delegate already parsed for the verdict);
-#                    its `.usage` sibling carries the token counts
+#   <envelope-json>  the full provider-normalized result envelope; its `.usage`
+#                    sibling carries Claude-shaped token counts
 #
 # Exit codes:
 #   0  event appended (including the zero-token fail-safe on a missing .usage)

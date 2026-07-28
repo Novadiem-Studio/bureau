@@ -28,9 +28,8 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
   `config/publish-targets/`; copy the relevant one to `RUN_DIR/publish-target.json` before
   starting. `config/publish-targets/devweb.json` covers devweb.org.
 - `RUN_DIR` is set by the Conductor per `docs/run-protocol.md`.
-- The OpenRouter key in the keystore (`~/Documents/novadiem/keys/novadiem/openrouter.env`,
-  provisioned by the chunk-02 build step), consumed by `scripts/model-pass.sh`. The script
-  loud-fails (exit 4) if absent.
+- The OpenRouter key, supplied as `OPENROUTER_API_KEY` or through `OPENROUTER_KEYSTORE`,
+  consumed by `scripts/model-pass.sh`. The script loud-fails (exit 4) if absent.
 - Out of scope: any live-web fact-check (figure-grounding is tool-free, against the draft's own
   cited sources); GPT/Gemini *direct* provider arms (v1 reaches them only via `openrouter:`).
 - In scope (standing-authorized): when a publish-target is configured, the workflow publishes live —
@@ -234,7 +233,7 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
      — every **enabled** pass's `model` carries the routable `openrouter:` provider prefix (v1's
      only arm). A non-`openrouter:` enabled pass fails loud — it is never silently skipped.
    - For each enabled pass, confirm its `instruction` path resolves to a real file under the bureau
-     root (`/Users/robin/Code/novadiem/bureau/`): `test -f "<bureau-root>/<instruction>"`. A missing
+     root: `test -f "<bureau-root>/<instruction>"`. A missing
      instruction file fails **before** the API call, not as an empty-instruction POST.
    Log the ordered enabled-pass list (model IDs + planned call count) to `RUN_DIR/log.md` for the
    record, then proceed to step 8. (No `go` is awaited — the standing authorization + the per-call
@@ -257,7 +256,7 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
      path resolves relative to the bureau root):
      ```
      bash scripts/model-pass.sh <model> "$RUN_DIR/versions/<latest>.md" \
-       "/Users/robin/Code/novadiem/bureau/<instruction>" \
+      "<bureau-root>/<instruction>" \
        "$RUN_DIR/passes/NN-<id>.md" --run-dir "$RUN_DIR"
      ```
      The script makes the POST, runs its integrity checks (HTTP 2xx, no `.error`,

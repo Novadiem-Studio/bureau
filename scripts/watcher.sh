@@ -3,19 +3,15 @@
 #
 # Watches RUN_DIR/checkpoints for NN-request.md files. For each unclaimed request
 # it: claims an atomic mkdir lock, stages the per-checkpoint read set into a
-# scratch context dir, spawns the Delegate headless against ONLY that context dir,
+# scratch context dir, spawns the Delegate cold reviewer against ONLY that packet,
 # and on the Delegate's exit calls verdict-write.sh (validate + cap + atomic write
 # + ledger append). It then tears down the context dir and the lock.
 #
 # Three invariants are gated at review and must not regress:
-#   1. Identity isolation (EC1): the spawn uses --setting-sources "" (suppresses
-#      CLAUDE.md auto-discovery — project + global — a separate startup mechanism
-#      --add-dir does NOT cover) + --system-prompt naming The Delegate + CWD=$CTX,
-#      so the "you are the Conductor" CLAUDE.md rule can never fire. --bare was
-#      dropped: R6 (Phase-0 TEST 4) found it breaks auth on claude 2.1.187.
-#   2. Log isolation (EC8): the spawn reads ONLY the staged context dir via
-#      --add-dir "$CTX" — never the whole run dir. log.md is never copied into
-#      $CTX, and after staging we assert log.md is absent from it.
+#   1. Identity isolation (EC1): scripts/run-cold-reviewer.sh suppresses host
+#      startup context and gives the reviewer the Delegate identity explicitly.
+#   2. Log isolation (EC8): the reviewer reads ONLY the staged context packet.
+#      log.md is never copied into $CTX, and after staging we assert it is absent.
 #   3. Re-entrancy (EC3): the request is claimed with an atomic `mkdir NN.lock`
 #      BEFORE staging. Two poll passes (or two watchers) can never spawn two
 #      delegates for one request. A request that already has NN-verdict.md is
@@ -72,7 +68,7 @@ REVISION_CAP="${REVISION_CAP:-2}"
 # Per-checkpoint spawn-failure ceiling (money-safety). --max-budget-usd caps the
 # spend of ONE spawn but NOT the number of spawns. If the Delegate persistently
 # emits invalid/empty JSON, verdict-write.sh fails closed (no verdict) and the
-# poll loop would otherwise re-spawn `claude` every poll forever — unbounded
+# poll loop would otherwise re-spawn the selected provider every poll — unbounded
 # spend. After this many consecutive failed spawns for one NN, give up on that
 # request: escalate, mark it failed, and stop re-spawning.
 MAX_SPAWN_FAILURES="${MAX_SPAWN_FAILURES:-3}"
@@ -115,34 +111,6 @@ req_artifact() {
 # Is the given PID alive? `kill -0` returns 0 if a signal could be sent.
 pid_alive() {
   [ -n "$1" ] && kill -0 "$1" 2>/dev/null
-}
-
-# Resolve the Delegate model name. Prefer RUN_DIR/model-routing.json
-# roles.delegate.model; fall back to a tier->model map on roles.delegate.tier;
-# fall back to "opus" if the role or the file is missing (strong tier on Claude).
-resolve_delegate_model() {
-  routing="$RUN_DIR/model-routing.json"
-  model=""
-  if [ -f "$routing" ]; then
-    model="$(python3 - "$routing" <<'PY' 2>/dev/null
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(0)
-role = (d.get("roles") or {}).get("delegate") or {}
-m = role.get("model")
-if m:
-    print(m); sys.exit(0)
-tier = role.get("tier")
-tier_map = {"standard": "sonnet", "strong": "opus", "frontier": "opus", "escalated": "opus"}
-if tier in tier_map:
-    print(tier_map[tier]); sys.exit(0)
-PY
-)"
-  fi
-  [ -n "$model" ] || model="opus"
-  printf '%s' "$model"
 }
 
 # ── stale-lock reclaim on startup (EC3) ──────────────────────────────────────
@@ -233,6 +201,7 @@ process_request() {
   REQ_LOG_SLICE="$(req_field 'log-slice' "$request_file")"
   REQ_CHECKPOINT="$(req_field 'checkpoint' "$request_file")"
   REQ_RUN_DIR="$(req_field 'run-dir' "$request_file")"
+  REQ_ATTEMPT="$(req_field 'attempt' "$request_file")"
 
   # Stale-request guard (FR 40): a request from a different run-dir is not ours.
   if [ -n "$REQ_RUN_DIR" ] && [ "$REQ_RUN_DIR" != "$RUN_DIR" ]; then
@@ -265,14 +234,14 @@ process_request() {
     return 0
   fi
 
-  # ── integration-mode request fields (parsed for the gate call + task prompt) ──
+  # ── integration-mode request fields (parsed for the gate + reviewer mode) ─────
   # Additive: only the integration path uses these. The routine path (checkpoint-type
   # routine/absent) leaves every variable at its default and never calls the gate
   # below (FR-B14-10, AC-11). No file is written here. The short-circuit guards
   # ((none)-worktree / unresolvable base-ref) and the whole executor body were
   # extracted to scripts/integration-gate.sh (Bundle 15 P4, FR14 single-source);
-  # watcher.sh now parses these fields only to build that gate's CLI flags and the
-  # integration task-prompt override further down.
+  # watcher.sh parses these fields to build that gate's CLI flags and select the
+  # helper's integration reviewer mode.
   REQ_CHECKPOINT_TYPE="$(req_field 'checkpoint-type' "$request_file")"
   REQ_WORKTREE_PATH="$(req_field 'worktree-path' "$request_file")"
   REQ_BASE_REF="$(req_field 'base-ref' "$request_file")"
@@ -353,59 +322,51 @@ process_request() {
     fi
   fi
 
-  # ── build the task prompt (names files by ABSOLUTE $CTX path; never log.md) ─
-  # Files are named by absolute $CTX path, NOT bare relative names: the headless
-  # claude Read tool resolves a relative path against the detected git/workspace
-  # root, not the spawn CWD, so a bare "delegate-reviewer.md" is looked up at the
-  # repo root and DENIED by the --add-dir "$CTX" sandbox. Every named path is INSIDE
-  # $CTX (the staged read root), so EC8/AC4 "no path outside $CTX" still holds.
-  DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (convention router; load only the needed module from ${CTX}/conventions/), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), and the artifact under review: ${CTX}/${artifact_base}. Apply the critic checklist in ${CTX}/delegate-reviewer.md and emit a verdict JSON conforming to the schema. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  out_json="$CHECKPOINTS_DIR/$NN.delegate-out.json"
+  rm -f "$out_json"
 
-  # ── override the task prompt for integration checkpoints (BLOCKER 1) ───────
-  # Tell the Delegate to read integration-results.json. The routine prompt above is
-  # used unchanged when checkpoint-type is routine/absent.
-  if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
-    DELEGATE_TASK_PROMPT="You are reviewing checkpoint ${REQ_CHECKPOINT} as The Delegate. Read these files (absolute paths, all within your read scope): ${CTX}/delegate-reviewer.md (your role and the critic checklist), ${CTX}/conventions.md (convention router; load only the needed module from ${CTX}/conventions/), ${CTX}/log-slice.md (this checkpoint's log slice only), ${CTX}/state.json (run state), the artifact under review: ${CTX}/${artifact_base}, and ${CTX}/integration-results.json (the watcher-staged canonical gate results — EXPECTED file; do not treat as a coldness-breaking foreign file). Apply the verifying-mode checklist in ${CTX}/delegate-reviewer.md's Verifying mode section and emit a verdict JSON conforming to the schema, including a well-formed Integration-evidence block. Do not look for log.md — it is intentionally out of scope. If the full log.md or a session transcript is present in your read scope, do not review; emit the DELEGATE FLAG and stop."
+  # Use a unique accounting id for every real spawn, including retries of the
+  # same request. attempt identifies a re-issued request; the pre-spawn failure
+  # count distinguishes transport/validation retries within that attempt.
+  prior_failcount=0
+  [ -f "$failcount_file" ] && prior_failcount="$(cat "$failcount_file" 2>/dev/null)"
+  case "$prior_failcount" in *[!0-9]*|'') prior_failcount=0 ;; esac
+  spawn_seq=$((prior_failcount + 1))
+  [ -n "$REQ_ATTEMPT" ] || REQ_ATTEMPT=1
+  spawn_id="${NN}-${REQ_ATTEMPT}-${spawn_seq}"
+  review_mode="routine"
+  [ "$REQ_CHECKPOINT_TYPE" = "integration" ] && review_mode="integration"
+
+  # Single provider-neutral entrypoint. It selects Claude or Codex from this
+  # run's model-routing.json and returns paths to a normalized verdict and usage
+  # envelope. The reviewer never receives a live-run path in its prompt.
+  review_meta="$(
+    ROOT="$ROOT" \
+    DELEGATE_MAX_USD="$DELEGATE_MAX_USD" \
+    bash "$SCRIPT_DIR/run-cold-reviewer.sh" \
+      "$RUN_DIR" "$CTX" "$REQ_CHECKPOINT" "$spawn_id" "$artifact_base" "$review_mode"
+  )"
+  review_rc=$?
+
+  if [ "$review_rc" -eq 0 ]; then
+    reviewer_verdict="$(printf '%s' "$review_meta" | jq -r '.verdict_path // empty' 2>/dev/null)"
+    reviewer_envelope="$(printf '%s' "$review_meta" | jq -r '.envelope_path // empty' 2>/dev/null)"
+    if [ -s "$reviewer_verdict" ]; then
+      cp "$reviewer_verdict" "$out_json"
+    fi
+    if [ -s "$reviewer_envelope" ]; then
+      envelope_json="$(jq -c '.' "$reviewer_envelope" 2>/dev/null)"
+      if [ -n "$envelope_json" ]; then
+        bash "$SCRIPT_DIR/append-reviewer-tokens.sh" \
+          "$RUN_DIR" "$REQ_CHECKPOINT" "$spawn_id" "$envelope_json" \
+          || echo "watcher: token accounting append failed for reviewer spawn $spawn_id" >&2
+      fi
+    fi
+  else
+    echo "watcher: cold-reviewer adapter failed for $NN (spawn $spawn_id)" >&2
   fi
 
-  # ── system prompt: names the Delegate identity (paired with --setting-sources "")
-  DELEGATE_SYSTEM_PROMPT="You are The Delegate. Do not load CLAUDE.md. Do not act as the Conductor."
-
-  DELEGATE_MODEL="$(resolve_delegate_model)"
-
-  out_json="$CHECKPOINTS_DIR/$NN.delegate-out.json"
-  err_log="$CHECKPOINTS_DIR/$NN.delegate-err.log"
-
-  # ── spawn the Delegate headless (single-source recipe: bridge v2 § 3) ───────
-  # The ONLY read root is the staged NN-context dir ($CTX) — never the whole run
-  # dir. EC8 is a filesystem-level exclusion, not a prompt-level instruction.
-  # The --add-dir flag below therefore points at the per-checkpoint context dir.
-  # CWD is pinned to $CTX (the OQ3 canonical recipe is CWD-pinned) via a SCOPED
-  # subshell, so the watcher's CWD for the rest of the loop is unchanged. The
-  # redirects sit OUTSIDE the subshell, so $out_json/$err_log resolve in the
-  # watcher's CWD exactly as before (they derive from RUN_DIR/CHECKPOINTS_DIR).
-  # --json-schema takes an INLINE JSON Schema STRING, not a file path (claude --help:
-  # example is `{"type":...}`). Pass the schema file's CONTENTS via $(cat ...). A bare
-  # path aborts the spawn ("--json-schema is not valid JSON: Unrecognized token '/'").
-  # Never live-tested before Prompt 7 Part 2 (Phase-0 TEST 3 omitted this flag).
-  ( cd "$CTX" && claude -p \
-    --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
-    --model "$DELEGATE_MODEL" \
-    --output-format json \
-    --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
-    --tools "Read" \
-    --add-dir "$CTX" \
-    --setting-sources "" \
-    --no-session-persistence \
-    --max-budget-usd "$DELEGATE_MAX_USD" \
-    "$DELEGATE_TASK_PROMPT" ) \
-    > "$out_json" \
-    2> "$err_log"
-  # --setting-sources "" — Phase-0 TEST 3: suppresses CLAUDE.md auto-discovery
-  # (project + global) AND settings.json while keeping auth; it is the load-bearing
-  # CLAUDE.md guard now that --bare is dropped (R6 — --bare breaks auth on 2.1.187).
-
-  # ── on claude exit: validate + write the verdict + append ledger ───────────
+  # ── on reviewer exit: validate + write the verdict + append ledger ─────────
   # verdict-write.sh owns every durable write; the Delegate never writes the repo.
   if sh "$SCRIPT_DIR/verdict-write.sh" \
     "$out_json" \
@@ -419,8 +380,8 @@ process_request() {
     rm -f "$failcount_file"
   else
     # Failure: no verdict written. Bound total spend by counting consecutive
-    # spawn failures per NN (W1). --max-budget-usd caps each spawn but NOT the
-    # count, so without this the loop would re-spawn `claude` every poll forever.
+    # spawn failures per NN (W1). A per-spawn budget guard does not cap the
+    # retry count, so without this the loop could re-spawn a provider forever.
     echo "watcher: verdict-write.sh reported a validation failure for $NN (held; no verdict written)" >&2
     failcount=0
     [ -f "$failcount_file" ] && failcount="$(cat "$failcount_file" 2>/dev/null)"

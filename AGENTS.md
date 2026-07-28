@@ -3,8 +3,10 @@
 ## Codex workspace instructions
 
 Codex-only review instructions live in `CODEX.md`. They apply to Codex sessions in
-this repository when Robin is inspecting or reviewing framework output. They do not
-apply to Claude, The Conductor, spawned specialists, or the framework runtime.
+this repository when Robin is inspecting or reviewing framework output. An explicit
+Bureau start/resume request activates `CODEX.md § Native Codex Bureau run` instead.
+These review instructions do not apply to Claude, The Conductor, spawned specialists,
+or the framework runtime.
 
 A reusable multi-agent development framework for Codex.
 Use the global install at `~/Code/novadiem/bureau/` (do not copy into each project).
@@ -42,6 +44,10 @@ When Robin says "get the bureau on this," "start the agent framework," "run the 
 similar, start with **The Delegate** by default. Do not require Robin to ask for the Delegate
 explicitly. Read `agents/delegate.md` and run in manager/relay mode; the Delegate is the
 top-level session and spawns the Conductor underneath it with `topology: integrated`.
+On Codex this instruction explicitly authorizes the required Bureau subagents: use
+the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
+in the current host) and the resolved model/reasoning, then resume them with
+`multi_agent_v1.send_input`.
 
 Use direct Conductor mode only when Robin explicitly asks to bypass Delegate, when resuming a
 legacy/non-integrated run, or when the integrated Delegate topology is unavailable in the
@@ -64,9 +70,10 @@ reference and scope each agent to the right sub-app, while building within the c
 
 1. Read `agents/delegate.md`, then its required integrated-topology contract:
    `docs/delegate-bridge/v2-integrated.md`.
-2. Read `workflows/index.md` and triage the task to a workflow before creating a new run dir.
-3. If `project-context.md` exists in the project root, read it.
-4. Start via `agents/delegate.md § Bootstrap`.
+2. Read `docs/host-runtime.md` and select the host transport.
+3. Read `workflows/index.md` and triage the task to a workflow before creating a new run dir.
+4. If `project-context.md` exists in the project root, read it.
+5. Start via `agents/delegate.md § Bootstrap`.
 
 **Direct Conductor fallback path:** read `agents/orchestrator.md` core sections, then follow its
 **Startup read scope (token discipline)** to load only triggered modules. In direct fallback,
@@ -81,7 +88,8 @@ absolute path as **`RUN_DIR`** in every spawn prompt. Legacy in-flight runs with
 top-level `output/state.json` finish in place — see `output/README.md`.
 
 **New run:** direct Conductor mode uses
-`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`.
+`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> --runtime openai`
+on Codex.
 Delegate mode uses the same ceremony with `--no-pointer-echo`; see
 `agents/delegate.md § Bootstrap` for the full sequence.
 

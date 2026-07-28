@@ -12,14 +12,15 @@ command: |
   # can see. None of these patterns contains a literal $ in the cp clause, so ERE
   # (grep -E) is safe; the --add-dir assertions use grep -F (literal $).
   SCRIPT=$ROOT/scripts/watcher.sh
+  HELPER=$ROOT/scripts/run-cold-reviewer.sh
   # Strip full-line comments AND inline trailing comments, leaving only code.
   strip() { grep -v '^[[:space:]]*#' "$1" | sed 's/[[:space:]]#.*$//'; }
   # No `cp ... log.md ...` line that targets the context/CTX dir (count over code only).
   CPLOG=$(strip "$SCRIPT" | grep -Ec 'cp[[:space:]].*log\.md.*(CTX|context)' | tr -d ' ')
   echo "cp-log-into-context:$CPLOG"
-  # The read root is the staged context dir, not the run dir (behavioral backstop).
-  strip "$SCRIPT" | grep -Fq 'add-dir "$CTX"' && ! strip "$SCRIPT" | grep -Fq 'add-dir "$RUN_DIR"' \
+  # The provider helper, not watcher, owns the enforced read root.
+  strip "$HELPER" | grep -Fq 'add-dir "$CTX"' && ! strip "$HELPER" | grep -Fq 'add-dir "$RUN_DIR"' \
     && echo "read-root:context"
-expected: prints "cp-log-into-context:0" and "read-root:context" — no real (non-comment) watcher.sh line copies log.md into the context dir, and the Delegate's read root is "$CTX" not "$RUN_DIR" (EC8 / AC 14). Adding a real `cp ... log.md ... $CTX` makes the count nonzero; redirecting --add-dir to "$RUN_DIR" stops "read-root:context" printing.
+expected: prints "cp-log-into-context:0" and "read-root:context" — watcher never copies log.md into the context, and the provider-neutral helper keeps Claude's enforced read root at "$CTX", never "$RUN_DIR" (EC8 / AC 14).
 phase: 12 · principal-delegate
-owner: scripts/watcher.sh
+owner: scripts/watcher.sh + scripts/run-cold-reviewer.sh

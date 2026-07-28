@@ -8,68 +8,31 @@ The root bridge doc keeps Section 2 (checkpoint file convention/classification) 
 
 ## Section 3: The load-bearing spawn invocation (identity isolation — EC1/EC8)
 
-The spawn invocation that the watcher uses is exactly (Phase 4 / Prompt 4 refactor —
-`--bare` dropped, CWD pinned to `$CTX`; it shares the same COLDNESS MECHANISM as the v2 §3
-single-source recipe — no `--bare`, `--setting-sources ""` for CLAUDE.md suppression, and
-CWD=$CTX — but is not byte-identical to it: this v1 watcher invocation additionally carries
-`--no-session-persistence` and the other watcher-loop flags, where v2 §3 closes stdin with
-`< /dev/null` and orders its flags differently):
+The watcher has no provider-specific spawn. After staging, it calls the same
+single-source adapter as v2:
 
 ```sh
-cd "$CTX" && claude -p \
-  --system-prompt "$DELEGATE_SYSTEM_PROMPT" \
-  --model "$DELEGATE_MODEL" \
-  --output-format json \
-  --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
-  --tools "Read" \
-  --add-dir "$CTX" \
-  --setting-sources "" \
-  --no-session-persistence \
-  --max-budget-usd "$DELEGATE_MAX_USD" \
-  "$DELEGATE_TASK_PROMPT"
+REVIEW_META="$(
+  scripts/run-cold-reviewer.sh \
+    "$RUN_DIR" "$CTX" "$REQ_CHECKPOINT" "$SPAWN_ID" "$ARTIFACT_BASE" "$REVIEW_MODE"
+)"
 ```
 
-`--json-schema` takes an INLINE JSON Schema string, not a path, so the watcher inlines the schema
-file's CONTENTS via `$(cat ...)` (same fix as v2 §3 — a bare path aborts the spawn on claude
-2.1.187). `$DELEGATE_TASK_PROMPT` names the staged files by their ABSOLUTE `$CTX` paths (Section 4),
-because the headless Read tool resolves a bare relative name against the git/workspace root, not
-the CWD.
+`$CTX = RUN_DIR/checkpoints/NN-context/`. The helper reads
+`model-routing.json#runtime`, creates a unique verdict/envelope pair, and returns their paths.
+The watcher copies the normalized verdict to the legacy `NN.delegate-out.json` compatibility
+path, appends one reviewer token event from the envelope, then calls `verdict-write.sh`.
 
-Where `$CTX` = `RUN_DIR/checkpoints/NN-context/` (the staged per-checkpoint read scope). The
-watcher runs `cd "$CTX" && claude -p …` inside a scoped subshell and keeps the
-`> "$out_json" 2> "$err_log"` redirects OUTSIDE it, so the CWD change touches neither the
-watcher's own working directory nor where the output files land.
+The load-bearing provider guarantees are owned by
+`docs/delegate-bridge/v2-integrated.md § v2 §3` and `docs/host-runtime.md`:
 
-Each flag's load-bearing job:
+- Claude retains CWD=`$CTX`, `--system-prompt`, `--tools "Read"`,
+  `--add-dir "$CTX"`, `--setting-sources ""`, `--no-session-persistence`, and no `--bare`.
+- Codex uses an ephemeral copied packet, ignores user config/rules, closes the schema at every
+  object boundary, disables network tools, and denies live run/repository/session paths.
 
-- `--system-prompt "$DELEGATE_SYSTEM_PROMPT"`: sets the full system prompt to:
-  "You are The Delegate. Do not load CLAUDE.md. Do not act as the Conductor."
-  This names the Delegate identity explicitly (FR 33). It is one half of the identity guard;
-  `--setting-sources ""` (below) is the other half.
-- `--tools "Read"`: the Delegate has no write access to the repo. Every write is owned by
-  the bridge scripts. This is a hard constraint, not a convention.
-- `--add-dir "$CTX"` + CWD = `$CTX`: the ONLY read root is the staged context dir. The
-  Delegate cannot read `$RUN_DIR`, `log.md`, the rest of the repo, or any other run. EC8 is a
-  filesystem-level exclusion, not a prompt instruction. NOTE `--add-dir` sandboxes the Read
-  TOOL only — see the next bullet for why that alone does not buy identity coldness.
-- `--setting-sources ""`: REQUIRED for identity coldness, and it ALONE buys it (no `--bare`).
-  CLAUDE.md auto-discovery is a SEPARATE startup mechanism that walks up from CWD to the repo
-  root and loads `$ROOT/CLAUDE.md` (which makes the reviewer identify as "the Orchestrator")
-  AND the global `~/.claude/CLAUDE.md`; `--add-dir` does NOT cover it. `--setting-sources ""`
-  suppresses that discovery (project + global) AND user/project/local `settings.json`, while
-  KEEPING auth. Phase-0 TEST 3 proved the recipe WITHOUT this flag loaded `$ROOT/CLAUDE.md`
-  and broke coldness; with it, `claude_md_loaded: false` and the identity probe returns
-  `NONE`. (Same finding as the v2 §3 single source.)
-- `--no-session-persistence`: no session to resume; each checkpoint is transcript-free.
-- `--max-budget-usd "$DELEGATE_MAX_USD"`: per-checkpoint spend ceiling (default 5.00; headroom, a runaway backstop not a throttle).
-
-`--bare` was DROPPED. It would also suppress CLAUDE.md auto-discovery, but Phase-0 TEST 4 (R6)
-confirmed it breaks auth ("Not logged in · Please run /login") on the current claude (2.1.187).
-The load-bearing identity guard is therefore `--system-prompt` + `--setting-sources ""` +
-CWD = `$CTX`: `--setting-sources ""` removes the CLAUDE.md path (and settings re-injection),
-`--system-prompt` installs the Delegate identity in its place, and the CWD pin keeps the read
-root confined. If any of the three changes, the others must still be present — document any
-change to this set here.
+The reviewer is read-only and cannot access `RUN_DIR/log.md` on either host. The watcher alone
+owns durable writes.
 
 ## Section 4: Staging (the per-checkpoint read-scope assembly — EC8 fix)
 
@@ -84,7 +47,8 @@ cp "$RUN_DIR/state.json"          "$CTX/"
 cp "$ROOT/docs/conventions.md"    "$CTX/"
 mkdir -p "$CTX/conventions"
 cp "$ROOT/docs/conventions/"*.md  "$CTX/conventions/"
-cp "$ROOT/agents/delegate.md"     "$CTX/"
+awk '/^# COLD-REVIEWER-MODE:BEGIN/,/^# COLD-REVIEWER-MODE:END/' \
+  "$ROOT/agents/delegate.md" > "$CTX/delegate-reviewer.md"
 ```
 
 `log.md` is never copied into `$CTX`. The Delegate physically cannot read it.
@@ -92,7 +56,7 @@ After the verdict is written, `watcher.sh` removes the staging dir:
 `rm -rf "$CTX"`
 The canonical artifacts remain in `$RUN_DIR`; the staged copies are throwaway.
 
-The `$DELEGATE_TASK_PROMPT` names the staged files by their ABSOLUTE `$CTX` paths
+The helper's task prompt names the staged files by their isolated absolute context paths
 (`$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
 `$CTX/conventions/`, `$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
 checkpoints) — bare relative names are looked up at the git/workspace root, not the
@@ -110,12 +74,11 @@ This file is the watcher's INTERNAL channel (snake_case field names; not
 schema-validated). The Delegate re-projects its fields into the schema-PascalCase
 `Integration-evidence` keys when emitting the verdict.
 
-The `DELEGATE_TASK_PROMPT` (`watcher.sh:284`) also switches to an integration
+The helper also switches to an integration
 variant that names `integration-results.json` as a required read. The routine
 prompt is unchanged when `checkpoint-type` is routine/absent.
 
-`log.md` is still never staged in any mode. The EC8 assertion (`watcher.sh:276-279`)
-is unchanged.
+`log.md` is still never staged in any mode. The EC8 assertion remains enforced.
 
 **OQ-B14-1 decision: option (c).** The watcher (not the Delegate) runs the canonical
 gate commands. The Delegate stays `--tools "Read"` and reads only `$CTX`. This
@@ -125,11 +88,10 @@ set from the project's own runners (regression runner + manifest), never from
 `claimed-gates` (FR-B14-3, FR-B14-14) — the verified party does not define what
 gets executed.
 
-**Two-part insertion in watcher.sh:** the integration executor spans insertion point A
-(parse + short-circuit flags, before staging at line 262 — no file writes yet) and
-insertion point B (write integration-results.json + override DELEGATE_TASK_PROMPT,
-after the EC8 assertion at line ~279 — $CTX exists here). The $CTX-must-exist-before-
-write invariant is maintained: no file targeting $CTX is written before $CTX is created.
+The watcher parses the integration fields before staging, creates `$CTX`, then invokes
+`integration-gate.sh` to write `integration-results.json` before the provider-neutral reviewer.
+The `$CTX`-must-exist-before-write invariant remains: no gate output targets `$CTX` before it
+is created.
 
 **`known-flaky-gates` demotion (OQ-B14-4):** an optional `known-flaky-gates` field in
 the request lists gates whose re-run failures are known flaky. The watcher marks matching

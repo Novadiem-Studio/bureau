@@ -22,9 +22,11 @@ The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-targ
   — whether it lives at `output/runs/` or `.bureau/runs/`. Skip steps (1)–(3). An existing
   run dir is sticky and is never relocated or migrated.
 - **(1)-(3) New runs:** direct Conductor mode runs
-  `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`. Delegate v2
-  mode runs the same command with `--no-pointer-echo`, then enrolls its own role:delegate
-  pointer before spawning the Conductor. See `run-start.sh --help` and
+  `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`, adding
+  `--runtime openai` on Codex. Delegate v2 mode also adds `--no-pointer-echo`.
+  On Claude it then enrolls its own role:delegate pointer before spawning the Conductor;
+  Codex skips that hook-only pointer and logs the named accounting gap. See
+  `docs/host-runtime.md`, `run-start.sh --help`, and
   `agents/delegate.md § Bootstrap` for the full step sequence. Pass the resolved absolute path
   as **`RUN_DIR`** in every spawn prompt.
 
@@ -81,7 +83,7 @@ After each phase, update the run dir's `state.json`:
     "repo": "/path/to/target/repo",
     "base_branch": "devel",
     "branch": "bureau/20260612-task-slug",
-    "worktree_path": "/Users/robin/.bureau/worktrees/target-repo/20260612-task-slug",
+    "worktree_path": "<home>/.bureau/worktrees/target-repo/20260612-task-slug",
     "merge_policy": "end_of_job",
     "status": "active",
     "prompts_merged": []

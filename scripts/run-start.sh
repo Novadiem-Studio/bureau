@@ -16,7 +16,8 @@
 #      enter the Delegate transcript), append nonce-free enrolment log line
 #
 # Usage:
-#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
+#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+#                [--runtime <claude|openai>] [--no-pointer-echo]
 #
 # Arguments:
 #   <RUN_DIR>          absolute path where the new run dir will be created
@@ -48,7 +49,7 @@ FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 usage() {
   cat >&2 <<'EOF'
 Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--runtime <id>] [--no-pointer-echo]
 EOF
   exit 1
 }
@@ -56,9 +57,12 @@ EOF
 print_help() {
   cat <<'EOF'
 Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--no-pointer-echo]
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--runtime <id>] [--no-pointer-echo]
 
 Options:
+  --runtime <id>     Resolve this run for an explicit host runtime. Supported
+                     first-class hosts: claude and openai (codex is an alias
+                     for openai). If omitted, model-policy.v2.json decides.
   --no-pointer-echo  Write the normal bare run pointer but do not echo its nonce.
                      Use only when a Delegate v2 top session is creating the run;
                      the Conductor subagent will read the pointer privately before
@@ -83,6 +87,7 @@ TARGET=""
 WORKFLOW=""
 SLUG=""
 POINTER_ECHO=1
+MODEL_RUNTIME=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -95,6 +100,9 @@ while [ "$#" -gt 0 ]; do
     --slug)
       [ "$#" -ge 2 ] || { echo "run-start: missing argument: --slug" >&2; exit 1; }
       SLUG="$2"; shift 2 ;;
+    --runtime)
+      [ "$#" -ge 2 ] || { echo "run-start: missing argument: --runtime" >&2; exit 1; }
+      MODEL_RUNTIME="$2"; shift 2 ;;
     --no-pointer-echo)
       POINTER_ECHO=0; shift ;;
     --help|-h)
@@ -114,6 +122,13 @@ fi
 if [ -z "$SLUG" ]; then
   echo "run-start: missing argument: --slug" >&2; exit 1
 fi
+if [ "$MODEL_RUNTIME" = "codex" ]; then
+  MODEL_RUNTIME="openai"
+fi
+case "$MODEL_RUNTIME" in
+  ""|claude|openai) ;;
+  *) echo "run-start: unsupported first-class runtime: $MODEL_RUNTIME" >&2; exit 1 ;;
+esac
 
 # ── Step 2: Resume gate (EC 1) ────────────────────────────────────────────────
 # If RUN_DIR already exists, refuse — caller must use the resume protocol.
@@ -212,11 +227,21 @@ python3 -c "import json,sys; json.load(open('$INDEX_ENTRY'))" \
 
 # ── Step 8: resolve-model-routing.sh (EC 2 rollback on failure) ──────────────
 
-bash "$FRAMEWORK_ROOT/scripts/resolve-model-routing.sh" "$RUN_DIR/model-routing.json" >&2
+if [ -n "$MODEL_RUNTIME" ]; then
+  NOVADIEM_MODEL_RUNTIME="$MODEL_RUNTIME" \
+    bash "$FRAMEWORK_ROOT/scripts/resolve-model-routing.sh" "$RUN_DIR/model-routing.json" >&2
+else
+  bash "$FRAMEWORK_ROOT/scripts/resolve-model-routing.sh" "$RUN_DIR/model-routing.json" >&2
+fi
 if [ $? -ne 0 ] || [ ! -s "$RUN_DIR/model-routing.json" ]; then
   echo "ERROR: resolve-model-routing.sh failed or produced empty output — rolling back RUN_DIR" >&2
   rollback
 fi
+
+_resolved_runtime="$(jq -r '.runtime // "unknown"' "$RUN_DIR/model-routing.json" 2>/dev/null)"
+bash "$FRAMEWORK_ROOT/scripts/log-append.sh" "$RUN_DIR" \
+  "Host runtime resolved — runtime: $_resolved_runtime" >/dev/null \
+  || { echo "ERROR: log-append.sh failed for runtime line" >&2; rollback; }
 
 # ── Step 9: Pointer enrolment (FR 2 nonce-echo) ───────────────────────────────
 #

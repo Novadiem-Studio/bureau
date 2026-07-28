@@ -20,7 +20,7 @@ Wire it in `~/.claude/settings.json` (merge into the existing file — do not re
 {
   "statusLine": {
     "type": "command",
-    "command": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+    "command": "<path-to-bureau>/scripts/statusline-usage.sh"
   }
 }
 ```
@@ -128,19 +128,19 @@ The keys to add or merge:
 {
   "statusLine": {
     "type": "command",
-    "command": "/Users/robin/Code/novadiem/bureau/scripts/statusline-usage.sh"
+    "command": "<path-to-bureau>/scripts/statusline-usage.sh"
   },
   "hooks": {
     "SubagentStop": [
       {
         "matcher": "",
-        "hooks": [{"type": "command", "command": "/Users/robin/Code/novadiem/bureau/scripts/subagent-stop.sh"}]
+        "hooks": [{"type": "command", "command": "<path-to-bureau>/scripts/subagent-stop.sh"}]
       }
     ],
     "Stop": [
       {
         "matcher": "",
-        "hooks": [{"type": "command", "command": "/Users/robin/Code/novadiem/bureau/scripts/conductor-stop.sh"}]
+        "hooks": [{"type": "command", "command": "<path-to-bureau>/scripts/conductor-stop.sh"}]
       }
     ]
   }
@@ -336,10 +336,11 @@ step, never speculatively — each call spends real money on a third-party API.
 | `1` | Bad arguments or missing input files (before any network call). |
 | `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response). |
 | `3` | Integrity check failed (`finish_reason` != `stop`, empty content, or length-delta out of range). |
-| `4` | Keystore key missing (`~/Documents/novadiem/keys/novadiem/openrouter.env` absent or `OPENROUTER_API_KEY` empty). |
+| `4` | OpenRouter key missing (`OPENROUTER_API_KEY` absent and no valid `OPENROUTER_KEYSTORE` supplied). |
 
 The request body is built with `jq -n` (the draft is arbitrary markdown — never
-string-interpolated). The key is sourced from the keystore; it is never echoed.
+string-interpolated). The key is read from `OPENROUTER_API_KEY`, or from the optional
+`OPENROUTER_KEYSTORE` file if supplied; it is never echoed.
 
 ---
 

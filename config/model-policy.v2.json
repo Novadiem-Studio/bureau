@@ -7,9 +7,14 @@
       "allowed_spawn_models": ["haiku", "sonnet", "opus", "fable"],
       "forbidden": ["premium"],
       "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only — re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
+    },
+    "openai": {
+      "allowed_spawn_models": ["gpt-5.6-terra", "gpt-5.6-sol"],
+      "forbidden": [],
+      "note": "Codex host: gpt-5.6-terra is the economical rung; gpt-5.6-sol is the demanding-work rung. Pass model and reasoning effort explicitly on every spawn."
     }
   },
-  "manual_experiments": [],
+  "manual_experiments": ["conductor-sonnet"],
   "tiers": ["cheap", "standard", "strong", "frontier", "escalated"],
   "roles": {
     "conductor": {

@@ -5,10 +5,10 @@
 # Integrated topology (v2)
 
 In v2 the Delegate is the **default top-level session** Robin talks to, and it spawns the Conductor as a
-**resumable Agent-tool subagent**. At each checkpoint the Conductor *returns* a structured block to
+**resumable host subagent**. At each checkpoint the Conductor *returns* a structured block to
 the Delegate instead of emitting an interactive `[CHECKPOINT]`; the Delegate stages the cold
-read-set and spawns a fresh **headless `claude -p` cold reviewer** for the gating verdict, then
-resumes the Conductor via `SendMessage`. The file-mailbox relay (the `watcher.sh` poll loop +
+read-set and spawns a fresh cold reviewer through `scripts/run-cold-reviewer.sh`, then
+resumes the Conductor with the selected host primitive. The file-mailbox relay (the `watcher.sh` poll loop +
 `await-verdict.sh`) is not in this path. All v1 review content survives unchanged — the 6-item
 critic checklist, the 9 escalation signals, the verdict schema + Artifact-hash binding, the 5-step
 integration checklist, and the § 9 ledger schema — only the topology and the invocation mechanism
@@ -20,6 +20,11 @@ nonce validation but its nonce does not enter the Delegate transcript. The Deleg
 and echoes its own role:delegate pointer (`<munged-RUN_DIR>.delegate`) and only then spawns the
 Conductor. The Conductor reads the bare pointer privately before its first specialist spawn; it
 never returns, logs, or summarizes that nonce.
+
+The role:delegate pointer and hook attribution in that paragraph are Claude-only. On Codex the
+Delegate skips the extra pointer, logs the named manager/conductor/specialist accounting gap, and
+uses the transport mapping in `docs/host-runtime.md`; the topology and checkpoint protocol are
+otherwise unchanged.
 
 This section is the single source both personas (`agents/delegate.md`, `agents/orchestrator.md`)
 and the three one-shot scripts reference. A reader can build all of them from this section alone.
@@ -102,55 +107,32 @@ This is the canonical invocation **both** the v2 Delegate and the refactored v1 
 use. Document it verbatim:
 
 ```sh
-cd "$CTX" && claude -p \
-  --setting-sources "" \
-  --system-prompt "You are The Delegate cold reviewer; do not act as the Conductor." \
-  --model "$DELEGATE_MODEL" \
-  --output-format json \
-  --json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")" \
-  --tools "Read" \
-  --add-dir "$CTX" \
-  --max-budget-usd "$B" \
-  "$TASK_PROMPT" < /dev/null
+REVIEW_META="$(
+  scripts/run-cold-reviewer.sh \
+    "$RUN_DIR" "$CTX" NN "NN-<k>" "<artifact-basename>" "<routine|integration>"
+)"
+REVIEWER_VERDICT_PATH="$(printf '%s' "$REVIEW_META" | jq -r .verdict_path)"
+REVIEWER_ENVELOPE_PATH="$(printf '%s' "$REVIEW_META" | jq -r .envelope_path)"
 ```
 
-`$CTX = RUN_DIR/checkpoints/NN-context/` (the staged read root, v2 §9). `$TASK_PROMPT` names every
-staged file by its ABSOLUTE `$CTX` path (e.g. `$CTX/delegate-reviewer.md`, `$CTX/<artifact>`,
-`$CTX/integration-results.json`), NOT bare relative names: the headless Read tool resolves a
-relative name against the detected git/workspace root, not the spawn CWD, so a bare name is looked
-up at the repo root and DENIED by `--add-dir "$CTX"` (proven in Prompt 7 Part 2). Every named path
-is INSIDE `$CTX`, so AC4's "no path outside `$CTX`" still holds. Flag notes — each verified by the
-Phase-0 spike or Prompt 7 Part 2 (`RUN_DIR/log.md`):
+`$CTX = RUN_DIR/checkpoints/NN-context/` is the staged input packet (v2 §9). The helper rejects
+symlinks, a full `log.md`, and transcript-like files, reads the host runtime and Delegate model
+from `model-routing.json`, logs the exact task prompt before the provider call, and emits
+deterministic verdict/envelope/event/stderr paths.
 
-- **`--setting-sources ""` — REQUIRED for coldness.** `--add-dir` sandboxes only the **Read tool**
-  (so `RUN_DIR/log.md` correctly returns READ_BLOCKED). CLAUDE.md auto-discovery is a **separate
-  startup mechanism** that walks up from CWD to the repo root and loads `$ROOT/CLAUDE.md` (which
-  makes the reviewer identify as "the Orchestrator") AND the global `~/.claude/CLAUDE.md`;
-  `--add-dir` does NOT cover it. `--setting-sources ""` suppresses that discovery while KEEPING
-  auth. Phase-0 TEST 3 proved the recipe WITHOUT this flag loaded `$ROOT/CLAUDE.md` and broke
-  coldness; with it, `claude_md_loaded: false` and the identity probe returns `NONE`.
-- **NO `--bare`.** `--bare` would also suppress CLAUDE.md discovery, but Phase-0 TEST 4 (R6)
-  confirmed it breaks auth ("Not logged in · Please run /login") on the current claude (2.1.187),
-  so coldness is bought with `--setting-sources ""`, not `--bare`. The Phase-4 `watcher.sh` refactor
-  drops `--bare` for the same reason.
-- **`--json-schema` takes an INLINE JSON Schema STRING, not a path.** `claude --help` shows the
-  flag's argument is an inline schema (example `{"type":"object",...}`). Pass the schema file's
-  CONTENTS via `--json-schema "$(cat "$ROOT/config/delegate-verdict.schema.json")"` (double-quoted
-  command substitution keeps the JSON as one arg). A bare PATH aborts the spawn with
-  `Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'`, so no verdict
-  is written. There is therefore NO absolute path argument for the schema anymore. This was never
-  live-tested before Prompt 7 Part 2 — Phase-0 TEST 3 omitted `--json-schema` — which is why the
-  earlier "MUST be absolute path" characterization survived; Part 2 ran the full recipe live and
-  corrected it. `$ROOT` must be set in the spawn environment so the `$(cat ...)` resolves regardless
-  of the `cd "$CTX"` CWD (the path inside it is absolute).
-- **`$DELEGATE_MODEL`** is caller-supplied. **`$B`** is the per-spawn spend ceiling, set as
-  `${DELEGATE_MAX_USD:-5.00}`: generous headroom so the cap is a runaway backstop, not a throttle
-  (on a flat-rate subscription the dollars are notional; the cap only stops a stuck spawn, it must
-  never throttle a real review). `< /dev/null` closes stdin; `--max-budget-usd` caps one spawn's spend.
+- **Claude adapter:** preserves the proven CWD=`$CTX`, `--setting-sources ""`,
+  `--system-prompt`, `--tools "Read"`, `--add-dir "$CTX"`, inline-schema, no-session-persistence
+  recipe. `--bare` remains forbidden because it breaks Claude authentication.
+- **Codex adapter:** copies the staged packet to a temporary directory, runs an ephemeral
+  `codex exec` with `--ephemeral --ignore-user-config --ignore-rules`, disables network tools, sets the snapshot
+  read-only, and explicitly denies the live run, target repository, framework checkout, home
+  directory, and Codex/Claude session stores. `--output-schema` binds the verdict. The task
+  prompt names snapshot paths only.
 
-Read-only (`--tools "Read"`) and read-scope (`--add-dir "$CTX"` + CWD=`$CTX`) are OS-enforced: the
-reviewer physically cannot read `RUN_DIR/log.md` or a prior `NN-verdict.md`. The leak is PREVENTED,
-not caught (AC13).
+In both adapters the reviewer physically cannot read `RUN_DIR/log.md` or a prior verdict. The
+leak is prevented, not caught (AC13). The normalized envelope lets the existing
+`append-reviewer-tokens.sh` account either provider without changing the ledger schema. Full
+host guarantees and the non-reviewer Codex accounting gap are in `docs/host-runtime.md`.
 
 ## v2 §4 — COLD-REVIEWER-MODE markers + slice recipe (W-d)
 

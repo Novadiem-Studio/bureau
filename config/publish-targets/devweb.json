@@ -1,5 +1,5 @@
 {
-  "repo": "/Users/robin/Code/novadiem/devweb",
+  "repo": "<path-to-devweb-checkout>",
   "content_dir": "content/articles",
   "build_cmd": "npx next build",
   "live_url": "https://devweb.org",

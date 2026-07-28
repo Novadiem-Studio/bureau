@@ -12,7 +12,7 @@
 
 ### Verification notes (PART A — offline, 2026-06-23)
 
-**Offline fixture results** (run via `run.sh` extraction logic against WROOT `/Users/robin/.bureau/worktrees/bureau/20260623-write-article`):
+**Offline fixture results** (run via `run.sh` extraction logic against a temporary Bureau worktree):
 
 | Fixture | Expected | Actual |
 |---------|----------|--------|
@@ -23,7 +23,7 @@
 
 **`bash check-framework.sh`** (from worktree root): `== all checks passed`, exit 0. One non-blocking WARN about usage-poller plist pointing at the canonical install path rather than this worktree — expected and harmless for a relocated worktree.
 
-**devweb publish-contract build check**: Wrote `/Users/robin/Code/novadiem/devweb/content/articles/zzz-battletest-tmp.mdx` with conformant frontmatter (`title`, `dek`, `date: "2026-06-23"`, `pillar: "engineering"`, `slug: "zzz-battletest-tmp"`, `draft: true`). Ran `npm run build` in devweb — exit 0; route table all-static (no `ƒ`); Zod schema accepted the frontmatter. Temp file deleted; confirmed absent. devweb working tree restored clean. No commit made in devweb.
+**Publish-contract build check**: Wrote a temporary draft article with conformant frontmatter (`title`, `dek`, `date`, `pillar`, `slug`, `draft: true`). Ran the configured build command — exit 0; route table all-static (no `ƒ`); schema accepted the frontmatter. Temp file deleted; working tree restored clean. No commit made.
 
 **Live dry-run** (PART B — FIRED 2026-06-23 after Robin's logged `[EXTERNAL-ACTION CHECKPOINT]` approval):
 
@@ -32,17 +32,17 @@ Result: **exit 0**, candidate written `passes-test/01-grok.md` (in 744B → out 
 Exact command the Conductor ran (after the `[EXTERNAL-ACTION CHECKPOINT]`):
 
 ```sh
-bash /Users/robin/.bureau/worktrees/bureau/20260623-write-article/scripts/model-pass.sh \
+bash <bureau-worktree>/scripts/model-pass.sh \
   openrouter:x-ai/grok-4.3 \
-  /Users/robin/Code/novadiem/bureau/.bureau/runs/20260623-write-article/passes-test/test-draft.md \
-  /Users/robin/.bureau/worktrees/bureau/20260623-write-article/config/passes/improve-grok.md \
-  /Users/robin/Code/novadiem/bureau/.bureau/runs/20260623-write-article/passes-test/01-grok.md \
-  --run-dir /Users/robin/Code/novadiem/bureau/.bureau/runs/20260623-write-article
+  <run-dir>/passes-test/test-draft.md \
+  <bureau-worktree>/config/passes/improve-grok.md \
+  <run-dir>/passes-test/01-grok.md \
+  --run-dir <run-dir>
 ```
 
 Model spec (from `config/article-passes.json`, pass id `grok`): `openrouter:x-ai/grok-4.3` — the only enabled pass.
 Test draft: `RUN_DIR/passes-test/test-draft.md` (~640 bytes; staged 2026-06-23; topic: Turbopack module resolution vs Webpack).
 Instruction file: `config/passes/improve-grok.md` (developmental editor improvement pass).
-Keystore: `~/Documents/novadiem/keys/novadiem/openrouter.env` — present and non-empty (confirmed `KEY_PRESENT` 2026-06-23, no network call made).
+OpenRouter key source: present and non-empty (confirmed without printing the secret; no network call made during that check).
 Target URL: `https://openrouter.ai/api/v1/chat/completions`.
 Estimated cost: one short Grok completion (~640 bytes in, ~640-1920 bytes out) — low single-digit cents.

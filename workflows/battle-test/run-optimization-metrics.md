@@ -34,7 +34,7 @@
 **Date:** 2026-07-05
 **Environment:** macOS 25.5.0, Bash 3.2, jq 1.7.1
 **Claude version:** claude-fable-5 (claude-sonnet-4-6 subagent running The Mechanic)
-**Hook registration:** YES — SubagentStop and Stop hooks registered in `~/.claude/settings.json` pointing at canonical paths `/Users/robin/Code/novadiem/bureau/scripts/subagent-stop.sh` and `conductor-stop.sh`. Pre-wiring dry-runs (W11) both passed. Smoke probe (`claude -p "Echo SMOKE_TEST_OK"`) exited 0 with expected output.
+**Hook registration:** YES — SubagentStop and Stop hooks registered in the local Claude settings, pointing at this checkout's `scripts/subagent-stop.sh` and `scripts/conductor-stop.sh`. Pre-wiring dry-runs (W11) both passed. Smoke probe (`claude -p "Echo SMOKE_TEST_OK"`) exited 0 with expected output.
 **Scripts under test:** worktree `scripts/account-run.sh` (956 lines, Bundle 11), `scripts/conductor-stop.sh`, `scripts/lib/bureau-token-lib.sh`
 
 | Case | Result | Key evidence |

@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Delegate verdict — Codex strict structured output",
+  "description": "Strict equivalent of delegate-verdict.schema.json for Codex/OpenAI structured outputs. Integration-evidence is required but nullable for routine checkpoints; every nested object is closed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "Decision",
+    "Artifact-hash",
+    "Uncertainties",
+    "Rationale",
+    "Required-changes",
+    "Escalation",
+    "Ledger",
+    "Integration-evidence"
+  ],
+  "properties": {
+    "Decision": {
+      "type": "string",
+      "enum": ["proceed", "revise", "escalate"]
+    },
+    "Artifact-hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Uncertainties": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Required-changes": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Escalation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Ledger": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Integration-evidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "Gates-checked",
+        "Pre-existing-validated",
+        "Under-declaration",
+        "Scope-diff-clean",
+        "Scope-violations",
+        "Fast-forward-ok",
+        "Conflicts-clean"
+      ],
+      "properties": {
+        "Gates-checked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "command", "exit-code-on-branch", "result"],
+            "properties": {
+              "name": {"type": "string"},
+              "command": {"type": "string"},
+              "exit-code-on-branch": {"type": "integer"},
+              "result": {"type": "string"}
+            }
+          }
+        },
+        "Pre-existing-validated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "command",
+              "exit-code-on-branch",
+              "exit-code-on-base",
+              "confirmed-pre-existing"
+            ],
+            "properties": {
+              "name": {"type": "string"},
+              "command": {"type": "string"},
+              "exit-code-on-branch": {"type": "integer"},
+              "exit-code-on-base": {"type": "integer"},
+              "confirmed-pre-existing": {"type": "boolean"}
+            }
+          }
+        },
+        "Under-declaration": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "command", "exit-code-on-branch", "result"],
+            "properties": {
+              "name": {"type": "string"},
+              "command": {"type": "string"},
+              "exit-code-on-branch": {"type": "integer"},
+              "result": {"type": "string"}
+            }
+          }
+        },
+        "Scope-diff-clean": {
+          "type": ["boolean", "null"]
+        },
+        "Scope-violations": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "Fast-forward-ok": {
+          "type": "boolean"
+        },
+        "Conflicts-clean": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

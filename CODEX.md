@@ -8,8 +8,8 @@ This project is used to inspect and review work produced by the Novadiem
 agent-framework across many repos, and to help Robin decide how to respond to
 The Conductor.
 
-Do not assume Codex should take over a framework run. Robin normally talks to
-The Conductor in another session. Codex's job here is to:
+For an ordinary inspection/review request, do not assume Codex should start or
+take over a framework run. Codex's job in that mode is to:
 
 - inspect run artifacts such as `state.json`, `log.md`, `spec.md`, `plan.md`,
   and `prompts.md`;
@@ -21,14 +21,37 @@ The Conductor in another session. Codex's job here is to:
 When Robin asks for "the next prompt," provide the message Robin should send to
 The Conductor, not an internal specialist spawn prompt.
 
-Do not manually spawn framework specialists unless Robin explicitly asks Codex
-to debug or simulate framework internals. Keep the interface Conductor-facing:
-Robin responds to The Conductor; The Conductor delegates to the specialists.
+Do not manually spawn framework specialists during an ordinary review. Keep the
+interface Conductor-facing: Robin responds to The Conductor; The Conductor
+delegates to the specialists.
+
+## Native Codex Bureau run
+
+When Robin explicitly says “run the Bureau,” “get the Bureau on this,” “start
+the agent framework,” asks to run it as Codex, or gives an equivalent framework
+start/resume instruction, that request activates the native Codex host path. It
+is not review-only mode.
+
+Follow `AGENTS.md`, `agents/delegate.md`, and `docs/host-runtime.md`. The
+top-level Codex session becomes The Delegate, starts the run with
+`--runtime openai`, and uses Codex collaboration tools for the real Bureau
+topology:
+
+- spawn the resumable Conductor with `collaboration.spawn_agent`,
+  `fork_turns: "none"`, and explicit resolved model/reasoning;
+- let the Conductor spawn workflow specialists in fresh contexts;
+- resume idle agents with `collaboration.followup_task`;
+- use `scripts/run-cold-reviewer.sh` for every cold gating verdict;
+- persist genuine forks before asking Robin in the top-level response.
+
+The checked-in Bureau instructions explicitly authorize those subagents for a
+Bureau run. Do not collapse the cast into one warm Codex context. Claude remains
+a supported alternative host.
 
 ## Claude CLI relay handoff
 
-The review-only behavior above is the default; it is not a prohibition on an
-explicit handoff. Robin may start a framework run in a Claude CLI session, then
+The ordinary review behavior above is not a prohibition on an explicit
+handoff. Robin may start a framework run in a Claude CLI session, then
 exit that interactive session and ask Codex to pick it up by giving the Claude
 session name (or otherwise identifying that session). That request activates
 **relay mode for that run only**.

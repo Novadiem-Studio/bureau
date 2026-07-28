@@ -2,7 +2,7 @@
 
 **The Bureau** — a multi-agent dev framework where the **main session
 orchestrates and spawns real subagents**. Each specialist runs in its own fresh context,
-so reviews are genuinely independent instead of one Claude critiquing its own earlier
+so reviews are genuinely independent instead of one warm model critiquing its own earlier
 reasoning. Who the specialists *are* — names, archetypes, voice — is canon in `LORE.md`.
 Visual poster family (THE CURRENT · THE HUB · THE ENGINE) is canon in `VISUAL-SYSTEM.md`;
 character appearance locks live in `VISUAL-CANON.md`.
@@ -29,11 +29,15 @@ also get a **git worktree** off `devel` (`docs/git-worktree.md`). Legacy per-pro
 using `scripts/resolve-model-routing.sh`. The framework starts roles on capable but not always
 frontier tiers, then escalates on evidence. Details: `config/runtimes/README.md`.
 
-**Claude Code (current): haiku, sonnet, opus, and fable-for-escalation.** Haiku = Scoot (cheap
+**Codex:** `gpt-5.6-terra` handles cheap/standard roles; `gpt-5.6-sol` handles strong,
+frontier, and escalated roles with explicit reasoning effort. Start with `--runtime openai`.
+
+**Claude Code:** haiku, sonnet, opus, and fable-for-escalation. Haiku = Scoot (cheap
 errands). Fable re-enabled Jul 2026 for the `frontier` / `escalated` tiers only (never a first-pass
 default; no legacy `premium`). Challenger defaults to `strong` and escalates to opus for
 final/high-risk gates; Architect/Mage default opus; utility roles default sonnet. Always pass
-`model` explicitly on every spawn. See `docs/model-routing-and-cast.md` § Host policy - Claude Code (current).
+`model` explicitly on every spawn. Host transport and isolation:
+`docs/host-runtime.md`. Cast routing: `docs/model-routing-and-cast.md`.
 
 **Legacy Claude tiers** — `config/model-policy.json`, `config/experiments/`, and
 `scripts/resolve-model-tiers.sh` remain for existing Claude Code runs during the transition.
@@ -80,10 +84,15 @@ to the right sub-app and builds within the current stack.
 
 ## Start a run
 
-```bash
-cd /your/project          # cwd = where code lives; framework stays global
-claude
+Codex:
+
 ```
+Read ~/Code/novadiem/bureau/AGENTS.md and run the Bureau as Codex.
+Project context: /your/project/project-context.md
+My project idea is: [PLAIN LANGUAGE]
+```
+
+Claude Code:
 
 ```
 Read ~/Code/novadiem/bureau/CLAUDE.md and start the agent framework.
@@ -95,13 +104,13 @@ Run artifacts: `<target-repo>/.bureau/runs/<yyyymmdd>-<project>-<task>/` for tar
 runs, or `~/Code/novadiem/bureau/output/runs/<yyyymmdd>-<project>-<task>/` for the
 no-target fallback.
 
-The main session becomes the Orchestrator and spawns each specialist as a subagent
-in sequence. You watch the handoffs roll in.
+The main session becomes The Delegate, which keeps one resumable Conductor and
+gates its specialist handoffs.
 
 ## Resume an interrupted session
 
 ```
-Read ~/Code/novadiem/bureau/CLAUDE.md and resume the agent framework.
+Read ~/Code/novadiem/bureau/AGENTS.md (Codex) or CLAUDE.md (Claude) and resume the agent framework.
 Run dir: <absolute RUN_DIR> — read state.json and log.md.
 ```
 
@@ -154,7 +163,7 @@ All inside the run's `RUN_DIR`:
 |------|----------|
 | `spec.md` | Requirements + architecture |
 | `plan.md` | Phased development plan |
-| `prompts.md` | Scoped Claude Code prompts — execute these |
+| `prompts.md` | Scoped agent-ready prompts — execute these |
 | `log.md` | Human-readable handoff + decision log |
 | `state.json` | Machine-readable state (for resuming) |
 
@@ -192,7 +201,8 @@ blocker that needs a product call, or after looping twice on the same issue.
 
 ## Note on the subagent model
 
-Subagents are spawned via Claude Code's Agent tool with `general-purpose` type and
-pointed at their persona file. They run in the project's working directory and read
-and write via absolute paths the Orchestrator supplies. They share the filesystem,
-not the conversation — that's the isolation the framework depends on.
+Claude spawns through its Agent tool; Codex spawns through collaboration tools with
+`fork_turns: "none"`. Both are pointed at the same persona and absolute input/output
+paths. They share the filesystem, not the conversation — that's the isolation the
+framework depends on. See `docs/host-runtime.md` for the exact mapping and the
+current Codex token-accounting gap.

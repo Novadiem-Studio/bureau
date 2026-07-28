@@ -226,7 +226,11 @@ CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:15:00Z","tu
 
 #### 3a. CONDUCTOR-TOKEN-EVENT via subagent-stop.sh (v2-integrated runs)
 
-In a **v2-integrated (Delegate-driven)** run the Conductor runs as an Agent-tool **subagent** of the Delegate, not as the top session. `conductor-stop.sh` (the Stop hook) fires only for the Delegate's top session and never sees the Conductor's transcript, so it captures **zero** conductor tokens. Instead `scripts/subagent-stop.sh` (the SubagentStop hook) emits the Conductor's CONDUCTOR-TOKEN-EVENT.
+This section is the **Claude Code host** accounting rail. In a v2-integrated run the
+Conductor is a resumable subagent, not the top session. `conductor-stop.sh` fires only for the
+Delegate's top session; `scripts/subagent-stop.sh` emits the Conductor's event. On Codex,
+manager/Conductor/specialist accounting is unavailable and MUST be reported as a named gap;
+see `docs/host-runtime.md`.
 
 - **Marker.** The Delegate's Conductor spawn prompt (`agents/delegate.md § Bootstrap`) carries, on their own lines, `RUN_DIR: <abs>` and `BUREAU_ROLE: conductor`. `subagent-stop.sh` classifies a subagent as the Conductor **iff** the first user message contains an anchored, case-sensitive `^\s*BUREAU_ROLE:\s+conductor\s*$` line — ownership-by-identity, like a specialist's `Attempt ID:`. A prose mention of "conductor" does not match. Absence of the marker ⇒ the normal SPAWN-TOKEN-EVENT path.
 - **Emitted shape** is identical to the conductor-stop line above (same schema, delta/clamp arithmetic — both emitters share `bureau-token-lib.sh § compute_delta_line` / `compute_legacy_line`). The emitted `session_id` is the subagent's **`agent_id`** (stable per-subagent across every resumed leg), so `account-tokens.sh`'s dedup-by-`session_id` take-max collapses the resumed legs to the single largest cumulative delta — no cross-leg double-count.
@@ -236,7 +240,12 @@ In a **v2-integrated (Delegate-driven)** run the Conductor runs as an Agent-tool
 
 #### 3b. DELEGATE-TOKEN-EVENT via conductor-stop.sh (v2-integrated runs — #26a)
 
-In a v2-integrated run the **Delegate is the top-level session**, so *its* Stop hook is `conductor-stop.sh`. The Conductor subagent is captured pointerlessly by `subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped. Startup therefore has two pointers: `run-start.sh --no-pointer-echo` writes the normal bare pointer for the Conductor/specialist nonce rail, without echoing that nonce into the Delegate transcript; then the Delegate enrols its OWN per-run pointer tagged `"role":"delegate"`, keyed `<munged-run-dir>.delegate` (the role suffix keeps it distinct from the bare pointer — see § B3). `conductor-stop.sh` selects that `.delegate` pointer for the Delegate top session (only the Delegate's transcript carries its nonce) and, seeing `role == "delegate"`, emits a **DELEGATE-TOKEN-EVENT** instead of a CONDUCTOR-TOKEN-EVENT.
+On the Claude host, the **Delegate is the top-level session**, so *its* Stop hook is
+`conductor-stop.sh`. The Conductor subagent is captured pointerlessly by
+`subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped.
+Startup therefore has two pointers: `run-start.sh --no-pointer-echo` writes the normal bare
+pointer, then the Delegate enrols its own `"role":"delegate"` pointer. Codex skips this
+hook-only pointer.
 
 ```
 DELEGATE-TOKEN-EVENT: {"session_id":"<delegate top session_id>","at":"2026-07-11T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false,"baseline":{...}}
@@ -247,7 +256,9 @@ DELEGATE-TOKEN-EVENT: {"session_id":"<delegate top session_id>","at":"2026-07-11
 
 ### 3c. REVIEWER-TOKEN-EVENT (Delegate-appended, per cold-reviewer spawn — #26b)
 
-Each checkpoint the Delegate spawns a cold reviewer as `claude -p --output-format json`; the result envelope carries a `.usage` sibling (already parsed for the verdict). The Delegate appends one **REVIEWER-TOKEN-EVENT** per spawn via `scripts/append-reviewer-tokens.sh` (never hand-formatted — a hand-typed token line drifts).
+Each checkpoint the Delegate calls `scripts/run-cold-reviewer.sh`. It returns a normalized
+envelope whose `.usage` sibling is exact for either Claude or Codex. The Delegate appends one
+**REVIEWER-TOKEN-EVENT** per spawn via `scripts/append-reviewer-tokens.sh`.
 
 ```
 REVIEWER-TOKEN-EVENT: {"checkpoint":"05","at":"2026-07-11T00:03:00Z","turns":4,"tokens":{"input":100,"cache_creation":200,"cache_read":300,"processed":600,"output":15},"spawn_id":"05-1"}

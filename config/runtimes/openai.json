@@ -1,6 +1,6 @@
 {
   "runtime": "openai",
-  "description": "Codex/OpenAI routing defaults. Prefer capable prior-frontier first pass, then escalate on evidence.",
+  "description": "Codex host routing defaults. Terra handles economical work; Sol handles demanding architecture, build, and review work.",
   "capabilities": {
     "supports_fresh_context_subagents": true,
     "supports_parallel_subagents": true,
@@ -10,29 +10,29 @@
   },
   "tiers": {
     "cheap": {
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.6-terra",
       "reasoning_effort": "low",
       "notes": "Fast, low-cost surveys and routine transformations."
     },
     "standard": {
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.6-terra",
       "reasoning_effort": "medium",
       "notes": "Utility roles and straightforward prompt/document work."
     },
     "strong": {
-      "model": "gpt-5.4",
+      "model": "gpt-5.6-sol",
       "reasoning_effort": "high",
       "notes": "Default for architecture, critique, backend, and frontend first pass."
     },
     "frontier": {
-      "model": "gpt-5.5",
-      "reasoning_effort": "high",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
       "service_tier": "priority",
       "notes": "Use for final gates, subtle design/code risk, or high-stakes reviews."
     },
     "escalated": {
-      "model": "gpt-5.5",
-      "reasoning_effort": "xhigh",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "max",
       "service_tier": "priority",
       "notes": "Use after evidence of trouble or explicit human request."
     }
