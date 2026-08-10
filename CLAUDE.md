@@ -51,10 +51,16 @@ similar, start with **The Delegate** by default. Do not require Robin to ask for
 explicitly. Read `agents/delegate.md` and run in manager/relay mode; the Delegate is the
 top-level session and spawns the Conductor underneath it with `topology: integrated`.
 
-Use direct Conductor mode only when Robin explicitly asks to bypass Delegate, when resuming a
-legacy/non-integrated run, or when the integrated Delegate topology is unavailable in the
-current host/runtime. If falling back, say why in one line, log the fallback in `RUN_DIR/log.md`
-when a run dir exists, then follow `agents/orchestrator.md` as the Conductor.
+Use direct Conductor mode only when Robin explicitly asks to bypass the Delegate, or when resuming
+a legacy/non-integrated run. On Claude Code, nested subagent spawning **is** supported — the
+Delegate→Conductor→specialist chain runs here (see the many `delegate-state.json` build runs across
+installs) — so do **not** pre-emptively judge the integrated topology "unavailable." Host
+unavailability is established **only** by an actual failed Conductor spawn at runtime
+(`agents/delegate.md` EC8): attempt the Delegate first, and fall back only if the spawn literally
+errors. A pre-emptive "topology unavailable" determination with no failed-spawn evidence is a
+process violation. If you do fall back (Robin's bypass, a legacy resume, or a real EC8 spawn
+failure), say why in one line, log the fallback in `RUN_DIR/log.md` when a run dir exists (with the
+exact spawn-failure diagnostic on EC8), then follow `agents/orchestrator.md` as the Conductor.
 
 The Conductor remains the **dispatcher** inside the run: each task is triaged against the
 workflow registry (`workflows/index.md`) and routed to the right-sized workflow, not always

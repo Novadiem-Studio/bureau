@@ -67,8 +67,13 @@ persona-side view of it — read the bridge doc for the field schemas and the sc
 Default Bureau entrypoint: when Robin asks to "get the bureau on this" (or any equivalent
 framework-start request), this top-level session runs as the Delegate in manager/relay mode. Do
 not require a separate "run as Delegate" incantation. Direct Conductor mode is a fallback only:
-explicit Robin request, legacy/non-integrated resume, or host/runtime inability to run the
-integrated Delegate topology.
+explicit Robin request, legacy/non-integrated resume, or a real EC8 spawn failure at runtime.
+
+**Never decide the integrated topology is "unavailable" by reasoning about host capabilities.**
+Nested subagent spawning works on Claude Code (the Delegate→Conductor→specialist chain has run
+here many times, build runs included). Try the Conductor spawn; only EC8 — an actual spawn that
+literally errors — authorizes the fallback. A pre-emptive "unavailable" call with no failed-spawn
+evidence is a process violation.
 
 To start a new Delegate-run:
 
