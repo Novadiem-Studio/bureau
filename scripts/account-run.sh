@@ -926,6 +926,102 @@ if [ "$gate_spawn_event_count" -eq 0 ] && \
         && mv "${tmp_out}.warn" "$tmp_out"
 fi
 
+# STEP A1-FALLBACK — recover the WORK-SHAPE of unmatched SPAWN-TOKEN-EVENT specialists.
+# The hook (subagent-stop.sh) emits SPAWN-TOKEN-EVENT: for every specialist even when the
+# Conductor never emitted the paired SPAWN-EVENT: work-shape line. For each SPAWN-TOKEN-EVENT
+# attempt_id with NO matching SPAWN-EVENT started line, synthesize one INFERRED
+# specialist_spawns[] entry (role/agent/attempt from the token event; models unavailable;
+# status complete/inferred) so the run's shape is not lost. Everything is confidence
+# "inferred"/"unavailable" and carries an _note — a degraded recovery path, never a
+# substitute for the emit.
+#
+# Runs UNCONDITIONALLY (not only in the zero-SPAWN-EVENT gate above): the same defect shape
+# happens PARTIALLY too — a run that emitted SPAWN-EVENT for some specialists but not others
+# would otherwise strand the token-only ones. The matched_aids_json exclusion guarantees no
+# double-count against real SPAWN-EVENTs, so this is safe for the partial case. The
+# [CLOSE-OUT WARNING] gate above is unchanged — it still fires only when zero SPAWN-EVENT
+# lines exist; this block only changes when the INFERENCE runs, not when the warning fires.
+#
+# What is and is NOT recovered: these inferred entries recover the WORK-SHAPE (role/agent/
+# attempt) and the run's AGGREGATE token total (summed separately in account-tokens.sh's
+# processed_total). They do NOT recover PER-SPAWN token attribution: account-tokens.sh keys
+# its spawn_tokens map on SPAWN-EVENT *started* records, so a token-only attempt_id has no
+# spawn_tokens entry and STEP A2's by-index enrichment attaches nothing to it. Per-spawn
+# tokens are recoverable only for specialists that DID get a SPAWN-EVENT (the partial case).
+# Role is inferred from the attempt_id prefix (segment before the first "-", e.g.
+# challenger-r1-1 -> challenger).
+if [ -r "$RUN_DIR/log.md" ]; then
+    # attempt_ids that DO have a SPAWN-EVENT started line (to exclude — no double-count).
+    # PATH pinned (EC 10 ugrep guard). grep no-match exits 1; `{ grep || true; }` neutralizes
+    # it INSIDE the pipe so `set -o pipefail` doesn't fail the whole substitution.
+    PATH=/usr/bin:$PATH
+    matched_aids_json=$({ grep '^SPAWN-EVENT:' "$RUN_DIR/log.md" 2>/dev/null || true; } \
+        | sed 's/^SPAWN-EVENT: //' \
+        | jq -Rrs '[split("\n")[] | select(length > 0) | (try fromjson catch null)
+                   | select(type == "object" and .status == "started" and (.attempt_id | type) == "string")
+                   | .attempt_id]' 2>/dev/null || echo '[]')
+    [ -n "$matched_aids_json" ] || matched_aids_json='[]'
+
+    # Build inferred specialist_spawns[] entries from unmatched SPAWN-TOKEN-EVENT lines,
+    # deduped by attempt_id (first occurrence wins), sorted by first appearance.
+    inferred_result=$({ grep '^SPAWN-TOKEN-EVENT:' "$RUN_DIR/log.md" 2>/dev/null || true; } \
+        | sed 's/^SPAWN-TOKEN-EVENT: //' \
+        | jq -Rrs --argjson matched "$matched_aids_json" '
+            [ split("\n")[] | select(length > 0) | (try fromjson catch null)
+              | select(type == "object" and (.attempt_id | type) == "string" and (.attempt_id | length) > 0) ]
+            # dedup by attempt_id, keep first appearance order
+            | reduce .[] as $e ({seen: {}, ord: []};
+                if (.seen[$e.attempt_id] == null)
+                then {seen: (.seen + {($e.attempt_id): true}), ord: (.ord + [$e])}
+                else . end)
+            | .ord
+            # drop any attempt_id already covered by a SPAWN-EVENT started line (no double-count)
+            | map(select((.attempt_id as $a | $matched | index($a)) == null))
+            | { aids: [ .[].attempt_id ],
+                spawns: [ .[]
+                  | (.attempt_id | split("-")[0]) as $role
+                  # trailing numeric segment of the attempt_id → attempt number, else 1
+                  | (.attempt_id | (capture("-(?<n>[0-9]+)$") // {n: "1"}) | .n | tonumber) as $attempt
+                  | (.agent_id // "inferred") as $agent
+                  | { role:             {value: $role, confidence: "inferred"},
+                      agent:            {value: $agent, confidence: "inferred"},
+                      attempt:          {value: $attempt, confidence: "inferred"},
+                      configured_model: {value: null, confidence: "unavailable"},
+                      actual_model:     {value: null, confidence: "unavailable"},
+                      reported_status:  {value: "complete", confidence: "inferred"},
+                      _note: "inferred from SPAWN-TOKEN-EVENT — no SPAWN-EVENT pair; Conductor may not have emitted the work-shape line" }
+                ] }
+          ' 2>/dev/null || echo '{"aids":[],"spawns":[]}')
+    [ -n "$inferred_result" ] || inferred_result='{"aids":[],"spawns":[]}'
+
+    inferred_count=$(printf '%s' "$inferred_result" | jq '.spawns | length' 2>/dev/null || echo 0)
+    if [ "$inferred_count" -gt 0 ]; then
+        # Append inferred spawns to specialist_spawns[] in tmp_out (after any real
+        # SPAWN-EVENT-derived entries; the partial case keeps those exact entries first).
+        jq --argjson inf "$(printf '%s' "$inferred_result" | jq '.spawns')" \
+           '.specialist_spawns = ((.specialist_spawns // []) + $inf)' \
+           "$tmp_out" > "${tmp_out}.fallback" && mv "${tmp_out}.fallback" "$tmp_out"
+
+        # Keep spawn_attempt_ids_json index-aligned with specialist_spawns[] so STEP A2's
+        # by-index enrichment can still pair the REAL (SPAWN-EVENT-backed) entries to their
+        # tokens. The inferred entries have no spawn_tokens map entry (keyed on SPAWN-EVENT
+        # started records), so A2 attaches nothing to them — but the alignment must not drift
+        # for the exact entries that precede them, hence the append here mirrors the append above.
+        spawn_attempt_ids_json=$(printf '%s' "$inferred_result" \
+            | jq -c --argjson base "$spawn_attempt_ids_json" '$base + .aids' 2>/dev/null \
+            || printf '%s' "$spawn_attempt_ids_json")
+
+        # Name the inferred attempt_ids in _specialist_spawns_note.
+        inferred_aids_csv=$(printf '%s' "$inferred_result" | jq -r '.aids | join(", ")' 2>/dev/null || echo "")
+        fallback_note="inferred ${inferred_count} specialist spawn(s) from SPAWN-TOKEN-EVENT lines with no matching SPAWN-EVENT (attempt_ids: ${inferred_aids_csv}) — Conductor did not emit the work-shape line"
+        jq --arg n "$fallback_note" '
+            . + {"_specialist_spawns_note":
+                 (if has("_specialist_spawns_note")
+                  then (._specialist_spawns_note + "; " + $n) else $n end)}' \
+            "$tmp_out" > "${tmp_out}.fbnote" && mv "${tmp_out}.fbnote" "$tmp_out"
+    fi
+fi
+
 # STEP A2 — invoke account-tokens.sh and merge its stdout (FR 8 channel pin). The
 # consumer reads log.md + state.json and emits a self-contained JSON fragment on
 # stdout; it writes nothing into RUN_DIR. account-tokens.sh being absent or not

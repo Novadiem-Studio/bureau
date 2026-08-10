@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Validate .env.example keys against the live environment.
+# Validate .env.example keys against the live environment (default) or a named
+# .env file (--env-file, for docker/remote-secret projects whose secrets never
+# reach the invoking shell).
 #
 # Usage:
-#   ./scripts/preflight.sh <target-dir> <RUN_DIR>
+#   ./scripts/preflight.sh <target-dir> <RUN_DIR> [--env-file <path>]
 #
 # Arguments:
-#   <target-dir>   project directory that may contain .env.example
-#   <RUN_DIR>      absolute path to the run directory; preflight.md is written here
+#   <target-dir>       project directory that may contain .env.example
+#   <RUN_DIR>          absolute path to the run directory; preflight.md is written here
+#   --env-file <path>  check key PRESENCE in this file instead of the host shell
+#                      (secret-safe: only key names on the LHS of = are read, never values)
 #
 # Exit codes:
 #   0  all keys pass (or nothing to validate)
@@ -15,25 +19,70 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
 die() { echo "preflight: $*" >&2; exit 1; }
 
 # ── argument handling ────────────────────────────────────────────────────────
+# Two positionals (<target-dir> <RUN_DIR>) plus an optional --env-file <path>.
+# Parse in a single pass so --env-file may appear before, between, or after the
+# positionals; bad flags or the wrong positional count → usage 1.
 
-[[ $# -eq 2 ]] || usage 1
+TARGET_DIR=""
+RUN_DIR=""
+ENV_FILE=""          # empty = host-shell check (backward compatible)
+positional=()
 
-TARGET_DIR="$1"
-RUN_DIR="$2"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-file)
+      [[ $# -ge 2 ]] || usage 1
+      ENV_FILE="$2"
+      shift 2
+      ;;
+    --env-file=*)
+      ENV_FILE="${1#--env-file=}"
+      shift
+      ;;
+    -h|--help)
+      usage 0
+      ;;
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do positional+=("$1"); shift; done
+      ;;
+    -*)
+      usage 1
+      ;;
+    *)
+      positional+=("$1")
+      shift
+      ;;
+  esac
+done
+
+[[ ${#positional[@]} -eq 2 ]] || usage 1
+TARGET_DIR="${positional[0]}"
+RUN_DIR="${positional[1]}"
+
+# When --env-file is given the path must exist and be readable (secret-safe:
+# key-name presence only is read below, never a value).
+if [[ -n "$ENV_FILE" ]]; then
+  [[ -f "$ENV_FILE" ]] || die "--env-file does not exist or is not a file: $ENV_FILE"
+  [[ -r "$ENV_FILE" ]] || die "--env-file is not readable: $ENV_FILE"
+fi
 
 # Resolve RUN_DIR first — it must exist before we do any work
 [[ -d "$RUN_DIR" ]] || die "RUN_DIR does not exist: $RUN_DIR"
 
-# Resolve target-dir to absolute path (may or may not exist — we handle missing below)
+# Resolve target-dir to absolute path (may or may not exist — we handle missing below).
+# Report the ORIGINAL argument on failure: TARGET_DIR is overwritten just above, and $1 is
+# unbound here (the parser consumed all positionals via shift → set -u would trap on $1).
+_target_arg="${positional[0]}"
 TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd || true)"
-[[ -n "$TARGET_DIR" ]] || die "target-dir does not exist or is not a directory: $1"
+[[ -n "$TARGET_DIR" ]] || die "target-dir does not exist or is not a directory: $_target_arg"
 
 EXAMPLE_FILE="$TARGET_DIR/.env.example"
 PREFLIGHT_MD="$RUN_DIR/preflight.md"
@@ -114,7 +163,56 @@ is_placeholder() {
   return 1
 }
 
+# ── --env-file presence check (secret-safe) ───────────────────────────────────
+# Build the set of key NAMES present in $ENV_FILE, then look each one up. Only the
+# LHS of the first = on each non-comment line is read — VALUES ARE NEVER TOUCHED,
+# so a secret is never loaded into a variable, echoed, or written to preflight.md.
+# Same parse rules as the .env.example parser above (strip leading "export ", take
+# LHS of first =). A newline-delimited list keeps this Bash 3.2 portable (no
+# associative arrays).
+ENV_FILE_KEYS=""
+if [[ -n "$ENV_FILE" ]]; then
+  while IFS= read -r efline; do
+    [[ "$efline" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$efline" =~ ^[[:space:]]*# ]] && continue
+    efline="${efline#export }"
+    efkey="${efline%%=*}"
+    # strip surrounding whitespace from the key name
+    efkey="${efkey#"${efkey%%[![:space:]]*}"}"
+    efkey="${efkey%"${efkey##*[![:space:]]}"}"
+    [[ -n "$efkey" ]] && ENV_FILE_KEYS="${ENV_FILE_KEYS}${efkey}"$'\n'
+  done <"$ENV_FILE"
+fi
+
+# env_file_has_key <KEY> — returns 0 if KEY appears as a key name in $ENV_FILE.
+# Exact-line match against the pre-parsed newline-delimited key list (no value read).
+env_file_has_key() {
+  local want="$1"
+  local k
+  while IFS= read -r k; do
+    [[ "$k" == "$want" ]] && return 0
+  done <<EOF
+$ENV_FILE_KEYS
+EOF
+  return 1
+}
+
 for key in "${keys[@]}"; do
+  if [[ -n "$ENV_FILE" ]]; then
+    # --env-file mode: check key-name PRESENCE in the named file (secret-safe).
+    # Present as a key (LHS of =) → PASS; absent → FAIL missing. Values are never
+    # read, so "empty"/"placeholder" reasons do not apply in this mode.
+    if env_file_has_key "$key"; then
+      (( pass_count++ )) || true
+    else
+      fail_keys+=("$key")
+      fail_reasons+=("missing")
+      fail_values+=("")
+      echo "preflight: FAIL  $key  missing"
+    fi
+    continue
+  fi
+
   # nounset-safe: ${!key-} gives "" for both unset and set-to-empty; safe under set -u
   # Use ${!key+set} to distinguish: empty string = unset; "set" = present (even if empty value)
   presence="${!key+set}"

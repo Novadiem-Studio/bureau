@@ -403,6 +403,7 @@ absolute RUN_DIR path in every spawn prompt.
 
 **State discipline:** `state.json` holds short labels and decisions — prose goes in `log.md`.
 Validate after every write: `python3 -c "import json,sys; json.load(open('<RUN_DIR>/state.json'))" && echo OK`.
+Then call `scripts/update-runs-index.sh $RUN_DIR` to mirror phase into the runs-index.
 After each `state.json` update, write the same-cadence index entry to
 `output/studio/runs-index/<slug>.json` (atomic temp-then-mv; schema and status-derivation
 table in `docs/run-protocol.md § State management`).

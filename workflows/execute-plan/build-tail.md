@@ -33,6 +33,9 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
    keys against the live environment and writes `RUN_DIR/preflight.md` (result PASS or FAIL). If
    preflight exits non-zero, the run **halts**: the Conductor may not dispatch the build party until
    `preflight.md` shows PASS. The close-out in step 7 re-checks this before accepting the run.
+   For a docker/remote-secret target whose keys never reach the invoking shell, pass
+   `--env-file <path-to-.env>` so preflight checks key presence in that file instead of the host
+   environment (secret-safe: only key names are read, never values).
 
 6. **The Conductor** (**strong**) — build part by part: run the prompts in order, 01..NN, dispatching each to the coder named by its `Coder:` tag — the tag is the assignment; do not re-infer the owner from the sub-app (a missing or wrong tag is a Spellwright defect: route it back rather than guessing) → a reviewed diff per part
 

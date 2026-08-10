@@ -349,6 +349,22 @@ for scr in scripts/account-run.sh scripts/account-tokens.sh; do
   done < <(grep -nE '^jq .*(\$STATE_JSON|state\.json)|^[a-zA-Z_][a-zA-Z0-9_]*=\$\(jq .*(\$STATE_JSON|state\.json)' "$scr" || true)
 done
 
+echo "== spawn-event emit convention (emit-event.sh)"
+# The Conductor emits SPAWN-EVENT: work-shape lines ONLY via scripts/emit-event.sh
+# (spawn-event subcommand). If that tool is missing, non-executable, or loses the
+# spawn-event subcommand, the canonical emit path is gone: runs silently regress to
+# SPAWN-TOKEN-EVENT-only logs and account-run.sh must fall back to inferred spawns
+# (the recurring emitter/parser-drift class). This is the structural guard on that
+# invariant — a per-run log.md is not checked here (it is not an install artifact),
+# the emit TOOL is.
+if [[ ! -f scripts/emit-event.sh ]]; then
+  err "scripts/emit-event.sh is missing — the Conductor cannot emit SPAWN-EVENT lines via the canonical tool; SPAWN-EVENT work-shape records will not be logged"
+elif [[ ! -x scripts/emit-event.sh ]]; then
+  err "scripts/emit-event.sh is not executable — the Conductor cannot emit SPAWN-EVENT lines; run: chmod +x scripts/emit-event.sh"
+elif ! grep -q 'spawn-event)' scripts/emit-event.sh; then
+  err "scripts/emit-event.sh has no 'spawn-event)' subcommand — the SPAWN-EVENT emit path is gone; account-run.sh will be forced to infer specialist spawns from SPAWN-TOKEN-EVENT lines"
+fi
+
 echo "== state template JSON"
 if ! python3 -c "import json; json.load(open('templates/state.json'))"; then
   err "templates/state.json does not parse as JSON"
@@ -397,7 +413,7 @@ RESERVED_GENERIC=(util helper run test common misc shared tools lib core temp tm
 NAME_ALLOWLIST=(
   account-run await-verdict delegate-launcher install-usage-poller ledger-append
   notify-escalation poll-usage-snapshot preflight promote-fixtures resolve-model-routing
-  resolve-model-tiers run-cold-reviewer run-worktree summary-gen sync-chatgpt-export verdict-write watcher
+  resolve-model-tiers run-cold-reviewer run-worktree summary-gen sync-chatgpt-export update-runs-index verdict-write watcher
   check-drift check-framework
   bug-fix code-review copy-review docs-reconcile execute-plan feature message-framing
   operational-build studio-briefing

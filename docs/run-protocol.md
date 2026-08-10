@@ -125,7 +125,11 @@ All three of these have bitten real runs:
 
 Owned by `scripts/run-start.sh` (step 7). The entry carries the seven-field shape
 {slug, repo, run_dir, status, phase, last_updated, workflow} written atomically
-(.tmp → mv) and validated with python3 json.load.
+(.tmp → mv) and validated with python3 json.load. Call
+`scripts/update-runs-index.sh <RUN_DIR>` after each state.json phase update to mirror
+the current phase into the index (it derives status/phase/last_updated from state.json;
+no entry yet → silent no-op, since creation is run-start.sh's job; the archive step
+still owns the final complete→archived transition).
 
 > **Not committed.** `output/studio/runs-index/` and the derived
 > `output/studio/runs-snapshot.json` are **gitignored** local runtime cache — per-run

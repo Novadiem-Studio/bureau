@@ -40,6 +40,9 @@ skill and follow it; do not duplicate its steps here.
    keys against the live environment and writes `RUN_DIR/preflight.md` (result PASS or FAIL). A
    non-zero exit **stops the run**: the Mechanic must not act until `preflight.md` shows PASS. The
    close-out in step 4 re-checks this before accepting the run.
+   For a docker/remote-secret target whose keys never reach the invoking shell, pass
+   `--env-file <path-to-.env>` so preflight checks key presence in that file instead of the host
+   environment (secret-safe: only key names are read, never values).
 3. **The Mechanic** (**standard**) — run the runbook steps exactly as the skill defines them,
    stopping at the **production boundary** (below). Build/dev-deploy only; never promote,
    publish, or push toward release/prod. → build artifact or dev-deploy record + checkpoint output
