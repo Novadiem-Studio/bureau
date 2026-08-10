@@ -9,7 +9,7 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 
 ## Canonical copy and drift
 
-**Canonical upstream:** [github.com/rheos/bureau](https://github.com/rheos/bureau).
+**Canonical upstream:** [github.com/Novadiem-Studio/bureau](https://github.com/Novadiem-Studio/bureau).
 **One global install** at `~/Code/novadiem/bureau/` — do not copy into projects.
 Each run: `RUN_DIR` under `<target-repo>/.bureau/runs/` (or `output/runs/` for no-target fallback). Execute builds: git worktree per run (`docs/git-worktree.md`).
 Two rules:
