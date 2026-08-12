@@ -373,8 +373,8 @@ try:
     gate_results = json.loads(sys.argv[1])
     claimed_data = json.loads(sys.argv[2])
     claimed = claimed_data.get("gates", [])
-    claimed_names = {g.get("name", "") for g in claimed}
-    claimed_cmds  = {g.get("command", "") for g in claimed}
+    claimed_names = {g.get("name", "") for g in claimed if isinstance(g, dict)}
+    claimed_cmds  = {g.get("command", "") for g in claimed if isinstance(g, dict)}
     for g in gate_results:
         if g["name"] not in claimed_names and g["command"] not in claimed_cmds:
             under.append(g)
