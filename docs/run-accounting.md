@@ -57,7 +57,15 @@ accounting) if ANY of these hold:
   `null`; `attempt` must be an integer ≥ 1);
 - a required string key is **empty** (`role`, `agent`, `configured_model`, `attempt_id`
   must be non-empty);
-- `attempt_id` does not START WITH `"<role>-"` (role-prefix rule);
+- `attempt_id` does not START WITH `"<role>-"` **or with `"<persona-alias>-"`** — the
+  role-prefix rule, relaxed to also accept the sibling naming scheme. The cast keys
+  (`challenger`/`cleric`/`spellwright`/`systemsmith`/`mage`/`mechanic`/`counselor`) and the
+  persona-file stems (`critic`/`designer`/`prompt-engineer`/`backend`/`frontend`/`sysadmin`/
+  `voice`) name the same role, so an `attempt_id` prefixed by *either* is accepted for a spawn
+  whose `role` field is the other (e.g. `role:"critic"` + `attempt_id:"challenger-1"`).
+  `analyst`/`architect` share one name and have no alias. A genuinely mismatched prefix (e.g.
+  `attempt_id:"architect-1"` on `role:"critic"`) still fails. The `attempt_id` is never
+  rewritten — it stays verbatim as the sole pairing key to the `SPAWN-TOKEN-EVENT` line;
 - `status` is not one of the five legal values.
 
 Also rejected before parsing keys: a line whose payload is not exactly one JSON value, or
@@ -65,7 +73,9 @@ is a JSON value that is not an object. Every rejection is noted in the accountin
 never silently dropped.
 
 `attempt_id` is role-prefixed — e.g. `"architect-1"`, and `"architect-2"` for a re-spawn;
-any suffix after the hyphen is permitted.
+any suffix after the hyphen is permitted. The prefix may be the role's cast key or its
+persona alias (see the role-prefix bullet above); the stored `attempt_id` is the verbatim
+pairing key either way.
 
 The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
 

@@ -310,6 +310,39 @@ get_configured_model() {
     echo "unavailable:null"
 }
 
+# ── 5.6 persona↔cast-key alias map (Bug 3 — attempt_id role-prefix drift) ──────
+# The cast keys used in model-routing.json (challenger/cleric/spellwright/…) and the
+# persona-file stems (critic/designer/prompt-engineer/…) name the SAME role. A
+# Conductor that keys attempt_id off one scheme while writing `role` in the other
+# (observed: role:"critic" with attempt_id:"challenger-1", role:"designer" with
+# "cleric-1") produced a canon-CORRECT role field but a prefix the strict gate below
+# rejected — silently dropping a spawn whose role was valid. This helper returns the
+# accepted attempt_id prefixes for a role: the role itself PLUS its persona/cast
+# alias (either direction). A genuinely-mismatched attempt_id (e.g. "architect-1" on
+# role:"critic") maps to neither and still fails — the check stays meaningful.
+# The role field is kept as-is (canon), and attempt_id stays VERBATIM as the sole
+# pairing key (never rewritten), so pairing with the hook's SPAWN-TOKEN-EVENT and the
+# started/terminal collapse are unaffected.
+role_alias() {
+    case "$1" in
+        critic)          echo "challenger" ;;
+        challenger)      echo "critic" ;;
+        designer)        echo "cleric" ;;
+        cleric)          echo "designer" ;;
+        prompt-engineer) echo "spellwright" ;;
+        spellwright)     echo "prompt-engineer" ;;
+        backend)         echo "systemsmith" ;;
+        systemsmith)     echo "backend" ;;
+        frontend)        echo "mage" ;;
+        mage)            echo "frontend" ;;
+        sysadmin)        echo "mechanic" ;;
+        mechanic)        echo "sysadmin" ;;
+        voice)           echo "counselor" ;;
+        counselor)       echo "voice" ;;
+        *)               echo "" ;;   # analyst/architect/etc. share one name — no alias
+    esac
+}
+
 # ── 6. SPAWN-EVENT parse → specialist_spawns[] ────────────────────────────────
 
 # STEP 6.0 — temp files for the two-pass reduction (Bash 3.2 has no associative
@@ -449,13 +482,29 @@ else
 
         # attempt_id must be role-prefixed (role + "-" + <suffix>). Relaxed from strict equality
         # with "${role}-${attempt}" so descriptive per-pass suffixes (e.g. challenger-r1-1,
-        # cleric-brief-1) are accepted while the role linkage is preserved. Uniqueness across
-        # spawns is enforced downstream by keying started/terminal pairs on attempt_id.
+        # cleric-brief-1) are accepted while the role linkage is preserved. Bug 3: also accept a
+        # persona/cast ALIAS prefix of the role (role:"critic" + attempt_id:"challenger-1", etc.)
+        # so a spawn whose `role` field is canon-correct is not dropped merely because the
+        # attempt_id prefix uses the sibling naming scheme. attempt_id itself is kept VERBATIM as
+        # the pairing key (never rewritten). A genuine role/attempt_id mismatch (e.g.
+        # "architect-1" on role:"critic") matches neither prefix and still fails. Uniqueness
+        # across spawns is enforced downstream by keying started/terminal pairs on attempt_id.
+        role_alt=$(role_alias "$role")
         case "$attempt_id" in
             "${role}-"?*) : ;;
             *)
-                spawn_parse_errors+=("line $lineno: attempt_id '$attempt_id' not prefixed by role '${role}-'")
-                continue
+                if [ -n "$role_alt" ]; then
+                    case "$attempt_id" in
+                        "${role_alt}-"?*) : ;;
+                        *)
+                            spawn_parse_errors+=("line $lineno: attempt_id '$attempt_id' not prefixed by role '${role}-' or its alias '${role_alt}-'")
+                            continue
+                            ;;
+                    esac
+                else
+                    spawn_parse_errors+=("line $lineno: attempt_id '$attempt_id' not prefixed by role '${role}-'")
+                    continue
+                fi
                 ;;
         esac
 
@@ -591,7 +640,29 @@ specialist_spawns_json=$(printf '%s' "$pass2_result" | jq -r '.spawns[] | @json'
                           and .configured == $cfg and .actual == $act)] | length > 0
                 ')
             if [ "$override_match" != "true" ]; then
-                divergence_note="model divergence without override: role=$entry_role configured=$cfg_val_raw actual=$entry_actual_model"
+                # Bug 4 — POST-HOC RECONCILE (docs/run-accounting.md § 6). No actor ever
+                # hand-writes MODEL-OVERRIDE on a genuine quota downgrade, so an actual!=
+                # configured divergence read as a permanent protocol violation forever. The
+                # honest SPAWN-EVENT already carries the true `actual_model` (the Conductor
+                # picked the downgrade and logged it), so the divergence IS self-declared.
+                # Auto-emit a MODEL-OVERRIDE: line for it here — the ONE seam that holds BOTH
+                # halves at once (configured re-resolved from model-routing.json, actual from
+                # the event) — with a shell-computed `at` (the one unfakeable clock; never a
+                # typed timestamp), then drop the violation. The auto-emitted line matches the
+                # $override_match grep above, so a second account-run.sh invocation finds it
+                # present and neither re-emits (idempotent) nor re-flags.
+                override_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                override_line=$(jq -cn \
+                    --arg role "$entry_role" \
+                    --arg aid  "$entry_attempt_id" \
+                    --arg cfg  "$cfg_val_raw" \
+                    --arg act  "$entry_actual_model" \
+                    --arg at   "$override_at" \
+                    '{role:$role,attempt_id:$aid,configured:$cfg,actual:$act,
+                      reason:"auto-reconciled from SPAWN-EVENT actual_model; no hand-written override",
+                      at:$at}')
+                printf 'MODEL-OVERRIDE: %s\n' "$override_line" >> "$RUN_DIR/log.md"
+                # Divergence is now self-declared, not a violation — leave divergence_note empty.
             fi
         fi
 
