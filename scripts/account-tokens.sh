@@ -517,13 +517,30 @@ def normalize_event($required):
 # to "partial" (data present but degraded). Carry the note regardless of zero/non-zero;
 # downgrade ONLY on the zero-with-note case — a legit non-zero clamp note stays exact.
 | (($del_processed == 0) and ($del_event_notes != null)) as $del_zero_with_note
+# Bug 1 honesty slice (#30/#31 no-exact-wash-a-zero, applied to the DELEGATE leg): a
+# PRESENT, all-final delegate block that rolls up to processed==0 with NO _note is the
+# exact-zero wash — a single close-out conductor-stop.sh fire on a baseline:null
+# .delegate pointer emits processed:0/final:true/no-note, which used to sail through the
+# exact bless below (byte-identical to the 20260809-build-tail-tooling-fixes run). A
+# manager leg that ran many turns cannot have processed==0; a final:true zero-processed
+# manager leg is a distrusted figure, not merely incomplete — so degrade it to "suspect"
+# (docs/run-accounting.md § B4: present-and-complete but inputs actively distrusted) with
+# a mandatory _note naming the tell. This is DISJOINT from $del_zero_with_note (that path
+# already carries a note and goes "partial"); this branch is the note-FREE present zero.
+# The absent-block case ($delegate|length==0 → $all_del_legs_final false) stays
+# "unavailable" untouched. The token-capture redesign (the conductor-stop pointer-collision
+# that starves the .delegate baseline) is a separate deferred run — this slice only stops
+# the zero from wearing "exact".
+| ($all_del_legs_final and ($del_processed == 0) and ($del_event_notes == null)) as $del_zero_noteless_final
 # $del_isolated (a malformed/absent session_id leg isolated to a synthetic key) is
 # AND'd into exact too — an isolated leg is a distinct real cost routed to its own
 # bucket, so the summed block is no longer trustworthy-as-exact.
-| (if $all_del_legs_final and ($del_zero_with_note | not) and ($del_isolated | not) then "exact"
+| (if $del_zero_noteless_final then "suspect"
+   elif $all_del_legs_final and ($del_zero_with_note | not) and ($del_isolated | not) then "exact"
    elif ($delegate | length) > 0 then "partial"
    else "unavailable" end) as $del_conf
-| (if ($all_del_legs_final and $del_zero_with_note) then "delegate block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
+| (if $del_zero_noteless_final then "delegate leg processed==0 with final:true and no delta evidence — a manager that ran many turns cannot have 0 processed; capture likely collapsed (see deferred conductor-stop pointer-collision fix). Not exact."
+   elif ($all_del_legs_final and $del_zero_with_note) then "delegate block rolled up to zero tokens but at least one event carried a _note (a clamp-to-zero or missing-usage fallback) — not blessed as exact"
    elif ($del_isolated and ($delegate | length) > 0)
         and $del_isolated_tokens_absent
      then "one or more delegate record(s) had an absent/null tokens object on a token event — isolated, block not blessed as exact"
