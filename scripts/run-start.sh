@@ -116,6 +116,36 @@ done
 if [ -z "$TARGET" ]; then
   echo "run-start: missing argument: --target" >&2; exit 1
 fi
+# ── Bug 5: --target must be a git repository ROOT (or the (no-target) sentinel) ──
+# state.json#target_repo is meant to record the repo ROOT; the Conductor/Delegate
+# resolve it (CLAUDE.md § Target resolution) and pass it here. Accepting a non-git
+# dir, or a mere SUBDIR of a repo, silently records the wrong target (viralvision/
+# was a non-repo-root monorepo dir; code landed in sibling git repos). --is-inside-
+# work-tree is INSUFFICIENT: it returns true for any subdir of a repo. The correct
+# discriminator is `git rev-parse --show-toplevel` == the target itself (canonically
+# normalized both sides — macOS symlinks make /var vs /private/var differ, and a
+# trailing slash / relative path must not false-reject a real root). This check runs
+# BEFORE the resume gate and any dir/pointer/index creation, so there is nothing for
+# the EC 2 rollback to undo — the ambiguity surfaces early with a clear message
+# instead of the current confusing incidental failure inside ensure-bureau-ignored.sh.
+# The literal "(no-target)" sentinel is a clean early bypass — the no-target fallback
+# routes target_repo through here as that exact string and must not break.
+if [ "$TARGET" != "(no-target)" ]; then
+  target_top="$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null)"
+  if [ -z "$target_top" ]; then
+    echo "ERROR: --target $TARGET is not a git repository (git toplevel could not be resolved) — Bureau records the repo root as target_repo; pass the enclosing repo root, or (no-target)." >&2
+    exit 1
+  fi
+  # Canonical compare: resolve both to normalized absolute paths (pwd -P — the house
+  # idiom, resolves symlinks and strips trailing slashes) so a real repo root passed
+  # with a trailing slash or via a symlinked path is not wrongly rejected.
+  target_norm="$(cd "$TARGET" 2>/dev/null && pwd -P)"
+  target_top_norm="$(cd "$target_top" 2>/dev/null && pwd -P)"
+  if [ "$target_norm" != "$target_top_norm" ]; then
+    echo "ERROR: --target $TARGET is not a git repository ROOT (git toplevel: $target_top) — Bureau records the repo root as target_repo; pass the enclosing repo root, or (no-target)." >&2
+    exit 1
+  fi
+fi
 if [ -z "$WORKFLOW" ]; then
   echo "run-start: missing argument: --workflow" >&2; exit 1
 fi
