@@ -309,7 +309,7 @@ try:
     claimed_data = json.loads(claimed_raw)
     claimed = claimed_data.get("gates", [])
     pre_existing_claimed = [g for g in claimed
-                            if g.get("result") == "red" and g.get("pre-existing") is True]
+                            if isinstance(g, dict) and g.get("result") == "red" and g.get("pre-existing") is True]
     if pre_existing_claimed:
         tmpdir = tempfile.mkdtemp(prefix="bureau-base-")
         added = False
