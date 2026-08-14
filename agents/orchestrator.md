@@ -258,7 +258,7 @@ Use Scoot (`haiku`) and Tally (`sonnet`) for read-only odd jobs so trivial scout
 silently consume opus.
 
 **Budget handling:** read `~/.novadiem/usage-snapshot.json` (statusLine-owned; no external poll),
-at run start and before expensive spawns. Escalate tier only on evidence of weak/contradictory outputs.
+at run start and before expensive spawns. The live ClaudeUsage check belongs to the Delegate (the top session picks models); direct-Conductor fallback keeps this snapshot read. Escalate tier only on evidence of weak/contradictory outputs.
 
 **Cast map and build dispatch:** agent/coder tier tables, odd-job policy, and execute-step
 dispatch rules (including design-review and bounded parallel tracks) live in the module.

@@ -95,7 +95,26 @@ To start a new Delegate-run:
    This still writes the run-scope file at the munged `RUN_DIR` key. Its nonce is the
    specialist-spawn nonce source. The Conductor subagent reads it privately before spawning
    specialists; the Delegate must never echo, log, or pass that bare nonce.
-2. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
+2. Resolve Claude affordability once, after `model-routing.json` exists and before choosing the
+   Conductor model. This is a best-effort bootstrap heuristic and must never block startup:
+   ```sh
+   _delegate_affordability_runtime="$(jq -r '.runtime // ""' "$RUN_DIR/model-routing.json" 2>/dev/null || printf '')"
+   _delegate_affordability_json="$(
+     scripts/resolve-delegate-affordability.sh \
+       "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null
+   )" || _delegate_affordability_json='{"action":"default","source":"none"}'
+   ```
+   Invoke the helper exactly once; do not duplicate its curl or snapshot parsing. For
+   `action:"use_quota"`, use `percent_remaining` as the affordability input to the existing
+   Claude opus-vs-sonnet model decision. For `action:"default"`, follow the normal default-model
+   path. For `action:"skip"`, take no quota action. An empty, malformed, or otherwise unexpected
+   result also follows the normal default-model path. A live result may have a stale `lastUpdated`:
+   tolerate that here because this is a model-choice heuristic, not accounting.
+
+   **Structural guard:** this signal feeds ONLY model choice. It is NEVER written to
+   `conductor_tokens`, `delegate_tokens`, `reviewer_tokens`, `processed_total`, or any accounting
+   field. The helper exposes no per-leg counts and neither imports nor writes accounting data.
+3. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
    transport selected by `model-routing.json#runtime`: Claude uses the Agent tool; Codex uses
    the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
    in the current host). **Set `model` explicitly to
@@ -119,7 +138,7 @@ To start a new Delegate-run:
      its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
 
    These literal lines remain the Conductor's run and role identity on every host.
-3. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
+4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
    the existing five fields plus the additive post-hoc accounting fields:
    ```sh
    _conductor_agent_id="<id from the spawn>"
