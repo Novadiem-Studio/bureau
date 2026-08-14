@@ -1,4 +1,5 @@
 name: account-run — SPAWN-TOKEN-EVENT-only log yields inferred specialist_spawns (fallback), no double-fire when SPAWN-EVENT present
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   AR="$ROOT/scripts/account-run.sh"

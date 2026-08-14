@@ -1,4 +1,5 @@
 name: #27 NEW-B · specialist ownership gate CLOSED — a mention-only FOREIGN subagent (pointer present with nonce N; transcript carries RUN_DIR + Attempt ID but NOT N) is REJECTED (zero events appended), hook still exit 0
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

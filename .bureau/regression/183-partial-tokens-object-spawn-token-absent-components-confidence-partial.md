@@ -1,4 +1,5 @@
 name: partial-tokens-object-spawn-token-absent-components-confidence-partial (A6)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 01 · enforcement-relocation (FR 6 / A6)
 owner: scripts/account-tokens.sh normalize_event + scripts/account-run.sh specialist_spawns projection
 command: |

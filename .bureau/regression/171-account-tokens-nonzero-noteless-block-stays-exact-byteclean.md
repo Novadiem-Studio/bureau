@@ -1,4 +1,5 @@
 name: audit-r2 F2/F3 no-false-fire — a legit non-zero role block with NO _note stays "exact" and byte-identical to the pre-fix output
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

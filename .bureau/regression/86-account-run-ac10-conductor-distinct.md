@@ -1,4 +1,5 @@
 name: account-run AC10 — conductor tokens live in a top-level block, never inside a specialist_spawns entry
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

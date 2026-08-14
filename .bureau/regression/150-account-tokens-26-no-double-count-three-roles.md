@@ -1,4 +1,5 @@
 name: account-tokens #26 — three disjoint role buckets, no double-count; conductor_tokens byte-identical to a conductor-only run; output_total = sum of all roles (AC 14, 15, 17)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: account-run `_notes` breadcrumb persistence — a scalar (non-object) `tokens` event surfaces a `_notes` array in accounting.json, and a clean run adds no `_notes` key
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

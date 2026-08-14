@@ -1,4 +1,5 @@
 name: account-tokens FR 5 — suspicious multi-leg note fires when legs > resumed_legs + 1
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

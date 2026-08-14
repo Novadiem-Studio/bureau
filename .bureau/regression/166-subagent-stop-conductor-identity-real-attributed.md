@@ -1,4 +1,5 @@
 name: audit-r2 F1 (i) real Conductor — delegate-state.json present, agent_id == conductor_agent_id, BUREAU_ROLE marker present → CONDUCTOR-TOKEN-EVENT emitted (happy path unchanged)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

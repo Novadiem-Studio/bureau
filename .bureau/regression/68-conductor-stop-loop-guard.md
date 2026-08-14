@@ -1,4 +1,5 @@
 name: conductor-stop loop guard — stop_hook_active:true → exit 0 immediately, no writes
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

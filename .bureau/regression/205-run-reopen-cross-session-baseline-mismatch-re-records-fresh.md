@@ -1,4 +1,5 @@
 name: re-open cross-session safety — conductor-stop.sh EC-4 re-records fresh baseline when pointer baseline.session_id differs (pre-existing guard, pinned here)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 phase: 05 · conductor-capture-lifecycle (Lever 2)
 owner: scripts/conductor-stop.sh — Step E.5 EC-4 branch (session mismatch → fresh baseline)
 # NOTE: this guard pre-existed run-reopen.sh. It is already pinned by fixture 95

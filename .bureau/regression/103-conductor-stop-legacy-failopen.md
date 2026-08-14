@@ -1,4 +1,5 @@
 name: conductor-stop EC 2 — legacy pointer fail-open: pointer has NO project_dir field → Step C.0 skipped → nonce-grep passes → CONDUCTOR-TOKEN-EVENT appended
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

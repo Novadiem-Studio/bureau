@@ -1,4 +1,5 @@
 name: stale conductor capture detected — final:true at T with hook-stamped SPAWN-TOKEN-EVENT at T+30m → confidence "partial" + stale _note
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 05 · conductor-capture-lifecycle (Lever 1)
 owner: scripts/account-tokens.sh — staleness guard
 command: |

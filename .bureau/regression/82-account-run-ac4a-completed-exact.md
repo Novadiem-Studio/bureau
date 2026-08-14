@@ -1,4 +1,5 @@
 name: account-run AC4(a) — completed run merges to schema 2 with processed_total + active_spawn_time exact
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

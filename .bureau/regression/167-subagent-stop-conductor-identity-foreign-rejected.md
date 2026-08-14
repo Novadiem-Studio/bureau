@@ -1,4 +1,5 @@
 name: audit-r2 F1 (ii) CORE PROOF — FOREIGN transcript carries the public BUREAU_ROLE marker + RUN_DIR but agent_id != conductor_agent_id → NO event emitted (not conductor, not specialist), hook still exit 0
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

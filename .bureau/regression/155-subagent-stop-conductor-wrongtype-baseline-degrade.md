@@ -1,4 +1,5 @@
 name: subagent-stop conductor wrong-TYPE baseline object — a parseable baseline slot with a non-number numeric field is treated as absent → fresh first leg, self-heal to clean JSON, correct event (audit F5, mirrors 145)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

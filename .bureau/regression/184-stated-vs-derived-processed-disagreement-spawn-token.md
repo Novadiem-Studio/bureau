@@ -1,4 +1,5 @@
 name: stated-vs-derived-processed-disagreement-spawn-token (A6 sibling)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 01 · enforcement-relocation (FR 6 / A6 sibling)
 owner: scripts/account-tokens.sh normalize_event — processed disagreement forces partial on processed field
 command: |

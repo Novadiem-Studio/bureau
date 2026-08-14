@@ -1,4 +1,5 @@
 name: conductor-stop AC 17b — closed run (status:complete) → final:true appended, pointer removed (even if account-run.sh fails)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: audit-r2 F3 (ii) — CONDUCTOR + DELEGATE events carrying a clamp _note rolling up to zero → the _note surfaces on each block + confidence not "exact"
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

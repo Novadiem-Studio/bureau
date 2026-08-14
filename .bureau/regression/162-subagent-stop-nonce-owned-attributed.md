@@ -1,4 +1,5 @@
 name: #27 NEW-A · specialist ownership gate — a legit nonce-bearing specialist (pointer present with nonce N; transcript carries RUN_DIR + Attempt ID + N) is ATTRIBUTED with the correct attempt_id
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

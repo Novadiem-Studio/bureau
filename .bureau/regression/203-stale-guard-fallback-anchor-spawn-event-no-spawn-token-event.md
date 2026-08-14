@@ -1,4 +1,5 @@
 name: stale guard fallback anchor — no SPAWN-TOKEN-EVENT records but later SPAWN-EVENT started at → still detected stale
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 05 · conductor-capture-lifecycle (Lever 1)
 owner: scripts/account-tokens.sh — staleness guard SPAWN-EVENT fallback path
 command: |

@@ -1,4 +1,5 @@
 name: account-tokens.sh — a present, final, note-free zero-processed DELEGATE leg is "suspect" (never "exact"), with a _note; absent block stays "unavailable", non-zero stays "exact" byte-clean
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

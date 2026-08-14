@@ -1,4 +1,5 @@
 name: FR 10 run-2 delta — account-tokens.sh on run-2 log.md alone reports 18M exact, not 52M (AC 1)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

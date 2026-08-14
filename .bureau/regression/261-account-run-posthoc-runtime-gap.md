@@ -1,4 +1,4 @@
-name: account-run post-hoc runtime-gap passthrough — named Codex gap falls back to the complete live rail for per-leg and derived figures
+name: account-run post-hoc runtime-gap — Codex is honestly unavailable with no live-token fallback
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)
@@ -19,30 +19,40 @@ command: |
   printf '%s' "$gap" | jq -e '._runtime_gap | contains("openai") and contains("no Claude JSONL")' >/dev/null || exit 1
   printf '%s' "$gap" > "$TMPF/gap.json"
 
-  # The optional account-tokens arg itself rejects a gated fragment and therefore
-  # preserves the live derived values.
+  # The optional account-tokens arg rejects a runtime-gap fragment. FR4 REPLACE
+  # has no live-token fallback, even when historical hook records remain in log.md.
   direct=$(bash "$ROOT/scripts/account-tokens.sh" "$RP" "$TMPF/gap.json") || exit 1
   printf '%s' "$direct" | jq -e '
-    .tokens.processed_total.value == 300 and
-    .tokens.rework_ratio.value == (100/300) and
-    .tokens.tokens_per_loop.value == 150
+    .tokens.processed_total.value == 0 and
+    .tokens.processed_total.confidence == "unavailable" and
+    (.tokens.processed_total._note | contains("no post-hoc aggregator fragment")) and
+    .tokens.rework_ratio.value == null and
+    .tokens.rework_ratio.confidence == "unavailable" and
+    .tokens.tokens_per_loop.value == null and
+    .tokens.tokens_per_loop.confidence == "unavailable" and
+    .tokens.output_total.confidence == "unavailable" and
+    .conductor_tokens.confidence == "unavailable" and
+    .delegate_tokens.confidence == "unavailable"
   ' >/dev/null || exit 1
 
   NOVADIEM_USAGE_SNAPSHOT_PATH="$TMPF/no-snapshot" bash "$ROOT/scripts/account-run.sh" "$RP" >/dev/null 2>&1 || exit 1
   jq -e '
     .schema_version == 2 and
-    .conductor_tokens.tokens.processed == 200 and
-    .delegate_tokens.tokens.processed == 300 and
-    .specialist_spawns[0].tokens.processed.value == 100 and
-    .tokens.processed_total.value == 300 and
-    .tokens.rework_ratio.value == (100/300) and
-    .tokens.tokens_per_loop.value == 150 and
+    .conductor_tokens.tokens.processed == 0 and
+    .conductor_tokens.confidence == "unavailable" and
+    .delegate_tokens.tokens.processed == 0 and
+    .delegate_tokens.confidence == "unavailable" and
+    (.specialist_spawns[0] | has("tokens") | not) and
+    .tokens.processed_total.value == 0 and
+    .tokens.processed_total.confidence == "unavailable" and
+    .tokens.rework_ratio.value == null and
+    .tokens.tokens_per_loop.value == null and
+    .tokens.output_total.confidence == "unavailable" and
     (has("_posthoc") | not)
   ' "$RP/accounting.json" >/dev/null || exit 1
   echo "PASS"
-  # Mutation: pass a `_runtime_gap` fragment through as usable and the post-hoc
-  # defaults zero the derived metrics or the replacement crashes; either breaks
-  # the pinned live 200/300/100 and processed_total 300 values.
-expected: exit 0; stdout "PASS"; aggregate-transcripts retains the named openai runtime gap, account-tokens rejects the gated optional fragment, and account-run emits the live Conductor=200, Delegate=300, specialist=100, processed_total=300 branch without _posthoc metadata
+  # Mutation: restore a live-token fallback and the historical 200/300/100 hook
+  # figures wash this named runtime gap into apparently usable accounting.
+expected: exit 0; stdout "PASS"; runtime-gap CHANGE-family member (historical owner overlaps account-tokens): aggregate-transcripts names the openai/no-Claude-JSONL gap, account-tokens rejects the gated arg-2 fragment, and account-run emits unavailable zero-with-notes/no specialist tokens/no _posthoc instead of falling back to live Conductor=200, Delegate=300, specialist=100
 phase: 04 · execute-plan
 owner: Prompt 04 / account-run.sh + account-tokens.sh runtime-gap fallback parity

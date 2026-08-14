@@ -1,4 +1,5 @@
 name: audit-r2 F1 (iii) legacy fail-open — BUREAU_ROLE marker present, NO delegate-state.json (pre-v2 run, no conductor credential) → still emits CONDUCTOR-TOKEN-EVENT as today
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

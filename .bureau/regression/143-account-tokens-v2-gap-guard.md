@@ -1,4 +1,5 @@
 name: account-tokens zero-conductor gate — topology-agnostic FR 4 (replaces v2-only gate); no-pointer fires protocol-failure; pointer fires capture-pending; conductor lines present → silent
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

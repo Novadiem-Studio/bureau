@@ -1,4 +1,5 @@
 name: account-tokens timestamp-integrity guard — fabricated narrative SPAWN-EVENT times (round hours, wrong date) that disagree with the unfakeable hook SPAWN-TOKEN-EVENT times are refused an "exact" active_spawn_time_s badge (downgraded to "suspect" with a _note naming the tell)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

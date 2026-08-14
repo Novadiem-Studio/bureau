@@ -1,4 +1,5 @@
 name: account-tokens EC 12 — no CONDUCTOR-TOKEN-EVENT at all (conductor unavailable, total partial)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

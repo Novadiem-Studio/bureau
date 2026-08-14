@@ -1,4 +1,5 @@
 name: account-tokens F3 (audit) — an event whose `processed` disagrees with input+cache_creation+cache_read is not trusted verbatim: the discrepancy is surfaced with a _note, and a legit identity-consistent run stays note-free
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: conductor-stop wrong-TYPE baseline object — a same-session pointer baseline with a non-number numeric field self-heals (re-records a clean baseline) and emits a correct event, instead of stranding accounting (audit F5)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

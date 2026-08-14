@@ -1,4 +1,5 @@
 name: class-closure Guard 3 (processed-derivation invariant) — an INCONSISTENT (inflated) stated processed in EVERY role block (conductor + delegate + reviewer + specialist), driven end-to-end through account-run.sh's FINAL accounting.json, is DERIVED back to input+cache_creation+cache_read (never trusted verbatim), the F3 identity _note surfaces, AND a block-agnostic jq walk asserts NO tokens object anywhere has processed != input+cache_creation+cache_read — self-checked non-vacuous against a synthetic future block, with a consistent negative half that stays byte-clean
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

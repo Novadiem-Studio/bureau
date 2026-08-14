@@ -1,4 +1,5 @@
 name: account-tokens EC 13 — truncated final event line skipped + _note, output valid JSON, exit 0
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

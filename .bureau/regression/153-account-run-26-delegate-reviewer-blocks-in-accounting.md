@@ -1,4 +1,5 @@
 name: account-run #26 e2e — delegate_tokens + reviewer_tokens reach accounting.json (forwarded at the merge alongside conductor_tokens); a pure-v2 run (no conductor line) still carries them
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

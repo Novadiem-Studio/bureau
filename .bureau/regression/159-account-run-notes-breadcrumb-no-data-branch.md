@@ -1,4 +1,5 @@
 name: account-run F4 (audit) — a scalar-only malformed token event (no conductor line, no usable data) keeps accounting.json at schema_version 1 BUT still carries the `_notes` breadcrumb; a genuine legacy no-token run stays note-free (AC5)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

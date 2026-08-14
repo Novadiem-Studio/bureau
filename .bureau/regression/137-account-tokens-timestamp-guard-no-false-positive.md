@@ -1,4 +1,5 @@
 name: account-tokens timestamp-integrity guard — NO false positive: a legitimate run whose narrative SPAWN-EVENT times agree with the hook SPAWN-TOKEN-EVENT times (same date, within tolerance) reads "exact"; and (W1) a round-hour narrative that an agreeing hook vouches for still reads "exact" — the all-round-hour tell is a fallback that yields to hook evidence
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: stale guard no false-fire — all activity predates final capture → confidence stays "exact"
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 05 · conductor-capture-lifecycle (Lever 1)
 owner: scripts/account-tokens.sh — staleness guard byte-identity (guards the exact path)
 command: |

@@ -1,4 +1,5 @@
 name: class-closure Guard 2 (rollup-note invariant) — a zero-tokens-with-_note event in EVERY role block (conductor + delegate + reviewer), driven end-to-end through account-run.sh's FINAL accounting.json, keeps each block partial (never exact), surfaces the event _note, and leaves processed==0 — PLUS a block-agnostic walk that catches a FUTURE block's exact-wash without naming it, PLUS a non-zero note-less negative half that stays exact
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

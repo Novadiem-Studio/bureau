@@ -1,4 +1,5 @@
 name: conductor-stop #25 — BUREAU_POINTER_FILE forces single-file mode; the pointer DIRECTORY is never consulted even when populated (AC 4 precedence keystone)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

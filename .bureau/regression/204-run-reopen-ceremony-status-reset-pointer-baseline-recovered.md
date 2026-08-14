@@ -1,4 +1,5 @@
 name: run-reopen ceremony — status reset to pending, pointer written with recovered baseline and project_dir=invocation cwd, log line appended
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 phase: 05 · conductor-capture-lifecycle (Lever 2 + W2 rework)
 owner: scripts/run-reopen.sh
 command: |

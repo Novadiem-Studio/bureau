@@ -1,4 +1,5 @@
 name: conductor-stop AC 2 / FR 9b — legitimate cwd match: pointer project_dir=/proj/alpha, transcript under the MATCHING munged dir (-proj-alpha) → Step C.0 falls through → CONDUCTOR-TOKEN-EVENT appended
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)
