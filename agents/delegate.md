@@ -120,23 +120,20 @@ To start a new Delegate-run:
        "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null
    )" || _delegate_affordability_json='{"action":"default","source":"none"}'
    _delegate_affordability_action=""
-   if _delegate_affordability_action_candidate="$(
-     printf '%s' "$_delegate_affordability_json" | jq -ser \
-       'if length == 1 and (.[0] | type) == "object" and .[0].action == "use_quota"
-        then .[0].action else empty end' \
-       2>/dev/null
-   )"; then
-     _delegate_affordability_action="$_delegate_affordability_action_candidate"
-   fi
+   _delegate_affordability_source=""
    _delegate_affordability_percent=""
-   if _delegate_affordability_percent_candidate="$(
+   if _delegate_affordability_candidate="$(
      printf '%s' "$_delegate_affordability_json" | jq -ser \
        'if length == 1 and (.[0] | type) == "object" and
+           .[0].action == "use_quota" and
+           (.[0].source == "live" or .[0].source == "snapshot") and
            (.[0].percent_remaining | type) == "number"
-        then (.[0].percent_remaining | tostring) else empty end' \
+        then .[0] |
+          @sh "_delegate_affordability_action=\(.action) _delegate_affordability_source=\(.source) _delegate_affordability_percent=\(.percent_remaining)"
+        else error("invalid affordability result") end' \
        2>/dev/null
    )"; then
-     _delegate_affordability_percent="$_delegate_affordability_percent_candidate"
+     eval "$_delegate_affordability_candidate"
    fi
 
    if [ "$_delegate_affordability_runtime" = "claude" ] &&
