@@ -658,13 +658,17 @@ spawns. Runs with < 8 specialist spawns declare scope_class `"short-run (N speci
 spawns, out of comparison scope)"` and are excluded from the primary before/after metric —
 they are not failures, just out of scope for the diet comparison.
 
-**Primary metric (AC 1):** `conductor_tokens.tokens.processed / tokens.processed_total.value`.
+**Primary metric (AC 1):** `conductor.processed / (conductor.processed + delegate.processed +
+Σ specialist_spawns[].tokens.processed)`.
 Load-bearing path fact: `conductor_tokens` is a **top-level** key in `accounting.json`, NOT
 nested under `tokens`. Reading `tokens.conductor_tokens.processed` silently returns `{}`.
-The correct path: `jq '.conductor_tokens.tokens.processed / .tokens.processed_total.value' accounting.json`.
-The metric is confirmatory only when `conductor_tokens.confidence == "exact"` (a `final:true`
-CONDUCTOR-TOKEN-EVENT captured). A `confidence: "partial"` read may corroborate but does not
-confirm AC 1.
+The corrected jq shape is `jq '.conductor_tokens.tokens.processed /
+(.conductor_tokens.tokens.processed + .delegate_tokens.tokens.processed +
+([.specialist_spawns[].tokens.processed.value] | add // 0))' accounting.json`.
+The metric is confirmatory only when `conductor_tokens.confidence`,
+`delegate_tokens.confidence`, and every `specialist_spawns[].tokens.processed.confidence` in the
+denominator are all `"exact"`. If any leg is `"partial"`, `"unavailable"`, or `"suspect"`, the
+share may corroborate but does not confirm AC 1.
 
 **Secondary metric (AC 2):** `conductor_tokens.tokens.cache_read /
 (Sigma specialist_spawns[*].tokens.cache_read.value + conductor_tokens.tokens.cache_read)`.

@@ -28,7 +28,9 @@ violation — see the three-role contrast table in CLAUDE.md.
 ## Inputs
 
 **mode: manager/relay** — Reads (handed by Robin or resumed from state):
-    delegate-state.json (topology, conductor_agent_id, active_checkpoint, revise_counts),
+    delegate-state.json (topology, conductor_agent_id, conductor_agent_ids,
+    delegate_session_id when available, run_started_at, active_checkpoint, revise_counts,
+    revision_cap),
     state.json (scope, git, phase state — read-only reference; the Conductor writes this),
     the CONDUCTOR-RETURN block (the return value from the Conductor subagent),
     the artifact under review (path from the return block),
@@ -159,16 +161,42 @@ To start a new Delegate-run:
      specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn, so no new
      ordering constraint.
 4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
-   exactly its five fields:
-   ```json
-   {
-     "topology": "integrated",
-     "conductor_agent_id": "<id from the spawn>",
-     "active_checkpoint": null,
-     "revise_counts": {},
-     "revision_cap": 2
-   }
+   the existing five fields plus the additive post-hoc accounting fields:
+   ```sh
+   _conductor_agent_id="<id from the spawn>"
+   _delegate_session_id=${CLAUDE_CODE_SESSION_ID:-}
+   _run_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   jq -n \
+     --arg conductor_id "$_conductor_agent_id" \
+     --arg delegate_session_id "$_delegate_session_id" \
+     --arg run_started_at "$_run_started_at" '
+       {
+         topology: "integrated",
+         conductor_agent_id: $conductor_id,
+         conductor_agent_ids: [$conductor_id],
+         run_started_at: $run_started_at,
+         active_checkpoint: null,
+         revise_counts: {},
+         revision_cap: 2
+       }
+       + if $delegate_session_id == "" then {}
+         else {delegate_session_id: $delegate_session_id}
+         end
+     ' > "$RUN_DIR/delegate-state.json"
    ```
+   Read `delegate_session_id` only from `$CLAUDE_CODE_SESSION_ID`, after checking that it is
+   non-empty. If the variable is absent or empty, omit the field (or write `null`); never fabricate
+   it and never guess it from `ls`. `run_started_at` is the bootstrap clock and the lower bound for
+   this run's Delegate transcript window. Whenever `conductor_agent_id` is subsequently set or
+   updated, append that id to `conductor_agent_ids` if it is not already present, preserving every
+   earlier Conductor leg across re-spawns.
+
+   These fields are additive and backward-compatible. Legacy files lack them, so an affected leg
+   degrades per FR7 with a mandatory `_note` (`partial` or `unavailable`), never a crash. The
+   recorded `delegate_session_id` covers the **bootstrap session only**: a Delegate resumed in a
+   new top-level session is an accepted v1 gap, and that resumed manager leg's tokens are not
+   attributed.
+
    `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
    single-writer-per-file, AC16).
    **Claude cleanup only.** Like the bare pointer, do NOT remove `"$_del_pointer"` at close-out — the
@@ -186,7 +214,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 **Routine checkpoint (`return-type: routine-checkpoint`):**
 
-1. Update `delegate-state.json`: `active_checkpoint = NN`, `conductor_agent_id = <current id>`.
+1. Update `delegate-state.json`: `active_checkpoint = NN`, `conductor_agent_id = <current id>`,
+   and append `<current id>` to `conductor_agent_ids` if absent.
    A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
    `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
 2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
@@ -280,7 +309,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 **Genuine fork (`return-type: genuine-fork`):**
 
-1. Update `delegate-state.json` (`active_checkpoint`, `conductor_agent_id`).
+1. Update `delegate-state.json` (`active_checkpoint`, `conductor_agent_id`), appending the current
+   id to `conductor_agent_ids` if absent.
 2. Present the fork to Robin. Claude may use top-level `AskUserQuestion`; on Codex persist
    `delegate-state.json`, ask in the top-level final response, and continue on Robin's next turn.
    The `signal-fired` field names which of the 9 escalation signals triggered it — surface that,

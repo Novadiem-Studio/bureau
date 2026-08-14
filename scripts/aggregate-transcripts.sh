@@ -199,8 +199,16 @@ delegate_header_run_dirs() {
     | sort -u
 }
 
-delegate_run_header_identity() {
-  printf '%s' "$RUN_DIR" | sed 's#/*$##; s#/.bureau/archive/#/.bureau/runs/#'
+delegate_run_header_identities() {
+  physical_identity=$(printf '%s' "$RUN_DIR" | sed 's#/*$##; s#/.bureau/archive/#/.bureau/runs/#')
+  printf '%s\n' "$physical_identity"
+
+  # A closed run may be stored beneath a sub-app after it was driven from the
+  # target-repo root. The immutable transcript retains that original canonical
+  # target-root header, so accept it as an equivalent identity for this slug.
+  if [ -n "$target_repo" ]; then
+    printf '%s/.bureau/runs/%s\n' "${target_repo%/}" "$(basename "$physical_identity")"
+  fi
 }
 
 is_recorded_conductor() {
@@ -244,10 +252,10 @@ else
       delegate_note=""
       if [ -z "$RUN_STARTED_AT" ]; then
         delegate_header_run_dirs "$DELEGATE_TRANSCRIPT" > "$DELEGATE_HEADERS"
-        delegate_own_header=$(delegate_run_header_identity)
         delegate_header_count=$(awk 'NF {n++} END {print n+0}' "$DELEGATE_HEADERS")
         delegate_only_header=$(awk 'NF {print; exit}' "$DELEGATE_HEADERS")
-        if [ "$delegate_header_count" -ne 1 ] || [ "$delegate_only_header" != "$delegate_own_header" ]; then
+        if [ "$delegate_header_count" -ne 1 ] || \
+           ! delegate_run_header_identities | grep -Fqx "$delegate_only_header"; then
           delegate_confidence="partial"
           delegate_note="shared-session per-run window unavailable; figure may over-attribute sibling-run turns"
         fi
@@ -453,7 +461,7 @@ while IFS="$(printf '\t')" read -r candidate_agent candidate_path; do
   candidate_usage=$(json_usage "$candidate_path" "" "$UNTIL_ISO")
   if [ -n "$candidate_usage" ]; then
     printf '%s' "$candidate_usage" | jq -c --arg agent "$candidate_agent" \
-      '. + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript has no matching SPAWN-EVENT; summed as unattributed"}' \
+      '. + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript with no matching SPAWN-EVENT — counted as unattributed"}' \
       | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
   else
     candidate_gap_note=$(usage_gap_note "$candidate_path" "" "$UNTIL_ISO")
