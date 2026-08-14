@@ -32,7 +32,19 @@ if [ -n "$body_file" ] && command -v curl >/dev/null 2>&1; then
 fi
 
 if [ "$curl_status" -eq 0 ] && [ "$http_status" = "200" ] && command -v jq >/dev/null 2>&1; then
-  percent_remaining="$(jq -er '.percentRemaining | select(type == "number")' "$body_file" 2>/dev/null || printf '')"
+  percent_remaining=""
+  if percent_remaining_candidate="$(
+    jq -ser '
+      if length == 1 and
+         (.[0] | type) == "object" and
+         (.[0].percentRemaining | type) == "number"
+      then .[0].percentRemaining
+      else empty
+      end
+    ' "$body_file" 2>/dev/null
+  )"; then
+    percent_remaining="$percent_remaining_candidate"
+  fi
   if [ -n "$percent_remaining" ]; then
     printf '{"action":"use_quota","source":"live","percent_remaining":%s}\n' "$percent_remaining"
     exit 0
@@ -40,7 +52,19 @@ if [ "$curl_status" -eq 0 ] && [ "$http_status" = "200" ] && command -v jq >/dev
 fi
 
 if [ -r "$snapshot_path" ] && command -v jq >/dev/null 2>&1; then
-  percent_remaining="$(jq -er '.claude.weeklyLeftPercent | select(type == "number")' "$snapshot_path" 2>/dev/null || printf '')"
+  percent_remaining=""
+  if percent_remaining_candidate="$(
+    jq -ser '
+      if length == 1 and
+         (.[0] | type) == "object" and
+         (.[0].claude.weeklyLeftPercent | type) == "number"
+      then .[0].claude.weeklyLeftPercent
+      else empty
+      end
+    ' "$snapshot_path" 2>/dev/null
+  )"; then
+    percent_remaining="$percent_remaining_candidate"
+  fi
   if [ -n "$percent_remaining" ]; then
     printf '{"action":"use_quota","source":"snapshot","percent_remaining":%s}\n' "$percent_remaining"
     exit 0

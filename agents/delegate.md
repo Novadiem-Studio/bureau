@@ -109,17 +109,25 @@ To start a new Delegate-run:
      scripts/resolve-delegate-affordability.sh \
        "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null
    )" || _delegate_affordability_json='{"action":"default","source":"none"}'
-   _delegate_affordability_action="$(
-     printf '%s' "$_delegate_affordability_json" | jq -r \
-       'if type == "object" and .action == "use_quota" then .action else "" end' \
-       2>/dev/null || printf ''
-   )"
-   _delegate_affordability_percent="$(
-     printf '%s' "$_delegate_affordability_json" | jq -r \
-       'if type == "object" and (.percent_remaining | type) == "number"
-        then (.percent_remaining | tostring) else "" end' \
-       2>/dev/null || printf ''
-   )"
+   _delegate_affordability_action=""
+   if _delegate_affordability_action_candidate="$(
+     printf '%s' "$_delegate_affordability_json" | jq -ser \
+       'if length == 1 and (.[0] | type) == "object" and .[0].action == "use_quota"
+        then .[0].action else empty end' \
+       2>/dev/null
+   )"; then
+     _delegate_affordability_action="$_delegate_affordability_action_candidate"
+   fi
+   _delegate_affordability_percent=""
+   if _delegate_affordability_percent_candidate="$(
+     printf '%s' "$_delegate_affordability_json" | jq -ser \
+       'if length == 1 and (.[0] | type) == "object" and
+           (.[0].percent_remaining | type) == "number"
+        then (.[0].percent_remaining | tostring) else empty end' \
+       2>/dev/null
+   )"; then
+     _delegate_affordability_percent="$_delegate_affordability_percent_candidate"
+   fi
 
    if [ "$_delegate_affordability_runtime" = "claude" ] &&
       [ "$_delegate_affordability_action" = "use_quota" ] &&
