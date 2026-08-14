@@ -1094,9 +1094,9 @@ if [ -r "$RUN_DIR/log.md" ]; then
 fi
 
 # STEP A2 — invoke the post-hoc aggregator, then account-tokens.sh, and merge their
-# stdout contracts (FR 8 channel pin). The aggregator is authoritative only when
-# it returns its valid, non-gated contract; otherwise the still-live hook rail is
-# used unchanged. Neither consumer writes into RUN_DIR.
+# stdout contracts (FR 8 channel pin). The aggregator is the sole per-leg token
+# source when it returns its valid, non-gated contract; otherwise per-leg figures
+# remain unavailable. Neither consumer writes into RUN_DIR.
 AGGREGATE_SCRIPT="$SCRIPT_DIR/aggregate-transcripts.sh"
 posthoc_frag=""
 posthoc_usable=0
@@ -1153,7 +1153,7 @@ else
     posthoc_bound=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi
 
-# The fragment is consumed twice (derived metrics, then per-leg replacement).
+# The fragment is consumed twice (derived metrics, then the sole per-leg write).
 # Its mktemp prefix is under tmp_prefix, so the existing EXIT sweep removes it
 # on every early exit and after the final publish.
 if [ -x "$AGGREGATE_SCRIPT" ]; then
@@ -1309,7 +1309,7 @@ if [ -x "$TOKENS_SCRIPT" ]; then
                 ]
             ' "$tmp_out" > "${tmp_out}.enrich" && mv "${tmp_out}.enrich" "$tmp_out"
 
-            # (b2) One-source authoritative replacement. attempt_id is the
+            # (b2) One-source authoritative per-leg write. attempt_id is the
             # required key (carried by the existing index-aligned internal
             # array). agent_id is only a consistency check when both sources
             # have a value; disagreement keeps the post-hoc number but marks it

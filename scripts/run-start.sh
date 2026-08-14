@@ -10,7 +10,7 @@
 #   6. Initialize log.md via log-append.sh
 #   7. Write runs-index entry (atomic .tmp → mv; validate)
 #   8. Call resolve-model-routing.sh; roll back RUN_DIR on failure (EC 2)
-#   9. Pointer enrolment (FR 2): resolve pointer path, write pointer JSON,
+#   9. Run-scope enrolment (FR 2): resolve the per-run path, write nonce JSON,
 #      echo it to stdout by default (nonce credential for direct-Conductor runs;
 #      Delegate v2 passes --no-pointer-echo so the bare pointer nonce does not
 #      enter the Delegate transcript), append nonce-free enrolment log line
@@ -63,11 +63,10 @@ Options:
   --runtime <id>     Resolve this run for an explicit host runtime. Supported
                      first-class hosts: claude and openai (codex is an alias
                      for openai). If omitted, model-policy.v2.json decides.
-  --no-pointer-echo  Write the normal bare run pointer but do not echo its nonce.
+  --no-pointer-echo  Write the normal run-scope file but do not echo its nonce.
                      Use only when a Delegate v2 top session is creating the run;
                      the Conductor subagent will read the pointer privately before
-                     spawning specialists, and the Delegate will enroll/echo its
-                     own role:delegate pointer.
+                     spawning specialists.
 EOF
 }
 
@@ -275,8 +274,7 @@ bash "$FRAMEWORK_ROOT/scripts/log-append.sh" "$RUN_DIR" \
 
 # ── Step 9: Pointer enrolment (FR 2 nonce-echo) ───────────────────────────────
 #
-# Path-resolution block — IDENTICAL to orchestrator.md § Pointer lifecycle
-# (lines 455-468) and byte-compatible with conductor-stop.sh (lines 63-76).
+# Path-resolution block — IDENTICAL to orchestrator.md § Run-scope nonce lifecycle.
 # Precedence:
 #   1. BUREAU_POINTER_FILE set (non-empty) → FORCED single-file mode at that path.
 #   2. Else → directory mode keyed by munged RUN_DIR under BUREAU_POINTER_DIR.
@@ -297,20 +295,29 @@ fi
 mkdir -p "$(dirname "$_pointer_file")" \
   || { echo "ERROR: failed to create pointer dir: $(dirname "$_pointer_file")" >&2; rollback; }
 
-printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
-  "$RUN_DIR" \
-  "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  "$(pwd -P)" \
-  > "$_pointer_file" \
-  || { echo "ERROR: failed to write pointer file" >&2; rollback; }
+# This is the post-hoc specialist run-scope secret. Preserve an existing valid
+# nonce for this RUN_DIR so re-invoking run-start cannot strand transcripts that
+# already carry it.
+_existing_run_dir=""
+_existing_nonce=""
+if [ -f "$_pointer_file" ]; then
+  _existing_run_dir=$(jq -r '.run_dir // empty' "$_pointer_file" 2>/dev/null || true)
+  _existing_nonce=$(jq -r '.nonce // empty' "$_pointer_file" 2>/dev/null || true)
+fi
+
+if [ "$_existing_run_dir" != "$RUN_DIR" ] || [ -z "$_existing_nonce" ]; then
+  printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","project_dir":"%s"}\n' \
+    "$RUN_DIR" \
+    "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$(pwd -P)" \
+    > "$_pointer_file" \
+    || { echo "ERROR: failed to write run-scope nonce file" >&2; rollback; }
+fi
 
 # FR 2: nonce-echo to stdout for direct-Conductor runs — NEVER stderr-only.
-# Delegate v2 is the exception: the top session is the Delegate, so echoing the
-# bare Conductor/specialist pointer would put that nonce in the Delegate
-# transcript and let conductor-stop.sh misselect the bare pointer before the
-# role:delegate pointer. In that topology, the pointer is still written; the
-# Conductor subagent reads it privately before spawning specialists.
+# Delegate v2 is the exception: the top session must not learn the specialist
+# run-scope secret. The Conductor subagent reads it privately before spawning.
 if [ "$POINTER_ECHO" -eq 1 ]; then
   # The nonce NEVER appears in log.md or any artifact other than the pointer file
   # and the owning transcript.

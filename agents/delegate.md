@@ -81,7 +81,7 @@ To start a new Delegate-run:
 
 1. Read `workflows/index.md`, triage the task to a workflow, resolve the target repo per
    `docs/run-protocol.md`, derive the run slug, then create the run dir with the normal opening
-   ceremony **without echoing the bare pointer nonce into the Delegate transcript**. On Codex,
+   ceremony **without echoing the run-scope nonce into the Delegate transcript**. On Codex,
    select the OpenAI runtime explicitly; on Claude, omit `--runtime` or pass `claude`:
    ```sh
    # Codex host
@@ -92,40 +92,10 @@ To start a new Delegate-run:
    scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
      --slug "$SLUG" --no-pointer-echo
    ```
-   This still writes the normal bare pointer at the munged `RUN_DIR` key. That pointer is the
+   This still writes the run-scope file at the munged `RUN_DIR` key. Its nonce is the
    specialist-spawn nonce source. The Conductor subagent reads it privately before spawning
    specialists; the Delegate must never echo, log, or pass that bare nonce.
-2. **Claude Code only — enrol the Delegate's own token-capture pointer (#26a).** If
-   `model-routing.json#runtime` is `openai`, skip this pointer ceremony and append:
-   `Codex manager/conductor/specialist token accounting unavailable; cold-reviewer usage remains exact.`
-   Do not fabricate zero-token events. On Claude, the Delegate IS the
-   top-level session, so *its* Stop hook is `conductor-stop.sh` — but the Conductor pointer
-   belongs to the Conductor/specialist rail. Without its own pointer the Delegate's manager
-   tokens are dropped. So the Delegate writes a per-run pointer tagged `"role":"delegate"`,
-   keyed by `<munged-run-dir>.delegate` (the role suffix keeps it distinct from the bare pointer),
-   and echoes it so the nonce lands in the Delegate's transcript (the ownership credential).
-   This reuses #25's per-run-keyed directory:
-   ```sh
-   # Resolve the directory exactly as conductor-stop.sh does (BUREAU_POINTER_FILE forces
-   # single-file mode; else BUREAU_POINTER_DIR / default ~/.novadiem/active-runs/).
-   if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
-     _del_pointer="$BUREAU_POINTER_FILE"      # test isolation / forced single-file
-   else
-     _del_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
-     mkdir -p "$_del_dir"
-     _del_key=$(printf '%s' "$RUN_DIR" | sed 's#[/.]#-#g')
-     _del_pointer="$_del_dir/${_del_key}.delegate"
-   fi
-   printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s","role":"delegate"}\n' \
-     "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
-     > "$_del_pointer"
-   cat "$_del_pointer"   # echo — places the Delegate pointer nonce in the Delegate transcript
-   ```
-   Then write the nonce-free enrolment log line to `RUN_DIR/log.md` (same discipline as the
-   Conductor): `Delegate pointer enrolled — role:delegate, nonce in pointer file and Delegate transcript only.`
-   `conductor-stop.sh` selects this `.delegate` pointer for the Delegate top session and emits a
-   **DELEGATE-TOKEN-EVENT** (shared baseline/delta arithmetic, distinct log prefix).
-3. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
+2. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
    transport selected by `model-routing.json#runtime`: Claude uses the Agent tool; Codex uses
    the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
    in the current host). **Set `model` explicitly to
@@ -145,22 +115,11 @@ To start a new Delegate-run:
      at each checkpoint; do not write NN-request.md, do not call await-verdict.sh, do not emit
      an interactive [CHECKPOINT]*),
    - the task and the full Bureau host instructions the Conductor needs;
-   - instruction to read the bare run pointer privately before the first specialist spawn and use
+   - instruction to read the run-scope file privately before the first specialist spawn and use
      its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
 
-   On Claude, the two literal lines are also the token-capture rail (they are NOT decoration).
-   On Codex they remain required run/role identity, but token attribution is the named gap in
-   `docs/host-runtime.md`:
-   - `RUN_DIR: <abs>` — the exact shape `scripts/subagent-stop.sh` Step 3 greps to identify the
-     bureau run this subagent belongs to. Without it the hook cannot resolve RUN_DIR and drops
-     the Conductor's tokens.
-   - `BUREAU_ROLE: conductor` — the marker `subagent-stop.sh` Step 4.5 matches (anchored,
-     case-sensitive) to classify this subagent as the Conductor and emit a **CONDUCTOR-TOKEN-EVENT**
-     (baseline/delta) instead of a specialist SPAWN-TOKEN-EVENT. This is ownership-by-identity
-     (the spawn prompt declares the role), not by grepping the log for a mention — same rail as a
-     specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn, so no new
-     ordering constraint.
-4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
+   These literal lines remain the Conductor's run and role identity on every host.
+3. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
    the existing five fields plus the additive post-hoc accounting fields:
    ```sh
    _conductor_agent_id="<id from the spawn>"
@@ -199,14 +158,6 @@ To start a new Delegate-run:
 
    `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
    single-writer-per-file, AC16).
-   **Claude cleanup only.** Like the bare pointer, do NOT remove `"$_del_pointer"` at close-out — the
-   post-close-out Stop fire must still find it to write the Delegate's `final:true` capture (its
-   compare-before-rm then removes it). It is also removed at archive by the `#25/#26a janitor`
-   (`agents/orchestrator.md § Pointer lifecycle` — `rm -f "${_pointer_file}.delegate"`). If you
-   tear the integrated session down without going through that archive path, `rm -f "$_del_pointer"`
-   yourself so no `.delegate` file lingers (a lingering one is inert — its nonce is in no live
-   transcript — but leave nothing stale).
-
 ### Main manager loop
 
 For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
