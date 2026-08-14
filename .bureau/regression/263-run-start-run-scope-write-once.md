@@ -1,5 +1,6 @@
 name: run-start writes the four-field run-scope nonce once for a run's life
 owner: scripts/run-start.sh run-scope nonce enrolment
+phase: 05 · execute-plan
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

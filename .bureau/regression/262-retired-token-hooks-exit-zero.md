@@ -1,5 +1,6 @@
 name: FR4 REPLACE retired token hooks remain permanent fail-soft stubs
 owner: scripts/conductor-stop.sh + scripts/subagent-stop.sh
+phase: 05 · execute-plan
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

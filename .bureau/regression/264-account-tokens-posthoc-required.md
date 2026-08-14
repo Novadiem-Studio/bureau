@@ -1,5 +1,6 @@
 name: derived token metrics degrade honestly when the post-hoc fragment is absent
 owner: scripts/account-tokens.sh optional arg-2 seam after FR4 REPLACE
+phase: 05 · execute-plan
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

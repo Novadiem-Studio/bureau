@@ -480,7 +480,14 @@ fi
 
 **At run start:** `scripts/run-start.sh` writes `{run_dir, nonce, written_at, project_dir}`. It preserves an existing non-empty nonce for the same `RUN_DIR`; the run-scope nonce is write-once for the run's life. Direct Conductor mode echoes the file. Delegate v2 passes `--no-pointer-echo`; the Conductor reads it privately before specialist spawns.
 
-**On resume:** read and echo `"$_pointer_file"` without changing it. If it is absent, foreign, or nonce-less, rerun the guarded `run-start.sh` ceremony before any specialist spawn; the strict-mode timestamp self-check may intentionally degrade an already-damaged legacy run rather than presenting a rotated nonce as exact. Then increment `resumed_legs` and write the nonce-free enrollment log line.
+**On resume:** read and validate `"$_pointer_file"` before specialist dispatch. If its `run_dir`
+matches this `RUN_DIR` and its `nonce` is non-empty, echo it unchanged, then increment `resumed_legs` and write the nonce-free enrollment log line below.
+
+If the run-scope file is absent, foreign, or nonce-less, **HALT specialist dispatch** and
+restore the **ORIGINAL** run-scope file from a trusted backup. Validate it, then rejoin the ordinary
+valid-pointer resume path above. Do not call `run-start.sh` for the existing `RUN_DIR`; do not mint
+or rotate a nonce; and do not restore `run-reopen.sh`. If original recovery is unavailable, return
+a checkpoint/blocked run rather than claiming strict attribution.
 ```sh
 # Increment resumed_legs (atomic; absence treated as 0).
 _rl_tmp=$(mktemp "$RUN_DIR/state.json.tmp.XXXXXX")
