@@ -119,7 +119,32 @@ json_usage() {
     return 1
   fi
   raw_usage=$(sum_transcript_usage "$usage_path" 2>/dev/null) || return 1
+  nonzero_usage=$(printf '%s' "$raw_usage" | jq -r \
+    '[.input,.cache_creation,.cache_read,.output] | map(select(type == "number" and . != 0)) | length > 0' \
+    2>/dev/null)
+  [ "$nonzero_usage" = "true" ] || return 1
   printf '%s' "$raw_usage" | jq -c '{tokens:{input:.input,cache_creation:.cache_creation,cache_read:.cache_read,processed:.processed,output:.output},turns:.turns}' 2>/dev/null
+}
+
+usage_gap_note() {
+  gap_path="$1"
+  gap_shape=$(jq -Rn '
+    [inputs | fromjson?
+      | select(.type? == "assistant")
+      | select(.message.id? != null)
+      | select(.message.usage? != null)
+      | .message.usage]
+    | {
+        records: length,
+        nonzero: ((map([.input_tokens?,.cache_creation_input_tokens?,.cache_read_input_tokens?,.output_tokens?]
+                   | map(select(type == "number" and . != 0)) | length) | add // 0) > 0)
+      }
+  ' "$gap_path" 2>/dev/null)
+  if printf '%s' "$gap_shape" | jq -e '.records > 0 and (.nonzero | not)' >/dev/null 2>&1; then
+    printf 'readable transcript contains empty or all-zero message usage: %s' "$gap_path"
+  else
+    printf 'no usable message.id usage in transcript: %s' "$gap_path"
+  fi
 }
 
 resolve_top_transcript() {
@@ -190,8 +215,9 @@ else
     if [ -n "$delegate_usage" ]; then
       printf '%s' "$delegate_usage" | jq -c '. + {confidence:"exact"}' > "$DELEGATE_JSON"
     else
+      delegate_gap_note=$(usage_gap_note "$DELEGATE_TRANSCRIPT")
       jq -cn --argjson tokens "$ZERO_TOKENS" \
-        --arg note "no usable message.id usage in transcript: $DELEGATE_TRANSCRIPT" \
+        --arg note "$delegate_gap_note" \
         '{tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' > "$DELEGATE_JSON"
     fi
   else
@@ -298,7 +324,7 @@ while IFS= read -r conductor_id; do
   conductor_one=$(json_usage "$conductor_path")
   if [ -z "$conductor_one" ]; then
     conductor_missing=$((conductor_missing + 1))
-    append_note "no usable message.id usage in transcript: $conductor_path"
+    append_note "$(usage_gap_note "$conductor_path")"
     continue
   fi
   printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
@@ -311,7 +337,7 @@ while IFS="$(printf '\t')" read -r conductor_id conductor_path; do
   conductor_one=$(json_usage "$conductor_path")
   if [ -z "$conductor_one" ]; then
     conductor_missing=$((conductor_missing + 1))
-    append_note "no usable message.id usage in transcript: $conductor_path"
+    append_note "$(usage_gap_note "$conductor_path")"
     continue
   fi
   printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
@@ -368,8 +394,9 @@ while IFS="$(printf '\t')" read -r attempt_id role; do
         '. + {attempt_id:$attempt,role:$role,agent_id:$agent,confidence:"exact"}' \
         | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence}' >> "$SPECIALISTS_JSONL"
     else
+      candidate_gap_note=$(usage_gap_note "$candidate_path")
       jq -cn --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" \
-        --arg note "no usable message.id usage in transcript: $candidate_path" \
+        --arg note "$candidate_gap_note" \
         '{attempt_id:$attempt,role:$role,agent_id:$agent,tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' \
         >> "$SPECIALISTS_JSONL"
     fi
@@ -385,7 +412,8 @@ while IFS="$(printf '\t')" read -r candidate_agent candidate_path; do
       '. + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript has no matching SPAWN-EVENT; summed as unattributed"}' \
       | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
   else
-    jq -cn --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" --arg note "no usable message.id usage in transcript: $candidate_path" \
+    candidate_gap_note=$(usage_gap_note "$candidate_path")
+    jq -cn --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" --arg note "$candidate_gap_note" \
       '{attempt_id:null,role:null,agent_id:$agent,tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' \
       >> "$SPECIALISTS_JSONL"
   fi
