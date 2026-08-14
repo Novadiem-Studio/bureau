@@ -21,13 +21,13 @@ command: |
     '{type:"user",message:{content:("RUN_DIR: "+$own+"\nRUN_DIR: "+$sibling+"\n")}}' \
     > "$SESSION.jsonl"
   printf '%s\n' \
-    '{"type":"assistant","message":{"id":"shared-turn","usage":{"input_tokens":5},"content":[]}}' \
+    '{"type":"assistant","message":{"id":"shared-turn","usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
     >> "$SESSION.jsonl"
   jq -cn --arg own "$RUN_PATH" \
     '{type:"user",message:{content:("BUREAU_ROLE: conductor\nRUN_DIR: "+$own+"\n")}}' \
     > "$SESSION/subagents/agent-cond-shared.jsonl"
   printf '%s\n' \
-    '{"type":"assistant","message":{"id":"conductor-turn","usage":{"input_tokens":9},"content":[]}}' \
+    '{"type":"assistant","message":{"id":"conductor-turn","usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
     >> "$SESSION/subagents/agent-cond-shared.jsonl"
   out=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" BUREAU_POINTER_FILE="$TMPF/no-pointer" "$ROOT/scripts/aggregate-transcripts.sh" "$RUN_PATH" 2>/dev/null) || exit 1
   printf '%s' "$out" | jq -e '

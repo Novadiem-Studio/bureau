@@ -24,8 +24,11 @@ The fallback is `<install>/output/runs/<slug>/` when `target_repo` is `"(no-targ
 - **(1)-(3) New runs:** direct Conductor mode runs
   `scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`, adding
   `--runtime openai` on Codex. Delegate v2 mode also adds `--no-pointer-echo`.
-  On Claude it then enrolls its own role:delegate pointer before spawning the Conductor;
-  Codex skips that hook-only pointer and logs the named accounting gap. See
+  The run-scope file still exists, but its nonce stays out of the Delegate transcript and is
+  read privately by the Conductor before specialist dispatch. No current host writes the retired
+  `role:delegate` hook pointer. Integrated Delegate-topology Claude runs recover per-leg usage
+  post-hoc at close-out; direct-Conductor Claude runs and Codex runs log their respective named
+  accounting gaps. See
   `docs/host-runtime.md`, `run-start.sh --help`, and
   `agents/delegate.md § Bootstrap` for the full step sequence. Pass the resolved absolute path
   as **`RUN_DIR`** in every spawn prompt.

@@ -10,7 +10,7 @@ command: |
   jq -cn --arg sid "$SID" '{delegate_session_id:$sid,run_started_at:"2026-08-13T00:00:01Z"}' > "$RUN_PATH/delegate-state.json"
   printf 'SPAWN-EVENT: {"role":"analyst","attempt_id":"analyst-1","status":"started"}\n' > "$RUN_PATH/log.md"
   jq -cn --arg run "$RUN_PATH" --arg nonce "nonce-dedup" '{run_dir:$run,nonce:$nonce,written_at:"2026-08-13T00:00:00Z"}' > "$TMPF/pointer"
-  printf '%s\n' '{"type":"assistant","message":{"id":"delegate","usage":{"input_tokens":1},"content":[{"type":"text"}]}}' > "$SESSION.jsonl"
+  printf '%s\n' '{"type":"assistant","message":{"id":"delegate","usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[{"type":"text"}]}}' > "$SESSION.jsonl"
   jq -cn --arg run "$RUN_PATH" '{type:"user",message:{role:"user",content:("RUN_DIR: "+$run+"\nAttempt ID: analyst-1\nRun nonce: nonce-dedup\n")}}' > "$SESSION/subagents/agent-a1.jsonl"
   printf '%s\n' \
     '{"type":"assistant","message":{"id":"repeat","usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":5,"output_tokens":7},"content":[{"type":"tool_use"}]}}' \

@@ -352,17 +352,16 @@ done
 echo "== spawn-event emit convention (emit-event.sh)"
 # The Conductor emits SPAWN-EVENT: work-shape lines ONLY via scripts/emit-event.sh
 # (spawn-event subcommand). If that tool is missing, non-executable, or loses the
-# spawn-event subcommand, the canonical emit path is gone: runs silently regress to
-# SPAWN-TOKEN-EVENT-only logs and account-run.sh must fall back to inferred spawns
-# (the recurring emitter/parser-drift class). This is the structural guard on that
-# invariant — a per-run log.md is not checked here (it is not an install artifact),
-# the emit TOOL is.
+# spawn-event subcommand, the canonical current emit path is gone and new runs lose
+# specialist work-shape records. Historical SPAWN-TOKEN-EVENT logs retain a narrow
+# compatibility fallback, but retired hooks cannot produce one for a current run.
+# This checks the install tool, not a per-run log.md.
 if [[ ! -f scripts/emit-event.sh ]]; then
   err "scripts/emit-event.sh is missing — the Conductor cannot emit SPAWN-EVENT lines via the canonical tool; SPAWN-EVENT work-shape records will not be logged"
 elif [[ ! -x scripts/emit-event.sh ]]; then
   err "scripts/emit-event.sh is not executable — the Conductor cannot emit SPAWN-EVENT lines; run: chmod +x scripts/emit-event.sh"
 elif ! grep -q 'spawn-event)' scripts/emit-event.sh; then
-  err "scripts/emit-event.sh has no 'spawn-event)' subcommand — the SPAWN-EVENT emit path is gone; account-run.sh will be forced to infer specialist spawns from SPAWN-TOKEN-EVENT lines"
+  err "scripts/emit-event.sh has no 'spawn-event)' subcommand — current runs cannot emit specialist SPAWN-EVENT work-shape records"
 fi
 
 echo "== state template JSON"

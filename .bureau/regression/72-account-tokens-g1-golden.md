@@ -17,13 +17,14 @@ command: |
     'CHECKPOINT-EVENT: {"id":"fixture-review","status":"resolved","at":"2026-07-05T00:07:00Z","decision":"fixtures approved"}' \
     > "$RP/log.md"
   printf '%s\n' '{"critic_loops": {"architect": 1, "challenger": 1}}' > "$RP/state.json"
+  printf '%s\n' '{"delegate_session_id":"delegate-g1","conductor_agent_id":"cond-g1","conductor_agent_ids":["cond-g1"]}' > "$RP/delegate-state.json"
   jq -n '{
-    delegate:{tokens:{input:0,cache_creation:0,cache_read:0,processed:0,output:0},confidence:"exact"},
-    conductor:{tokens:{input:40,cache_creation:60,cache_read:100,processed:200,output:10},confidence:"exact"},
+    delegate:{tokens:{input:0,cache_creation:0,cache_read:0,processed:0,output:0},turns:0,confidence:"exact"},
+    conductor:{tokens:{input:40,cache_creation:60,cache_read:100,processed:200,output:10},turns:1,legs:1,confidence:"exact"},
     specialists:[
-      {attempt_id:"architect-1",confidence:"exact",tokens:{input:200,cache_creation:300,cache_read:500,processed:1000,output:50}},
-      {attempt_id:"challenger-1",confidence:"exact",tokens:{input:100,cache_creation:150,cache_read:250,processed:500,output:30}},
-      {attempt_id:"architect-2",confidence:"exact",tokens:{input:60,cache_creation:90,cache_read:150,processed:300,output:15}}
+      {attempt_id:"architect-1",role:"architect",agent_id:"architect-a",confidence:"exact",turns:1,tokens:{input:200,cache_creation:300,cache_read:500,processed:1000,output:50}},
+      {attempt_id:"challenger-1",role:"challenger",agent_id:"challenger-a",confidence:"exact",turns:1,tokens:{input:100,cache_creation:150,cache_read:250,processed:500,output:30}},
+      {attempt_id:"architect-2",role:"architect",agent_id:"architect-b",confidence:"exact",turns:1,tokens:{input:60,cache_creation:90,cache_read:150,processed:300,output:15}}
     ]
   }' > "$RP/posthoc.json"
   out=$(bash "$ROOT/scripts/account-tokens.sh" "$RP" "$RP/posthoc.json") || { rm -rf "$TMPF"; exit 1; }

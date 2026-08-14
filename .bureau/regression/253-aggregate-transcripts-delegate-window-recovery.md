@@ -23,19 +23,19 @@ command: |
   jq -cn --arg sid "delegate-resolved" '{delegate_session_id:$sid,conductor_agent_id:"cond",conductor_agent_ids:["cond"],run_started_at:"2026-08-13T00:00:01Z"}' > "$CASE_RUN/delegate-state.json"
   printf 'SPAWN-EVENT: {"role":"analyst","attempt_id":"analyst-1","status":"started"}\n' > "$CASE_RUN/log.md"
   printf '%s\n' \
-    '{"timestamp":"2026-08-13T00:00:00Z","type":"assistant","message":{"id":"d-before","usage":{"input_tokens":90},"content":[]}}' \
-    '{"timestamp":"2026-08-13T00:00:01Z","type":"assistant","message":{"id":"d-in","usage":{"input_tokens":2},"content":[{"type":"tool_use"}]}}' \
-    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"d-upper","usage":{"input_tokens":80},"content":[]}}' \
+    '{"timestamp":"2026-08-13T00:00:00Z","type":"assistant","message":{"id":"d-before","usage":{"input_tokens":90,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
+    '{"timestamp":"2026-08-13T00:00:01Z","type":"assistant","message":{"id":"d-in","usage":{"input_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[{"type":"tool_use"}]}}' \
+    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"d-upper","usage":{"input_tokens":80,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
     > "$CASE_SESSION.jsonl"
   jq -cn --arg run "$CASE_RUN" '{type:"user",message:{content:("BUREAU_ROLE: conductor\\nRUN_DIR: "+$run+"\\n")}}' > "$CASE_SESSION/subagents/agent-cond.jsonl"
   printf '%s\n' \
-    '{"timestamp":"2026-08-12T23:59:59Z","type":"assistant","message":{"id":"c-early","usage":{"input_tokens":3},"content":[]}}' \
-    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"c-upper","usage":{"input_tokens":70},"content":[]}}' \
+    '{"timestamp":"2026-08-12T23:59:59Z","type":"assistant","message":{"id":"c-early","usage":{"input_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
+    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"c-upper","usage":{"input_tokens":70,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
     >> "$CASE_SESSION/subagents/agent-cond.jsonl"
   jq -cn --arg run "$CASE_RUN" '{type:"user",message:{content:("RUN_DIR: "+$run+"\\nAttempt ID: analyst-1\\n")}}' > "$CASE_SESSION/subagents/agent-analyst.jsonl"
   printf '%s\n' \
-    '{"timestamp":"2026-08-12T23:59:58Z","type":"assistant","message":{"id":"s-early","usage":{"input_tokens":4},"content":[]}}' \
-    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"s-upper","usage":{"input_tokens":60},"content":[]}}' \
+    '{"timestamp":"2026-08-12T23:59:58Z","type":"assistant","message":{"id":"s-early","usage":{"input_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
+    '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"s-upper","usage":{"input_tokens":60,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' \
     >> "$CASE_SESSION/subagents/agent-analyst.jsonl"
   resolved=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" BUREAU_POINTER_FILE="$TMPF/no-pointer" "$ROOT/scripts/aggregate-transcripts.sh" "$CASE_RUN" --until "$UNTIL") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$resolved" | jq -e '
@@ -49,7 +49,7 @@ command: |
   jq -cn --arg sid "delegate-shared" '{delegate_session_id:$sid}' > "$CASE_RUN/delegate-state.json"
   SIBLING="$TMPF/.bureau/runs/sibling"
   jq -cn --arg own "$CASE_RUN" --arg sibling "$SIBLING" '{type:"user",message:{content:("RUN_DIR: "+$own+"\\nRUN_DIR: "+$sibling+"\\n")}}' > "$CASE_SESSION.jsonl"
-  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"shared","usage":{"input_tokens":5},"content":[]}}' >> "$CASE_SESSION.jsonl"
+  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"shared","usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' >> "$CASE_SESSION.jsonl"
   shared=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" "$ROOT/scripts/aggregate-transcripts.sh" "$CASE_RUN" --until "$UNTIL") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$shared" | jq -e '.delegate.tokens.processed==5 and .delegate.confidence=="partial" and (.delegate._note|contains("may over-attribute sibling-run turns"))' >/dev/null || { rm -rf "$TMPF"; exit 1; }
 
@@ -58,7 +58,7 @@ command: |
   jq -cn --arg sid "delegate-single" '{delegate_session_id:$sid}' > "$CASE_RUN/delegate-state.json"
   FOREIGN1="$TMPF/.bureau/runs/foreign-one"; FOREIGN2="$TMPF/output/runs/foreign-two"
   jq -cn --arg own "$CASE_RUN" --arg f1 "$FOREIGN1" --arg f2 "$FOREIGN2" '{type:"user",message:{content:("RUN_DIR: "+$own+"\\nTool result mentions "+$f1+" and "+$f2+" without headers\\n")}}' > "$CASE_SESSION.jsonl"
-  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"single","usage":{"input_tokens":6},"content":[]}}' >> "$CASE_SESSION.jsonl"
+  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"single","usage":{"input_tokens":6,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' >> "$CASE_SESSION.jsonl"
   single=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" "$ROOT/scripts/aggregate-transcripts.sh" "$CASE_RUN" --until "$UNTIL") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$single" | jq -e '.delegate.tokens.processed==6 and .delegate.confidence=="exact" and (.delegate|has("_note")|not)' >/dev/null || { rm -rf "$TMPF"; exit 1; }
 
@@ -67,7 +67,7 @@ command: |
   printf '{}\n' > "$CASE_RUN/delegate-state.json"
   printf 'DELEGATE-TOKEN-EVENT: {"session_id":"delegate-legacy","final":true}\n' > "$CASE_RUN/log.md"
   jq -cn --arg own "$CASE_RUN" '{type:"user",message:{content:("RUN_DIR: "+$own+"\\n")}}' > "$CASE_SESSION.jsonl"
-  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"legacy","usage":{"input_tokens":7},"content":[]}}' >> "$CASE_SESSION.jsonl"
+  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"legacy","usage":{"input_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' >> "$CASE_SESSION.jsonl"
   legacy=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" "$ROOT/scripts/aggregate-transcripts.sh" "$CASE_RUN" --until "$UNTIL") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$legacy" | jq -e '.delegate.tokens.processed==7 and .delegate.confidence=="exact"' >/dev/null || { rm -rf "$TMPF"; exit 1; }
 

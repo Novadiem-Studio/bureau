@@ -13,14 +13,163 @@ if [ -z "$RUN_DIR" ]; then
 fi
 
 POSTHOC_FRAGMENT="${2:-}"
+posthoc_delegate_identity_present=false
+if jq -e '(.delegate_session_id | type) == "string" and (.delegate_session_id | length) > 0' \
+     "$RUN_DIR/delegate-state.json" >/dev/null 2>&1; then
+  posthoc_delegate_identity_present=true
+elif [ -r "$RUN_DIR/log.md" ] && \
+     sed -n 's/^DELEGATE-TOKEN-EVENT: //p' "$RUN_DIR/log.md" 2>/dev/null \
+       | jq -Rse '
+           split("\n")
+           | any(.[];
+               (try fromjson catch null) as $event
+               | (($event | type) == "object")
+                 and (($event.session_id | type) == "string")
+                 and (($event.session_id | length) > 0))
+         ' >/dev/null 2>&1; then
+  posthoc_delegate_identity_present=true
+fi
+posthoc_recorded_conductor_legs=0
+if [ -r "$RUN_DIR/delegate-state.json" ]; then
+  posthoc_recorded_conductor_legs=$(jq -r '
+    [ ((if (.conductor_agent_ids | type) == "array"
+          then .conductor_agent_ids[] else empty end)),
+      (if (.conductor_agent_id | type) == "string"
+       then .conductor_agent_id else empty end) ]
+    | map(select(type == "string" and length > 0)) | unique | length
+  ' "$RUN_DIR/delegate-state.json" 2>/dev/null || echo 0)
+  [ -n "$posthoc_recorded_conductor_legs" ] || posthoc_recorded_conductor_legs=0
+fi
+posthoc_expected_attempts_json='[]'
+if [ -r "$RUN_DIR/log.md" ]; then
+  posthoc_expected_attempts_json=$(sed -n 's/^SPAWN-EVENT: //p' "$RUN_DIR/log.md" 2>/dev/null \
+    | jq -Rsc '
+        def payload_attempt_id:
+          (try fromjson catch null) as $json
+          | if (($json | type) == "object")
+               and (($json.attempt_id | type) == "string")
+               and (($json.attempt_id | length) > 0)
+            then $json.attempt_id
+            else (try capture("(^|[[:space:]])attempt_id=(?<id>[^[:space:]]+)").id
+                  catch empty)
+            end;
+        split("\n")
+        | map(select(length > 0) | payload_attempt_id)
+        | map(select(type == "string" and length > 0))
+        | unique
+      ' 2>/dev/null || printf '[]')
+  [ -n "$posthoc_expected_attempts_json" ] || posthoc_expected_attempts_json='[]'
+fi
 posthoc_json="null"
 if [ -n "$POSTHOC_FRAGMENT" ] && [ -r "$POSTHOC_FRAGMENT" ] && \
-   jq -e 'type == "object"
-          and (has("_runtime_gap") | not)
-          and ((.delegate.tokens | type) == "object")
-          and ((.conductor.tokens | type) == "object")
-          and ((.specialists | type) == "array")
-          and all(.specialists[]; (.tokens | type) == "object")' \
+   jq -se --argjson expected_attempts "$posthoc_expected_attempts_json" \
+          --argjson recorded_conductor_legs "$posthoc_recorded_conductor_legs" \
+          --argjson delegate_identity_present "$posthoc_delegate_identity_present" '
+          def nonnegative_number: type == "number" and . >= 0;
+          def nonnegative_integer: nonnegative_number and . == floor;
+          def role_alias($role):
+            if $role == "critic" then "challenger"
+            elif $role == "challenger" then "critic"
+            elif $role == "designer" then "cleric"
+            elif $role == "cleric" then "designer"
+            elif $role == "prompt-engineer" then "spellwright"
+            elif $role == "spellwright" then "prompt-engineer"
+            elif $role == "backend" then "systemsmith"
+            elif $role == "systemsmith" then "backend"
+            elif $role == "frontend" then "mage"
+            elif $role == "mage" then "frontend"
+            elif $role == "sysadmin" then "mechanic"
+            elif $role == "mechanic" then "sysadmin"
+            elif $role == "voice" then "counselor"
+            elif $role == "counselor" then "voice"
+            else null end;
+          def prefixed_attempt($attempt; $prefix):
+            ($attempt | startswith($prefix + "-"))
+            and (($attempt | length) > (($prefix | length) + 1));
+          def confidence_shape:
+            . as $confidence
+            | (($confidence | type) == "string")
+              and (["exact","estimated","partial","unavailable","inferred","suspect"]
+                   | index($confidence)) != null;
+          def tokens_shape:
+            . as $tokens
+            | (($tokens | type) == "object")
+              and all(["input","cache_creation","cache_read","processed","output"][];
+                . as $key
+                | ($tokens | has($key))
+                  and ($tokens[$key] | nonnegative_number))
+              and ($tokens.processed ==
+                   ($tokens.input + $tokens.cache_creation + $tokens.cache_read));
+          def leg_shape:
+            type == "object"
+            and (.tokens | tokens_shape)
+            and (.turns | nonnegative_integer)
+            and (.confidence | confidence_shape);
+          def documented_note:
+            (._note | type) == "string" and (._note | length) > 0;
+          def zero_usage:
+            .turns == 0
+            and (.tokens
+              | .input == 0 and .cache_creation == 0 and .cache_read == 0
+                and .processed == 0 and .output == 0);
+          def top_leg_shape:
+            leg_shape
+            and (.confidence == "exact" or .confidence == "partial"
+                 or .confidence == "unavailable")
+            and (if .confidence == "exact" then true else documented_note end)
+            and (if .confidence == "unavailable" then zero_usage else true end);
+          def specialist_shape:
+            leg_shape
+            and has("attempt_id") and has("role") and has("agent_id")
+            and (if ((.attempt_id | type) == "string") and ((.attempt_id | length) > 0)
+                 then ((.role | type) == "string") and ((.role | length) > 0)
+                      and (.attempt_id as $attempt
+                        | .role as $role
+                        | prefixed_attempt($attempt; $role)
+                          or (role_alias($role) as $alias
+                            | $alias != null and prefixed_attempt($attempt; $alias)))
+                      and (if (.agent_id | type) == "string"
+                           then (.agent_id | length) > 0
+                                and (.confidence == "exact" or .confidence == "partial"
+                                     or .confidence == "unavailable")
+                                and (if .confidence == "exact" then true else documented_note end)
+                                and (if .confidence == "unavailable" then zero_usage else true end)
+                           elif .agent_id == null
+                           then (.confidence == "unavailable" or .confidence == "suspect")
+                                and documented_note and zero_usage
+                           else false end)
+                 elif .attempt_id == null
+                 then .role == null
+                      and ((.agent_id | type) == "string") and ((.agent_id | length) > 0)
+                      and (.confidence == "inferred" or .confidence == "partial"
+                           or .confidence == "unavailable")
+                      and documented_note
+                      and (if .confidence == "unavailable" then zero_usage else true end)
+                 else false end);
+          length == 1
+          and (.[0]
+            | type == "object"
+            and (has("_runtime_gap") | not)
+            and (.delegate
+              | top_leg_shape
+              and (if .confidence == "exact" or .confidence == "partial"
+                   then $delegate_identity_present else true end))
+            and (.conductor
+              | top_leg_shape
+              and (.legs | nonnegative_integer)
+              and (.legs >= $recorded_conductor_legs)
+              and (if .confidence == "exact"
+                   then $recorded_conductor_legs > 0
+                        and .legs == $recorded_conductor_legs
+                   elif .confidence == "partial" then .legs > 0
+                   else true end))
+            and ((.specialists | type) == "array")
+            and all(.specialists[]; specialist_shape)
+            and ([.specialists[] | select(.attempt_id != null) | .attempt_id] as $attempt_ids
+              | (($attempt_ids | length) == ($attempt_ids | unique | length))
+                and (($attempt_ids | unique | sort) == ($expected_attempts | sort)))
+            and ([.specialists[] | select(.agent_id != null) | .agent_id] as $agent_ids
+              | ($agent_ids | length) == ($agent_ids | unique | length)))' \
       "$POSTHOC_FRAGMENT" >/dev/null 2>&1; then
   posthoc_json=$(jq -c '.' "$POSTHOC_FRAGMENT" 2>/dev/null) || posthoc_json="null"
   [ -n "$posthoc_json" ] || posthoc_json="null"

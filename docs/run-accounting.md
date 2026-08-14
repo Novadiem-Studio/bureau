@@ -41,12 +41,14 @@ emit a structured **SPAWN-EVENT** record in `RUN_DIR/log.md`. The canonical form
 line: the literal prefix `SPAWN-EVENT: ` followed by compact JSON.
 
 ```
-SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started"}
-SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete"}
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started","at":"2026-07-05T00:00:00Z"}
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete","at":"2026-07-05T00:01:00Z"}
 ```
 
-All **seven** keys are required on every event — `role`, `agent`, `configured_model`,
-`actual_model`, `attempt`, `attempt_id`, `status`. There are no optional keys.
+All **seven base keys** are required on every event — `role`, `agent`, `configured_model`,
+`actual_model`, `attempt`, `attempt_id`, `status`. `scripts/emit-event.sh` also adds a
+shell-computed `at` timestamp. The consumer accepts the optional started-line `rework` flag
+defined in § B2.1; historical terminal `started_at` is tolerated but is not required or used.
 
 An event **fails validation** (and the script skips-and-notes it, so it falls out of
 accounting) if ANY of these hold:
@@ -65,24 +67,32 @@ accounting) if ANY of these hold:
   whose `role` field is the other (e.g. `role:"critic"` + `attempt_id:"challenger-1"`).
   `analyst`/`architect` share one name and have no alias. A genuinely mismatched prefix (e.g.
   `attempt_id:"architect-1"` on `role:"critic"`) still fails. The `attempt_id` is never
-  rewritten — it stays verbatim as the sole pairing key to the `SPAWN-TOKEN-EVENT` line;
+  rewritten — it stays verbatim as the specialist membership/join key across SPAWN-EVENTs
+  and post-hoc transcripts;
 - `status` is not one of the five legal values.
 
 Also rejected before parsing keys: a line whose payload is not exactly one JSON value, or
 is a JSON value that is not an object. Every rejection is noted in the accounting output,
 never silently dropped.
 
+These are the consumer rules enforced by `account-run.sh`. The narrower `emit-event.sh`
+CLI covers the ordinary non-empty-string `actual_model` case and adds `at`, but it has no
+JSON-null form and its numeric parser checks digits rather than the consumer's `attempt >= 1`
+rule. Callers must still pass an attempt of at least 1; a helper-emitted attempt 0 is rejected at
+close-out. Optional `rework` and historical `started_at` metadata are outside that helper's CLI.
+
 `attempt_id` is role-prefixed — e.g. `"architect-1"`, and `"architect-2"` for a re-spawn;
 any suffix after the hyphen is permitted. The prefix may be the role's cast key or its
 persona alias (see the role-prefix bullet above); the stored `attempt_id` is the verbatim
-pairing key either way.
+specialist join key either way.
 
 The five legal `status` values are: `started | complete | no-handoff | failed | terminated`.
 
-The Conductor never emits a specialist SPAWN-EVENT for itself. In direct mode it is the
-top-level session; in Delegate v2 it is captured by the Conductor token rail, not by
-`specialist_spawns[]`. A `role:conductor` SPAWN-EVENT is excluded from `specialist_spawns[]`
-(the script drops it with a note).
+The Conductor never emits a specialist SPAWN-EVENT for itself. Its post-hoc figure lives in
+the top-level `conductor_tokens` block, recovered from recorded or discovered Conductor
+transcripts when that identity is available; it never belongs in `specialist_spawns[]`. A
+`role:conductor` SPAWN-EVENT is excluded from `specialist_spawns[]` (the script drops it with
+a note).
 
 The event is emitted **twice per spawn**: `status:started` when you spawn, and one of
 `complete` / `no-handoff` / `failed` / `terminated` when the specialist terminates — both
@@ -100,8 +110,10 @@ what they spent).
 This SPAWN-EVENT line is SEPARATE from and ADDITIONAL to the existing narrative log heading
 (`## [TIMESTAMP] — Spawned ...`, where `[TIMESTAMP]` is a real `date -u` UTC stamp written via
 `scripts/log-append.sh`, never a typed value). Write both: the SPAWN-EVENT line is the
-machine-readable record, the heading is the human one — and the heading's stamp and this line's
-`"at"` field should reuse the SAME clock read (the `<TS>` `log-append.sh` echoes).
+machine-readable record, the heading is the human one. Both timestamps must be shell-computed.
+A caller that composes the event from the `<TS>` returned by `log-append.sh` may reuse that read;
+`emit-event.sh` intentionally reads its own clock, so its event may differ from the heading by a
+small interval. Accounting uses the event timestamps, not the narrative heading.
 
 The script parses ONLY the `SPAWN-EVENT:` lines — never the narrative headings. It reads
 them in a per-line guarded loop, parsing each payload with
@@ -123,12 +135,16 @@ exits:
 - (c) an abandoned run
 - (d) a run terminated before the final Challenger pass
 
-**Run accounting LAST.** On a normal close-out, accounting is the *final* action — run it
-after the merge, package install, summary, and the final `state.json`/`log.md` updates, so
-`accounting.json` reflects the run's terminal state, not a mid-close-out snapshot, and so a
-close-out step that fails *after* accounting can't leave a falsely-current file. (On an
-abnormal exit — b, c, d — you still attempt it; the partial state it captures is the
-point.)
+**Run accounting LAST.** On a normal close-out, accounting is the final metric-producing
+action — run it after the merge, package install, summary, and terminal `state.json`/`log.md`
+updates, so `accounting.json` reflects the terminal run rather than a mid-close-out snapshot.
+After it returns, only record the accounting attempt's status/path and command outcome; do not
+add work that should have entered the aggregation basis. (On an abnormal exit — b, c, d — you
+still attempt it; the partial state it captures is the point.)
+
+This terminal call is authoritative. `account-run.sh` invokes the post-hoc transcript
+aggregator inside the close-out command and publishes the resulting per-leg figures before it
+returns. No later Stop hook completes or refreshes the accounting file.
 
 On success (accounting ran and emitted `accounting.json`):
 - set `state.json#accounting.status` to `"complete"`
@@ -151,146 +167,167 @@ attempt left at `reported_status: started`) and the `phases` block — not by de
 not be produced at all.
 
 Attempting accounting on partial or early exits captures the work-shape of an interrupted
-run instead of losing it. Only a missing `RUN_DIR` itself is fatal.
+run instead of losing it. Invocation still hard-fails on the public preconditions: wrong argument
+count, a relative or absent `RUN_DIR`, missing `jq`, or a missing `state.json`. A present but thin or
+corrupt state object follows the documented degrade-and-emit path.
 
 ---
 
-## B2. Bundle 11 line types
+## B2. Current post-hoc token pipeline
 
-Additional structured line types complement the SPAWN-EVENT (§ A). All appear in `RUN_DIR/log.md`, are machine-parsed by `scripts/account-tokens.sh` and `scripts/account-run.sh`, and are backward-compatible (pre-Bundle-11 runs that contain none of these lines degrade cleanly — see EC 9 / AC 5). The token-event family now has **three disjoint role prefixes** — `CONDUCTOR-TOKEN-EVENT` (§ 3/3a), `DELEGATE-TOKEN-EVENT` (§ 3b, #26a), and `REVIEWER-TOKEN-EVENT` (§ 3c, #26b) — which partition into three separate rollup buckets. The disjoint prefixes ARE the anti-double-count invariant: each line has exactly one prefix, so no token is counted in two buckets.
+`SPAWN-EVENT`, `CHECKPOINT-EVENT`, `BLOCKER-EVENT`, `MODEL-OVERRIDE`, and
+`REVIEWER-TOKEN-EVENT` remain run-local structured log lines. Delegate, Conductor, and
+specialist token figures do **not** come from a live log-line emitter: terminal close-out
+recovers them from Claude JSONL transcripts through `scripts/aggregate-transcripts.sh`.
+This per-leg recovery is current for integrated Delegate-topology Claude runs. Direct-Conductor
+Claude runs lack the recorded Delegate session identity used to locate the transcript tree and
+therefore report the per-leg source as unavailable; non-Claude runtimes emit their named gap.
 
-### 1. SPAWN-EVENT enriched (Conductor-owned)
+### 1. Current SPAWN-EVENT metadata (Conductor-owned)
 
-The seven-key base format from § A gains required timestamp fields and one optional flag on the started line. The started line gains one timestamp (`at`); the terminal line gains two (`at` and `started_at`):
+The seven-key base format from § A carries a shell-computed `at` timestamp on both the started
+and terminal lines. A started line may also carry `rework: true`:
 
 ```
 SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"started","at":"2026-07-05T00:00:00Z"}
-SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete","at":"2026-07-05T00:01:00Z","started_at":"2026-07-05T00:00:00Z"}
+SPAWN-EVENT: {"role":"architect","agent":"The Architect","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"architect-1","status":"complete","at":"2026-07-05T00:01:00Z"}
 ```
 
-- **started line** gains `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`) and optionally `"rework": true` (omit the key when false — see `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
-- **terminal line** gains `"at"` and `"started_at"` (the started line's `at`, carried forward by the Conductor). The consumer derives `duration_s` from `terminal.at − started.at` using the started event's own `at` directly; the `started_at` field on the terminal line echoes that value and is informational. When either timestamp is absent, `wall_clock.active_spawn_time_s.confidence` degrades to `"partial"`. These narrative `at` values are Conductor-written (LLM), so `account-tokens.sh` runs a **timestamp-integrity guard**: it cross-checks each narrative terminal `at` against the same-`attempt_id` hook `SPAWN-TOKEN-EVENT` `at` (which the SubagentStop hook stamps with `date -u`, unfakeable). A different calendar date, a gap over 15 minutes, or every narrative spawn timestamp landing on the exact round hour marks the narrative times as fabricated and forces `active_spawn_time_s.confidence` to `"suspect"` (never `"exact"`) with a `_note` naming the tell.
-- `duration_s`, `turns`, and `tokens` are NOT on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook.
+- **both lines** carry `"at"` (ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`).
+- **started line** may carry `"rework": true` (omit the key when false — see
+  `agents/orchestrator.md § Run accounting (close-out)` for the redo, not re-sequence rule).
+- `account-tokens.sh` derives `duration_s` from the paired started/terminal `at` values. It
+  ignores terminal `started_at`; old logs may retain that informational echo. Missing or
+  malformed `at` values degrade confidence. If every narrative spawn timestamp lands exactly
+  on the round hour, the active-time result is `"suspect"` with a note; there is no live-hook
+  clock cross-check.
+- `duration_s`, `turns`, and `tokens` are not written on the SPAWN-EVENT. Duration is
+  consumer-derived; turns and tokens come from the post-hoc transcript fragment.
 
-### 2. SPAWN-TOKEN-EVENT (subagent-stop.sh)
+### 2. `aggregate-transcripts.sh` stdout contract
 
-Appended by `scripts/subagent-stop.sh` (SubagentStop hook) when each specialist subagent completes. Contains the deduped token usage extracted from the subagent's isolated transcript. (One exception: a subagent whose spawn prompt carries the `BUREAU_ROLE: conductor` marker is the v2-integrated Conductor and instead gets a **CONDUCTOR-TOKEN-EVENT** — see § 3a.)
+The close-out seam calls:
 
-```
-SPAWN-TOKEN-EVENT: {"attempt_id":"architect-1","agent_id":"aae17f...","at":"2026-07-05T00:01:00Z","turns":11,"tokens":{"input":131,"cache_creation":17839,"cache_read":66779,"processed":84749,"output":699}}
-```
-
-When no `Attempt ID:` line is found in the spawn prompt (EC 7), the hook emits the fallback form — `attempt_id` is JSON `null` and a `_note` explains the gap:
-
-```
-SPAWN-TOKEN-EVENT: {"attempt_id":null,"_note":"attempt_id absent from spawn prompt — record cannot be paired to a SPAWN-EVENT","agent_id":"agent-ec7-test","at":"2026-07-05T00:01:00Z","turns":3,"tokens":{"input":50,"cache_creation":0,"cache_read":0,"processed":50,"output":3}}
-```
-
-These records are still counted into `tokens.processed_total` but cannot be paired to a SPAWN-EVENT; they appear in `tokens.unattributed_records`.
-
-- `processed = input + cache_creation + cache_read` (by construction in `sum_transcript_usage`).
-- **Dedup rule:** the consumer takes `max(processed)` per `agent_id` before summing — one subagent may produce multiple SubagentStop fires; taking max prevents inflation (EC 11 / AC 16).
-- Pairing: matched to a SPAWN-EVENT pair by `attempt_id`.
-
-#### 2a. Specialist ownership gate (nonce-in-transcript — idea #27)
-
-`subagent-stop.sh` attributes a specialist SPAWN-TOKEN-EVENT only after a **capture-time identity check** (Step 4.7), the same check `conductor-stop.sh` already applies to conductor tokens. Without it, the hook attributed a subagent **purely by mention** — RUN_DIR + Attempt ID text in its first user message — so any same-run subagent that echoed the spawn prompt (a nested helper of a real specialist, a re-spawn reusing the slug, a self-run analysis spawn that quoted `log.md`) was attributed. That is the ownership-by-mention class #22 closed for the Conductor; #27 closes it for specialists.
-
-- **The gate.** After extracting `RUN_DIR` (Step 3) and `Attempt ID` (Step 5), the hook resolves the run's pointer by the **#25 precedence** — `BUREAU_POINTER_FILE` forces single-file mode; else directory mode `${BUREAU_POINTER_DIR:-~/.novadiem/active-runs}/<munged RUN_DIR>` (munge = every `/` and `.` → `-`, the same key the Conductor writes). Because `subagent-stop.sh` already knows the exact `RUN_DIR` from the transcript, it addresses the pointer **directly by key** — no directory enumeration, no ownership-select loop (simpler than `conductor-stop.sh`, which must discover which run it is). It reads `.nonce` and `grep -qF`s the subagent's own transcript for it.
-- **Nonce source = the existing per-run nonce (reuse, not a new per-spawn secret).** The run nonce already exists in the bare pointer and is already secret (never in `log.md`). In direct-Conductor runs it is also what `conductor-stop.sh` greps; in Delegate v2 runs `run-start.sh --no-pointer-echo` keeps it out of the Delegate transcript, and the Conductor subagent reads the bare pointer privately before specialist spawns. A per-spawn nonce would need a registry keyed by `attempt_id` — exactly what idea #27 forbids. The Conductor puts this nonce in the `Run nonce:` line of every specialist spawn prompt (`agents/orchestrator.md`); it is **never written to `log.md` or a SPAWN-EVENT line**, so a subagent that only read `log.md` cannot obtain it.
-- **Three states (decided in order).**
-  1. **Pointer resolves AND has a non-empty `.nonce`** (every live run): the nonce **MUST** be in the transcript. Present → attribute (append as before). **Absent → REJECT** (no append, `exit 0` with a stderr note). This is the closed gate.
-  2. **Pointer does not resolve at all** (no pointer file for `RUN_DIR`): legacy/archived run → fail **open**, attribute by mention with a stderr note. Safe because a foreign subagent **cannot remove** the pointer (only the run lifecycle writes/removes it), so it can never force this carve-out on a live run — a live run always hits state 1.
-  3. **Pointer resolves but `.nonce` is empty/malformed** (corrupt pointer): folded into the state-2 fail-open (a pointer with no usable nonce is effectively no pointer), so a corrupt pointer degrades to accept-by-mention rather than silently dropping a legit specialist's tokens.
-
-  The carve-out is keyed on **pointer existence**, never on "nonce absent from the transcript" — keying the fallback on transcript content would reopen the hole (a foreigner would just omit the nonce and take the fallback).
-- **The `attempt_id → agent_id` 1:1 dedup stays as defense-in-depth.** `account-tokens.sh`'s collision resolver (fixture 157) is untouched. The run nonce is shared across all of a run's specialists, so it does not by itself distinguish specialist-A from specialist-B *within one run*; that residual is owned by the dedup, not by this gate. Layered: capture-time identity gate (this) + post-hoc dedup.
-- **Accepted residuals.** (1) A nested subagent of a *real* specialist that inherits and passes along the full spawn prompt (including the `Run nonce:` line) does carry the true nonce and would attribute — but by the least-privilege rule a subagent does not spawn subagents unless a workflow says so, and if it happens both share the same `attempt_id`, so the dedup collapses them to one `agent_id` and routes the extra to `unattributed_records` (no double-count). (2) Same-run cross-specialist mislabel by a legitimate nonce-holder: same disposition, covered by the dedup. (3) Corrupt/absent-pointer fail-open (states 2/3): accept-by-mention when there is no verifiable pointer, not foreigner-exploitable.
-- **One-time migration under-count.** An in-flight run whose specialist spawns predate the `Run nonce:` line will have a **present** pointer (state 1) but no nonce in the specialist transcript → those specialists REJECT → their tokens vanish from attribution. Under-count is the safe direction, but it is still wrong: **drain in-flight runs before deploying**, or accept a one-time under-count of specialist spend on any run straddling the ship.
-
-### 3. CONDUCTOR-TOKEN-EVENT (conductor-stop.sh)
-
-Appended by `scripts/conductor-stop.sh` (Stop hook) for the Conductor's own main-session token usage. Fires after every main-session response turn. There is no separate post-close-out fire — the one-shot final capture is simply the first Stop fire that finds the run closed (`state.json#accounting.status` non-pending after `account-run.sh` wrote it at close-out).
-
-**Legacy shape** (pointer has no `baseline` key — pre-Bundle-16 run or backward-compat fallback):
-
-```
-CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false}
-CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-05T00:15:00Z","turns":43,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":102},"final":true}
+```sh
+scripts/aggregate-transcripts.sh "$RUN_DIR" --until "<ISO-8601 UTC>"
 ```
 
-**Non-legacy shape** (pointer has a `baseline` field — Bundle-16+ run; `tokens.*` are run-scoped deltas):
+The optional `--until` bound is half-open. When omitted, the script reads the current UTC time
+once. Runtime is checked before transcript resolution: a non-Claude run emits one
+`{"_runtime_gap":"..."}` object and exits 0, naming the absence of Claude JSONL instead of
+guessing a figure.
 
-```
-CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:14:00Z","turns":121,"tokens":{"input":10000000,"cache_creation":2000000,"cache_read":4000000,"processed":16000000,"output":100000},"final":false,"baseline":{"session_id":"c66e96...","input":20000000,"cache_creation":8000000,"cache_read":6000000,"processed":34000000,"output":300000,"turns":121}}
-CONDUCTOR-TOKEN-EVENT: {"session_id":"c66e96...","at":"2026-07-06T00:15:00Z","turns":16,"tokens":{"input":10000000,"cache_creation":4000000,"cache_read":4000000,"processed":18000000,"output":100000},"final":true,"baseline":{"session_id":"c66e96...","input":20000000,"cache_creation":8000000,"cache_read":6000000,"processed":34000000,"output":300000,"turns":121}}
-```
+A usable Claude result has this shape:
 
-- **Delta values (Bundle-16+ runs):** when the pointer has a `baseline` field, `tokens.*` fields carry **run-scoped deltas**, not session-cumulative values. Each field is `raw_cumulative − baseline[field]`, clamped to ≥ 0. `processed` is re-derived from the clamped components (`input + cache_creation + cache_read`) — never subtracted separately — keeping `processed == input + cache_creation + cache_read` by construction.
-- **`baseline` key:** non-legacy lines carry a top-level `baseline` object (the subtrahend — for audit only; `account-tokens.sh` does not consume it). An optional `_note` key is appended when any field was clamped, naming each clamped field with its raw and baseline values (e.g. `"clamped input (raw 100 < baseline 200) to 0"`).
-- **`confidence:exact` meaning (Bundle-16+ runs):** `confidence:exact` now means an exact **run-scoped** share, not the full session-cumulative. Two sequential runs in the same session each produce a separate `RUN_DIR/log.md`; their per-run `processed` values sum to the session total. For legacy lines (no `baseline` key), `confidence:exact` retains its original meaning — exact session-cumulative for single-run sessions.
-- **Legacy branch:** a line with **no `baseline` key** (pre-Bundle-16 pointer or backward-compat fallback) carries session-cumulative values exactly as before, in the same 6-key shape with no `baseline` or `_note` keys. Consumer semantics and `account-tokens.sh` logic are unchanged for these lines.
-- `final: true` on the one-shot post-closure fire only. Confidence `"exact"` is only achievable when ≥ 1 `final: true` line is present.
-- **Consumer rule:** take `max(processed)` per `session_id`, then sum across sessions (multi-leg Conductor runs produce multiple session_ids).
-- A run with all SPAWN-TOKEN-EVENTs matched but no CONDUCTOR-TOKEN-EVENT has `tokens.processed_total.confidence == "partial"` with `_note: "conductor-share-pending"` — NOT `"exact"`. A build that labels this `"exact"` is broken (EC 12 / AC 4 Blocker guard).
-
-#### 3a. CONDUCTOR-TOKEN-EVENT via subagent-stop.sh (v2-integrated runs)
-
-This section is the **Claude Code host** accounting rail. In a v2-integrated run the
-Conductor is a resumable subagent, not the top session. `conductor-stop.sh` fires only for the
-Delegate's top session; `scripts/subagent-stop.sh` emits the Conductor's event. On Codex,
-manager/Conductor/specialist accounting is unavailable and MUST be reported as a named gap;
-see `docs/host-runtime.md`.
-
-- **Marker.** The Delegate's Conductor spawn prompt (`agents/delegate.md § Bootstrap`) carries, on their own lines, `RUN_DIR: <abs>` and `BUREAU_ROLE: conductor`. `subagent-stop.sh` classifies a subagent as the Conductor **iff** the first user message contains an anchored, case-sensitive `^\s*BUREAU_ROLE:\s+conductor\s*$` line — ownership-by-identity, like a specialist's `Attempt ID:`. A prose mention of "conductor" does not match. Absence of the marker ⇒ the normal SPAWN-TOKEN-EVENT path.
-- **Emitted shape** is identical to the conductor-stop line above (same schema, delta/clamp arithmetic — both emitters share `bureau-token-lib.sh § compute_delta_line` / `compute_legacy_line`). The emitted `session_id` is the subagent's **`agent_id`** (stable per-subagent across every resumed leg), so `account-tokens.sh`'s dedup-by-`session_id` take-max collapses the resumed legs to the single largest cumulative delta — no cross-leg double-count.
-- **Baseline store.** Because a subagent has no pointer file, the per-run baseline lives in a hook-owned dotfile `RUN_DIR/.conductor-subagent-baseline.json`, a top-level object keyed by `agent_id`. Two-row state machine: first leg records baseline = current cumulative (two-step write-back guard); later legs reuse it verbatim and emit the delta. Write failure degrades to baseline-0 for that leg (raw cumulative once), no retry — the same EC-3 residual conductor-stop accepts. The dotfile lives under `.bureau/runs/<slug>/`, which is already gitignored. (Test override: `BUREAU_SUBAGENT_BASELINE_FILE`.)
-- **`final`** uses the same `state.json#accounting.status` signal as conductor-stop (non-pending ⇒ `final:true`; missing/unreadable ⇒ fail-safe open). No self-refresh and no pointer rm — there is no pointer, and the Conductor runs `account-run.sh` inside its own final turn.
-- **Backstop guard.** `account-tokens.sh` reads `RUN_DIR/delegate-state.json#topology` (null-safe). When `topology == "integrated"` AND `conductor_tokens.confidence == "unavailable"` (zero conductor lines), it attaches a `_note` naming the capture gap — converting a silent zero into a named gap. Silent once capture works; inert on v1 / no-topology runs.
-
-#### 3b. DELEGATE-TOKEN-EVENT via conductor-stop.sh (v2-integrated runs — #26a)
-
-On the Claude host, the **Delegate is the top-level session**, so *its* Stop hook is
-`conductor-stop.sh`. The Conductor subagent is captured pointerlessly by
-`subagent-stop.sh` (§ 3a); the Delegate's own manager tokens would otherwise be dropped.
-Startup therefore has two pointers: `run-start.sh --no-pointer-echo` writes the normal bare
-pointer, then the Delegate enrols its own `"role":"delegate"` pointer. Codex skips this
-hook-only pointer.
-
-```
-DELEGATE-TOKEN-EVENT: {"session_id":"<delegate top session_id>","at":"2026-07-11T00:14:00Z","turns":42,"tokens":{"input":1234,"cache_creation":5678,"cache_read":9012,"processed":15924,"output":100},"final":false,"baseline":{...}}
+```json
+{
+  "delegate": {"tokens": {"input": 0, "cache_creation": 0, "cache_read": 0, "processed": 0, "output": 0}, "turns": 0, "confidence": "exact"},
+  "conductor": {"tokens": {"input": 0, "cache_creation": 0, "cache_read": 0, "processed": 0, "output": 0}, "turns": 0, "legs": 1, "confidence": "exact"},
+  "specialists": [
+    {"attempt_id": "architect-1", "role": "architect", "agent_id": "<id>", "tokens": {"input": 0, "cache_creation": 0, "cache_read": 0, "processed": 0, "output": 0}, "turns": 0, "confidence": "exact"}
+  ]
+}
 ```
 
-- **Identical machinery.** Same baseline/delta state machine, same `bureau-token-lib.sh` `compute_delta_line`/`compute_legacy_line` arithmetic, same schema, same `session_id` = top-session id, same `final` from `state.json#accounting.status`. ONLY the log-line PREFIX (and thus the rollup bucket) differs. `role` absent or `"conductor"` ⇒ the unchanged CONDUCTOR path (every v1 / self-run byte-identical). The `_bl_write_back` guard carries the `role` field through the baseline write so later fires still emit DELEGATE.
-- **Ownership by identity, not mention.** Only the Delegate's own transcript carries the `.delegate` pointer's nonce, so only it selects that pointer — no log-grep, no #22 reopening.
+Each `tokens` object carries numeric `input`, `cache_creation`, `cache_read`, `processed`, and
+`output`; `processed = input + cache_creation + cache_read`. Optional `_note` fields explain
+degradation, and legacy-scoped output carries a top-level `_scope_note`.
 
-### 3c. REVIEWER-TOKEN-EVENT (Delegate-appended, per cold-reviewer spawn — #26b)
+Both accounting consumers treat this as a producer contract, not merely a JSON container. They
+require exactly one top-level document; complete token/turn/leg fields; the producer's legal
+per-leg confidence dispositions; a note on every non-exact leg; zero usage for `unavailable` or
+`suspect`; a recorded Delegate session identity (or legacy session-id record) for `exact` or
+`partial` Delegate usage; no fewer Conductor legs than are recorded in `delegate-state.json`
+(with `exact` requiring a nonzero exact match); role- or persona-alias-prefixed, unique specialist
+attempts; unique non-null transcript agent ids; and exact agreement between the fragment's
+attributed attempts and the run's JSON or legacy key-value SPAWN-EVENT membership. An otherwise
+well-shaped `_runtime_gap` object remains an explicit rejection. Any mismatch makes the fragment
+unusable at both seams rather than allowing an authoritative zero, omitted leg, or duplicate sum.
+
+#### Transcript summation and windows
+
+- `sum_transcript_usage` reads assistant usage from `.message.usage`, groups repeated JSONL
+  content-block lines by `.message.id`, and sums one usage object per message. `turns` counts
+  deduped message groups containing a `tool_use` block.
+- Every leg is bounded above by the same `until`. The Delegate is additionally bounded below
+  by `delegate-state.json#run_started_at`, giving `[run_started_at, until)`. If that lower bound
+  is unavailable, a uniquely matching single-run Delegate transcript can still be exact;
+  shared-session ambiguity is partial and named.
+- A structurally complete, numeric all-zero usage record is a genuine exact zero. An empty or
+  incomplete all-zero usage shape is unavailable with a mandatory note, never a note-free
+  exact zero.
+
+#### Identity and role recovery
+
+- Delegate identity comes from `delegate-state.json#delegate_session_id`; an old
+  `DELEGATE-TOKEN-EVENT` may supply only a legacy session-id fallback.
+- Conductor identity is the de-duplicated union of `conductor_agent_ids` and
+  `conductor_agent_id`. A run-scoped transcript whose `BUREAU_ROLE: conductor` marker appears
+  before any `Attempt ID:` can be discovered as an unrecorded Conductor leg; discovery makes
+  the aggregate partial and is named.
+- Specialists are joined to the first-seen SPAWN-EVENT membership list by `attempt_id`.
+  Exactly one run-scoped transcript yields a leg; no candidate yields unavailable; multiple
+  candidates for one attempt yield a zeroed `suspect` collision rather than a sum.
+- A run-scoped transcript with no matching SPAWN-EVENT is emitted once as an unattributed
+  record. Complete usage is `inferred`; incomplete-but-summable nonzero usage is `partial`
+  with a degradation note. Sibling or foreign transcripts are excluded and only their
+  volatile count is reported on stderr.
+
+For a current run, strict specialist identity requires the transcript's first `RUN_DIR:` to
+match and its `Run nonce:` to equal the write-once run-scope nonce. If the nonce cannot be
+proven to predate or equal `run_started_at`, the aggregator degrades to legacy first-`RUN_DIR:`
+membership and names that basis in `_scope_note`. The nonce itself never appears in stdout,
+`log.md`, or `accounting.json`.
+
+### 3. Terminal authoritative merge (`account-run.sh`)
+
+`account-run.sh` is the only publisher. At close-out it:
+
+1. Computes a basis from the SPAWN-EVENT count and recorded Conductor-leg count. An unchanged
+   basis reuses the prior `_posthoc.run_ended_at`; a changed basis takes a fresh bound.
+2. Invokes and validates the aggregator. A runtime-gated, malformed, or structurally
+   incomplete fragment contract is unusable and never unlocks a legacy numeric fallback.
+   This is distinct from a valid fragment containing a transcript leg whose usage fields were
+   incomplete: that leg retains its numeric subtotal as noted `partial` evidence.
+3. Passes the fragment to `account-tokens.sh`, which derives `processed_total`,
+   `rework_ratio`, `tokens_per_loop`, and `output_total` while retaining reviewer,
+   checkpoint, and wall-clock calculations.
+4. Replaces top-level `conductor_tokens`, `delegate_tokens`, and every matched specialist's
+   tokens/turns from the fragment, then atomically publishes `accounting.json` and records
+   `_posthoc.run_ended_at` plus the basis.
+
+`attempt_id` is the authoritative specialist join. A disagreement between a legacy recorded
+agent id and the post-hoc agent id keeps the post-hoc number but marks it `suspect`; a null
+post-hoc agent can still authoritatively replace a stale legacy number with unavailable.
+Null-attempt transcript cost is surfaced once in `tokens.unattributed_records`.
+
+Old `SPAWN-TOKEN-EVENT`, `CONDUCTOR-TOKEN-EVENT`, and `DELEGATE-TOKEN-EVENT` lines may remain
+in historical logs. Narrow compatibility reads can recover missing work-shape, a Delegate
+session id, or an agent-id comparison, but `account-tokens.sh` no longer rolls their numeric
+figures up. With no usable post-hoc fragment, per-leg and fragment-derived metrics degrade;
+they do not fall back to those values.
+
+`tokens.processed_total` remains build-only: specialists plus Conductor. It is the denominator
+for `rework_ratio` and `tokens_per_loop`; Delegate and reviewer gating cost is excluded.
+`tokens.output_total` includes specialists, Conductor, Delegate, and reviewers.
+
+### 3a. REVIEWER-TOKEN-EVENT (Delegate-appended, per cold-reviewer spawn)
 
 Each checkpoint the Delegate calls `scripts/run-cold-reviewer.sh`. It returns a normalized
 envelope whose `.usage` sibling is exact for either Claude or Codex. The Delegate appends one
-**REVIEWER-TOKEN-EVENT** per spawn via `scripts/append-reviewer-tokens.sh`.
+`REVIEWER-TOKEN-EVENT` per spawn via `scripts/append-reviewer-tokens.sh`.
 
 ```
 REVIEWER-TOKEN-EVENT: {"checkpoint":"05","at":"2026-07-11T00:03:00Z","turns":4,"tokens":{"input":100,"cache_creation":200,"cache_read":300,"processed":600,"output":15},"spawn_id":"05-1"}
 ```
 
-- **RAW usage, no baseline.** Each cold reviewer is a fresh one-shot — its `.usage` is the complete, non-cumulative cost of that single spawn, so the event carries the envelope usage directly (`processed = input + cache_creation + cache_read`), with no baseline/delta machinery (unlike the cumulative top sessions).
-- **Keyed by `checkpoint` + `spawn_id`.** A single checkpoint can spawn the reviewer more than once (artifact-hash re-spawn, or a `revise`→re-review cycle); each spawn gets a distinct `spawn_id` (`NN-<k>`, `k` per-spawn) and is counted once. The rollup dedups on `spawn_id` take-max (defensive against a torn re-log) then SUMS across all `spawn_id`s.
-- **Fail-safe.** An envelope lacking `.usage` (older CLI, error envelope) yields a zero-token event with a `_note` — a spawn is never silently uncounted.
-
-#### 3d. Three-bucket rollup (`account-tokens.sh` — #26)
-
-`account-tokens.sh` emits three disjoint role blocks. The prefixes partition the lines at parse time, so no line is counted twice.
-
-| Role | Log prefix | Dedup key | Aggregate | Output block |
-|------|-----------|-----------|-----------|--------------|
-| Conductor | `CONDUCTOR-TOKEN-EVENT` | `session_id` take-max, sum across legs | existing | `conductor_tokens` (unchanged) |
-| Delegate-manager | `DELEGATE-TOKEN-EVENT` | `session_id` take-max, sum across legs | mirror of conductor | `delegate_tokens` (`tokens`, `turns`, `legs`, `confidence`) |
-| Cold reviewers | `REVIEWER-TOKEN-EVENT` | `spawn_id` take-max, **sum across all spawn_ids** | one-shots | `reviewer_tokens` (`tokens`, `turns`, `spawns`, `confidence`) |
-
-- **`output_total`** folds all four roles (spec + conductor + delegate + reviewer) — it is a raw total.
-- **`processed_total`** stays **build-only** (spec + conductor) — it is the `rework_ratio` / `tokens_per_loop` denominator, and Delegate/reviewer gating cost is not build rework. Sum the four buckets' `processed` for a grand total. (OQ-1 — Conductor decision: build-only.)
-- **Gap notes** (siblings of the § 3a conductor v2-gap note, independent, can co-fire): on `topology == "integrated"`, `delegate_tokens` gets a `_note` when its confidence is `unavailable`; `reviewer_tokens` gets one when its confidence is `unavailable` AND ≥1 checkpoint resolved (so a run that hasn't hit a checkpoint yet doesn't false-fire). Inert on v1 / no-topology; silent once the lines are captured.
+- **Raw usage.** Each cold reviewer is a fresh one-shot, so the event carries the returned
+  envelope usage directly and has no baseline/delta lifecycle.
+- **Keyed by `checkpoint` + `spawn_id`.** A checkpoint can spawn more than one reviewer;
+  each spawn gets a distinct `NN-<k>` id. The rollup takes the maximum duplicate record per
+  `spawn_id`, then sums across distinct ids.
+- **Fail-safe.** An envelope without usable `.usage` yields a zero-token event with a note;
+  it is never silently treated as exact.
 
 ### 4. CHECKPOINT-EVENT (Conductor-written)
 
@@ -345,12 +382,13 @@ not emit it is valid; the round-2 exclusion falls back to reading the `### Block
 
 ---
 
-### 6. MODEL-OVERRIDE: (Conductor-written, when needed)
+### 6. MODEL-OVERRIDE: (controller- or account-run-written)
 
-Written to `log.md` by the Conductor when a specialist is deliberately spawned at a model
-that differs from `model-routing.json` (e.g. a manual escalation to opus when routing says
-sonnet). Required for the divergence check (`account-run.sh` FR 12) to distinguish a
-legitimate escalation from a protocol violation.
+A spawning controller may write this line when it deliberately chooses an actual model that
+differs from `model-routing.json`; the Delegate does so for a Conductor affordability downgrade.
+Affordability supplies model choice only and never enters an accounting token field. For
+specialists, `account-run.sh` also reconciles an honest divergent SPAWN-EVENT after the fact when
+no matching line exists.
 
 Format: `MODEL-OVERRIDE:` followed by compact JSON on its own line:
 
@@ -360,77 +398,92 @@ MODEL-OVERRIDE: {"role":"<role>","attempt_id":"<attempt_id>","configured":"<mode
 
 Match key: `attempt_id` (stable per-spawn id). A `MODEL-OVERRIDE:` line whose `attempt_id`,
 `configured`, and `actual` all match the divergent `SPAWN-EVENT` suppresses the divergence
-note. No `MODEL-OVERRIDE:` line means accounting flags the divergence as a protocol violation
-(loud note, exit 0). Zero `MODEL-OVERRIDE:` lines on a clean run (no divergence) is valid
-and degrades gracefully.
+note. If a specialist divergence has no matching line, `account-run.sh` appends exactly one
+idempotent record with a shell-computed `at` and an `auto-reconciled from SPAWN-EVENT
+actual_model` reason; the self-declared divergence is not reported as a protocol violation.
+Zero `MODEL-OVERRIDE:` lines on a clean run (no divergence) is valid.
 
 ---
 
-## B3. Pointer lifecycle (canonical — FR 6)
+## B3. Run-scope nonce lifecycle (canonical — FR 6)
 
-**Per-run-keyed directory (#25).** Each run keeps its OWN pointer file inside a directory `~/.novadiem/active-runs/` (overridable via `BUREAU_POINTER_DIR`), keyed by the munged `RUN_DIR` (every `/` and `.` → `-`). The old single global file `~/.novadiem/bureau-active-run` was a concurrency hazard: two overlapping runs (a self-run + a target-repo run, or two windows) clobbered each other's pointer, so a Conductor's Stop hook could read a sibling's pointer and drop its own tokens. With one file per run, each Conductor writes only its own key and each Stop hook SELECTS the file whose `nonce` + `run_dir` appear in its transcript.
+The per-run file is a post-hoc transcript-membership credential. It is not a token baseline,
+does not trigger capture, and is never consumed by a Stop hook.
 
-**Source precedence (the compatibility keystone), resolved identically by `conductor-stop.sh` (Step A.5) and the Conductor (`agents/orchestrator.md § Pointer lifecycle`):**
+### Path and shape
 
-| Condition | Mode | Behavior |
-|---|---|---|
-| `BUREAU_POINTER_FILE` set (non-empty) | **FORCED single-file** | The one named file is the sole candidate; no directory enumeration. Byte-for-byte the pre-#25 code path — every existing conductor-stop / delta-baseline fixture (they all set `BUREAU_POINTER_FILE`) is undisturbed. |
-| else `BUREAU_POINTER_DIR` set | directory at that root | One pointer file per run under the given directory (new fixtures set it to a `mktemp -d`). |
-| else | directory `~/.novadiem/active-runs/` | Default: one pointer file per run, keyed by munged `RUN_DIR`. |
+Each run owns one file keyed by its munged `RUN_DIR` (every `/` and `.` becomes `-`). Path
+resolution is shared by `run-start.sh`, `spawn-gate.sh`, and `aggregate-transcripts.sh`:
 
-So `BUREAU_POINTER_FILE` means "force single-file mode at this path" and doubles as the test-isolation override it always was.
-
-**Stop-hook find-my-pointer (directory mode):** `conductor-stop.sh` enumerates the candidate files, reads each one's `run_dir`/`nonce`/`written_at` (skipping any with a missing required key), and greps the transcript for BOTH the candidate's `nonce` AND `run_dir` — the SAME ownership greps the single-file hook used, now applied as a SELECTOR. A transcript carries exactly one run's nonce+run_dir pair (the nonce is unique and appears only in that run's pointer and transcript), so at most one candidate matches; a hypothetical double match takes the first in a stable sort and emits one stderr diagnostic. No candidate selected → exit 0 (the correct outcome for a non-bureau Stop and for a sibling's pointer — reading it confers nothing without its nonce in your own transcript, so #22 ownership-by-mention is NOT reopened). Steps C.0 (project-dir gate) through G (baseline machine, compare-before-rm) are unchanged and run on the selected candidate as `$POINTER_FILE`.
-
-**Key = munged `RUN_DIR`, not the nonce:** a resumed leg has the same `RUN_DIR` → same file (no orphan-per-leg; the nonce may rotate on a write-fresh resume but the file key does not). Two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber). Because a per-run file is single-writer by construction (only that run ever writes its own key), the two-step write-back guard and compare-before-rm can never touch a sibling's pointer — the pre-#25 pre-check→mv race residual is removed in directory mode.
-
-**Cleanup:** direct-Conductor close-out removes the selected bare pointer via Step G's compare-before-rm (unchanged). In Delegate v2, the bare pointer is not selected by the Delegate top session because its nonce was never echoed there; archive cleanup removes both the bare pointer and the `.delegate` pointer via the janitor in `agents/orchestrator.md § Pointer lifecycle`. A crashed run's lingering file is inert (its unique nonce is in no live transcript). Optional manual age-sweep: `find "$BUREAU_POINTER_DIR" -type f -mtime +7 -delete` (safe; no automated sweeper is shipped).
-
-**Format:** one-line JSON — `{"run_dir":"<abs RUN_DIR>","nonce":"<uuidgen lowercase>","written_at":"<ISO-8601 UTC>","baseline":null,"project_dir":"<cwd>"}`. The `baseline` field is `null` at enrollment and is updated to a baseline object on the first Stop hook fire for the run (see state machine below). The content schema is unchanged by #25 — only the file's location (a keyed file in a directory) changed. (A `"role"` field is added by #26a for the Delegate's own pointer — see § 3b.)
-
-**Baseline state machine:** `conductor-stop.sh` inspects the pointer's `baseline` field after every Stop fire to decide how to compute the run-scoped delta. `jq has("baseline")` distinguishes an absent key (pre-Bundle-16 pointer) from an explicit `null` (Bundle-16 enrolled, not yet fired). See `scripts/conductor-stop.sh § Step E.5` for the implementation.
-
-| `pointer.baseline` | Action |
+| Condition | File selected |
 |---|---|
-| key absent (`has("baseline")==false`) | Legacy — emit the old 6-key cumulative shape, no write (FR 6, FR 7). |
-| `null` | First fire — record current session cumulative as the baseline object, write back via two-step guard, then use it. Write fails → baseline=0 this fire only, no retry (EC 3 residual). |
-| object, `.session_id` matches current session | Same session — reuse the recorded baseline verbatim (FR 3). No write. |
-| object, `.session_id` differs from current session | Resumed leg in a new session (EC 4) — re-record a fresh baseline for this session, write back, use it. Write fails → baseline=0 this fire. |
+| non-empty `BUREAU_POINTER_FILE` | that exact file (forced single-file/test-isolation mode) |
+| otherwise | `${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}/<munged RUN_DIR>` |
 
-**Accounting confidence:** for Bundle-16+ runs (pointer has a `baseline` field), `CONDUCTOR-TOKEN-EVENT` lines carry run-scoped deltas, so `confidence:exact` on these lines means an exact **run-scoped** share — not the full session-cumulative. Two sequential runs in the same session each contribute their own share; the per-run shares sum to the session total (see § B2.3 for the full confidence note).
+The current one-line JSON shape has exactly four fields:
 
-**Two-step write-back guard:** the enrollment `printf` is not atomic. A sibling run can enroll between the pre-`mv` check and the `mv` (pre-check→mv window: undetectable — the sibling's capture degrades to partial / baseline=0, EC 5). The post-`mv` re-read guards only the post-`mv` window: if a sibling writes after the `mv` but before the re-read, the writer sees the sibling's pointer, bails, and correctly degrades. No wrong values are emitted by either run. See `scripts/conductor-stop.sh § _bl_write_back` for the exact guard.
+```json
+{"run_dir":"<absolute RUN_DIR>","nonce":"<secret>","written_at":"<ISO-8601 UTC>","project_dir":"<cwd>"}
+```
 
-**EC 3 residual:** if the first-fire baseline write fails, the hook falls back to baseline=0 and emits a line without a `baseline` key (the old 6-key cumulative shape). A subsequent successful fire will emit a delta line. `account-tokens.sh` uses `max_by(.tokens.processed)` per `session_id` — the early raw-cumulative line (larger processed value) dominates take-max, producing over-attribution equal to today's behavior for that run. This residual is deliberate and pinned by a standing fixture (Fixture E / fixture 96).
+There is no `baseline` field and no current `.delegate` role pointer. `run-start.sh` writes a
+fresh file only when the selected file is absent, foreign, or nonce-less. If it already names
+the same `RUN_DIR` and has a non-empty nonce, startup preserves the complete existing file,
+including `written_at`; one run therefore has one nonce for its life.
 
-**Step B validation:** the three-key gate (`run_dir` / `nonce` / `written_at`) does NOT include `baseline`. An absent `baseline` key is the backward-compat legacy signal, not a validation error.
+### Enrollment and secrecy
 
-**`BUREAU_ACCOUNT_RUN_SH`:** when this environment variable is set, `conductor-stop.sh` calls the named script at Step G(2) instead of `$SCRIPT_DIR/account-run.sh`. Unset behavior is identical — the default path resolves to `$SCRIPT_DIR/account-run.sh`. Primarily used for test injection (fixture-F / forced-failure shim).
+In direct-Conductor mode, startup echoes the file so the Conductor can copy the nonce into the
+`Run nonce:` line of each specialist's first message. In integrated Delegate mode,
+`run-start.sh --no-pointer-echo` keeps it out of the Delegate transcript; the Conductor reads
+the file privately before specialist dispatch. `spawn-gate.sh` requires the file to exist.
 
-**Who writes it:** in direct-Conductor mode, the Conductor creates/echoes the bare pointer at
-run start and on resume (see `agents/orchestrator.md § Pointer lifecycle`). In Delegate v2,
-the Delegate creates the bare pointer through `run-start.sh --no-pointer-echo`, enrolls its own
-`.delegate` pointer, and the Conductor reads the bare pointer privately for specialist spawns.
-No role manually removes a live pointer before the terminal Stop capture; cleanup follows the
-rules above.
+The nonce belongs in the run-scope file and specialist first messages. Direct-Conductor startup
+also places it in that Conductor's owning transcript by echoing the file; integrated Delegate
+startup suppresses that echo and the Conductor reads the file privately. Never write the nonce to
+`log.md`, SPAWN-EVENT, accounting output, a handoff, or a summary. The enrollment line in `log.md`
+deliberately contains no value.
 
-**Nonce ownership check:** `conductor-stop.sh` greps the transcript FILE CONTENT for both the nonce and `run_dir` (a path-based check would fail — the transcript path never contains these values). This closes EC 14: a session whose transcript contains `run_dir` but not the nonce exits 0.
+### Strict and legacy aggregation
 
-**Why the Conductor does NOT rm at close-out:** the post-closure Stop fire must still find the pointer to write `final: true`. Removing it at close-out (a round-2 defect) would make the final capture impossible and lock `processed_total.confidence` at `"partial"` forever.
+Strict specialist membership applies when `delegate-state.json#run_started_at`, the nonce,
+and `written_at` are all present and `written_at <= run_started_at`. A candidate specialist
+must have this run as its first `RUN_DIR:` identity and carry the exact run nonce. This excludes
+sibling runs even when they reuse an `Attempt ID:`.
 
-**Closure evidence:** On every Stop fire, `conductor-stop.sh` reads `RUN_DIR/state.json` to determine whether the run is closed. The run is closed when `accounting.status` is present and not `"pending"` (both `"complete"` and `"unavailable"` close it). A missing, unreadable, or unparseable `state.json` is treated as NOT closed — fail-safe direction, since a false positive would remove the pointer before the final capture can fire.
+If those prerequisites are unavailable, or the nonce postdates run start, aggregation uses
+legacy first-`RUN_DIR:` membership and emits `_scope_note` naming the weaker basis. It never
+prints the nonce. This compatibility mode preserves old/rotated runs without pretending their
+scope proof is current.
 
-**One-shot final capture:** `conductor-stop.sh` appends a `CONDUCTOR-TOKEN-EVENT` with `final: true`, then self-refreshes (`account-run.sh "$RUN_DIR"`), then performs compare-before-rm: re-reads the pointer and removes it ONLY if its `run_dir` AND `nonce` still match this run. If a newer run has enrolled (overwritten the pointer), it is left untouched.
+### Resume, close-out, and archive
 
-**Bounded capture:** once removed, later Stop fires in the same session find no pointer and exit 0. A single run produces at most one `final: true` line.
+On resume, validate the existing file before specialist dispatch. If it is absent, foreign, or
+nonce-less, halt dispatch and recover the **original** run-scope file from trusted backup. Do
+not call `run-start.sh` for an existing run to mint a replacement, and do not restore the
+deleted `run-reopen.sh`; if recovery is impossible, block rather than claiming strict
+attribution.
 
-**Stale pointer (crashed run):** under per-run keying (#25) a crashed run leaves exactly its own keyed file in `~/.novadiem/active-runs/`; it is retired by the archive janitor `rm -f`, or lingers inertly. It never misattributes tokens to the wrong run because the nonce is unique per run — a stale file is selected only by a Stop hook whose transcript carries its nonce, i.e. only its own dead session, which never fires again.
+Keep the file through terminal close-out so a pre-archive re-account can still use strict
+scope. Post-hoc accounting needs no pointer reset, nonce rotation, baseline recovery, or later
+hook fire. If recorded activity grows after an earlier close-out, `account-run.sh` advances its
+bound when the run basis changes and aggregates again.
+
+At archive, remove only this run's keyed file. Also remove `${pointer_file}.delegate` as an
+idempotent janitor for legacy Delegate pointers; no current path writes one. Do not run a broad
+active-runs deletion while runs may still require strict re-accounting.
 
 ---
 
 ## B4. Schema version and confidence enum
 
-**`schema_version`:** `accounting.json` carries `"schema_version": 1` when built from a pre-Bundle-11 log (old 7-key SPAWN-EVENT only, no Bundle 11 lines). It carries `"schema_version": 2` when `account-tokens.sh` returns Bundle 11 token data (the `tokens_have_data` signal — five conditions checked in `scripts/account-run.sh § 9.5`). A re-run on a log with no Bundle 11 event lines stays at schema 1; a failed `account-tokens.sh` invocation (non-zero exit or non-JSON output) also leaves the version at 1.
+**`schema_version`:** `account-run.sh` starts from the schema-1 work-shape and promotes the
+result to schema 2 when `account-tokens.sh` returns a valid object that passes its data gate. A
+usable post-hoc fragment always qualifies, including a structurally complete exact-zero run.
+Reviewer/checkpoint/wall-clock data can also qualify independently. A genuine legacy run with no
+qualifying data stays at schema 1. A failed or non-JSON `account-tokens.sh` invocation also stays
+at schema 1 and receives `_tokens_note`; an unusable post-hoc fragment never by itself earns a
+schema-2 promotion.
 
 **Six-value confidence enum** (used in `tokens.processed_total.confidence`, `wall_clock.active_spawn_time_s.confidence`, etc.):
 
@@ -438,12 +491,18 @@ rules above.
 |-------|---------|
 | `"exact"` | Full data available; no gaps or approximations. |
 | `"estimated"` | Derived from heuristics (e.g. output-tokens estimation). |
-| `"partial"` | Some data present but incomplete (e.g. SPAWN-TOKEN-EVENTs matched but no final CONDUCTOR-TOKEN-EVENT). |
+| `"partial"` | Some usable data is present, but one or more transcript/window/leg inputs are incomplete or ambiguous. |
 | `"unavailable"` | No usable data found for this field. |
-| `"inferred"` | Derived by inference from a secondary source (e.g. model-tiers.json tier name rather than an explicit model name in model-routing.json). |
-| `"suspect"` | The figure is complete, but its inputs are actively distrusted — not merely incomplete. Currently emitted only by the timestamp-integrity guard on `wall_clock.active_spawn_time_s`: when the narrative `SPAWN-EVENT` times (LLM-written) disagree with the unfakeable hook `SPAWN-TOKEN-EVENT` times (shell `date -u`) by >15 min or land on a different calendar date. A secondary fallback also fires when every narrative spawn timestamp lands on the exact round hour AND no hook has vouched for the times (a single attempt whose hook agrees — same date, within tolerance — overrides the round-hour heuristic, since an independent clock has confirmed the times are real). On any of these the narrative times are treated as fabricated and the sum is downgraded from `"exact"` to `"suspect"` with a mandatory `_note` naming the tell. |
+| `"inferred"` | Derived from a secondary identity or membership signal, such as a run-scoped transcript with no matching SPAWN-EVENT. |
+| `"suspect"` | Data is present or a candidate exists, but it must not be trusted as an exact pairing: examples are an attempt-id collision, a post-hoc/legacy agent-id disagreement, or all narrative spawn timestamps landing exactly on the round hour. A note names the cause. |
 
-`"partial"` was added in Bundle 11 to distinguish "some tokens captured, conductor share pending" from "no tokens at all" (`"unavailable"`). `"suspect"` was added to name the distinct case where the data is *present and complete* but *fabricated at the source* — a fabricated 12h duration is not "partial data", it is an untrustworthy figure. A build that conflates `"partial"` with `"exact"` is broken (see EC 12 / AC 4 Blocker guard in § B2 above); likewise a build that lets a fabricated-timestamp run wear `"exact"` on `active_spawn_time_s` is broken. No consumer switches on this field's confidence *string* (`account-run.sh` reads only `.value` to gate `tokens_have_data`), so adding the sixth value is consumer-safe.
+Confidence describes evidence, not magnitude. A complete numeric zero can be `"exact"`; a zero
+created by a missing, malformed, ambiguous, or collided source must be non-exact and carry a note.
+`"partial"` and `"suspect"` are distinct: partial names an incomplete figure, while suspect
+names an actively distrusted pairing or source. Build-derived `processed_total`, `rework_ratio`,
+and `tokens_per_loop` collapse any non-exact Conductor/specialist input to `"partial"`;
+`output_total` is `"estimated"` whenever a usable post-hoc fragment exists. Other derived fields
+apply their documented metric-specific confidence rule rather than upgrading a degraded source.
 
 ---
 
@@ -480,72 +539,58 @@ at the close-out step (step 7). It is advisory (SHOULD), not a hard gate.
 
 ---
 
-## Hook field names (Bundle 11 ground truth)
+## F. Current Claude transcript ground truth
 
-Probed live on 2026-07-05 (16:41–16:43 UTC) with a throwaway append-only hook registered
-for both `SubagentStop` and `Stop`, fired via one trivial Task subagent and one headless
-`claude -p` sub-session (4 captured fires), then removed. `~/.claude/settings.json` was
-restored byte-identical to its pre-probe state. **Installed Claude Code version: 2.1.187.**
+`aggregate-transcripts.sh` reads JSONL directly; it does not depend on a hook payload.
 
-### SubagentStop payload — confirmed field names
+### Assistant usage and message dedup
 
-| Design assumption | Confirmed name | Value shape |
-|---|---|---|
-| `agent_transcript_path` | `agent_transcript_path` — **as designed** | absolute path, e.g. `~/.claude/projects/<munged-cwd>/<parent-session-id>/subagents/agent-<agent_id>.jsonl` |
-| `agent_id` | `agent_id` — **as designed** | stable per-subagent hex id, e.g. `a2782d235aa9e19ae` |
+- Usage-bearing assistant lines have `.type == "assistant"`, a stable `.message.id`, and a
+  `.message.usage` object.
+- One assistant message can appear on several JSONL lines because content blocks are split.
+  Those lines repeat the same message-level usage object. `sum_transcript_usage` groups by
+  `.message.id` and counts the usage once.
+- A production verification sample contained 31 usage-bearing lines but only 14 unique
+  message ids. Naive summation over-counted processed usage by 2.01x; message-id dedup removed
+  that inflation. Exact values and private transcript paths are intentionally not operational
+  documentation.
+- User lines store content under `.message.content`, not top-level `.content`, and have no
+  top-level `.role`. Content can be a string or an array of content blocks. Identity helpers
+  therefore inspect the transcript's real nested content/raw text rather than selecting
+  `.role == "user"`.
 
-- **Transcript-basename fallback: works.** The transcript basename is exactly
-  `agent-<agent_id>.jsonl`; stripping the `agent-` prefix and `.jsonl` suffix recovers
-  `agent_id` (verified: basename `agent-a2782d235aa9e19ae.jsonl` ↔ `agent_id`
-  `a2782d235aa9e19ae`).
-- The SubagentStop payload also carries the **parent** session's `session_id` and
-  `transcript_path` (the main-session JSONL, not the subagent's), plus `agent_type`,
-  `stop_hook_active`, `hook_event_name`, `cwd`, `last_assistant_message`.
+### Transcript locations
 
-### Stop payload — confirmed field names
+The top-session transcript is normally
+`~/.claude/projects/<munged-cwd>/<session-id>.jsonl`; subagents are normally under
+`<session-id>/subagents/agent-<agent-id>.jsonl`. The aggregator first tries the expected
+project directory and then accepts only a unique cross-project match. A basename-derived agent
+id is structural metadata, not proof of run membership; strict membership still requires the
+run identity rules in § B3.
 
-| Design assumption | Confirmed name |
+---
+
+## G. Retired Bundle 11 hook evidence (historical only)
+
+> **Retired:** this section records why old run logs have their shapes. Do not wire these
+> hooks, implement new consumers from them, or treat their numeric values as current per-leg
+> sources. `conductor-stop.sh` and `subagent-stop.sh` are permanent exit-0 stubs.
+
+A July 2026 probe used temporary append-only `SubagentStop` and `Stop` hooks, then restored the
+settings file. It confirmed these historical payload fields:
+
+| Historical event | Confirmed fields |
 |---|---|
-| `transcript_path` | `transcript_path` — **as designed** |
-| `session_id` | `session_id` — **as designed** |
-| `stop_hook_active` | `stop_hook_active` — **as designed** |
+| `SubagentStop` | `agent_transcript_path`, `agent_id`, parent `session_id`, parent `transcript_path`, `agent_type`, `stop_hook_active`, `hook_event_name`, `cwd`, `last_assistant_message` |
+| `Stop` | `transcript_path`, `session_id`, `stop_hook_active` |
 
-- `stop_hook_active` is **present in every captured fire** (Stop and SubagentStop alike)
-  and carries JSON `false` when the hook fires normally.
+The former SubagentStop path used `agent-<agent_id>.jsonl`, so the basename could recover the
+payload's agent id. `stop_hook_active` was present and false on normal fires. The probe also
+showed that Stop ran after its response completed, SubagentStop appends could arrive before
+parent control resumed, and one agent could fire more than once. Those observations justified
+the old take-max/delta machinery; that machinery, its baseline fields, and its deferred final
+capture all retired under FR4=A REPLACE.
 
-### Subagent transcript user-line schema (Bundle 11 ground truth)
-
-- **Real schema (as confirmed in production, 2026-07-05):** `{"type":"user","message":{"role":"user","content":"<string or content-array>"}}`
-  - Top-level `.role` is **absent** on user lines; the correct selector is `.type? == "user"` (not `.role? == "user"`).
-  - The content is at `.message.content`, not at top-level `.content`.
-  - Content shape is either a plain string or a content-array-of-blocks (`[{"type":"text","text":"..."}]`).
-  - Any selector using `.role? == "user"` matches zero lines and silently no-ops — confirmed blocker in P2 review.
-
-### Timing findings
-
-- **Stop vs close-out ordering: Stop fires AFTER the turn's last action.** The captured
-  Stop fire arrived after the headless session's final command had completed, and its
-  payload carries the session's complete final response in `last_assistant_message` —
-  the response (and every tool call inside it) is finished before the hook runs. A
-  close-out `account-run.sh` call made inside the final turn therefore completes before
-  the Stop hook fires, as the deferred-exact design requires.
-- **SubagentStop synchronicity: the append lands BEFORE the Task tool returns control.**
-  The hello-subagent's SubagentStop payload was on disk at 16:42:34Z; the parent's next
-  turn (captured verbatim in the following fire's `last_assistant_message`) began at
-  16:42:43Z. Prompt 2's hook can rely on its `SPAWN-TOKEN-EVENT:` line being written
-  before the Conductor resumes.
-- **Repeat fires per `agent_id` are real.** SubagentStop fired for the observing
-  session's own `agent_id` mid-run when it ended a turn while its background children
-  were still pending (`background_tasks` showed `status: "running"`). One subagent can
-  produce multiple SubagentStop fires; the dedup-by-`agent_id` (take-max on `processed`)
-  in the consumer is load-bearing, not defensive.
-
-### Dedup verification on a real transcript (sum_transcript_usage)
-
-- Transcript: `~/.claude/projects/-Users-robin-Code-novadiem-bureau/a0e10f20-33a6-42fb-854c-1d265f8d392a/subagents/agent-a51e7587527aabcae.jsonl`
-  (31 assistant usage lines, 14 unique `message.id` groups)
-- Naive processed sum (no dedup): **1,839,770**
-- Deduped processed sum (`sum_transcript_usage`): **914,546**
-- Overcount ratio on this transcript: **2.01x** (the 2.23x in the spec is the average
-  across the 2026-07-04 evaluation set; per-transcript ratios vary with content-block
-  fan-out)
+Historical `SPAWN-TOKEN-EVENT`, `CONDUCTOR-TOKEN-EVENT`, and `DELEGATE-TOKEN-EVENT` records
+remain valid old-log syntax. Current code reads them only through the narrow compatibility
+paths named in § B2.3. They are never a numeric fallback for a current post-hoc close-out.

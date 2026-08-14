@@ -321,8 +321,8 @@ get_configured_model() {
 # alias (either direction). A genuinely-mismatched attempt_id (e.g. "architect-1" on
 # role:"critic") maps to neither and still fails — the check stays meaningful.
 # The role field is kept as-is (canon), and attempt_id stays VERBATIM as the sole
-# pairing key (never rewritten), so pairing with the hook's SPAWN-TOKEN-EVENT and the
-# started/terminal collapse are unaffected.
+# pairing key (never rewritten), so started/terminal collapse and the post-hoc transcript
+# join use the same identity.
 role_alias() {
     case "$1" in
         critic)          echo "challenger" ;;
@@ -700,8 +700,9 @@ fi
 # each corresponds to the same spawn. This carries the attempt_id § 6 ACTUALLY PARSED
 # — verbatim, including descriptive ids like challenger-r1-1 — through to the STEP A2
 # enrichment join, WITHOUT emitting attempt_id as a specialist_spawns[] leaf (that
-# contract stands). The A2 enricher pairs on this key (the same one the hooks emit and
-# account-tokens.sh keys spawn_tokens by), not a reconstructed role+"-"+attempt
+# contract stands). The A2 enricher pairs on this key (the same one account-tokens.sh uses
+# for its narrative spawn map and the post-hoc fragment uses for membership), not a
+# reconstructed role+"-"+attempt
 # composite, which would miss any descriptive id and silently drop enrichment (W1).
 spawn_attempt_ids_json=$(printf '%s' "$pass2_result" | jq -c '[.spawns[].attempt_id]' 2>/dev/null || echo '[]')
 
@@ -997,14 +998,15 @@ if [ "$gate_spawn_event_count" -eq 0 ] && \
         && mv "${tmp_out}.warn" "$tmp_out"
 fi
 
-# STEP A1-FALLBACK — recover the WORK-SHAPE of unmatched SPAWN-TOKEN-EVENT specialists.
-# The hook (subagent-stop.sh) emits SPAWN-TOKEN-EVENT: for every specialist even when the
-# Conductor never emitted the paired SPAWN-EVENT: work-shape line. For each SPAWN-TOKEN-EVENT
-# attempt_id with NO matching SPAWN-EVENT started line, synthesize one INFERRED
+# STEP A1-FALLBACK — historical compatibility for old SPAWN-TOKEN-EVENT records.
+# Retired hooks no longer emit these lines. When an old run contains one even though the
+# Conductor never emitted the paired SPAWN-EVENT: work-shape line, use it only to recover
+# identity/work-shape. For each SPAWN-TOKEN-EVENT attempt_id with NO matching SPAWN-EVENT,
+# synthesize one INFERRED
 # specialist_spawns[] entry (role/agent/attempt from the token event; models unavailable;
 # status complete/inferred) so the run's shape is not lost. Everything is confidence
 # "inferred"/"unavailable" and carries an _note — a degraded recovery path, never a
-# substitute for the emit.
+# substitute for the emit. Numeric token totals never come from this compatibility path.
 #
 # Runs UNCONDITIONALLY (not only in the zero-SPAWN-EVENT gate above): the same defect shape
 # happens PARTIALLY too — a run that emitted SPAWN-EVENT for some specialists but not others
@@ -1013,12 +1015,11 @@ fi
 # [CLOSE-OUT WARNING] gate above is unchanged — it still fires only when zero SPAWN-EVENT
 # lines exist; this block only changes when the INFERENCE runs, not when the warning fires.
 #
-# What is and is NOT recovered: these inferred entries recover the WORK-SHAPE (role/agent/
-# attempt) and the run's AGGREGATE token total (summed separately in account-tokens.sh's
-# processed_total). They do NOT recover PER-SPAWN token attribution: account-tokens.sh keys
-# its spawn_tokens map on SPAWN-EVENT *started* records, so a token-only attempt_id has no
-# spawn_tokens entry and STEP A2's by-index enrichment attaches nothing to it. Per-spawn
-# tokens are recoverable only for specialists that DID get a SPAWN-EVENT (the partial case).
+# What is and is NOT recovered: these inferred entries recover only WORK-SHAPE (role/agent/
+# attempt). account-tokens.sh no longer ingests historical SPAWN-TOKEN-EVENT figures, and the
+# post-hoc transcript fragment is the sole source of numeric token totals. A token-only
+# attempt_id has no safe post-hoc work-shape merge key, so STEP A2 attaches no per-spawn
+# number here. This block intentionally preserves the old identity fallback behavior only.
 # Role is inferred from the attempt_id prefix (segment before the first "-", e.g.
 # challenger-r1-1 -> challenger).
 if [ -r "$RUN_DIR/log.md" ]; then
@@ -1156,27 +1157,162 @@ fi
 # The fragment is consumed twice (derived metrics, then the sole per-leg write).
 # Its mktemp prefix is under tmp_prefix, so the existing EXIT sweep removes it
 # on every early exit and after the final publish.
+posthoc_delegate_identity_present=false
+if jq -e '(.delegate_session_id | type) == "string" and (.delegate_session_id | length) > 0' \
+     "$RUN_DIR/delegate-state.json" >/dev/null 2>&1; then
+    posthoc_delegate_identity_present=true
+elif [ -r "$RUN_DIR/log.md" ] && \
+     sed -n 's/^DELEGATE-TOKEN-EVENT: //p' "$RUN_DIR/log.md" 2>/dev/null \
+       | jq -Rse '
+           split("\n")
+           | any(.[];
+               (try fromjson catch null) as $event
+               | (($event | type) == "object")
+                 and (($event.session_id | type) == "string")
+                 and (($event.session_id | length) > 0))
+         ' >/dev/null 2>&1; then
+    posthoc_delegate_identity_present=true
+fi
+posthoc_expected_attempts_json='[]'
+if [ -r "$RUN_DIR/log.md" ]; then
+    posthoc_expected_attempts_json=$(sed -n 's/^SPAWN-EVENT: //p' "$RUN_DIR/log.md" 2>/dev/null \
+      | jq -Rsc '
+          def payload_attempt_id:
+            (try fromjson catch null) as $json
+            | if (($json | type) == "object")
+                 and (($json.attempt_id | type) == "string")
+                 and (($json.attempt_id | length) > 0)
+              then $json.attempt_id
+              else (try capture("(^|[[:space:]])attempt_id=(?<id>[^[:space:]]+)").id
+                    catch empty)
+              end;
+          split("\n")
+          | map(select(length > 0) | payload_attempt_id)
+          | map(select(type == "string" and length > 0))
+          | unique
+        ' 2>/dev/null || printf '[]')
+    [ -n "$posthoc_expected_attempts_json" ] || posthoc_expected_attempts_json='[]'
+fi
 if [ -x "$AGGREGATE_SCRIPT" ]; then
     posthoc_frag=$(mktemp "${tmp_out}.posthoc.XXXXXX")
     if "$AGGREGATE_SCRIPT" "$RUN_DIR" --until "$posthoc_bound" \
          > "$posthoc_frag" 2>/dev/null && \
-       jq -e 'type == "object"
-              and (has("_runtime_gap") | not)
-              and ((.delegate | type) == "object")
-              and ((.delegate.tokens | type) == "object")
-              and ((.conductor | type) == "object")
-              and ((.conductor.tokens | type) == "object")
-              and ((.specialists | type) == "array")
-              and all(.specialists[]; (.tokens | type) == "object")' \
+       jq -se --argjson expected_attempts "$posthoc_expected_attempts_json" \
+              --argjson recorded_conductor_legs "$posthoc_conductor_legs" \
+              --argjson delegate_identity_present "$posthoc_delegate_identity_present" '
+              def nonnegative_number: type == "number" and . >= 0;
+              def nonnegative_integer: nonnegative_number and . == floor;
+              def role_alias($role):
+                if $role == "critic" then "challenger"
+                elif $role == "challenger" then "critic"
+                elif $role == "designer" then "cleric"
+                elif $role == "cleric" then "designer"
+                elif $role == "prompt-engineer" then "spellwright"
+                elif $role == "spellwright" then "prompt-engineer"
+                elif $role == "backend" then "systemsmith"
+                elif $role == "systemsmith" then "backend"
+                elif $role == "frontend" then "mage"
+                elif $role == "mage" then "frontend"
+                elif $role == "sysadmin" then "mechanic"
+                elif $role == "mechanic" then "sysadmin"
+                elif $role == "voice" then "counselor"
+                elif $role == "counselor" then "voice"
+                else null end;
+              def prefixed_attempt($attempt; $prefix):
+                ($attempt | startswith($prefix + "-"))
+                and (($attempt | length) > (($prefix | length) + 1));
+              def confidence_shape:
+                . as $confidence
+                | (($confidence | type) == "string")
+                  and (["exact","estimated","partial","unavailable","inferred","suspect"]
+                       | index($confidence)) != null;
+              def tokens_shape:
+                . as $tokens
+                | (($tokens | type) == "object")
+                  and all(["input","cache_creation","cache_read","processed","output"][];
+                    . as $key
+                    | ($tokens | has($key))
+                      and ($tokens[$key] | nonnegative_number))
+                  and ($tokens.processed ==
+                       ($tokens.input + $tokens.cache_creation + $tokens.cache_read));
+              def leg_shape:
+                type == "object"
+                and (.tokens | tokens_shape)
+                and (.turns | nonnegative_integer)
+                and (.confidence | confidence_shape);
+              def documented_note:
+                (._note | type) == "string" and (._note | length) > 0;
+              def zero_usage:
+                .turns == 0
+                and (.tokens
+                  | .input == 0 and .cache_creation == 0 and .cache_read == 0
+                    and .processed == 0 and .output == 0);
+              def top_leg_shape:
+                leg_shape
+                and (.confidence == "exact" or .confidence == "partial"
+                     or .confidence == "unavailable")
+                and (if .confidence == "exact" then true else documented_note end)
+                and (if .confidence == "unavailable" then zero_usage else true end);
+              def specialist_shape:
+                leg_shape
+                and has("attempt_id") and has("role") and has("agent_id")
+                and (if ((.attempt_id | type) == "string") and ((.attempt_id | length) > 0)
+                     then ((.role | type) == "string") and ((.role | length) > 0)
+                          and (.attempt_id as $attempt
+                            | .role as $role
+                            | prefixed_attempt($attempt; $role)
+                              or (role_alias($role) as $alias
+                                | $alias != null and prefixed_attempt($attempt; $alias)))
+                          and (if (.agent_id | type) == "string"
+                               then (.agent_id | length) > 0
+                                    and (.confidence == "exact" or .confidence == "partial"
+                                         or .confidence == "unavailable")
+                                    and (if .confidence == "exact" then true else documented_note end)
+                                    and (if .confidence == "unavailable" then zero_usage else true end)
+                               elif .agent_id == null
+                               then (.confidence == "unavailable" or .confidence == "suspect")
+                                    and documented_note and zero_usage
+                               else false end)
+                     elif .attempt_id == null
+                     then .role == null
+                          and ((.agent_id | type) == "string") and ((.agent_id | length) > 0)
+                          and (.confidence == "inferred" or .confidence == "partial"
+                               or .confidence == "unavailable")
+                          and documented_note
+                          and (if .confidence == "unavailable" then zero_usage else true end)
+                     else false end);
+              length == 1
+              and (.[0]
+                | type == "object"
+                and (has("_runtime_gap") | not)
+                and (.delegate
+                  | top_leg_shape
+                  and (if .confidence == "exact" or .confidence == "partial"
+                       then $delegate_identity_present else true end))
+                and (.conductor
+                  | top_leg_shape
+                  and (.legs | nonnegative_integer)
+                  and (.legs >= $recorded_conductor_legs)
+                  and (if .confidence == "exact"
+                       then $recorded_conductor_legs > 0
+                            and .legs == $recorded_conductor_legs
+                       elif .confidence == "partial" then .legs > 0
+                       else true end))
+                and ((.specialists | type) == "array")
+                and all(.specialists[]; specialist_shape)
+                and ([.specialists[] | select(.attempt_id != null) | .attempt_id] as $attempt_ids
+                  | (($attempt_ids | length) == ($attempt_ids | unique | length))
+                    and (($attempt_ids | unique | sort) == ($expected_attempts | sort)))
+                and ([.specialists[] | select(.agent_id != null) | .agent_id] as $agent_ids
+                  | ($agent_ids | length) == ($agent_ids | unique | length)))' \
           "$posthoc_frag" >/dev/null 2>&1; then
         posthoc_usable=1
     fi
 fi
 
-# Runtime agent ids are not public specialist_spawns leaves. Build the narrow
-# attempt→agent comparison map from the still-present hook records; ambiguous
-# multi-agent live claims become null and therefore cannot trigger a guessed
-# mismatch disposition.
+# Runtime agent ids are not public specialist_spawns leaves. For historical logs that still
+# contain retired SPAWN-TOKEN-EVENT records, build a narrow attempt→agent comparison map;
+# ambiguous multi-agent claims become null and cannot trigger a guessed mismatch disposition.
 posthoc_live_agents='{}'
 if [ "$posthoc_usable" -eq 1 ] && [ -r "$RUN_DIR/log.md" ]; then
     posthoc_live_agents=$({ PATH=/usr/bin:$PATH grep '^SPAWN-TOKEN-EVENT: ' \
@@ -1211,9 +1347,9 @@ if [ -x "$TOKENS_SCRIPT" ]; then
 
     if [ "$tokens_invoke_ok" -eq 1 ] && \
        printf '%s' "$tokens_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
-        # Valid JSON object. Decide whether it actually carries Bundle 11 data. An
-        # "all-empty fragment" (no CONDUCTOR/SPAWN-TOKEN/CHECKPOINT events, no spawn
-        # durations, zero processed) means "no token data" — a legacy-only re-run:
+        # Valid JSON object. Decide whether it actually carries accounting data. An
+        # "all-empty fragment" (no post-hoc/reviewer/checkpoint evidence, no spawn durations,
+        # zero processed) means "no token data" — a legacy-only re-run:
         # skip the merge and leave schema_version at 1 (AC 5). This is DISTINCT from
         # an account-tokens.sh error (the else branch below): the no-data skip is
         # benign and leaves today's schema unchanged with no _note, whereas a
@@ -1259,19 +1395,16 @@ if [ -x "$TOKENS_SCRIPT" ]; then
                      then {_notes: $tok._notes} else {} end)' \
                "$tmp_out" > "${tmp_out}.tok" && mv "${tmp_out}.tok" "$tmp_out"
 
-            # (b) Enrich each specialist_spawns[] entry from the spawn_tokens map.
-            # Pairing key is the composite role+"-"+attempt — attempt_id is NOT a leaf
-            # in specialist_spawns[] (it is account-run.sh's internal dedup key). The
-            # composite matches the deterministic attempt_id format in
-            # docs/run-accounting.md § A and the spawn_tokens map keys. Each field is
-            # merged only when non-null: a started spawn with no matched
-            # SPAWN-TOKEN-EVENT (mid-run or unmatched) has null tokens/turns in the
-            # map, and `null | with_entries` would otherwise crash the whole write.
+            # (b) Enrich each specialist_spawns[] entry from the narrative spawn_tokens map.
+            # attempt_id is NOT a public specialist_spawns[] leaf; account-run carries the
+            # parsed id in an index-aligned internal array. Each narrative field is merged
+            # only when non-null: a started spawn without a usable pair has null tokens/turns
+            # in the map, and `null | with_entries` would otherwise crash the whole write.
             jq --argjson st "$tokens_json" --argjson aids "$spawn_attempt_ids_json" '
               # Pair each spawn to its token record on the attempt_id § 6 ACTUALLY PARSED
               # (carried index-aligned in $aids), NOT a reconstructed role+"-"+attempt
               # composite. § 6 accepts descriptive attempt_ids (e.g. challenger-r1-1) and
-              # the hooks / account-tokens.sh key spawn_tokens by that verbatim id; the
+              # account-tokens.sh keys spawn_tokens by that verbatim id; the
               # composite would rebuild "challenger-1", miss the record, and silently drop
               # at/started_at/duration_s/turns/tokens/rework (W1). $aids is an internal
               # pairing channel only — attempt_id is never emitted as a specialist_spawns[]

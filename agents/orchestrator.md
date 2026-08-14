@@ -418,15 +418,14 @@ timestamp as text you will type a plausible one from context, and planning-run l
 round-hour placeholders. So `[TIMESTAMP]` is NEVER a freehand value. Every timestamp is a real
 UTC clock read: call `scripts/log-append.sh <RUN_DIR> "<what happened>"` — it appends the
 `## [<TS>] — …` heading with a shell-computed `date -u +%Y-%m-%dT%H:%M:%SZ` stamp and echoes
-that same `<TS>` on stdout. Reuse the echoed value for any adjacent event line's `"at"` field
-so the heading and its SPAWN-EVENT/CHECKPOINT-EVENT/BLOCKER-EVENT line share ONE real read
-(those `"at"` fields use the very same `date -u` idiom shown at their sites below — that
-consistency is the point). At minimum, if you write a heading by hand, its stamp MUST come
-from `$(date -u +%Y-%m-%dT%H:%M:%SZ)` (or `scripts/log-append.sh --now`), never from context.
+that `<TS>`. Every adjacent event `"at"` must also come from a shell clock read. Reuse `<TS>` when
+composing the event; `scripts/emit-event.sh` instead reads its own clock, so its value may differ
+slightly. A hand-written heading's stamp MUST come from `$(date -u +%Y-%m-%dT%H:%M:%SZ)` (or
+`scripts/log-append.sh --now`), never from context.
 Example:
 ```sh
 TS=$(scripts/log-append.sh "$RUN_DIR" "Spawned The Architect → complete")  # heading written; TS echoed
-# reuse $TS on the paired SPAWN-EVENT "at" field — one clock read, not two guesses
+# reuse $TS if composing the event, or call emit-event.sh and accept its independent real clock read
 ```
 
 ## Run accounting (close-out)
@@ -443,9 +442,10 @@ Seven required keys: `role`, `agent`, `configured_model`, `actual_model`, `attem
 `attempt_id`, `status`. `attempt_id` = `"<role>-<attempt>"`. Legal statuses:
 `started | complete | no-handoff | failed | terminated`.
 
-**Bundle 11 enrichments (additional fields on every SPAWN-EVENT line):**
-- **started line** gains: `"at": "<ISO-8601 UTC — $(date -u +%Y-%m-%dT%H:%M:%SZ)>"` and optionally `"rework": true` (see rework rule below; omit the key if false).
-- **terminal line** gains: `"at": "<ISO-8601 UTC>"` and `"started_at": "<the started line's at value, carried forward>"`.
+**Current SPAWN-EVENT metadata:**
+- **both lines** carry `"at": "<ISO-8601 UTC — $(date -u +%Y-%m-%dT%H:%M:%SZ)>"`.
+- **started line** may also carry `"rework": true` (see rework rule below; omit the key if false).
+- Historical terminal `started_at` echoes are tolerated but no longer required or consumed; duration pairs the started and terminal `at` values.
 - `duration_s`, `turns`, and `tokens` are **NOT** on the SPAWN-EVENT line. Duration is consumer-derived; turns and tokens come from the post-hoc transcript aggregator (`docs/run-accounting.md § B2`).
 - **The run nonce is NEVER on a SPAWN-EVENT line or anywhere in `log.md`** — the seven required keys carry no nonce; keep it that way. The `Run nonce:` value goes in the specialist's spawn prompt ONLY so the post-hoc aggregator can scope the transcript to this run; putting it on a log line would let any run-dir reader forge that scope identity.
 

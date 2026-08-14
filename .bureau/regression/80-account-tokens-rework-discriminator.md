@@ -5,6 +5,7 @@ command: |
   RP="$TMPF/r"
   mkdir -p "$RP"
   printf '%s\n' '{"critic_loops":{"mage":1}}' > "$RP/state.json"
+  printf '%s\n' '{"delegate_session_id":"delegate-rework","conductor_agent_id":"cond-rework","conductor_agent_ids":["cond-rework"]}' > "$RP/delegate-state.json"
   # mage-2 has attempt:2 but rework:false — the SECOND sequential prompt build,
   # not a redo. An `attempt >= 2` heuristic would wrongly flag it as rework.
   printf '%s\n' \
@@ -14,11 +15,11 @@ command: |
     'SPAWN-EVENT: {"role":"mage","agent":"The Mage","configured_model":"sonnet","actual_model":"sonnet","attempt":2,"attempt_id":"mage-2","status":"complete","at":"2026-07-05T00:02:00Z","started_at":"2026-07-05T00:01:00Z"}' \
     > "$RP/log.md"
   jq -n '{
-    delegate:{tokens:{input:0,cache_creation:0,cache_read:0,processed:0,output:0},confidence:"exact"},
-    conductor:{tokens:{input:50,cache_creation:60,cache_read:90,processed:200,output:10},confidence:"exact"},
+    delegate:{tokens:{input:0,cache_creation:0,cache_read:0,processed:0,output:0},turns:0,confidence:"exact"},
+    conductor:{tokens:{input:50,cache_creation:60,cache_read:90,processed:200,output:10},turns:1,legs:1,confidence:"exact"},
     specialists:[
-      {attempt_id:"mage-1",confidence:"exact",tokens:{input:100,cache_creation:150,cache_read:250,processed:500,output:20}},
-      {attempt_id:"mage-2",confidence:"exact",tokens:{input:80,cache_creation:100,cache_read:120,processed:300,output:15}}
+      {attempt_id:"mage-1",role:"mage",agent_id:"mage-a",confidence:"exact",turns:1,tokens:{input:100,cache_creation:150,cache_read:250,processed:500,output:20}},
+      {attempt_id:"mage-2",role:"mage",agent_id:"mage-b",confidence:"exact",turns:1,tokens:{input:80,cache_creation:100,cache_read:120,processed:300,output:15}}
     ]
   }' > "$RP/posthoc.json"
   out=$(bash "$ROOT/scripts/account-tokens.sh" "$RP" "$RP/posthoc.json") || { rm -rf "$TMPF"; exit 1; }

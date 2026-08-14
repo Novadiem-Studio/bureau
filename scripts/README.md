@@ -106,79 +106,88 @@ Thresholds (from `agents/orchestrator.md`):
 
 ---
 
-## Run-metrics hooks
+## Post-hoc run accounting
 
-Two Claude Code hooks capture token usage automatically at the end of every bureau specialist spawn and at the end of the Conductor's own session. Both are global (they fire for every Claude Code session on this machine) but exit 0 silently for non-bureau sessions via a fail-safe ladder.
+In integrated Delegate-topology Claude runs, Delegate, Conductor, and specialist token figures are
+recovered from Claude JSONL transcripts at terminal close-out. Direct-Conductor Claude runs do not
+record the Delegate session identity needed to locate the transcript tree, so their per-leg figures
+remain an explicit legacy gap. `scripts/aggregate-transcripts.sh` is the sole authoritative per-leg
+source; the retired Stop/SubagentStop rail is not a fallback.
 
-### What they do
+Run the public close-out command after the run's final merge, summary, and state/log updates:
 
-**SubagentStop → `scripts/subagent-stop.sh`**
-Fires when each Task subagent completes. Reads the subagent's isolated transcript, extracts deduped token usage via `scripts/lib/bureau-token-lib.sh`, and appends one `SPAWN-TOKEN-EVENT:` line to the active bureau run's `log.md`. Matches the record to its SPAWN-EVENT pair using the `Attempt ID:` field from the spawn prompt (which is why every spawn prompt must carry `Attempt ID: <role>-<attempt>`).
+```sh
+scripts/account-run.sh "$RUN_DIR"
+```
 
-**Stop → `scripts/conductor-stop.sh`**
-Fires after every main-session response turn. Reads the Conductor's own transcript, appends a `CONDUCTOR-TOKEN-EVENT:` line to `log.md`, and on the first fire that finds the run closed performs the one-shot final capture: sets `final: true`, self-refreshes `accounting.json` via `account-run.sh`, and removes the pointer file (compare-before-rm). There is no separate post-close-out fire — the one-shot is the normal Stop hook running on the first turn after `account-run.sh` has set `accounting.status` to non-pending.
+`account-run.sh` chooses a half-open upper bound, invokes
+`aggregate-transcripts.sh "$RUN_DIR" --until <bound>`, validates its stdout contract, passes that
+fragment to `account-tokens.sh` for derived metrics, and atomically publishes
+`RUN_DIR/accounting.json`. An unchanged re-run reuses the saved `_posthoc.run_ended_at` bound; growth
+in the recorded SPAWN-EVENT/Conductor-leg basis advances the bound and re-aggregates the run. There
+is no deferred Stop-hook refresh after this command.
 
-### Wiring (in `~/.claude/settings.json`)
+The aggregator is also useful on its own:
 
-Merge the following keys into your existing `~/.claude/settings.json` — do **not** replace the whole file (that would clobber `statusLine`, `model`, `mcpServers`, and other settings). Use `jq -s '.[0] * .[1]'` or edit manually.
+```sh
+scripts/aggregate-transcripts.sh "$RUN_DIR"
+scripts/aggregate-transcripts.sh "$RUN_DIR" --until 2026-08-14T12:00:00Z
+```
 
-The keys to add or merge:
+It emits one JSON object containing `delegate`, `conductor`, and `specialists` blocks. Usage is
+deduplicated by Claude `message.id`; transcript gaps, collisions, and incomplete zeroes are labelled
+with non-exact confidence and a note. A non-Claude runtime returns a named `_runtime_gap` before any
+Claude transcript lookup, and `account-run.sh` does not replace that gap with legacy hook totals.
+Full contracts and confidence rules: `docs/run-accounting.md § B2`.
+
+### Retired Stop/SubagentStop compatibility stubs
+
+`scripts/conductor-stop.sh` and `scripts/subagent-stop.sh` are permanent exit-0 stubs. They remain
+on disk so stale wiring fails softly, but they do not read transcripts, append token events, refresh
+accounting, or remove run-scope files.
+
+Do not wire either script into `~/.claude/settings.json`. Remove only legacy Bureau entries whose
+commands end in `scripts/conductor-stop.sh` or `scripts/subagent-stop.sh`; preserve `statusLine` and
+all unrelated settings. On its Claude-host branch, `./check-framework.sh` fails when either retired
+Bureau hook remains wired.
+`REVIEWER-TOKEN-EVENT` is not retired: cold-reviewer usage is still appended explicitly by
+`scripts/append-reviewer-tokens.sh`, not by a Claude Stop hook.
+
+Legacy `SPAWN-TOKEN-EVENT`, `CONDUCTOR-TOKEN-EVENT`, and `DELEGATE-TOKEN-EVENT` lines can remain in
+old run logs. They are compatibility metadata only: `account-tokens.sh` no longer rolls their token
+figures up, and a usable post-hoc fragment wins every per-leg write. Narrow legacy reads may recover
+an old Delegate session id, missing work-shape, or an agent-id consistency check; they never restore
+the retired numeric source.
+
+### Run-scope nonce files (`~/.novadiem/active-runs/`)
+
+Each run owns one JSON file keyed by its munged `RUN_DIR` (every `/` and `.` becomes `-`):
 
 ```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "<path-to-bureau>/scripts/statusline-usage.sh"
-  },
-  "hooks": {
-    "SubagentStop": [
-      {
-        "matcher": "",
-        "hooks": [{"type": "command", "command": "<path-to-bureau>/scripts/subagent-stop.sh"}]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [{"type": "command", "command": "<path-to-bureau>/scripts/conductor-stop.sh"}]
-      }
-    ]
-  }
-}
+{"run_dir":"<absolute RUN_DIR>","nonce":"<secret>","written_at":"<ISO-8601 UTC>","project_dir":"<cwd>"}
 ```
 
-Empty `matcher` means fires for all sessions (same behaviour as the `statusLine` global hook).
+There is no `baseline` or live-hook role field. `run-start.sh` preserves an existing valid nonce and
+`written_at` for the same `RUN_DIR`, making the nonce write-once for the run's life. Direct-Conductor
+startup echoes the file so the Conductor can copy the nonce into specialist `Run nonce:` prompt
+lines. Delegate startup uses `--no-pointer-echo`; its Conductor reads the file privately. The nonce
+must never be copied into `log.md` or another run artifact.
 
-### How `account-tokens.sh` and `account-run.sh` consume events
+The file enables strict post-hoc specialist membership when `run_started_at` exists and its
+`written_at` does not postdate that bound; otherwise aggregation explicitly degrades to legacy
+first-`RUN_DIR:` membership. Keep it through close-out for pre-archive re-accounting. Archive cleanup
+removes only that run's keyed file and any legacy `.delegate` sibling. Do not mass-delete active-run
+files while runs may still need strict re-accounting. On resume, a missing or foreign file requires recovery of the original; do not mint a
+replacement nonce and do not restore the deleted `run-reopen.sh`. Post-hoc growth re-aggregation
+replaces that retired baseline-reopen ceremony.
 
-`scripts/account-tokens.sh` parses `SPAWN-TOKEN-EVENT:` and `CONDUCTOR-TOKEN-EVENT:` lines from a run's `log.md`, deduplicates by `agent_id` (take-max on `processed`), and emits a structured token summary. `scripts/account-run.sh` calls it at close-out to build `accounting.json`, merging the Bundle 11 token data with the SPAWN-EVENT-derived work-shape. Full grammar and examples: `docs/run-accounting.md § B2`.
+For isolated tests, `BUREAU_POINTER_FILE` forces one exact file path; `BUREAU_POINTER_DIR` overrides
+the keyed directory root:
 
-### Pointer files (`~/.novadiem/active-runs/`) — per-run keyed (#25)
-
-Each run keeps its OWN one-line JSON pointer file inside `~/.novadiem/active-runs/`, keyed by the munged `RUN_DIR` (every `/` and `.` → `-`). Content: `{"run_dir":"<abs path>","nonce":"<uuid>","written_at":"<ISO-8601>","baseline":null,"project_dir":"<cwd>"}` (the Delegate's own pointer adds `"role":"delegate"` — #26a). Direct-Conductor startup writes this bare pointer and echoes it to stdout (the echo places the nonce in the Conductor transcript so `conductor-stop.sh` can verify ownership). Delegate v2 startup writes the same bare pointer with `run-start.sh --no-pointer-echo`, then enrolls and echoes a separate `.delegate` pointer so the Delegate manager lands in `DELEGATE-TOKEN-EVENT` instead of the Conductor bucket. The Conductor does NOT remove it at close-out — removal happens inside `conductor-stop.sh` after the one-shot `final: true` capture, or via archive janitor for Delegate v2. This replaced the old single global file `~/.novadiem/bureau-active-run`, which two overlapping runs clobbered.
-
-`conductor-stop.sh` SELECTS its owning file: it greps the transcript for a candidate's `nonce` AND `run_dir` (the same ownership check the single file used, now used to pick the right file out of the directory). An orphaned/sibling pointer never causes a false-positive capture: a Stop hook only selects the file whose nonce is in its own transcript.
-
-If pointers linger after crashed runs: remove the stale files manually (`rm -f ~/.novadiem/active-runs/*`), or use the safe age-sweep `find ~/.novadiem/active-runs -type f -mtime +7 -delete`. Archiving a run removes just its own keyed file.
-
-**Test isolation / forced single-file:** set `BUREAU_POINTER_FILE` to a temp-dir path — this forces the legacy single-file mode at that exact path (the pre-#25 code path, byte-for-byte), which is why every existing conductor-stop / delta-baseline fixture stays green:
 ```sh
-export BUREAU_POINTER_FILE="$(mktemp -d)/bureau-active-run"   # forced single-file mode
+export BUREAU_POINTER_FILE="$(mktemp -d)/run-scope"
+export BUREAU_POINTER_DIR="$(mktemp -d)"
 ```
-Or exercise directory mode against a temp root with `BUREAU_POINTER_DIR`:
-```sh
-export BUREAU_POINTER_DIR="$(mktemp -d)"   # per-run files under this dir
-```
-
-### ROLLBACK / UNREGISTER (W11)
-
-To cleanly disable these hooks machine-wide:
-
-1. Open `~/.claude/settings.json` and remove the `"SubagentStop"` and `"Stop"` entries from the `"hooks"` block (leave the `"statusLine"` key and any other keys untouched).
-2. Confirm hooks exit silently: `echo '{"agent_transcript_path":""}' | bash scripts/subagent-stop.sh` should produce no output and exit 0.
-3. Optionally remove lingering pointers: `rm -f ~/.novadiem/active-runs/*` (#25 per-run keyed dir).
-
-**Important — read-pointer-equals-enrolment:** Reading the pointer at run start (the echo step) is what places the nonce in the Conductor session's transcript — it is the ownership credential for future Stop fires. After removing the hooks, any remaining pointer is harmless: unrelated sessions do not carry the nonce, so `conductor-stop.sh` (now removed from hooks) would exit 0 at the ownership check regardless. You may `rm -f ~/.novadiem/active-runs/*` at any time without affecting any active session's Stop fires (they will simply find no matching pointer and exit 0). Rolling back does not require ending or restarting any running Claude sessions.
 
 ---
 

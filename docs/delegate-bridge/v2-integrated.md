@@ -15,16 +15,17 @@ integration checklist, and the § 9 ledger schema — only the topology and the 
 change.
 
 Startup invariant: the Delegate creates the run dir first with
-`scripts/run-start.sh ... --no-pointer-echo`, so the normal bare pointer exists for specialist
-nonce validation but its nonce does not enter the Delegate transcript. The Delegate then enrolls
-and echoes its own role:delegate pointer (`<munged-RUN_DIR>.delegate`) and only then spawns the
-Conductor. The Conductor reads the bare pointer privately before its first specialist spawn; it
-never returns, logs, or summarizes that nonce.
+`scripts/run-start.sh ... --no-pointer-echo`, so the run-scope file exists for post-hoc specialist
+membership without placing its nonce in the Delegate transcript. The Conductor reads that file
+privately before its first specialist spawn and puts the nonce only in specialist `Run nonce:`
+prompt lines; it never returns, logs, or summarizes the value. The former `role:delegate`
+`.delegate` pointer and its hook attribution are retired; no current startup path writes one.
 
-The role:delegate pointer and hook attribution in that paragraph are Claude-only. On Codex the
-Delegate skips the extra pointer, logs the named manager/conductor/specialist accounting gap, and
-uses the transport mapping in `docs/host-runtime.md`; the topology and checkpoint protocol are
-otherwise unchanged.
+On Claude, terminal `account-run.sh` recovers the Delegate, Conductor, and specialist legs from
+JSONL using the identities recorded in `delegate-state.json`, SPAWN-EVENTs, and the run-scope
+nonce. On Codex it records the named manager/Conductor/specialist accounting gap and uses the
+transport mapping in `docs/host-runtime.md`; the topology and checkpoint protocol are otherwise
+unchanged.
 
 This section is the single source both personas (`agents/delegate.md`, `agents/orchestrator.md`)
 and the three one-shot scripts reference. A reader can build all of them from this section alone.

@@ -7,10 +7,10 @@ command: |
   jq -cn --arg sid "$SID" '{delegate_session_id:$sid,run_started_at:"2026-08-13T00:00:01Z"}' > "$RUN_PATH/delegate-state.json"
   printf 'SPAWN-EVENT: {"role":"architect","attempt_id":"architect-1","status":"started"}\n' > "$RUN_PATH/log.md"
   jq -cn --arg run "$RUN_PATH" '{run_dir:$run,nonce:"nonce-c",written_at:"2026-08-13T00:00:00Z"}' > "$TMPF/pointer"
-  printf '%s\n' '{"type":"assistant","message":{"id":"d","usage":{"input_tokens":1},"content":[]}}' > "$SESSION.jsonl"
+  printf '%s\n' '{"type":"assistant","message":{"id":"d","usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' > "$SESSION.jsonl"
   for id in alpha beta; do
     jq -cn --arg run "$RUN_PATH" '{type:"user",message:{content:("RUN_DIR: "+$run+"\nAttempt ID: architect-1\nRun nonce: nonce-c\n")}}' > "$SESSION/subagents/agent-$id.jsonl"
-    printf '%s\n' '{"type":"assistant","message":{"id":"work","usage":{"input_tokens":12},"content":[]}}' >> "$SESSION/subagents/agent-$id.jsonl"
+    printf '%s\n' '{"type":"assistant","message":{"id":"work","usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' >> "$SESSION/subagents/agent-$id.jsonl"
   done
   out=$(BUREAU_CLAUDE_PROJECTS_DIR="$PROJECTS" BUREAU_POINTER_FILE="$TMPF/pointer" "$ROOT/scripts/aggregate-transcripts.sh" "$RUN_PATH"); rc=$?
   printf '%s' "$out" | jq -e '.specialists == [{attempt_id:"architect-1",role:"architect",agent_id:null,tokens:{input:0,cache_creation:0,cache_read:0,processed:0,output:0},turns:0,confidence:"suspect",_note:"attempt-id collision after run-scoping: alpha,beta — not summed (over-count guard)"}]' >/dev/null

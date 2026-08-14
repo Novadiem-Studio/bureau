@@ -6,14 +6,14 @@
 # WHY A HELPER (not an inline LLM-formatted line): the Delegate persona is prose,
 # and a hand-formatted token JSON line is exactly the kind of thing that drifts
 # (mis-summed processed, wrong key order, missing field). This shell one-shot
-# parses the envelope's `.usage` deterministically and appends via the same
-# locked_append mutex the hooks use, so the emitted line is machine-computed and
-# testable in isolation — the same philosophy as log-append.sh / the token hooks.
+# parses the envelope's `.usage` deterministically and appends through the shared
+# locked_append mutex, so the emitted line is machine-computed and testable in
+# isolation — the same philosophy as log-append.sh.
 #
 # Each cold reviewer is a FRESH one-shot: its `.usage` is the complete,
 # non-cumulative cost of that single spawn, so REVIEWER-TOKEN-EVENT is RAW — no
-# baseline/delta machinery (unlike the Conductor/Delegate top sessions, which
-# fire repeatedly on a cumulative transcript). Each spawn is counted exactly once
+# baseline/delta machinery. Conductor, Delegate, and specialist figures instead come
+# from terminal post-hoc transcript aggregation. Each reviewer spawn is counted exactly once
 # via a distinct spawn_id; the rollup (account-tokens.sh) sums across spawn_ids.
 #
 # Usage:

@@ -107,10 +107,36 @@ fi
 
 # One row per distinct SPAWN-EVENT attempt, preserving first-seen order.
 if [ -r "$RUN_DIR/log.md" ]; then
-  grep '^SPAWN-EVENT:' "$RUN_DIR/log.md" 2>/dev/null \
-    | sed 's/^SPAWN-EVENT:[[:space:]]*//' \
-    | jq -Rr 'fromjson? | select((.attempt_id? | type) == "string" and (.attempt_id | length) > 0) | [.attempt_id, (.role // "")] | @tsv' 2>/dev/null \
-    | awk -F '\t' '!seen[$1]++' > "$ATTEMPTS_TSV"
+  {
+    while IFS= read -r spawn_line; do
+      spawn_payload=${spawn_line#SPAWN-EVENT: }
+      case "$spawn_payload" in
+        '{'*)
+          printf '%s' "$spawn_payload" | jq -r '
+            select(type == "object")
+            | select((.attempt_id | type) == "string" and (.attempt_id | length) > 0)
+            | [.attempt_id, (if (.role | type) == "string" then .role else "" end)]
+            | @tsv
+          ' 2>/dev/null
+          ;;
+        *=*)
+          printf '%s\n' "$spawn_payload" | awk '
+            {
+              attempt_id=""; role=""
+              for (i=1; i<=NF; i++) {
+                eq=index($i,"=")
+                if (eq==0) continue
+                key=substr($i,1,eq-1); value=substr($i,eq+1)
+                if (key=="attempt_id") attempt_id=value
+                else if (key=="role") role=value
+              }
+              if (attempt_id != "") printf "%s\t%s\n", attempt_id, role
+            }
+          '
+          ;;
+      esac
+    done < <(grep '^SPAWN-EVENT:' "$RUN_DIR/log.md" 2>/dev/null)
+  } | awk -F '\t' '!seen[$1]++' > "$ATTEMPTS_TSV"
 fi
 
 json_usage() {
@@ -134,21 +160,47 @@ json_usage() {
           and has("input_tokens") and has("cache_creation_input_tokens")
           and has("cache_read_input_tokens") and has("output_tokens")
           and all([.input_tokens,.cache_creation_input_tokens,.cache_read_input_tokens,.output_tokens][];
-            type == "number" and . >= 0)))
+            type == "number" and . >= 0))),
+        summable: all($usage[];
+          . as $record
+          | if ($record | type) != "object" then false
+            else all(["input_tokens","cache_creation_input_tokens","cache_read_input_tokens","output_tokens"][];
+              . as $field
+              | (($record | has($field)) | not)
+                or (($record[$field] | type) == "number" and $record[$field] >= 0))
+            end),
+        nonzero: any($usage[];
+          . as $record
+          | if ($record | type) != "object" then false
+            else any(["input_tokens","cache_creation_input_tokens","cache_read_input_tokens","output_tokens"][];
+              . as $field
+              | ($record | has($field))
+                and (($record[$field] | type) == "number")
+                and $record[$field] != 0)
+            end)
       }
   ' "$usage_path" 2>/dev/null)
   if ! printf '%s' "$usage_shape" | jq -e '.records > 0' >/dev/null 2>&1; then
     return 1
   fi
-  raw_usage=$(sum_transcript_usage "$usage_path" "$usage_since" "$usage_until" 2>/dev/null) || return 1
-  nonzero_usage=$(printf '%s' "$raw_usage" | jq -r \
-    '[.input,.cache_creation,.cache_read,.output] | map(select(type == "number" and . != 0)) | length > 0' \
-    2>/dev/null)
-  if [ "$nonzero_usage" != "true" ] && \
-     ! printf '%s' "$usage_shape" | jq -e '.complete' >/dev/null 2>&1; then
+  if ! printf '%s' "$usage_shape" | jq -e '.summable' >/dev/null 2>&1; then
     return 1
   fi
-  printf '%s' "$raw_usage" | jq -c '{tokens:{input:.input,cache_creation:.cache_creation,cache_read:.cache_read,processed:.processed,output:.output},turns:.turns}' 2>/dev/null
+  usage_complete=$(printf '%s' "$usage_shape" | jq -r '.complete' 2>/dev/null)
+  usage_nonzero=$(printf '%s' "$usage_shape" | jq -r '.nonzero' 2>/dev/null)
+  if [ "$usage_complete" != "true" ] && [ "$usage_nonzero" != "true" ]; then
+    return 1
+  fi
+  raw_usage=$(sum_transcript_usage "$usage_path" "$usage_since" "$usage_until" 2>/dev/null) || return 1
+  if [ "$usage_complete" = "true" ]; then
+    printf '%s' "$raw_usage" | jq -c \
+      '{tokens:{input:.input,cache_creation:.cache_creation,cache_read:.cache_read,processed:.processed,output:.output},turns:.turns,_usage_confidence:"exact"}' \
+      2>/dev/null
+  else
+    printf '%s' "$raw_usage" | jq -c \
+      '{tokens:{input:.input,cache_creation:.cache_creation,cache_read:.cache_read,processed:.processed,output:.output},turns:.turns,_usage_confidence:"partial",_usage_note:"incomplete message usage token fields — summed numeric nonnegative fields with omitted fields treated as zero"}' \
+      2>/dev/null
+  fi
 }
 
 usage_gap_note() {
@@ -263,8 +315,9 @@ else
     SESSION_BASE=$(dirname "$DELEGATE_TRANSCRIPT")/"$DELEGATE_SESSION_ID"
     delegate_usage=$(json_usage "$DELEGATE_TRANSCRIPT" "$RUN_STARTED_AT" "$UNTIL_ISO")
     if [ -n "$delegate_usage" ]; then
-      delegate_confidence="exact"
-      delegate_note=""
+      delegate_confidence=$(printf '%s' "$delegate_usage" | jq -r '._usage_confidence // "partial"')
+      delegate_note=$(printf '%s' "$delegate_usage" | jq -r '._usage_note // empty')
+      delegate_usage=$(printf '%s' "$delegate_usage" | jq -c 'del(._usage_confidence,._usage_note)')
       if [ -z "$RUN_STARTED_AT" ]; then
         delegate_header_run_dirs "$DELEGATE_TRANSCRIPT" > "$DELEGATE_HEADERS"
         delegate_header_count=$(awk 'NF {n++} END {print n+0}' "$DELEGATE_HEADERS")
@@ -272,7 +325,11 @@ else
         if [ "$delegate_header_count" -ne 1 ] || \
            ! delegate_run_header_identities | grep -Fqx "$delegate_only_header"; then
           delegate_confidence="partial"
-          delegate_note="shared-session per-run window unavailable; figure may over-attribute sibling-run turns"
+          if [ -n "$delegate_note" ]; then
+            delegate_note="$delegate_note; shared-session per-run window unavailable; figure may over-attribute sibling-run turns"
+          else
+            delegate_note="shared-session per-run window unavailable; figure may over-attribute sibling-run turns"
+          fi
         fi
       fi
       if [ -n "$delegate_note" ]; then
@@ -374,6 +431,7 @@ discovered_count=$(awk 'NF {n++} END {print n+0}' "$DISCOVERED_CONDUCTORS")
 conductor_legs=$((recorded_count + discovered_count))
 conductor_missing=0
 conductor_valid=0
+conductor_partial=0
 
 if [ "$recorded_count" -gt 1 ]; then
   respawned_ids=$(tail -n +2 "$RECORDED_CONDUCTORS" | paste -sd ',' -)
@@ -394,7 +452,13 @@ while IFS= read -r conductor_id; do
     append_note "$(usage_gap_note "$conductor_path" "" "$UNTIL_ISO")"
     continue
   fi
-  printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
+  conductor_usage_confidence=$(printf '%s' "$conductor_one" | jq -r '._usage_confidence // "partial"')
+  if [ "$conductor_usage_confidence" = "partial" ]; then
+    conductor_partial=$((conductor_partial + 1))
+    conductor_usage_note=$(printf '%s' "$conductor_one" | jq -r '._usage_note // "incomplete message usage token fields"')
+    append_note "$conductor_usage_note: $conductor_path"
+  fi
+  printf '%s' "$conductor_one" | jq -c 'del(._usage_confidence,._usage_note)' >> "$CONDUCTOR_USAGE"
   conductor_valid=$((conductor_valid + 1))
 done < "$RECORDED_CONDUCTORS"
 
@@ -407,7 +471,13 @@ while IFS="$(printf '\t')" read -r conductor_id conductor_path; do
     append_note "$(usage_gap_note "$conductor_path" "" "$UNTIL_ISO")"
     continue
   fi
-  printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
+  conductor_usage_confidence=$(printf '%s' "$conductor_one" | jq -r '._usage_confidence // "partial"')
+  if [ "$conductor_usage_confidence" = "partial" ]; then
+    conductor_partial=$((conductor_partial + 1))
+    conductor_usage_note=$(printf '%s' "$conductor_one" | jq -r '._usage_note // "incomplete message usage token fields"')
+    append_note "$conductor_usage_note: $conductor_path"
+  fi
+  printf '%s' "$conductor_one" | jq -c 'del(._usage_confidence,._usage_note)' >> "$CONDUCTOR_USAGE"
   conductor_valid=$((conductor_valid + 1))
   if [ -z "$discovered_ids" ]; then discovered_ids="$conductor_id"; else discovered_ids="$discovered_ids,$conductor_id"; fi
 done < "$DISCOVERED_CONDUCTORS"
@@ -419,7 +489,8 @@ fi
 if [ "$conductor_valid" -gt 0 ]; then
   conductor_totals=$(jq -cs '{tokens:{input:(map(.tokens.input)|add//0),cache_creation:(map(.tokens.cache_creation)|add//0),cache_read:(map(.tokens.cache_read)|add//0),processed:(map(.tokens.processed)|add//0),output:(map(.tokens.output)|add//0)},turns:(map(.turns)|add//0)}' "$CONDUCTOR_USAGE")
   conductor_confidence="exact"
-  [ "$conductor_missing" -eq 0 ] && [ "$discovered_count" -eq 0 ] || conductor_confidence="partial"
+  [ "$conductor_missing" -eq 0 ] && [ "$discovered_count" -eq 0 ] && \
+    [ "$conductor_partial" -eq 0 ] || conductor_confidence="partial"
   if [ -n "$conductor_note" ]; then
     printf '%s' "$conductor_totals" | jq -c --argjson legs "$conductor_legs" --arg confidence "$conductor_confidence" --arg note "$conductor_note" \
       '. + {legs:$legs,confidence:$confidence,_note:$note}' > "$CONDUCTOR_JSON"
@@ -457,9 +528,17 @@ while IFS="$(printf '\t')" read -r attempt_id role; do
     candidate_path=$(printf '%s' "$candidate_row" | awk -F '\t' '{print $4}')
     candidate_usage=$(json_usage "$candidate_path" "" "$UNTIL_ISO")
     if [ -n "$candidate_usage" ]; then
-      printf '%s' "$candidate_usage" | jq -c --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" \
-        '. + {attempt_id:$attempt,role:$role,agent_id:$agent,confidence:"exact"}' \
-        | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence}' >> "$SPECIALISTS_JSONL"
+      candidate_usage_confidence=$(printf '%s' "$candidate_usage" | jq -r '._usage_confidence // "partial"')
+      candidate_usage_note=$(printf '%s' "$candidate_usage" | jq -r '._usage_note // empty')
+      if [ "$candidate_usage_confidence" = "partial" ]; then
+        printf '%s' "$candidate_usage" | jq -c --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" --arg note "$candidate_usage_note" \
+          'del(._usage_confidence,._usage_note) + {attempt_id:$attempt,role:$role,agent_id:$agent,confidence:"partial",_note:$note}
+           | {attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
+      else
+        printf '%s' "$candidate_usage" | jq -c --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" \
+          'del(._usage_confidence,._usage_note) + {attempt_id:$attempt,role:$role,agent_id:$agent,confidence:"exact"}
+           | {attempt_id,role,agent_id,tokens,turns,confidence}' >> "$SPECIALISTS_JSONL"
+      fi
     else
       candidate_gap_note=$(usage_gap_note "$candidate_path" "" "$UNTIL_ISO")
       jq -cn --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" \
@@ -475,9 +554,18 @@ while IFS="$(printf '\t')" read -r candidate_agent candidate_path; do
   [ -n "$candidate_agent" ] || continue
   candidate_usage=$(json_usage "$candidate_path" "" "$UNTIL_ISO")
   if [ -n "$candidate_usage" ]; then
-    printf '%s' "$candidate_usage" | jq -c --arg agent "$candidate_agent" \
-      '. + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript with no matching SPAWN-EVENT — counted as unattributed"}' \
-      | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
+    candidate_usage_confidence=$(printf '%s' "$candidate_usage" | jq -r '._usage_confidence // "partial"')
+    candidate_usage_note=$(printf '%s' "$candidate_usage" | jq -r '._usage_note // empty')
+    if [ "$candidate_usage_confidence" = "partial" ]; then
+      candidate_usage_note="run-scoped transcript with no matching SPAWN-EVENT — counted as unattributed; $candidate_usage_note"
+      printf '%s' "$candidate_usage" | jq -c --arg agent "$candidate_agent" --arg note "$candidate_usage_note" \
+        'del(._usage_confidence,._usage_note) + {attempt_id:null,role:null,agent_id:$agent,confidence:"partial",_note:$note}
+         | {attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
+    else
+      printf '%s' "$candidate_usage" | jq -c --arg agent "$candidate_agent" \
+        'del(._usage_confidence,._usage_note) + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript with no matching SPAWN-EVENT — counted as unattributed"}
+         | {attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
+    fi
   else
     candidate_gap_note=$(usage_gap_note "$candidate_path" "" "$UNTIL_ISO")
     jq -cn --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" --arg note "$candidate_gap_note" \

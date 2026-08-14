@@ -8,8 +8,8 @@
 # Portability: Bash 3.2 + jq on macOS. No associative arrays, no GNU-only
 # date flags. Time arithmetic happens in jq via fromdateiso8601.
 #
-# Field-name ground truth: docs/run-accounting.md § "Hook field names
-# (Bundle 11 ground truth)".
+# Current Claude transcript ground truth: docs/run-accounting.md § F.
+# Retired historical hook payload fields: docs/run-accounting.md § G.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "[bureau-token-lib] this file is a library — source it, do not execute it" >&2

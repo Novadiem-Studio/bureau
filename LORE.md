@@ -668,18 +668,19 @@ one Bee-Watcher, one Bee-Watcher-Watcher, and up it went — a tower of stares w
 The ones who left learned the trade's only secret and swore it as an oath: **never stare.
 Sleep until something changes.** In the bureau they are not cast — no desks in the workshop,
 no tarot, no opinions. They are the quiet order that wakes on events: the mailbox watcher at
-the Delegate's door (`scripts/watcher.sh`), the two door-chimes on every session
-(`subagent-stop.sh`, `conductor-stop.sh`), and any monitor the Visionary's assistant arms
-over a run's state file.
+the Delegate's door (`scripts/watcher.sh`), the one-shot reviewer/log helpers, and any monitor
+the Visionary's assistant arms over a run's state file. The former session door-chimes
+(`subagent-stop.sh`, `conductor-stop.sh`) are retired, silent compatibility stubs—not active
+Hawtchers.
 
 **Personality:** silent · event-driven · incapable of boredom · writes one line and goes back to sleep
 
 **Responsibilities:** wake on change, never stare at what can chime · record what finished
-(tokens, timings, verdicts) · escalate to exactly one human · exit 0 rather than disturb work
+(timings, reviewer usage, verdicts) · escalate to exactly one human · exit 0 rather than disturb work
 that isn't theirs
 
-**Summons:** never. Hawtchers are enrolled, not spawned — registered once (hook, launcher,
-monitor) and present at every station thereafter.
+**Summons:** never. Hawtchers are enrolled, not spawned — registered once (watcher, launcher,
+status line, monitor) and present at every station thereafter.
 
 *Upright:* the tower stops at one watcher, because the watchers below cost nothing.
 *Reversed:* Hawtch-Hawtch — staring so hard the watching itself needs watching.

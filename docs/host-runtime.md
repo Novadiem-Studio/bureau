@@ -123,19 +123,24 @@ envelope.
 
 ## Token-accounting guarantees
 
+The three JSONL per-leg rows below apply to integrated Delegate-topology Claude runs. A
+direct-Conductor Claude run has no `delegate_session_id` with which to locate the top-session
+transcript tree, so its Conductor/specialist figures remain an explicit legacy gap.
+
 | Rail | Claude Code host | Codex host |
 |---|---|---|
 | Cold reviewer | exact one-shot envelope | exact stable `codex exec --json` `turn.completed.usage`, normalized by the helper |
-| Top-level Delegate | exact Stop-hook delta | unavailable |
-| Resumable Conductor | exact SubagentStop-hook delta | unavailable |
-| Specialists | exact SubagentStop event by attempt/nonce | unavailable |
+| Top-level Delegate | post-hoc Claude JSONL window keyed by `delegate_session_id`; exact or explicitly degraded | unavailable |
+| Resumable Conductor | post-hoc Claude JSONL sum across recorded/discovered Conductor legs; exact or explicitly degraded | unavailable |
+| Specialists | post-hoc Claude JSONL joined by SPAWN-EVENT `attempt_id` and the run-scope nonce; exact or explicitly degraded | unavailable |
 
-“Unavailable” is a named accounting gap, not zero usage. Codex hooks exist, but
-their transcript path is not a stable parsing interface and subagent hook
-identity does not currently provide the same per-specialist ownership rail.
-Until a stable session-usage API exists, do not scrape Codex transcripts or
-fabricate zero-token specialist events. Run artifacts, checkpoints, and
-decisions remain fully tracked.
+On Claude, `scripts/account-run.sh` invokes `scripts/aggregate-transcripts.sh` at terminal
+close-out; the retired Stop/SubagentStop scripts are permanent exit-0 compatibility stubs and are
+not an accounting fallback. “Unavailable” is a named accounting gap, not zero usage. Codex does
+not expose the same stable JSONL transcript and per-specialist ownership interface, so the
+aggregator returns a named `_runtime_gap` before transcript lookup. Until a stable session-usage
+API exists, do not scrape Codex transcripts or fabricate zero-token specialist events. Run
+artifacts, checkpoints, and decisions remain fully tracked. See `docs/run-accounting.md § B2`.
 
 ## Resume
 

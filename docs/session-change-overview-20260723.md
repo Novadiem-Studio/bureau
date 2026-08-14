@@ -92,10 +92,10 @@ scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" -
 ```
 
 `--no-pointer-echo` matters because the normal bare pointer nonce is the specialist-spawn
-ownership credential. In integrated Delegate mode, that nonce must not enter the Delegate
-transcript. The Delegate then enrolls and echoes its own separate `role:delegate` pointer so the
-Delegate top session's tokens can be captured without contaminating the Conductor/specialist
-ownership rail.
+post-hoc membership credential. In integrated Delegate mode, that nonce must not enter the
+Delegate transcript. The Conductor reads it privately and includes it only in specialist spawn
+prompts. The former separate `role:delegate` pointer and live-hook capture rail have since retired;
+terminal accounting recovers Claude legs from JSONL, while Codex records a named per-leg gap.
 
 ### 3. Planning Quality Layer
 
@@ -226,7 +226,7 @@ Robin request
 -> Delegate reads agents/delegate.md and docs/delegate-bridge/v2-integrated.md
 -> workflow triage via workflows/index.md
 -> run-start.sh creates RUN_DIR/state/log/index/model-routing/pointer
--> Delegate enrolls role:delegate pointer
+-> Delegate records transcript identities; Conductor privately reads the run-scope nonce
 -> Delegate spawns Conductor with RUN_DIR and BUREAU_ROLE: conductor
 -> Conductor dispatches specialists
 ```
