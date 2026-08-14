@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# account-tokens.sh <RUN_DIR> — Bundle 11 derived-metrics consumer.
+# account-tokens.sh <RUN_DIR> [posthoc_fragment_path] — Bundle 11 derived-metrics consumer.
 #
 # Reads RUN_DIR/log.md, RUN_DIR/state.json, and (guarded, backstop only)
 # RUN_DIR/delegate-state.json — all sibling run-dir files. It NEVER reads a
@@ -41,8 +41,22 @@
 
 RUN_DIR="${1:-}"
 if [ -z "$RUN_DIR" ]; then
-  echo "[account-tokens] usage: account-tokens.sh <RUN_DIR>" >&2
+  echo "[account-tokens] usage: account-tokens.sh <RUN_DIR> [posthoc_fragment_path]" >&2
   exit 2
+fi
+
+# Phase 2a's optional post-hoc fragment re-sources only the four derived token
+# metrics. The live event rollup below remains intact as the fallback rail until
+# Phase 2b retires it. A missing, unreadable, invalid, or runtime-gated fragment
+# is represented as JSON null so the jq program follows its byte-compatible live
+# branches.
+POSTHOC_FRAGMENT="${2:-}"
+posthoc_json="null"
+if [ -n "$POSTHOC_FRAGMENT" ] && [ -r "$POSTHOC_FRAGMENT" ] && \
+   jq -e 'type == "object" and (has("_runtime_gap") | not)' \
+      "$POSTHOC_FRAGMENT" >/dev/null 2>&1; then
+  posthoc_json=$(jq -c '.' "$POSTHOC_FRAGMENT" 2>/dev/null) || posthoc_json="null"
+  [ -n "$posthoc_json" ] || posthoc_json="null"
 fi
 
 LOG_MD="$RUN_DIR/log.md"
@@ -589,6 +603,24 @@ def normalize_event($required):
    elif $rev_conf == "unavailable" then "no REVIEWER-TOKEN-EVENT lines present in log.md yet"
    else null end) as $rev_block_note
 
+# --- Phase 2a post-hoc derived-metric source seam -----------------------------
+# Shadow only the values consumed by processed_total, rework_ratio, and
+# output_total. All live per-leg blocks and their hook-derived confidence logic
+# remain below unchanged; account-run.sh replaces those blocks from this same
+# fragment when (and only when) it passes the fragment here.
+| (if $posthoc != null
+   then (($posthoc.specialists // []) | map(.tokens.processed // 0) | add // 0)
+   else $spec_processed end) as $spec_processed
+| (if $posthoc != null
+   then (($posthoc.specialists // []) | map(.tokens.output // 0) | add // 0)
+   else $spec_output end) as $spec_output
+| (if $posthoc != null then ($posthoc.conductor.tokens.processed // 0)
+   else $cond_processed end) as $cond_processed
+| (if $posthoc != null then ($posthoc.conductor.tokens.output // 0)
+   else $cond_output end) as $cond_output
+| (if $posthoc != null then ($posthoc.delegate.tokens.output // 0)
+   else $del_output end) as $del_output
+
 # --- F3 (audit): re-derive `processed`, do not trust the field verbatim -------
 # Bug 3: the consumer summed each event's `processed` field as-authored, so a
 # forged / mis-composed line whose stated `processed` disagrees with its own
@@ -627,20 +659,33 @@ def normalize_event($required):
 # $unattributed and is excluded from $spec_processed, so the NUMBER is safe — but a
 # block that isolated a specialist record must not read exact, so fold $spec_isolated
 # (and, for the conductor share, $cond_isolated) into the processed_total gate.
-| (if $cond_ok and $spec_ok and ($spec_isolated | not) and ($cond_isolated | not) then "exact" else "partial" end) as $pt_conf
-| ([ (if ($cond_ok | not) and $cond_stale then $cond_stale_note
-       elif ($cond_ok | not) and $cond_coverage_indeterminate then $cond_coverage_indeterminate_note
-       elif ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md"
-       else empty end),
-     (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
-     (if $spec_isolated then "one or more specialist record(s) had a malformed attempt_id/agent_id — isolated to a distinct synthetic key and routed to unattributed; processed_total not blessed as exact" else empty end),
-     (if $cond_isolated and $cond_isolated_tokens_absent
-        then "one or more conductor record(s) had an absent/null tokens object on a token event — isolated; processed_total not blessed as exact"
-        elif $cond_isolated
-        then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic key; processed_total not blessed as exact"
-        else empty end),
-     (if $processed_identity_note != null then $processed_identity_note else empty end)
-   ]) as $pt_notes
+| (if $posthoc != null
+   then (if (($posthoc.conductor.confidence // "unavailable") == "exact")
+                and (($posthoc.specialists // []) | all((.confidence // "unavailable") == "exact"))
+         then "exact" else "partial" end)
+   elif $cond_ok and $spec_ok and ($spec_isolated | not) and ($cond_isolated | not)
+   then "exact" else "partial" end) as $pt_conf
+| (if $posthoc != null
+   then ([
+      (if (($posthoc.conductor.confidence // "unavailable") != "exact")
+       then "post-hoc conductor=\($posthoc.conductor.confidence // "unavailable")" else empty end),
+      (($posthoc.specialists // [])[]
+       | select((.confidence // "unavailable") != "exact")
+       | "post-hoc specialist \(.attempt_id // ("unattributed:" + (.agent_id // "unknown")))=\(.confidence // "unavailable")")
+   ])
+   else ([ (if ($cond_ok | not) and $cond_stale then $cond_stale_note
+              elif ($cond_ok | not) and $cond_coverage_indeterminate then $cond_coverage_indeterminate_note
+              elif ($cond_ok | not) then "conductor-share-pending: final-leg capture not yet in log.md"
+              else empty end),
+            (if ($spec_ok | not) then "\($n_unmatched) specialist spawn(s) have no matched SPAWN-TOKEN-EVENT" else empty end),
+            (if $spec_isolated then "one or more specialist record(s) had a malformed attempt_id/agent_id — isolated to a distinct synthetic key and routed to unattributed; processed_total not blessed as exact" else empty end),
+            (if $cond_isolated and $cond_isolated_tokens_absent
+               then "one or more conductor record(s) had an absent/null tokens object on a token event — isolated; processed_total not blessed as exact"
+               elif $cond_isolated
+               then "one or more conductor record(s) had a malformed/absent session_id — isolated to a distinct synthetic key; processed_total not blessed as exact"
+               else empty end),
+            (if $processed_identity_note != null then $processed_identity_note else empty end)
+          ]) end) as $pt_notes
 
 # conductor_tokens block confidence
 # Audit r2 (F3): a clamp `_note` (e.g. all fields clamped to 0) that rolls the block
@@ -825,7 +870,13 @@ def normalize_event($required):
 # --- rework numerator: processed over spawns flagged rework:true (FR 9) -------
 | ($pairs | map(select(.rework == true) | .attempt_id)) as $rework_ids
 | ([ $rework_ids[] as $rid
-     | ($stok | map(select(.attempt_id == $rid)) | map((.tokens | objects | .processed) // 0) | max // 0)
+     | (if $posthoc != null
+        then (($posthoc.specialists // [])
+              | map(select(.attempt_id == $rid))
+              | map(.tokens.processed // 0) | max // 0)
+        else ($stok | map(select(.attempt_id == $rid))
+              | map((.tokens | objects | .processed) // 0) | max // 0)
+        end)
    ] | add // 0) as $rework_processed
 
 # --- total critic loops (sum of critic_loops values; null-safe) ---------------
@@ -1039,6 +1090,7 @@ if jq -n \
   --argjson resumed_legs "$resumed_legs" \
   --arg delegate_topology "$delegate_topology" \
   --arg pointer_enrolled "$_pointer_enrolled" \
+  --argjson posthoc "$posthoc_json" \
   "$JQ_PROG"; then
   exit 0
 else

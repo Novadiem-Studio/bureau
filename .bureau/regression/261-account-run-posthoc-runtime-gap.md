@@ -1,0 +1,48 @@
+name: account-run post-hoc runtime-gap passthrough — named Codex gap falls back to the complete live rail for per-leg and derived figures
+command: |
+  ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
+  TMPF=$(mktemp -d)
+  trap 'rm -rf "$TMPF"' EXIT
+  RP="$TMPF/20260813-runtime-gap"
+  mkdir -p "$RP"
+  printf '{"runtime":"openai"}\n' > "$RP/model-routing.json"
+  jq -cn --arg target "$TMPF/target" '{target_repo:$target,workflow:"feature",phase_status:"complete",phases_complete:["analyst"],critic_loops:{analyst:2}}' > "$RP/state.json"
+  printf '%s\n' \
+    'SPAWN-EVENT: {"role":"analyst","agent":"Analizer 2000","configured_model":"gpt","actual_model":"gpt","attempt":1,"attempt_id":"analyst-1","status":"started","at":"2026-08-13T00:00:01Z","rework":true}' \
+    'SPAWN-EVENT: {"role":"analyst","agent":"Analizer 2000","configured_model":"gpt","actual_model":"gpt","attempt":1,"attempt_id":"analyst-1","status":"complete","at":"2026-08-13T00:00:02Z","started_at":"2026-08-13T00:00:01Z"}' \
+    'SPAWN-TOKEN-EVENT: {"attempt_id":"analyst-1","agent_id":"live-specialist","at":"2026-08-13T00:00:02Z","turns":2,"tokens":{"input":20,"cache_creation":30,"cache_read":50,"processed":100,"output":10}}' \
+    'CONDUCTOR-TOKEN-EVENT: {"session_id":"live-conductor","at":"2026-08-13T00:00:02Z","turns":3,"tokens":{"input":40,"cache_creation":60,"cache_read":100,"processed":200,"output":20},"final":true}' \
+    'DELEGATE-TOKEN-EVENT: {"session_id":"live-delegate","at":"2026-08-13T00:00:02Z","turns":4,"tokens":{"input":60,"cache_creation":90,"cache_read":150,"processed":300,"output":30},"final":true}' \
+    > "$RP/log.md"
+
+  gap=$(bash "$ROOT/scripts/aggregate-transcripts.sh" "$RP" --until "2026-08-13T00:01:00Z") || exit 1
+  printf '%s' "$gap" | jq -e '._runtime_gap | contains("openai") and contains("no Claude JSONL")' >/dev/null || exit 1
+  printf '%s' "$gap" > "$TMPF/gap.json"
+
+  # The optional account-tokens arg itself rejects a gated fragment and therefore
+  # preserves the live derived values.
+  direct=$(bash "$ROOT/scripts/account-tokens.sh" "$RP" "$TMPF/gap.json") || exit 1
+  printf '%s' "$direct" | jq -e '
+    .tokens.processed_total.value == 300 and
+    .tokens.rework_ratio.value == (100/300) and
+    .tokens.tokens_per_loop.value == 150
+  ' >/dev/null || exit 1
+
+  NOVADIEM_USAGE_SNAPSHOT_PATH="$TMPF/no-snapshot" bash "$ROOT/scripts/account-run.sh" "$RP" >/dev/null 2>&1 || exit 1
+  jq -e '
+    .schema_version == 2 and
+    .conductor_tokens.tokens.processed == 200 and
+    .delegate_tokens.tokens.processed == 300 and
+    .specialist_spawns[0].tokens.processed.value == 100 and
+    .tokens.processed_total.value == 300 and
+    .tokens.rework_ratio.value == (100/300) and
+    .tokens.tokens_per_loop.value == 150 and
+    (has("_posthoc") | not)
+  ' "$RP/accounting.json" >/dev/null || exit 1
+  echo "PASS"
+  # Mutation: pass a `_runtime_gap` fragment through as usable and the post-hoc
+  # defaults zero the derived metrics or the replacement crashes; either breaks
+  # the pinned live 200/300/100 and processed_total 300 values.
+expected: exit 0; stdout "PASS"; aggregate-transcripts retains the named openai runtime gap, account-tokens rejects the gated optional fragment, and account-run emits the live Conductor=200, Delegate=300, specialist=100, processed_total=300 branch without _posthoc metadata
+phase: 04 · execute-plan
+owner: Prompt 04 / account-run.sh + account-tokens.sh runtime-gap fallback parity
