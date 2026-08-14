@@ -65,6 +65,6 @@ command: |
   echo "PASS"
   # Mutations: moving a required path outside Primary, hiding it in an HTML
   # comment, using processed_total, or dropping the Delegate confidence arm fails.
-expected: exit 0; stdout "PASS"; exact three-leg share is 0.4 (<45%), while the same partial reading only corroborates
+expected: exit 0; stdout "PASS"; synthetic exact three-leg share is 0.4 (<45%), while the same partial reading only corroborates
 phase: 03 · execute-plan
 owner: Prompt 03 / AC1 three-leg metric and confidence gate
