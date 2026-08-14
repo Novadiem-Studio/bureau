@@ -100,11 +100,21 @@ To start a new Delegate-run:
    ```sh
    # DELEGATE-AFFORDABILITY-SELECTION:BEGIN
    _delegate_conductor_attempt_id="conductor-bootstrap-1"
-   _delegate_conductor_configured_model="$(
-     jq -r '.roles.conductor.model // ""' "$RUN_DIR/model-routing.json" 2>/dev/null || printf ''
-   )"
+   _delegate_conductor_configured_model=""
+   _delegate_affordability_runtime=""
+   if _delegate_routing_candidate="$(
+     jq -ser '
+       if length == 1 and (.[0] | type) == "object" and
+          (.[0].roles.conductor.model | type) == "string" and
+          (.[0].runtime | type) == "string"
+       then .[0] |
+         @sh "_delegate_conductor_configured_model=\(.roles.conductor.model) _delegate_affordability_runtime=\(.runtime)"
+       else error("invalid model routing") end
+     ' "$RUN_DIR/model-routing.json" 2>/dev/null
+   )"; then
+     eval "$_delegate_routing_candidate"
+   fi
    _delegate_conductor_model="$_delegate_conductor_configured_model"
-   _delegate_affordability_runtime="$(jq -r '.runtime // ""' "$RUN_DIR/model-routing.json" 2>/dev/null || printf '')"
    _delegate_affordability_json="$(
      scripts/resolve-delegate-affordability.sh \
        "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null

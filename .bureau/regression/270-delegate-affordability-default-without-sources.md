@@ -68,6 +68,26 @@ command: |
     [ "$_delegate_conductor_model" = "opus" ] || exit 1
     [ ! -e "$RUN_DIR/log.md" ] || ! grep -Fq 'MODEL-OVERRIDE:' "$RUN_DIR/log.md"
   ) || exit 1
+  cat > "$tmp/bootstrap/scripts/resolve-delegate-affordability.sh" <<'STUB'
+  #!/bin/sh
+  printf '%s\n' call >> "$RUN_DIR/helper.calls"
+  printf '%s\n' '{"action":"use_quota","source":"live","percent_remaining":10}'
+  STUB
+  chmod +x "$tmp/bootstrap/scripts/resolve-delegate-affordability.sh"
+  printf '%s\n' '{"runtime":"claude","roles":{"conductor":{"model":"opus"}}}' trailing-garbage > "$tmp/bootstrap/run/model-routing.json"
+  rm -f "$tmp/bootstrap/run/log.md" "$tmp/bootstrap/run/helper.calls"
+  (
+    cd "$tmp/bootstrap" || exit 1
+    RUN_DIR="$tmp/bootstrap/run"
+    HOME="$tmp/bootstrap/home"
+    export RUN_DIR HOME
+    . "$tmp/bootstrap/selection.sh" || exit 1
+    [ "$_delegate_conductor_configured_model" = "" ] || exit 1
+    [ "$_delegate_affordability_runtime" = "" ] || exit 1
+    [ "$_delegate_conductor_model" = "" ] || exit 1
+    [ "$(wc -l < "$RUN_DIR/helper.calls" | tr -d '[:space:]')" = "1" ] || exit 1
+    [ ! -e "$RUN_DIR/log.md" ] || ! grep -Fq 'MODEL-OVERRIDE:' "$RUN_DIR/log.md"
+  ) || exit 1
 expected: exits 0 only when absent or unparseable live and snapshot inputs emit default/none and Bootstrap preserves startup/default routing
 phase: 08 · execute-plan
 owner: Prompt 08 — Phase 3 FR6 affordability wiring
