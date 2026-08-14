@@ -117,22 +117,37 @@ json_usage() {
   usage_path="$1"
   usage_since="${2:-}"
   usage_until="${3:-}"
-  usable_count=$(jq -Rn --arg since "$usage_since" --arg until "$usage_until" "$BUREAU_TRANSCRIPT_WINDOW_JQ"'
+  usage_shape=$(jq -Rn --arg since "$usage_since" --arg until "$usage_until" "$BUREAU_TRANSCRIPT_WINDOW_JQ"'
     [inputs | fromjson?]
     | (if ($since == "" and $until == "") then .
        else [ .[] | select(transcript_timestamp_in_window(.timestamp?; $since; $until)) ]
        end)
-    | [ .[] | select(.type? == "assistant") | select(.message.id? != null) | select(.message.usage? != null) ]
-    | length
+    | [ .[]
+      | select(.type? == "assistant")
+      | select(.message.id? != null)
+      | select(.message.usage? != null)
+      | .message.usage] as $usage
+    | {
+        records: ($usage | length),
+        complete: (($usage | length) > 0 and all($usage[];
+          type == "object"
+          and has("input_tokens") and has("cache_creation_input_tokens")
+          and has("cache_read_input_tokens") and has("output_tokens")
+          and all([.input_tokens,.cache_creation_input_tokens,.cache_read_input_tokens,.output_tokens][];
+            type == "number" and . >= 0)))
+      }
   ' "$usage_path" 2>/dev/null)
-  if [ -z "$usable_count" ] || [ "$usable_count" -eq 0 ] 2>/dev/null; then
+  if ! printf '%s' "$usage_shape" | jq -e '.records > 0' >/dev/null 2>&1; then
     return 1
   fi
   raw_usage=$(sum_transcript_usage "$usage_path" "$usage_since" "$usage_until" 2>/dev/null) || return 1
   nonzero_usage=$(printf '%s' "$raw_usage" | jq -r \
     '[.input,.cache_creation,.cache_read,.output] | map(select(type == "number" and . != 0)) | length > 0' \
     2>/dev/null)
-  [ "$nonzero_usage" = "true" ] || return 1
+  if [ "$nonzero_usage" != "true" ] && \
+     ! printf '%s' "$usage_shape" | jq -e '.complete' >/dev/null 2>&1; then
+    return 1
+  fi
   printf '%s' "$raw_usage" | jq -c '{tokens:{input:.input,cache_creation:.cache_creation,cache_read:.cache_read,processed:.processed,output:.output},turns:.turns}' 2>/dev/null
 }
 
@@ -157,7 +172,7 @@ usage_gap_note() {
       }
   ' "$gap_path" 2>/dev/null)
   if printf '%s' "$gap_shape" | jq -e '.records > 0 and (.nonzero | not)' >/dev/null 2>&1; then
-    printf 'readable transcript contains empty or all-zero message usage: %s' "$gap_path"
+    printf 'readable transcript contains empty or incomplete all-zero message usage: %s' "$gap_path"
   else
     printf 'no usable message.id usage in transcript: %s' "$gap_path"
   fi
