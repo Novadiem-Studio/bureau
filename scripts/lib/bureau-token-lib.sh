@@ -15,6 +15,38 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+# Shared jq prelude for transcript timestamp windows. ISO-8601 UTC strings are
+# not directly comparable when one side includes fractional seconds and the
+# other does not ("...01.1Z" sorts before "...01Z"). Parse the whole-second
+# component and compare a canonical fractional component so mixed precision
+# retains exact half-open boundary semantics without floating-point rounding.
+# Non-ISO or absent timestamps retain the prior jq ordering behavior; older
+# until-only callers intentionally admit their untimestamped fixture records.
+BUREAU_TRANSCRIPT_WINDOW_JQ='
+def bureau_iso8601_timestamp_key:
+  if type != "string" then null
+  else try (
+    [capture("^(?<whole>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.(?<fraction>[0-9]+))?Z$")]
+    | if length == 0 then null
+      else .[0]
+      | [((.whole + "Z") | fromdateiso8601), ((.fraction // "") | sub("0+$"; ""))]
+      end
+  ) catch null
+  end;
+def transcript_timestamp_in_window($timestamp; $since; $until):
+  ($timestamp | bureau_iso8601_timestamp_key) as $timestamp_key
+  | ($since | bureau_iso8601_timestamp_key) as $since_key
+  | ($until | bureau_iso8601_timestamp_key) as $until_key
+  | if ($timestamp_key == null)
+       or (($since != "") and ($since_key == null))
+       or (($until != "") and ($until_key == null))
+    then (($since == "") or ($timestamp >= $since))
+      and (($until == "") or ($timestamp < $until))
+    else (($since == "") or ($timestamp_key >= $since_key))
+      and (($until == "") or ($timestamp_key < $until_key))
+    end;
+'
+
 # sum_transcript_usage <jsonl_path> [since_iso] [until_iso]
 #
 # Reads a Claude Code JSONL transcript, dedups assistant lines on message.id
@@ -44,12 +76,11 @@ sum_transcript_usage() {
   # fromjson? per line — malformed/truncated lines are silently skipped.
   # Output shape and message.id dedup semantics are identical to the prior
   # -cs implementation; the only difference is line-level fault tolerance.
-  jq -Rn --arg since "$since_iso" --arg until "$until_iso" '
+  jq -Rn --arg since "$since_iso" --arg until "$until_iso" "$BUREAU_TRANSCRIPT_WINDOW_JQ"'
     [inputs | fromjson?]
     | (if ($since == "" and $until == "") then .
        else [ .[]
-              | select(($since == "" or .timestamp >= $since) and
-                       ($until == "" or .timestamp < $until))
+              | select(transcript_timestamp_in_window(.timestamp?; $since; $until))
             ]
        end)
     | [ .[]

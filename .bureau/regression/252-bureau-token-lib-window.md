@@ -10,19 +10,22 @@ command: |
   printf '%s\n' \
     '{"timestamp":"2026-08-13T00:00:00Z","type":"assistant","message":{"id":"before","usage":{"input_tokens":1},"content":[{"type":"text"}]}}' \
     '{"timestamp":"2026-08-13T00:00:01Z","type":"assistant","message":{"id":"lower","usage":{"input_tokens":2},"content":[{"type":"tool_use"}]}}' \
+    '{"timestamp":"2026-08-13T00:00:01.000001Z","type":"assistant","message":{"id":"fractional-after-lower","usage":{"input_tokens":11},"content":[{"type":"text"}]}}' \
     '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"inside","usage":{"cache_creation_input_tokens":3},"content":[{"type":"text"}]}}' \
+    '{"timestamp":"2026-08-13T00:00:02.999999Z","type":"assistant","message":{"id":"fractional-before-upper","usage":{"cache_read_input_tokens":13},"content":[{"type":"text"}]}}' \
     '{"timestamp":"2026-08-13T00:00:03Z","type":"assistant","message":{"id":"upper","usage":{"cache_read_input_tokens":5},"content":[{"type":"text"}]}}' \
+    '{"timestamp":"2026-08-13T00:00:03.000001Z","type":"assistant","message":{"id":"fractional-after-upper","usage":{"output_tokens":17},"content":[{"type":"text"}]}}' \
     '{"timestamp":"2026-08-13T00:00:04Z","type":"assistant","message":{"id":"after","usage":{"output_tokens":7},"content":[{"type":"text"}]}}' \
     > "$TRANSCRIPT"
 
   windowed=$(sum_transcript_usage "$TRANSCRIPT" "2026-08-13T00:00:01Z" "2026-08-13T00:00:03Z") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$windowed" | jq -e '
-    . == {input:2,cache_creation:3,cache_read:0,processed:5,output:0,turns:1}
+    . == {input:13,cache_creation:3,cache_read:13,processed:29,output:0,turns:1}
   ' >/dev/null || { rm -rf "$TMPF"; exit 1; }
 
   until_only=$(sum_transcript_usage "$TRANSCRIPT" "" "2026-08-13T00:00:03Z") || { rm -rf "$TMPF"; exit 1; }
   printf '%s' "$until_only" | jq -e '
-    . == {input:3,cache_creation:3,cache_read:0,processed:6,output:0,turns:1}
+    . == {input:14,cache_creation:3,cache_read:13,processed:30,output:0,turns:1}
   ' >/dev/null || { rm -rf "$TMPF"; exit 1; }
 
   # This is the exact pre-window return for a fixed transcript, including jq's
@@ -45,9 +48,11 @@ command: |
 
   rm -rf "$TMPF"
   echo "PASS"
-  # Mutations: changing >= to > drops lower and fails windowed; requiring both
-  # bounds admits upper into until_only; timestamp-filtering the omitted path
-  # drops plain and fails the byte-exact golden.
-expected: exit 0; stdout "PASS"; [since,until) is half-open, until-only filters independently, omitted args preserve the exact prior JSON
+  # Mutations: changing >= to > drops lower and fails windowed; comparing raw
+  # mixed-precision strings drops fractional-after-lower and admits
+  # fractional-after-upper; requiring both bounds admits upper into until_only;
+  # timestamp-filtering the omitted path drops plain and fails the byte-exact
+  # golden.
+expected: exit 0; stdout "PASS"; mixed-precision [since,until) is half-open, until-only filters independently, omitted args preserve the exact prior JSON
 phase: 02 · execute-plan
 owner: Prompt 02 / bureau-token-lib.sh optional window seam

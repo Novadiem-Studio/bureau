@@ -117,10 +117,10 @@ json_usage() {
   usage_path="$1"
   usage_since="${2:-}"
   usage_until="${3:-}"
-  usable_count=$(jq -Rn --arg since "$usage_since" --arg until "$usage_until" '
+  usable_count=$(jq -Rn --arg since "$usage_since" --arg until "$usage_until" "$BUREAU_TRANSCRIPT_WINDOW_JQ"'
     [inputs | fromjson?]
     | (if ($since == "" and $until == "") then .
-       else [ .[] | select(($since == "" or .timestamp >= $since) and ($until == "" or .timestamp < $until)) ]
+       else [ .[] | select(transcript_timestamp_in_window(.timestamp?; $since; $until)) ]
        end)
     | [ .[] | select(.type? == "assistant") | select(.message.id? != null) | select(.message.usage? != null) ]
     | length
@@ -140,10 +140,10 @@ usage_gap_note() {
   gap_path="$1"
   gap_since="${2:-}"
   gap_until="${3:-}"
-  gap_shape=$(jq -Rn --arg since "$gap_since" --arg until "$gap_until" '
+  gap_shape=$(jq -Rn --arg since "$gap_since" --arg until "$gap_until" "$BUREAU_TRANSCRIPT_WINDOW_JQ"'
     [inputs | fromjson?]
     | (if ($since == "" and $until == "") then .
-       else [ .[] | select(($since == "" or .timestamp >= $since) and ($until == "" or .timestamp < $until)) ]
+       else [ .[] | select(transcript_timestamp_in_window(.timestamp?; $since; $until)) ]
        end)
     | [ .[]
       | select(.type? == "assistant")
