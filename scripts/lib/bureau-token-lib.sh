@@ -15,7 +15,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
-# sum_transcript_usage <jsonl_path>
+# sum_transcript_usage <jsonl_path> [since_iso] [until_iso]
 #
 # Reads a Claude Code JSONL transcript, dedups assistant lines on message.id
 # (each assistant turn writes one JSONL line per content block, every line
@@ -34,6 +34,8 @@ fi
 # (return, not exit — a sourced function must never kill the calling hook.)
 sum_transcript_usage() {
   local jsonl_path="$1"
+  local since_iso="${2:-}"
+  local until_iso="${3:-}"
   if [ -z "$jsonl_path" ] || [ ! -r "$jsonl_path" ]; then
     echo "[bureau-token-lib] sum_transcript_usage: file not readable: ${jsonl_path:-<missing argument>}" >&2
     return 1
@@ -42,8 +44,14 @@ sum_transcript_usage() {
   # fromjson? per line — malformed/truncated lines are silently skipped.
   # Output shape and message.id dedup semantics are identical to the prior
   # -cs implementation; the only difference is line-level fault tolerance.
-  jq -Rn '
+  jq -Rn --arg since "$since_iso" --arg until "$until_iso" '
     [inputs | fromjson?]
+    | (if ($since == "" and $until == "") then .
+       else [ .[]
+              | select(($since == "" or .timestamp >= $since) and
+                       ($until == "" or .timestamp < $until))
+            ]
+       end)
     | [ .[]
         | select(.type? == "assistant")
         | select(.message.id? != null)

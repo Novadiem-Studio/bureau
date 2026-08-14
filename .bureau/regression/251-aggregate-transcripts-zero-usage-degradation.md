@@ -7,7 +7,7 @@ command: |
   jq -cn --arg sid "$SID" '{delegate_session_id:$sid,conductor_agent_id:"cond-zero",conductor_agent_ids:["cond-zero"],run_started_at:"2026-08-13T00:00:01Z"}' > "$RUN_PATH/delegate-state.json"
   printf 'SPAWN-EVENT: {"role":"analyst","attempt_id":"analyst-zero","status":"started"}\n' > "$RUN_PATH/log.md"
   jq -cn --arg run "$RUN_PATH" '{run_dir:$run,nonce:"nonce-zero",written_at:"2026-08-13T00:00:00Z"}' > "$TMPF/pointer"
-  printf '%s\n' '{"type":"assistant","message":{"id":"delegate-empty","usage":{},"content":[]}}' > "$SESSION.jsonl"
+  printf '%s\n' '{"timestamp":"2026-08-13T00:00:02Z","type":"assistant","message":{"id":"delegate-empty","usage":{},"content":[]}}' > "$SESSION.jsonl"
   printf '%s\n' '{"type":"assistant","message":{"id":"conductor-zero","usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"content":[]}}' > "$SESSION/subagents/agent-cond-zero.jsonl"
   jq -cn --arg run "$RUN_PATH" '{type:"user",message:{role:"user",content:("RUN_DIR: "+$run+"\nAttempt ID: analyst-zero\nRun nonce: nonce-zero\n")}}' > "$SESSION/subagents/agent-specialist-zero.jsonl"
   printf '%s\n' '{"type":"assistant","message":{"id":"specialist-empty","usage":{},"content":[]}}' >> "$SESSION/subagents/agent-specialist-zero.jsonl"

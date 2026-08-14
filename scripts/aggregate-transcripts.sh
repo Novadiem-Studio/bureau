@@ -2,8 +2,8 @@
 # aggregate-transcripts.sh — recover per-leg Claude token usage from JSONL transcripts.
 #
 # Usage: aggregate-transcripts.sh <RUN_DIR> [--until <iso>]
-# The --until value is accepted for the prompt-02 windowing extension. This first
-# version intentionally sums whole files.
+# The Delegate leg is sliced from its recorded run start; every leg shares the
+# same half-open upper bound so repeated close-out reads are deterministic.
 
 # Step 0: pin system tools ahead of ugrep and other user-installed replacements.
 PATH=/usr/bin:$PATH
@@ -28,8 +28,7 @@ if [ "$#" -gt 0 ]; then
   fi
   UNTIL_ISO="$2"
 fi
-# Parsed now for forward compatibility; prompt 02 makes this the transcript window bound.
-: "$UNTIL_ISO"
+[ -n "$UNTIL_ISO" ] || UNTIL_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 case "$RUN_DIR" in
   /) ;;
@@ -61,6 +60,7 @@ DISCOVERED_CONDUCTORS="$TMP_ROOT/discovered-conductors.tsv"
 CANDIDATES_TSV="$TMP_ROOT/candidates.tsv"
 UNATTRIBUTED_TSV="$TMP_ROOT/unattributed.tsv"
 CONDUCTOR_USAGE="$TMP_ROOT/conductor-usage.jsonl"
+DELEGATE_HEADERS="$TMP_ROOT/delegate-headers.txt"
 : > "$SPECIALISTS_JSONL"
 : > "$ATTEMPTS_TSV"
 : > "$RECORDED_CONDUCTORS"
@@ -68,6 +68,7 @@ CONDUCTOR_USAGE="$TMP_ROOT/conductor-usage.jsonl"
 : > "$CANDIDATES_TSV"
 : > "$UNATTRIBUTED_TSV"
 : > "$CONDUCTOR_USAGE"
+: > "$DELEGATE_HEADERS"
 
 PROJECTS_ROOT="${BUREAU_CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 
@@ -114,11 +115,20 @@ fi
 
 json_usage() {
   usage_path="$1"
-  usable_count=$(jq -Rn '[inputs | fromjson? | select(.type? == "assistant") | select(.message.id? != null) | select(.message.usage? != null)] | length' "$usage_path" 2>/dev/null)
+  usage_since="${2:-}"
+  usage_until="${3:-}"
+  usable_count=$(jq -Rn --arg since "$usage_since" --arg until "$usage_until" '
+    [inputs | fromjson?]
+    | (if ($since == "" and $until == "") then .
+       else [ .[] | select(($since == "" or .timestamp >= $since) and ($until == "" or .timestamp < $until)) ]
+       end)
+    | [ .[] | select(.type? == "assistant") | select(.message.id? != null) | select(.message.usage? != null) ]
+    | length
+  ' "$usage_path" 2>/dev/null)
   if [ -z "$usable_count" ] || [ "$usable_count" -eq 0 ] 2>/dev/null; then
     return 1
   fi
-  raw_usage=$(sum_transcript_usage "$usage_path" 2>/dev/null) || return 1
+  raw_usage=$(sum_transcript_usage "$usage_path" "$usage_since" "$usage_until" 2>/dev/null) || return 1
   nonzero_usage=$(printf '%s' "$raw_usage" | jq -r \
     '[.input,.cache_creation,.cache_read,.output] | map(select(type == "number" and . != 0)) | length > 0' \
     2>/dev/null)
@@ -128,8 +138,14 @@ json_usage() {
 
 usage_gap_note() {
   gap_path="$1"
-  gap_shape=$(jq -Rn '
-    [inputs | fromjson?
+  gap_since="${2:-}"
+  gap_until="${3:-}"
+  gap_shape=$(jq -Rn --arg since "$gap_since" --arg until "$gap_until" '
+    [inputs | fromjson?]
+    | (if ($since == "" and $until == "") then .
+       else [ .[] | select(($since == "" or .timestamp >= $since) and ($until == "" or .timestamp < $until)) ]
+       end)
+    | [ .[]
       | select(.type? == "assistant")
       | select(.message.id? != null)
       | select(.message.usage? != null)
@@ -176,6 +192,17 @@ first_attempt_id() {
   grep -o 'Attempt ID: [^\\"]*' "$1" 2>/dev/null | head -1 | sed 's/^Attempt ID: //'
 }
 
+delegate_header_run_dirs() {
+  grep -o 'RUN_DIR: /[^\\"]*' "$1" 2>/dev/null \
+    | sed 's/^RUN_DIR: //; s#[[:space:]]*$##; s#/*$##' \
+    | awk 'index($0, "/.bureau/runs/") || index($0, "/output/runs/")' \
+    | sort -u
+}
+
+delegate_run_header_identity() {
+  printf '%s' "$RUN_DIR" | sed 's#/*$##; s#/.bureau/archive/#/.bureau/runs/#'
+}
+
 is_recorded_conductor() {
   grep -Fqx "$1" "$RECORDED_CONDUCTORS" 2>/dev/null
 }
@@ -211,11 +238,28 @@ else
   DELEGATE_TRANSCRIPT=$(resolve_top_transcript "$DELEGATE_SESSION_ID" 2>/dev/null)
   if [ -n "$DELEGATE_TRANSCRIPT" ]; then
     SESSION_BASE=$(dirname "$DELEGATE_TRANSCRIPT")/"$DELEGATE_SESSION_ID"
-    delegate_usage=$(json_usage "$DELEGATE_TRANSCRIPT")
+    delegate_usage=$(json_usage "$DELEGATE_TRANSCRIPT" "$RUN_STARTED_AT" "$UNTIL_ISO")
     if [ -n "$delegate_usage" ]; then
-      printf '%s' "$delegate_usage" | jq -c '. + {confidence:"exact"}' > "$DELEGATE_JSON"
+      delegate_confidence="exact"
+      delegate_note=""
+      if [ -z "$RUN_STARTED_AT" ]; then
+        delegate_header_run_dirs "$DELEGATE_TRANSCRIPT" > "$DELEGATE_HEADERS"
+        delegate_own_header=$(delegate_run_header_identity)
+        delegate_header_count=$(awk 'NF {n++} END {print n+0}' "$DELEGATE_HEADERS")
+        delegate_only_header=$(awk 'NF {print; exit}' "$DELEGATE_HEADERS")
+        if [ "$delegate_header_count" -ne 1 ] || [ "$delegate_only_header" != "$delegate_own_header" ]; then
+          delegate_confidence="partial"
+          delegate_note="shared-session per-run window unavailable; figure may over-attribute sibling-run turns"
+        fi
+      fi
+      if [ -n "$delegate_note" ]; then
+        printf '%s' "$delegate_usage" | jq -c --arg confidence "$delegate_confidence" --arg note "$delegate_note" \
+          '. + {confidence:$confidence,_note:$note}' > "$DELEGATE_JSON"
+      else
+        printf '%s' "$delegate_usage" | jq -c '. + {confidence:"exact"}' > "$DELEGATE_JSON"
+      fi
     else
-      delegate_gap_note=$(usage_gap_note "$DELEGATE_TRANSCRIPT")
+      delegate_gap_note=$(usage_gap_note "$DELEGATE_TRANSCRIPT" "$RUN_STARTED_AT" "$UNTIL_ISO")
       jq -cn --argjson tokens "$ZERO_TOKENS" \
         --arg note "$delegate_gap_note" \
         '{tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' > "$DELEGATE_JSON"
@@ -321,10 +365,10 @@ while IFS= read -r conductor_id; do
     append_note "transcript missing: $conductor_path"
     continue
   fi
-  conductor_one=$(json_usage "$conductor_path")
+  conductor_one=$(json_usage "$conductor_path" "" "$UNTIL_ISO")
   if [ -z "$conductor_one" ]; then
     conductor_missing=$((conductor_missing + 1))
-    append_note "$(usage_gap_note "$conductor_path")"
+    append_note "$(usage_gap_note "$conductor_path" "" "$UNTIL_ISO")"
     continue
   fi
   printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
@@ -334,10 +378,10 @@ done < "$RECORDED_CONDUCTORS"
 discovered_ids=""
 while IFS="$(printf '\t')" read -r conductor_id conductor_path; do
   [ -n "$conductor_id" ] || continue
-  conductor_one=$(json_usage "$conductor_path")
+  conductor_one=$(json_usage "$conductor_path" "" "$UNTIL_ISO")
   if [ -z "$conductor_one" ]; then
     conductor_missing=$((conductor_missing + 1))
-    append_note "$(usage_gap_note "$conductor_path")"
+    append_note "$(usage_gap_note "$conductor_path" "" "$UNTIL_ISO")"
     continue
   fi
   printf '%s\n' "$conductor_one" >> "$CONDUCTOR_USAGE"
@@ -388,13 +432,13 @@ while IFS="$(printf '\t')" read -r attempt_id role; do
     candidate_row=$(awk -F '\t' -v wanted="$attempt_id" '$1 == wanted {print; exit}' "$CANDIDATES_TSV")
     candidate_agent=$(printf '%s' "$candidate_row" | awk -F '\t' '{print $3}')
     candidate_path=$(printf '%s' "$candidate_row" | awk -F '\t' '{print $4}')
-    candidate_usage=$(json_usage "$candidate_path")
+    candidate_usage=$(json_usage "$candidate_path" "" "$UNTIL_ISO")
     if [ -n "$candidate_usage" ]; then
       printf '%s' "$candidate_usage" | jq -c --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" \
         '. + {attempt_id:$attempt,role:$role,agent_id:$agent,confidence:"exact"}' \
         | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence}' >> "$SPECIALISTS_JSONL"
     else
-      candidate_gap_note=$(usage_gap_note "$candidate_path")
+      candidate_gap_note=$(usage_gap_note "$candidate_path" "" "$UNTIL_ISO")
       jq -cn --arg attempt "$attempt_id" --arg role "$role" --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" \
         --arg note "$candidate_gap_note" \
         '{attempt_id:$attempt,role:$role,agent_id:$agent,tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' \
@@ -406,13 +450,13 @@ done < "$ATTEMPTS_TSV"
 # Run-scoped transcripts without SPAWN-EVENT membership are real cost, emitted once.
 while IFS="$(printf '\t')" read -r candidate_agent candidate_path; do
   [ -n "$candidate_agent" ] || continue
-  candidate_usage=$(json_usage "$candidate_path")
+  candidate_usage=$(json_usage "$candidate_path" "" "$UNTIL_ISO")
   if [ -n "$candidate_usage" ]; then
     printf '%s' "$candidate_usage" | jq -c --arg agent "$candidate_agent" \
       '. + {attempt_id:null,role:null,agent_id:$agent,confidence:"inferred",_note:"run-scoped transcript has no matching SPAWN-EVENT; summed as unattributed"}' \
       | jq -c '{attempt_id,role,agent_id,tokens,turns,confidence,_note}' >> "$SPECIALISTS_JSONL"
   else
-    candidate_gap_note=$(usage_gap_note "$candidate_path")
+    candidate_gap_note=$(usage_gap_note "$candidate_path" "" "$UNTIL_ISO")
     jq -cn --arg agent "$candidate_agent" --argjson tokens "$ZERO_TOKENS" --arg note "$candidate_gap_note" \
       '{attempt_id:null,role:null,agent_id:$agent,tokens:$tokens,turns:0,confidence:"unavailable",_note:$note}' \
       >> "$SPECIALISTS_JSONL"
