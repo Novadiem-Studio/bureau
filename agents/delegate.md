@@ -28,7 +28,9 @@ violation — see the three-role contrast table in CLAUDE.md.
 ## Inputs
 
 **mode: manager/relay** — Reads (handed by Robin or resumed from state):
-    delegate-state.json (topology, conductor_agent_id, active_checkpoint, revise_counts),
+    delegate-state.json (topology, conductor_agent_id, conductor_agent_ids,
+    delegate_session_id when available, run_started_at, active_checkpoint, revise_counts,
+    revision_cap),
     state.json (scope, git, phase state — read-only reference; the Conductor writes this),
     the CONDUCTOR-RETURN block (the return value from the Conductor subagent),
     the artifact under review (path from the return block),
@@ -79,7 +81,7 @@ To start a new Delegate-run:
 
 1. Read `workflows/index.md`, triage the task to a workflow, resolve the target repo per
    `docs/run-protocol.md`, derive the run slug, then create the run dir with the normal opening
-   ceremony **without echoing the bare pointer nonce into the Delegate transcript**. On Codex,
+   ceremony **without echoing the run-scope nonce into the Delegate transcript**. On Codex,
    select the OpenAI runtime explicitly; on Claude, omit `--runtime` or pass `claude`:
    ```sh
    # Codex host
@@ -90,44 +92,96 @@ To start a new Delegate-run:
    scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
      --slug "$SLUG" --no-pointer-echo
    ```
-   This still writes the normal bare pointer at the munged `RUN_DIR` key. That pointer is the
+   This still writes the run-scope file at the munged `RUN_DIR` key. Its nonce is the
    specialist-spawn nonce source. The Conductor subagent reads it privately before spawning
    specialists; the Delegate must never echo, log, or pass that bare nonce.
-2. **Claude Code only — enrol the Delegate's own token-capture pointer (#26a).** If
-   `model-routing.json#runtime` is `openai`, skip this pointer ceremony and append:
-   `Codex manager/conductor/specialist token accounting unavailable; cold-reviewer usage remains exact.`
-   Do not fabricate zero-token events. On Claude, the Delegate IS the
-   top-level session, so *its* Stop hook is `conductor-stop.sh` — but the Conductor pointer
-   belongs to the Conductor/specialist rail. Without its own pointer the Delegate's manager
-   tokens are dropped. So the Delegate writes a per-run pointer tagged `"role":"delegate"`,
-   keyed by `<munged-run-dir>.delegate` (the role suffix keeps it distinct from the bare pointer),
-   and echoes it so the nonce lands in the Delegate's transcript (the ownership credential).
-   This reuses #25's per-run-keyed directory:
+2. Resolve Claude affordability once, after `model-routing.json` exists and before choosing the
+   Conductor model. This is a best-effort bootstrap heuristic and must never block startup:
    ```sh
-   # Resolve the directory exactly as conductor-stop.sh does (BUREAU_POINTER_FILE forces
-   # single-file mode; else BUREAU_POINTER_DIR / default ~/.novadiem/active-runs/).
-   if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
-     _del_pointer="$BUREAU_POINTER_FILE"      # test isolation / forced single-file
-   else
-     _del_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
-     mkdir -p "$_del_dir"
-     _del_key=$(printf '%s' "$RUN_DIR" | sed 's#[/.]#-#g')
-     _del_pointer="$_del_dir/${_del_key}.delegate"
+   # DELEGATE-AFFORDABILITY-SELECTION:BEGIN
+   _delegate_conductor_attempt_id="conductor-bootstrap-1"
+   _delegate_conductor_configured_model=""
+   _delegate_affordability_runtime=""
+   if _delegate_routing_candidate="$(
+     jq -ser '
+       if length == 1 and (.[0] | type) == "object" and
+          (.[0].roles.conductor.model | type) == "string" and
+          (.[0].runtime | type) == "string"
+       then .[0] |
+         @sh "_delegate_conductor_configured_model=\(.roles.conductor.model) _delegate_affordability_runtime=\(.runtime)"
+       else error("invalid model routing") end
+     ' "$RUN_DIR/model-routing.json" 2>/dev/null
+   )"; then
+     eval "$_delegate_routing_candidate"
    fi
-   printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s","role":"delegate"}\n' \
-     "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
-     > "$_del_pointer"
-   cat "$_del_pointer"   # echo — places the Delegate pointer nonce in the Delegate transcript
+   _delegate_conductor_model="$_delegate_conductor_configured_model"
+   _delegate_affordability_json="$(
+     scripts/resolve-delegate-affordability.sh \
+       "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null
+   )" || _delegate_affordability_json='{"action":"default","source":"none"}'
+   _delegate_affordability_action=""
+   _delegate_affordability_source=""
+   _delegate_affordability_percent=""
+   if _delegate_affordability_candidate="$(
+     printf '%s' "$_delegate_affordability_json" | jq -ser \
+       'if length == 1 and (.[0] | type) == "object" and
+           .[0].action == "use_quota" and
+           (.[0].source == "live" or .[0].source == "snapshot") and
+           (.[0].percent_remaining | type) == "number"
+        then .[0] |
+          @sh "_delegate_affordability_action=\(.action) _delegate_affordability_source=\(.source) _delegate_affordability_percent=\(.percent_remaining)"
+        else error("invalid affordability result") end' \
+       2>/dev/null
+   )"; then
+     eval "$_delegate_affordability_candidate"
+   fi
+
+   if [ "$_delegate_affordability_runtime" = "claude" ] &&
+      [ "$_delegate_affordability_action" = "use_quota" ] &&
+      [ "$_delegate_conductor_configured_model" = "opus" ] &&
+      [ -n "$_delegate_affordability_percent" ] &&
+      awk -v remaining="$_delegate_affordability_percent" \
+        'BEGIN { exit !((remaining + 0) <= 15) }' </dev/null 2>/dev/null
+   then
+     _delegate_conductor_model="sonnet"
+   fi
+
+   if [ "$_delegate_conductor_model" != "$_delegate_conductor_configured_model" ]; then
+     _delegate_model_override_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
+     _delegate_model_override_json="$(
+       jq -cn \
+         --arg role "conductor" \
+         --arg attempt_id "$_delegate_conductor_attempt_id" \
+         --arg configured "$_delegate_conductor_configured_model" \
+         --arg actual "$_delegate_conductor_model" \
+         --arg reason "claude affordability budget_pressure downgrade (remaining <= 15%)" \
+         --arg at "$_delegate_model_override_at" \
+         '{role:$role,attempt_id:$attempt_id,configured:$configured,actual:$actual,reason:$reason,at:$at}' \
+         2>/dev/null || printf ''
+     )"
+     if [ -n "$_delegate_model_override_at" ] && [ -n "$_delegate_model_override_json" ]; then
+       printf 'MODEL-OVERRIDE: %s\n' "$_delegate_model_override_json" \
+         >> "$RUN_DIR/log.md" 2>/dev/null || :
+     fi
+   fi
+   # DELEGATE-AFFORDABILITY-SELECTION:END
    ```
-   Then write the nonce-free enrolment log line to `RUN_DIR/log.md` (same discipline as the
-   Conductor): `Delegate pointer enrolled — role:delegate, nonce in pointer file and Delegate transcript only.`
-   `conductor-stop.sh` selects this `.delegate` pointer for the Delegate top session and emits a
-   **DELEGATE-TOKEN-EVENT** (shared baseline/delta arithmetic, distinct log prefix).
+   Invoke the helper exactly once; do not duplicate its curl or snapshot parsing. For
+   `action:"use_quota"`, use `percent_remaining` as the affordability input to the existing
+   Claude opus-vs-sonnet model decision. For `action:"default"`, follow the normal default-model
+   path. For `action:"skip"`, take no quota action. An empty, malformed, or otherwise unexpected
+   result also follows the normal default-model path. A live result may have a stale `lastUpdated`:
+   tolerate that here because this is a model-choice heuristic, not accounting.
+
+   **Structural guard:** this signal feeds ONLY model choice. It is NEVER written to
+   `conductor_tokens`, `delegate_tokens`, `reviewer_tokens`, `processed_total`, or any accounting
+   field. The helper exposes no per-leg counts and neither imports nor writes accounting data.
 3. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
    transport selected by `model-routing.json#runtime`: Claude uses the Agent tool; Codex uses
    the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
-   in the current host). **Set `model` explicitly to
-   `roles.conductor.model` and, on Codex, `reasoning_effort` explicitly to
+   in the current host). **Set `model` explicitly to the already-derived
+   `$_delegate_conductor_model` (do not re-read `roles.conductor.model` at spawn time) and, on
+   Codex, `reasoning_effort` explicitly to
    `roles.conductor.reasoningEffort` — never omit them.** An omitted `model` may inherit the
    Delegate session's model, which may be an
    escalation-tier model (fable); the hard spawn rule in `agents/orchestrator.md` applies to
@@ -137,48 +191,60 @@ To start a new Delegate-run:
    ```
    RUN_DIR: <abs RUN_DIR>
    BUREAU_ROLE: conductor
+   Attempt ID: <value of _delegate_conductor_attempt_id>
    ```
    plus:
    - the `topology: integrated` directive (OQ4 — the authoritative mode signal: *return to me
      at each checkpoint; do not write NN-request.md, do not call await-verdict.sh, do not emit
      an interactive [CHECKPOINT]*),
    - the task and the full Bureau host instructions the Conductor needs;
-   - instruction to read the bare run pointer privately before the first specialist spawn and use
+   - instruction to read the run-scope file privately before the first specialist spawn and use
      its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
 
-   On Claude, the two literal lines are also the token-capture rail (they are NOT decoration).
-   On Codex they remain required run/role identity, but token attribution is the named gap in
-   `docs/host-runtime.md`:
-   - `RUN_DIR: <abs>` — the exact shape `scripts/subagent-stop.sh` Step 3 greps to identify the
-     bureau run this subagent belongs to. Without it the hook cannot resolve RUN_DIR and drops
-     the Conductor's tokens.
-   - `BUREAU_ROLE: conductor` — the marker `subagent-stop.sh` Step 4.5 matches (anchored,
-     case-sensitive) to classify this subagent as the Conductor and emit a **CONDUCTOR-TOKEN-EVENT**
-     (baseline/delta) instead of a specialist SPAWN-TOKEN-EVENT. This is ownership-by-identity
-     (the spawn prompt declares the role), not by grepping the log for a mention — same rail as a
-     specialist's `Attempt ID:`. `RUN_DIR` is already resolved before this spawn, so no new
-     ordering constraint.
+   Use the same `$_delegate_conductor_attempt_id` as the `attempt_id` in the accompanying
+   Conductor spawn event. This makes the conditional `MODEL-OVERRIDE:` record above match that
+   spawn exactly; do not mint a second attempt id for the same spawn.
+
+   These literal lines remain the Conductor's run and role identity on every host.
 4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
-   exactly its five fields:
-   ```json
-   {
-     "topology": "integrated",
-     "conductor_agent_id": "<id from the spawn>",
-     "active_checkpoint": null,
-     "revise_counts": {},
-     "revision_cap": 2
-   }
+   the existing five fields plus the additive post-hoc accounting fields:
+   ```sh
+   _conductor_agent_id="<id from the spawn>"
+   _delegate_session_id=${CLAUDE_CODE_SESSION_ID:-}
+   _run_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   jq -n \
+     --arg conductor_id "$_conductor_agent_id" \
+     --arg delegate_session_id "$_delegate_session_id" \
+     --arg run_started_at "$_run_started_at" '
+       {
+         topology: "integrated",
+         conductor_agent_id: $conductor_id,
+         conductor_agent_ids: [$conductor_id],
+         run_started_at: $run_started_at,
+         active_checkpoint: null,
+         revise_counts: {},
+         revision_cap: 2
+       }
+       + if $delegate_session_id == "" then {}
+         else {delegate_session_id: $delegate_session_id}
+         end
+     ' > "$RUN_DIR/delegate-state.json"
    ```
+   Read `delegate_session_id` only from `$CLAUDE_CODE_SESSION_ID`, after checking that it is
+   non-empty. If the variable is absent or empty, omit the field (or write `null`); never fabricate
+   it and never guess it from `ls`. `run_started_at` is the bootstrap clock and the lower bound for
+   this run's Delegate transcript window. Whenever `conductor_agent_id` is subsequently set or
+   updated, append that id to `conductor_agent_ids` if it is not already present, preserving every
+   earlier Conductor leg across re-spawns.
+
+   These fields are additive and backward-compatible. Legacy files lack them, so an affected leg
+   degrades per FR7 with a mandatory `_note` (`partial` or `unavailable`), never a crash. The
+   recorded `delegate_session_id` covers the **bootstrap session only**: a Delegate resumed in a
+   new top-level session is an accepted v1 gap, and that resumed manager leg's tokens are not
+   attributed.
+
    `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
    single-writer-per-file, AC16).
-   **Claude cleanup only.** Like the bare pointer, do NOT remove `"$_del_pointer"` at close-out — the
-   post-close-out Stop fire must still find it to write the Delegate's `final:true` capture (its
-   compare-before-rm then removes it). It is also removed at archive by the `#25/#26a janitor`
-   (`agents/orchestrator.md § Pointer lifecycle` — `rm -f "${_pointer_file}.delegate"`). If you
-   tear the integrated session down without going through that archive path, `rm -f "$_del_pointer"`
-   yourself so no `.delegate` file lingers (a lingering one is inert — its nonce is in no live
-   transcript — but leave nothing stale).
-
 ### Main manager loop
 
 For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
@@ -186,7 +252,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 **Routine checkpoint (`return-type: routine-checkpoint`):**
 
-1. Update `delegate-state.json`: `active_checkpoint = NN`, `conductor_agent_id = <current id>`.
+1. Update `delegate-state.json`: `active_checkpoint = NN`, `conductor_agent_id = <current id>`,
+   and append `<current id>` to `conductor_agent_ids` if absent.
    A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
    `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
 2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
@@ -280,7 +347,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 **Genuine fork (`return-type: genuine-fork`):**
 
-1. Update `delegate-state.json` (`active_checkpoint`, `conductor_agent_id`).
+1. Update `delegate-state.json` (`active_checkpoint`, `conductor_agent_id`), appending the current
+   id to `conductor_agent_ids` if absent.
 2. Present the fork to Robin. Claude may use top-level `AskUserQuestion`; on Codex persist
    `delegate-state.json`, ask in the top-level final response, and continue on Robin's next turn.
    The `signal-fired` field names which of the 9 escalation signals triggered it — surface that,

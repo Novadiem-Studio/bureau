@@ -1,4 +1,5 @@
 name: #27 NEW-C · specialist ownership gate carve-out — a pointer-LESS run (no pointer file for RUN_DIR) fails OPEN, attributing by mention with a stderr note; and this path is NOT foreigner-exploitable
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

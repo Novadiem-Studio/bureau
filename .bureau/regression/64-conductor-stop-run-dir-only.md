@@ -1,4 +1,5 @@
 name: conductor-stop AC 7d / EC 14 — RUN_DIR in transcript but nonce absent → exit 0, nothing written
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

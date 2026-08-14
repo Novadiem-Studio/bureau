@@ -1,4 +1,5 @@
 name: BUREAU_ACCOUNT_RUN_SH — forced shim failure: ordering proven via sentinel, pointer temporal removal, exit 0 (AC 5, FR 8)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

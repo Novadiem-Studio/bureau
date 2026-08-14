@@ -192,8 +192,8 @@ Attempt ID: <role>-<attempt>
 Run nonce: <this run's secret nonce — copy verbatim from the run's pointer file>
 ```
 
-On Claude, `Attempt ID:` and `Run nonce:` bind token events to the spawn and run. On Codex keep
-both identities, but attribution is unavailable (`docs/host-runtime.md`)—never fabricate it.
+`Attempt ID:` and `Run nonce:` are the post-hoc run-scoping identity that
+`aggregate-transcripts.sh` reads from the specialist transcript. Keep both on every host.
 Put the nonce only in specialist first messages; **NEVER write the nonce to `log.md`**.
 
 **Delegate v2 note:** with `topology: integrated`, the Delegate used
@@ -258,7 +258,7 @@ Use Scoot (`haiku`) and Tally (`sonnet`) for read-only odd jobs so trivial scout
 silently consume opus.
 
 **Budget handling:** read `~/.novadiem/usage-snapshot.json` (statusLine-owned; no external poll),
-at run start and before expensive spawns. Escalate tier only on evidence of weak/contradictory outputs.
+at run start and before expensive spawns. The live ClaudeUsage check belongs to the Delegate (the top session picks models); direct-Conductor fallback keeps this snapshot read. Escalate tier only on evidence of weak/contradictory outputs.
 
 **Cast map and build dispatch:** agent/coder tier tables, odd-job policy, and execute-step
 dispatch rules (including design-review and bounded parallel tracks) live in the module.
@@ -446,8 +446,8 @@ Seven required keys: `role`, `agent`, `configured_model`, `actual_model`, `attem
 **Bundle 11 enrichments (additional fields on every SPAWN-EVENT line):**
 - **started line** gains: `"at": "<ISO-8601 UTC — $(date -u +%Y-%m-%dT%H:%M:%SZ)>"` and optionally `"rework": true` (see rework rule below; omit the key if false).
 - **terminal line** gains: `"at": "<ISO-8601 UTC>"` and `"started_at": "<the started line's at value, carried forward>"`.
-- `duration_s`, `turns`, and `tokens` are **NOT** on the SPAWN-EVENT line — they live on the SPAWN-TOKEN-EVENT line written by the hook (`docs/run-accounting.md § B2`).
-- **The run nonce is NEVER on a SPAWN-EVENT line or anywhere in `log.md`** — the seven required keys carry no nonce; keep it that way. The `Run nonce:` value goes in the specialist's spawn prompt ONLY (it is the secret the #27 ownership gate greps from the subagent's transcript); putting it on any log line would reopen the ownership-by-mention hole (a `log.md`-reader could forge it).
+- `duration_s`, `turns`, and `tokens` are **NOT** on the SPAWN-EVENT line. Duration is consumer-derived; turns and tokens come from the post-hoc transcript aggregator (`docs/run-accounting.md § B2`).
+- **The run nonce is NEVER on a SPAWN-EVENT line or anywhere in `log.md`** — the seven required keys carry no nonce; keep it that way. The `Run nonce:` value goes in the specialist's spawn prompt ONLY so the post-hoc aggregator can scope the transcript to this run; putting it on a log line would let any run-dir reader forge that scope identity.
 
 **Rework flag rule ("redo, not re-sequence"):** Set `rework: true` on the **started** line ONLY when this spawn REDOES a deliverable an earlier spawn already attempted — specifically: a Challenger-blocker re-spawn (the Architect re-spawned to fix blockers on spec.md/plan.md it already produced), a retried failed or no-handoff spawn, or a corrected-design re-spawn. `rework` is NEVER set on a role's first build of any deliverable, even if it is that role's Nth spawn of the run. A role spawned on successive distinct prompts — e.g. the Mage building prompts 5, 6, 7 in sequence (attempt 1/2/3, each a first build of a different prompt) — is NOT rework. Rule: flag the spawn that re-does a deliverable — never the reviewer that triggered the redo, and never the Nth first-build in a sequence.
 
@@ -458,11 +458,11 @@ Full validation rules and `accounting.json` build details in `docs/run-accountin
 `output/studio/runs-index/archive/<slug>.json` (with `status: "archived"`) in the same step
 as the archive `mv` (EC 12).
 
-## Pointer lifecycle (FR 6)
+## Run-scope nonce lifecycle (FR 6)
 
-The pointer file tracks the active bureau run so `conductor-stop.sh` can attribute the Conductor's own token usage.
+The per-run file holds the secret nonce that scopes post-hoc specialist transcript aggregation to this run.
 
-**Path resolution (#25 — per-run-keyed directory).** Each run keeps its OWN pointer file inside a directory, keyed by its munged `RUN_DIR`, so two overlapping runs (a self-run + a target-repo run, or two windows) never clobber each other's pointer. The precedence — this is the compatibility keystone shared with `conductor-stop.sh`:
+**Path resolution (#25 — per-run-keyed directory).** Each run keeps its OWN run-scope file inside a directory, keyed by its munged `RUN_DIR`, so two overlapping runs never clobber each other's nonce. The precedence is shared by `run-start.sh`, `spawn-gate.sh`, and `aggregate-transcripts.sh`:
 ```sh
 # 1. BUREAU_POINTER_FILE set  → FORCED single-file mode at that exact path (the
 #    pre-#25 behavior, byte-for-byte — this is what run fixtures set).
@@ -476,28 +476,20 @@ else
   _pointer_file="$_pointer_dir/$_ptr_key"
 fi
 ```
-`BUREAU_POINTER_FILE` exists solely for test isolation and now doubles as the forced-single-file override — run fixtures set it to a temp path so they never touch the real `~/.novadiem` directory, and doing so keeps them on the exact pre-#25 code path. `BUREAU_POINTER_DIR` overrides the directory root the same way (new fixtures set it to a `mktemp -d`). Default behavior (both unset) is a per-run file under `~/.novadiem/active-runs/`. The key is the munged `RUN_DIR` (not the nonce): a resumed leg of the same run has the same `RUN_DIR` → same file (no orphan-per-leg); two distinct runs have distinct `RUN_DIR`s → distinct files (no clobber).
+`BUREAU_POINTER_FILE` exists for test isolation and forced-single-file compatibility. `BUREAU_POINTER_DIR` overrides the directory root the same way. Default behavior (both unset) is a per-run file under `~/.novadiem/active-runs/`. The key is the munged `RUN_DIR` (not the nonce): a resumed leg of the same run has the same `RUN_DIR` → same file; two distinct runs have distinct `RUN_DIR`s → distinct files.
 
-**At run start:** `scripts/run-start.sh` performs pointer enrolment. Direct Conductor mode echoes the bare pointer; Delegate v2 passes `--no-pointer-echo`, then uses its own pointer.
+**At run start:** `scripts/run-start.sh` writes `{run_dir, nonce, written_at, project_dir}`. It preserves an existing non-empty nonce for the same `RUN_DIR`; the run-scope nonce is write-once for the run's life. Direct Conductor mode echoes the file. Delegate v2 passes `--no-pointer-echo`; the Conductor reads it privately before specialist spawns.
 
-**On resume:** read `"$_pointer_file"`. There are two sub-paths, and both rejoin at a shared tail:
+**On resume:** read and validate `"$_pointer_file"` before specialist dispatch. If its `run_dir`
+matches this `RUN_DIR` and its `nonce` is non-empty, echo it unchanged, then increment `resumed_legs` and write the nonce-free enrollment log line below.
 
-- **(A) echo-existing** — if it exists and its `run_dir` matches this run's `RUN_DIR` → echo the existing pointer line (enrolling the resumed leg's transcript with the existing nonce):
-  ```sh
-  cat "$_pointer_file"
-  ```
-- **(B) write-fresh** — if it does not exist OR names a different run → write a fresh pointer with a new nonce and echo it. The fresh pointer MUST use the five-field format (same as run-start), including `project_dir` set to the current cwd:
-  ```sh
-  printf '{"run_dir":"%s","nonce":"%s","written_at":"%s","baseline":null,"project_dir":"%s"}\n' \
-    "$RUN_DIR" "$(uuidgen | tr '[:upper:]' '[:lower:]')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd -P)" \
-    > "$_pointer_file"
-  cat "$_pointer_file"
-  ```
-  (A four-field fresh-pointer here — dropping `project_dir` — would disable the ownership gate for this leg; a three-field one would additionally leave `has("baseline")==false`, causing `conductor-stop.sh` to treat the resumed leg as a pre-Bundle-16 run and fall back to session-cumulative emission.)
-
-**Shared resume tail (runs once for BOTH sub-paths).** AFTER both sub-path (A) and sub-path (B) have run — i.e. once, in the shared tail where they rejoin, NOT nested inside either sub-path (if you implement (A)/(B) as one `if…elif…fi`, this is after that `fi`) — increment `resumed_legs`, then write the nonce-free enrollment log line. Placing the increment inside only one sub-path is the exact FR 11 bug: the common echo-existing resume would silently skip it.
+If the run-scope file is absent, foreign, or nonce-less, **HALT specialist dispatch** and
+restore the **ORIGINAL** run-scope file from a trusted backup. Validate it, then rejoin the ordinary
+valid-pointer resume path above. Do not call `run-start.sh` for the existing `RUN_DIR`; do not mint
+or rotate a nonce; and do not restore `run-reopen.sh`. If original recovery is unavailable, return
+a checkpoint/blocked run rather than claiming strict attribution.
 ```sh
-# Increment resumed_legs (atomic; absence treated as 0). Fires on BOTH resume sub-paths.
+# Increment resumed_legs (atomic; absence treated as 0).
 _rl_tmp=$(mktemp "$RUN_DIR/state.json.tmp.XXXXXX")
 if jq '.resumed_legs = ((.resumed_legs // 0) + 1)' "$RUN_DIR/state.json" > "$_rl_tmp"; then
   mv "$_rl_tmp" "$RUN_DIR/state.json"
@@ -511,16 +503,14 @@ Pointer enrolled — nonce written to pointer file and conductor transcript only
 ```
 `resumed_legs` is written on first resume only; `templates/state.json` is NOT changed. Absent means 0 in both this increment and the consumer read.
 
-**At close-out:** do NOT remove `"$_pointer_file"`. Removal belongs to `conductor-stop.sh`'s one-shot final capture. The pointer must outlive close-out so the post-close-out Stop fire can still see it.
-
-**Re-opening a closed run:** when a run continues past a completed close-out (e.g. a build phase starts after planning-phase accounting finished), the pointer has already been removed and further Stop fires are silenced. Run `scripts/run-reopen.sh <RUN_DIR>` before spawning the first build-phase agent. The script resets `accounting.status` to `"pending"`, recovers the original baseline from the last non-legacy CONDUCTOR-TOKEN-EVENT in log.md, and re-enrolls the pointer — so subsequent Stop fires emit per-turn events using the whole-run baseline, and the eventual final capture covers the complete run. **Run the ceremony from the same working directory as the conductor session that will continue the run (the cwd `run-start.sh` was invoked from)** — `run-reopen.sh` writes `pointer.project_dir` from `pwd -P`, and `conductor-stop.sh`'s ownership gate compares this against the firing session's transcript cwd; a mismatch silences the Stop hook for the continued run.
+**At close-out:** do NOT remove `"$_pointer_file"`. The run-scope nonce file must outlive close-out so any pre-archive re-account can still run in strict mode.
 
 **At archive (#25/#26a janitor):** remove THIS run's per-run pointer file(s) — recompute `_pointer_file` from the archived run's `RUN_DIR` via the path-resolution block above (so the munged key matches), then:
 ```sh
-rm -f "$_pointer_file"              # the Conductor pointer (bare munged-run-dir key)
-rm -f "${_pointer_file}.delegate"   # the Delegate's role:delegate pointer (#26a), if any
+rm -f "$_pointer_file"              # this run's run-scope nonce file
+rm -f "${_pointer_file}.delegate"   # legacy Delegate pointer cleanup; no new writer
 ```
-In single-file mode (`BUREAU_POINTER_FILE` set) `${_pointer_file}.delegate` simply does not exist, so the second `rm -f` is a harmless no-op. Under per-run keying each file is single-writer — only this run ever wrote its own key(s) — so the `rm -f`s can never touch a sibling's pointer; the pre-#25 "compare run_dir first" caution is now structurally unnecessary. This bounds directory growth at "live + recently-crashed runs" rather than "every run ever." A lingering per-run file is inert regardless (a stale pointer only ever matches a Stop hook whose transcript carries its unique nonce — i.e. only its own dead session, which never fires again).
+The second `rm -f` is intentionally retained for legacy `.delegate` files and is a harmless no-op when none exists. Under per-run keying these removals cannot touch a sibling run's file.
 
 ## Checkpoint format
 
@@ -658,13 +648,13 @@ spawns. Runs with < 8 specialist spawns declare scope_class `"short-run (N speci
 spawns, out of comparison scope)"` and are excluded from the primary before/after metric —
 they are not failures, just out of scope for the diet comparison.
 
-**Primary metric (AC 1):** `conductor_tokens.tokens.processed / tokens.processed_total.value`.
+**Primary metric (AC 1):** `conductor.processed / (conductor.processed + delegate.processed + Σ specialist_spawns[].tokens.processed)`.
 Load-bearing path fact: `conductor_tokens` is a **top-level** key in `accounting.json`, NOT
 nested under `tokens`. Reading `tokens.conductor_tokens.processed` silently returns `{}`.
-The correct path: `jq '.conductor_tokens.tokens.processed / .tokens.processed_total.value' accounting.json`.
-The metric is confirmatory only when `conductor_tokens.confidence == "exact"` (a `final:true`
-CONDUCTOR-TOKEN-EVENT captured). A `confidence: "partial"` read may corroborate but does not
-confirm AC 1.
+Correct jq shape: `jq '.conductor_tokens.tokens.processed / (.conductor_tokens.tokens.processed + .delegate_tokens.tokens.processed + ([.specialist_spawns[].tokens.processed.value] | add // 0))' accounting.json`.
+The metric confirms AC 1 only when `conductor_tokens.confidence`, `delegate_tokens.confidence`,
+and every `specialist_spawns[].tokens.processed.confidence` in the denominator are `"exact"`;
+otherwise (`"partial"`, `"unavailable"`, or `"suspect"`) it may corroborate but cannot confirm.
 
 **Secondary metric (AC 2):** `conductor_tokens.tokens.cache_read /
 (Sigma specialist_spawns[*].tokens.cache_read.value + conductor_tokens.tokens.cache_read)`.

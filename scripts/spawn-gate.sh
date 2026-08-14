@@ -57,6 +57,8 @@ fi
 
 # ── Step 4: Check pointer file (present) ─────────────────────────────────────
 
+# The file now holds the run-scope nonce used by specialist post-hoc scoping;
+# absence at spawn time would strand the run in legacy-mode accounting.
 if [ ! -f "$_pointer_file" ]; then
   echo "DEFECT: pointer file absent at $_pointer_file — pointer enrolment did not run"
   defects=$((defects + 1))

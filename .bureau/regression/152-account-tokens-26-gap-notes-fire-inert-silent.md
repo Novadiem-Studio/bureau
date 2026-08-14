@@ -1,4 +1,5 @@
 name: account-tokens #26 — delegate/reviewer gap-notes fire (integrated + gap), inert (no topology), silent (lines present); reviewer gap gated on >=1 resolved checkpoint (AC 16)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

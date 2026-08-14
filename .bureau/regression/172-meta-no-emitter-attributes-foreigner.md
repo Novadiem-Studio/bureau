@@ -1,4 +1,5 @@
 name: class-closure Guard 1 (no emitter attributes a foreigner) — every TRANSCRIPT-READING token emitter (E1 conductor-stop, E2/E2b/E2c subagent-stop conductor branch, E3 subagent-stop specialist branch) driven with a FOREIGN identity emits ZERO attribution and still exits 0; E2b covers the Step 8.0 S3 edge (topology=integrated but no conductor_agent_id → fail-closed), E2c covers the S4 edge (present-but-corrupt delegate-state → fail-closed); E4 (reviewer) is OUT of scope by construction (caller-attested, reads no transcript)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

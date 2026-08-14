@@ -1,4 +1,5 @@
 name: conductor-stop AC 7c — nonce absent from transcript content → exit 0, no log writes (stale-pointer / eval-session EC 14)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

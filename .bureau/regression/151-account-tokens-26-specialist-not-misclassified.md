@@ -1,4 +1,5 @@
 name: account-tokens #26 — a plain specialist SPAWN-TOKEN-EVENT stays in the specialist bucket, never swept into delegate/reviewer (B4 no-misclassification)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: account-run W1 — A2 enrichment pairs on the PARSED (descriptive) attempt_id, not a reconstructed composite
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: delta-baseline legacy — pointer with no baseline key → exit 0, 6-key line, no baseline key (AC 3, FR 6, FR 7)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

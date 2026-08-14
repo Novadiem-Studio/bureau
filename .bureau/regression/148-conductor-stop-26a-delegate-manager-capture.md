@@ -1,4 +1,5 @@
 name: conductor-stop #26a — role:delegate pointer → DELEGATE-TOKEN-EVENT (not CONDUCTOR); a sibling role:conductor pointer still emits CONDUCTOR (AC 8, 9, 10)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

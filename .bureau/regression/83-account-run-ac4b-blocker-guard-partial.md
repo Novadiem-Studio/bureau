@@ -1,4 +1,5 @@
 name: account-run AC4(b) BLOCKER GUARD — no CONDUCTOR-TOKEN-EVENT → processed_total partial, not exact
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

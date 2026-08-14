@@ -1,4 +1,5 @@
 name: delta-baseline EC 4 — pointer baseline tagged with old session_id → hook re-records for new session (AC 8)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

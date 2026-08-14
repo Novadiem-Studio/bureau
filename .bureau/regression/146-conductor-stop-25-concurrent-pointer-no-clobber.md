@@ -1,4 +1,5 @@
 name: conductor-stop #25 — concurrent per-run pointers, no clobber; A's Stop selects A's pointer while B's is present; non-bureau transcript selects nothing (AC 1, 2)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

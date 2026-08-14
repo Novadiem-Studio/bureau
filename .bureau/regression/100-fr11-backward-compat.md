@@ -1,4 +1,5 @@
 name: FR 11 backward-compat — legacy log.md (no baseline) produces same values; key order in emitted line is unchanged (AC 2, AC 6, FR 6)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

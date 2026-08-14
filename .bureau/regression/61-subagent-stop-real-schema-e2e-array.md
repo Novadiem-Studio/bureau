@@ -1,4 +1,5 @@
 name: subagent-stop real-schema e2e (array-of-blocks content) — normaliser correctly joins blocks → SPAWN-TOKEN-EVENT lands with right attempt_id
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

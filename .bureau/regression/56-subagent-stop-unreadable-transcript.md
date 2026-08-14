@@ -1,4 +1,5 @@
 name: subagent-stop EC 2 — unreadable transcript path → exit 0, warning to stderr, no log writes
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

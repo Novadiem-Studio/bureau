@@ -1,4 +1,5 @@
 name: conductor-stop AC 1 / FR 9a — foreign-watcher exclusion: pointer project_dir=/proj/alpha, transcript under a BETA munged dir (mismatch) → Step C.0 exits 0, no CONDUCTOR-TOKEN-EVENT appended
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

@@ -1,4 +1,5 @@
 name: empty-string-session-id-conductor-isolated-same-as-null (A3 / EC 4)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 01 · enforcement-relocation (FR 5 / A3 / EC 4)
 owner: scripts/account-tokens.sh normalize_event — empty-string treated as absent for required fields
 command: |

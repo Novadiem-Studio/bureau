@@ -1,4 +1,5 @@
 name: account-tokens FR 4/FR 7 — all legs finalize -> confidence "exact" (73 successor)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

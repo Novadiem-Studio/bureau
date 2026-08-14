@@ -1,4 +1,5 @@
 name: conductor-stop AC 17d — fire after pointer removal → exit 0, no writes (post-run chatter not attributed)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

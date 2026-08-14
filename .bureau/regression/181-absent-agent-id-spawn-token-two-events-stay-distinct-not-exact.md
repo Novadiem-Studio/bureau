@@ -1,4 +1,5 @@
 name: absent-agent-id-spawn-token-two-events-stay-distinct-not-exact (A2 / EC 5)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 01 · enforcement-relocation (FR 5 / A2 / EC 5)
 owner: scripts/account-tokens.sh normalize_event — agent_id required on spawn-token stream
 command: |

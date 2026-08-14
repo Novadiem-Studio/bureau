@@ -1,4 +1,5 @@
 name: class-closure Guard 4 (malformed-ingest doesn't crash) — a corpus with FOUR poison SPAWN-TOKEN-EVENTs (string numeric field, object attempt_id, object agent_id, scalar tokens) PLUS a started SPAWN-EVENT with an object attempt_id (the exact F3 reduce path into spawn_tokens_map) plus clean survivors, driven end-to-end through account-run.sh, exits 0 at schema_version 2 (NOT the schema-1 drop): the poison fields are coerced/isolated to synthetic keys instead of aborting the jq pass, the clean survivors' metrics survive, the malformed started-spawn does NOT leak into a real spawn_tokens map entry, and each malformed record is surfaced in a _notes breadcrumb
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

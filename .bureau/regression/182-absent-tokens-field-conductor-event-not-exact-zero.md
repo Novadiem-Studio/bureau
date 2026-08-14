@@ -1,4 +1,5 @@
 name: absent-tokens-field-conductor-event-not-exact-zero (A4)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 01 · enforcement-relocation (FR 6 / A4)
 owner: scripts/account-tokens.sh normalize_event — absent tokens on token stream sets _isolated
 command: |

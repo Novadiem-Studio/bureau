@@ -1,4 +1,5 @@
 name: #27 NEW-D · the run nonce NEVER lands in log.md — a legit attributed specialist writes its SPAWN-TOKEN-EVENT but the nonce value appears NOWHERE in log.md, and orchestrator.md forbids the nonce on SPAWN-EVENT / in log.md
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d); trap 'rm -rf "$TMPF"' EXIT

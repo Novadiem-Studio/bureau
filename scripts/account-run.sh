@@ -1093,16 +1093,117 @@ if [ -r "$RUN_DIR/log.md" ]; then
     fi
 fi
 
-# STEP A2 — invoke account-tokens.sh and merge its stdout (FR 8 channel pin). The
-# consumer reads log.md + state.json and emits a self-contained JSON fragment on
-# stdout; it writes nothing into RUN_DIR. account-tokens.sh being absent or not
-# executable → skip entirely (backward compat: today's schema, schema_version 1).
+# STEP A2 — invoke the post-hoc aggregator, then account-tokens.sh, and merge their
+# stdout contracts (FR 8 channel pin). The aggregator is the sole per-leg token
+# source when it returns its valid, non-gated contract; otherwise per-leg figures
+# remain unavailable. Neither consumer writes into RUN_DIR.
+AGGREGATE_SCRIPT="$SCRIPT_DIR/aggregate-transcripts.sh"
+posthoc_frag=""
+posthoc_usable=0
+posthoc_merged=0
+posthoc_reuse_bound=false
+posthoc_prior_bound=""
+posthoc_prior_basis=""
+posthoc_prior_accounted_at="null"
+
+# W4 steps 1-2: read the prior close-out anchor before this invocation publishes
+# anything, then fingerprint only records close-out itself never appends.
+if [ -r "$RUN_DIR/accounting.json" ] && \
+   jq -e 'type == "object"' "$RUN_DIR/accounting.json" >/dev/null 2>&1; then
+    posthoc_prior_bound=$(jq -r 'if (._posthoc.run_ended_at | type) == "string" then ._posthoc.run_ended_at else empty end' \
+        "$RUN_DIR/accounting.json" 2>/dev/null || echo "")
+    posthoc_prior_basis=$(jq -c '._posthoc.basis // empty' \
+        "$RUN_DIR/accounting.json" 2>/dev/null || echo "")
+    posthoc_prior_accounted_at=$(jq -c '.run.accounted_at // null' \
+        "$RUN_DIR/accounting.json" 2>/dev/null || echo "null")
+    [ -n "$posthoc_prior_accounted_at" ] || posthoc_prior_accounted_at="null"
+fi
+
+posthoc_spawn_events=0
+if [ -r "$RUN_DIR/log.md" ]; then
+    # Exact, line-anchored prefix including its separating space; PATH-pinned so
+    # a user-installed grep cannot reinterpret the accounting basis.
+    posthoc_spawn_events=$(PATH=/usr/bin:$PATH grep -c '^SPAWN-EVENT: ' \
+        "$RUN_DIR/log.md" 2>/dev/null || true)
+    [ -n "$posthoc_spawn_events" ] || posthoc_spawn_events=0
+fi
+
+posthoc_conductor_legs=0
+if [ -r "$RUN_DIR/delegate-state.json" ]; then
+    posthoc_conductor_legs=$(jq -r '
+      [ ((if (.conductor_agent_ids | type) == "array"
+            then .conductor_agent_ids[] else empty end)),
+        (if (.conductor_agent_id | type) == "string"
+         then .conductor_agent_id else empty end) ]
+      | map(select(type == "string" and length > 0)) | unique | length
+    ' "$RUN_DIR/delegate-state.json" 2>/dev/null || echo 0)
+    [ -n "$posthoc_conductor_legs" ] || posthoc_conductor_legs=0
+fi
+
+posthoc_basis=$(jq -cn --argjson spawn_events "$posthoc_spawn_events" \
+    --argjson conductor_legs "$posthoc_conductor_legs" \
+    '{spawn_events:$spawn_events,conductor_legs:$conductor_legs}')
+
+if [ -n "$posthoc_prior_bound" ] && [ -n "$posthoc_prior_basis" ] && \
+   jq -en --argjson prior "$posthoc_prior_basis" --argjson current "$posthoc_basis" \
+      '$prior == $current' >/dev/null 2>&1; then
+    posthoc_bound="$posthoc_prior_bound"
+    posthoc_reuse_bound=true
+else
+    posthoc_bound=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
+
+# The fragment is consumed twice (derived metrics, then the sole per-leg write).
+# Its mktemp prefix is under tmp_prefix, so the existing EXIT sweep removes it
+# on every early exit and after the final publish.
+if [ -x "$AGGREGATE_SCRIPT" ]; then
+    posthoc_frag=$(mktemp "${tmp_out}.posthoc.XXXXXX")
+    if "$AGGREGATE_SCRIPT" "$RUN_DIR" --until "$posthoc_bound" \
+         > "$posthoc_frag" 2>/dev/null && \
+       jq -e 'type == "object"
+              and (has("_runtime_gap") | not)
+              and ((.delegate | type) == "object")
+              and ((.delegate.tokens | type) == "object")
+              and ((.conductor | type) == "object")
+              and ((.conductor.tokens | type) == "object")
+              and ((.specialists | type) == "array")
+              and all(.specialists[]; (.tokens | type) == "object")' \
+          "$posthoc_frag" >/dev/null 2>&1; then
+        posthoc_usable=1
+    fi
+fi
+
+# Runtime agent ids are not public specialist_spawns leaves. Build the narrow
+# attempt→agent comparison map from the still-present hook records; ambiguous
+# multi-agent live claims become null and therefore cannot trigger a guessed
+# mismatch disposition.
+posthoc_live_agents='{}'
+if [ "$posthoc_usable" -eq 1 ] && [ -r "$RUN_DIR/log.md" ]; then
+    posthoc_live_agents=$({ PATH=/usr/bin:$PATH grep '^SPAWN-TOKEN-EVENT: ' \
+          "$RUN_DIR/log.md" 2>/dev/null || true; } \
+      | sed 's/^SPAWN-TOKEN-EVENT: //' \
+      | jq -Rsc '
+          [split("\n")[] | select(length > 0) | (try fromjson catch null)
+           | select(type == "object"
+                    and (.attempt_id | type) == "string"
+                    and (.agent_id | type) == "string")]
+          | group_by(.attempt_id)
+          | map((.[0].attempt_id) as $aid
+                | ([.[].agent_id] | unique) as $agents
+                | {key:$aid,value:(if ($agents | length) == 1 then $agents[0] else null end)})
+          | from_entries
+        ' 2>/dev/null || echo '{}')
+    [ -n "$posthoc_live_agents" ] || posthoc_live_agents='{}'
+fi
+
 TOKENS_SCRIPT="$SCRIPT_DIR/account-tokens.sh"
 if [ -x "$TOKENS_SCRIPT" ]; then
     # Capture stdout only. Guard the command substitution under set -e: a non-zero
     # exit from account-tokens.sh must NOT abort account-run.sh — a token-consumer
     # failure degrades to today's schema, it never strands the accounting write.
-    if tokens_json=$("$TOKENS_SCRIPT" "$RUN_DIR" 2>/dev/null); then
+    if [ "$posthoc_usable" -eq 1 ]; then
+        tokens_json=$("$TOKENS_SCRIPT" "$RUN_DIR" "$posthoc_frag" 2>/dev/null) && tokens_invoke_ok=1 || tokens_invoke_ok=0
+    elif tokens_json=$("$TOKENS_SCRIPT" "$RUN_DIR" 2>/dev/null); then
         tokens_invoke_ok=1
     else
         tokens_invoke_ok=0
@@ -1126,6 +1227,9 @@ if [ -x "$TOKENS_SCRIPT" ]; then
             or ((.tokens.processed_total.value // 0) != 0)
             or (([.spawn_tokens[] | select(.tokens != null)] | length) > 0)
         ' 2>/dev/null || echo false)
+        # A valid aggregator contract is authoritative data even when every
+        # transcript contains a legitimate, structurally-complete zero.
+        [ "$posthoc_usable" -eq 1 ] && tokens_have_data=true
 
         if [ "$tokens_have_data" = "true" ]; then
             # (a) Merge the four top-level blocks (same pattern as the memory merge),
@@ -1205,9 +1309,83 @@ if [ -x "$TOKENS_SCRIPT" ]; then
                 ]
             ' "$tmp_out" > "${tmp_out}.enrich" && mv "${tmp_out}.enrich" "$tmp_out"
 
+            # (b2) One-source authoritative per-leg write. attempt_id is the
+            # required key (carried by the existing index-aligned internal
+            # array). agent_id is only a consistency check when both sources
+            # have a value; disagreement keeps the post-hoc number but marks it
+            # suspect instead of silently pairing two different agents.
+            if [ "$posthoc_usable" -eq 1 ] && \
+               jq --slurpfile ph "$posthoc_frag" \
+                  --argjson aids "$spawn_attempt_ids_json" \
+                  --argjson live_agents "$posthoc_live_agents" '
+                 $ph[0] as $posthoc
+                 | .conductor_tokens = $posthoc.conductor
+                 | .delegate_tokens = $posthoc.delegate
+                 | .specialist_spawns as $spawns
+                 | (($aids | length) == ($spawns | length)) as $aligned
+                 | .specialist_spawns = [
+                     range(0; ($spawns | length)) as $i
+                     | $spawns[$i] as $spawn
+                     | (if $aligned then $aids[$i] else null end) as $aid
+                     | ([ $posthoc.specialists[]
+                          | select($aid != null and .attempt_id == $aid) ] | .[0]) as $agg
+                     | if $agg == null then $spawn
+                       else
+                         ($live_agents[$aid] // null) as $live_agent
+                         | (($live_agent != null) and ($agg.agent_id != null)
+                            and ($live_agent != $agg.agent_id)) as $agent_mismatch
+                         | (if $agent_mismatch then "suspect"
+                            else ($agg.confidence // "unavailable") end) as $disposition
+                         | ([ ($agg._note // empty),
+                              (if $agent_mismatch
+                               then "post-hoc attempt_id \($aid) agent mismatch: live \($live_agent) != transcript \($agg.agent_id) — authoritative token figure surfaced as suspect"
+                               else empty end) ] | join("; ")) as $agg_note
+                         | $spawn
+                           + {tokens: ($agg.tokens | with_entries(
+                                 .value = {value:.value,confidence:$disposition})),
+                              turns: {value:($agg.turns // 0),confidence:$disposition},
+                              confidence:$disposition}
+                           + (if $agg_note != ""
+                              then {_note: ([($spawn._note // empty),$agg_note]
+                                            | map(select(. != "")) | join("; "))}
+                              else {} end)
+                       end
+                   ]
+                 # Null-attempt rows have no safe work-shape merge key. Surface
+                 # each once in the established unattributed representation.
+                 | .tokens.unattributed_records = [
+                     $posthoc.specialists[] | select(.attempt_id == null)
+                   ]
+               ' "$tmp_out" > "${tmp_out}.posthoc"; then
+                mv "${tmp_out}.posthoc" "$tmp_out"
+                posthoc_merged=1
+            else
+                rm -f "${tmp_out}.posthoc"
+            fi
+
             # (c) Bump schema_version to 2 — the merge succeeded and the output now
             # carries the Bundle 11 sections.
             jq '.schema_version = 2' "$tmp_out" > "${tmp_out}.v2" && mv "${tmp_out}.v2" "$tmp_out"
+
+            # W4 step 3. Persist only after the authoritative replacement landed.
+            # On a true no-op, retain the original accounted_at observation too;
+            # otherwise that volatile leaf alone would defeat AC8 byte identity.
+            if [ "$posthoc_merged" -eq 1 ]; then
+                posthoc_scope_note=$(jq -r 'if (._scope_note | type) == "string" then ._scope_note else empty end' \
+                    "$posthoc_frag" 2>/dev/null || echo "")
+                jq --arg until "$posthoc_bound" \
+                   --argjson basis "$posthoc_basis" \
+                   --arg scope_note "$posthoc_scope_note" \
+                   --argjson reuse "$posthoc_reuse_bound" \
+                   --argjson prior_accounted_at "$posthoc_prior_accounted_at" '
+                     . + {_posthoc:
+                       ({run_ended_at:$until,basis:$basis}
+                        + (if $scope_note != "" then {scope_note:$scope_note} else {} end))}
+                     | if $reuse and $prior_accounted_at != null
+                       then .run.accounted_at = $prior_accounted_at else . end
+                   ' "$tmp_out" > "${tmp_out}.posthoc-meta" \
+                   && mv "${tmp_out}.posthoc-meta" "$tmp_out"
+            fi
         else
             # Valid JSON but no token data → legacy-only re-run. Leave schema at 1
             # and emit today's schema unchanged — EXCEPT (F4, audit) when the

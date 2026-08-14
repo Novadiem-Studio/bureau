@@ -1,4 +1,5 @@
 name: stale guard state (b) — final:true with unparseable/absent at + later hook-stamped SPAWN-TOKEN-EVENT → "partial" + indeterminate note (W1 rework)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 phase: 05 · conductor-capture-lifecycle (Lever 1 W1 rework)
 owner: scripts/account-tokens.sh — staleness guard state (b)
 command: |

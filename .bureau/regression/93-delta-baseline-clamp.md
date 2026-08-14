@@ -1,4 +1,5 @@
 name: delta-baseline clamp — baseline field exceeds raw → field emits 0 and _note present (AC 4)
+retired: 07 · execute-plan — FR4 REPLACE retired the live-hook token emission and baseline/delta lifecycle asserted here
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

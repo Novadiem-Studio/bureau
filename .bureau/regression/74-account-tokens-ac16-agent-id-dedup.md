@@ -1,4 +1,5 @@
 name: account-tokens AC 16 — double SubagentStop fire deduped by agent_id (take-max, not degrade)
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)

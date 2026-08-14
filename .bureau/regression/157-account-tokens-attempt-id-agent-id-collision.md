@@ -1,4 +1,5 @@
 name: account-tokens F1 (audit) — two distinct agent_ids under ONE started attempt_id → only the max-processed one is summed, the foreign duplicate is routed to unattributed + a collision note, never exact-washed into the attempt
+retired: 07 · execute-plan — FR4 REPLACE retired this live-rail token-rollup assertion; post-hoc aggregation is the sole per-leg source
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)
