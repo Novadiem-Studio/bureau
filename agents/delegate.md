@@ -98,11 +98,58 @@ To start a new Delegate-run:
 2. Resolve Claude affordability once, after `model-routing.json` exists and before choosing the
    Conductor model. This is a best-effort bootstrap heuristic and must never block startup:
    ```sh
+   # DELEGATE-AFFORDABILITY-SELECTION:BEGIN
+   _delegate_conductor_attempt_id="conductor-bootstrap-1"
+   _delegate_conductor_configured_model="$(
+     jq -r '.roles.conductor.model // ""' "$RUN_DIR/model-routing.json" 2>/dev/null || printf ''
+   )"
+   _delegate_conductor_model="$_delegate_conductor_configured_model"
    _delegate_affordability_runtime="$(jq -r '.runtime // ""' "$RUN_DIR/model-routing.json" 2>/dev/null || printf '')"
    _delegate_affordability_json="$(
      scripts/resolve-delegate-affordability.sh \
        "$_delegate_affordability_runtime" "$HOME/.novadiem/usage-snapshot.json" 2>/dev/null
    )" || _delegate_affordability_json='{"action":"default","source":"none"}'
+   _delegate_affordability_action="$(
+     printf '%s' "$_delegate_affordability_json" | jq -r \
+       'if type == "object" and .action == "use_quota" then .action else "" end' \
+       2>/dev/null || printf ''
+   )"
+   _delegate_affordability_percent="$(
+     printf '%s' "$_delegate_affordability_json" | jq -r \
+       'if type == "object" and (.percent_remaining | type) == "number"
+        then (.percent_remaining | tostring) else "" end' \
+       2>/dev/null || printf ''
+   )"
+
+   if [ "$_delegate_affordability_runtime" = "claude" ] &&
+      [ "$_delegate_affordability_action" = "use_quota" ] &&
+      [ "$_delegate_conductor_configured_model" = "opus" ] &&
+      [ -n "$_delegate_affordability_percent" ] &&
+      awk -v remaining="$_delegate_affordability_percent" \
+        'BEGIN { exit !((remaining + 0) <= 15) }' </dev/null 2>/dev/null
+   then
+     _delegate_conductor_model="sonnet"
+   fi
+
+   if [ "$_delegate_conductor_model" != "$_delegate_conductor_configured_model" ]; then
+     _delegate_model_override_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '')"
+     _delegate_model_override_json="$(
+       jq -cn \
+         --arg role "conductor" \
+         --arg attempt_id "$_delegate_conductor_attempt_id" \
+         --arg configured "$_delegate_conductor_configured_model" \
+         --arg actual "$_delegate_conductor_model" \
+         --arg reason "claude affordability budget_pressure downgrade (remaining <= 15%)" \
+         --arg at "$_delegate_model_override_at" \
+         '{role:$role,attempt_id:$attempt_id,configured:$configured,actual:$actual,reason:$reason,at:$at}' \
+         2>/dev/null || printf ''
+     )"
+     if [ -n "$_delegate_model_override_at" ] && [ -n "$_delegate_model_override_json" ]; then
+       printf 'MODEL-OVERRIDE: %s\n' "$_delegate_model_override_json" \
+         >> "$RUN_DIR/log.md" 2>/dev/null || :
+     fi
+   fi
+   # DELEGATE-AFFORDABILITY-SELECTION:END
    ```
    Invoke the helper exactly once; do not duplicate its curl or snapshot parsing. For
    `action:"use_quota"`, use `percent_remaining` as the affordability input to the existing
@@ -117,8 +164,9 @@ To start a new Delegate-run:
 3. Spawn the Conductor as a resumable host subagent. Read `docs/host-runtime.md` and use the
    transport selected by `model-routing.json#runtime`: Claude uses the Agent tool; Codex uses
    the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
-   in the current host). **Set `model` explicitly to
-   `roles.conductor.model` and, on Codex, `reasoning_effort` explicitly to
+   in the current host). **Set `model` explicitly to the already-derived
+   `$_delegate_conductor_model` (do not re-read `roles.conductor.model` at spawn time) and, on
+   Codex, `reasoning_effort` explicitly to
    `roles.conductor.reasoningEffort` — never omit them.** An omitted `model` may inherit the
    Delegate session's model, which may be an
    escalation-tier model (fable); the hard spawn rule in `agents/orchestrator.md` applies to
@@ -128,6 +176,7 @@ To start a new Delegate-run:
    ```
    RUN_DIR: <abs RUN_DIR>
    BUREAU_ROLE: conductor
+   Attempt ID: <value of _delegate_conductor_attempt_id>
    ```
    plus:
    - the `topology: integrated` directive (OQ4 — the authoritative mode signal: *return to me
@@ -136,6 +185,10 @@ To start a new Delegate-run:
    - the task and the full Bureau host instructions the Conductor needs;
    - instruction to read the run-scope file privately before the first specialist spawn and use
      its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
+
+   Use the same `$_delegate_conductor_attempt_id` as the `attempt_id` in the accompanying
+   Conductor spawn event. This makes the conditional `MODEL-OVERRIDE:` record above match that
+   spawn exactly; do not mint a second attempt id for the same spawn.
 
    These literal lines remain the Conductor's run and role identity on every host.
 4. Immediately after the spawn, write `RUN_DIR/delegate-state.json` (W-a, Delegate-only) with
