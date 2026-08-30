@@ -52,8 +52,7 @@ selection, and downstream authorization decisions.
    - Do not access the source audit-service path. It is read-only design provenance, not a runtime
      dependency, and the workflow must work when it is absent.
 
-2. **Analizer 2000** (Product intent, **strong**) — establish intent before evaluation →
-   `RUN_DIR/audit/product-contract.md`
+2. **Analizer 2000** (Product intent, **strong**) — establish intent before evaluation → `RUN_DIR/audit/product-contract.md`
    - Read only authorized intent evidence. Record the intended product/use case, boundary,
      supplied evidence, exclusions, owner questions, and blocked decisions by reference to the
      shared contract.
@@ -67,16 +66,14 @@ selection, and downstream authorization decisions.
      then continue at step 6. It may seal only after the selected profile's normal gate and is
      never successful or selectable for remediation planning.
 
-3. **Analizer 2000** (Orientation, **standard**) — declare domain scope from settled intent →
-   `RUN_DIR/audit/domain-register.md`
+3. **Analizer 2000** (Orientation, **standard**) — declare domain scope from settled intent → `RUN_DIR/audit/domain-register.md`
    - Record every baseline domain and any product-intent-required domain by reference to the
      shared contract. Mark each applicable or excluded, preserve an exclusion reason, and carry
      every excluded area forward as not audited.
    - If every domain is excluded, treat the audit as incomplete/non-conclusive and route it only
      through the evidence-retention rules from step 2; do not manufacture findings.
 
-4. **Analizer 2000** (Independent coverage, **standard**) — isolate each domain pass →
-   `RUN_DIR/audit/coverage/<domain_id>.md`
+4. **Analizer 2000** (Independent coverage, **standard**) — isolate each domain pass → `RUN_DIR/audit/coverage/<domain_id>.md`
    - Spawn a fresh context for each applicable domain. Give it the product contract, domain
      register, its single named domain, and only the authorized target evidence needed for that
      domain. Do not give it another domain pass's summary or candidate findings.
@@ -87,9 +84,7 @@ selection, and downstream authorization decisions.
    - Candidate findings follow the shared evidence and disposition contract. Missing evidence is
      not a pass, and an owner question is not silently promoted to a defect.
 
-5. **The Mechanic** (Runtime verification, **strong**) — verify runtime and quarantine setup →
-   `RUN_DIR/audit/runtime-verification.md`,
-   `RUN_DIR/audit/setup-quarantine.md`
+5. **The Mechanic** (Runtime verification, **strong**) — verify runtime and quarantine setup → `RUN_DIR/audit/runtime-verification.md`, `RUN_DIR/audit/setup-quarantine.md`
    - Work only in an isolated clone, worktree, or local stack with synthetic data and the supplied
      credential/data policy. Never commit setup-only target changes.
    - For `catalog`, run only an already-supplied authorized procedure; do not create a runnable
@@ -101,8 +96,7 @@ selection, and downstream authorization decisions.
      `unverifiable`, never pass. Every setup-only change is uncommitted, separately quarantined,
      and remains `approved_client_fix: false`; an explicit no-change quarantine is still required.
 
-6. **The Conductor** — validate the ledger and reserve the next immutable version →
-   `RUN_DIR/audit/versions/vNNNN/reservation.json`
+6. **The Conductor** — validate the ledger and reserve the next immutable version → `RUN_DIR/audit/versions/vNNNN/reservation.json`
    - Validate the ledger and filesystem from byte zero, then allocate and exclusively publish the
      next reservation exactly as the shared contract requires. The Conductor is the sole allocator
      and version-directory creator.
@@ -111,8 +105,7 @@ selection, and downstream authorization decisions.
      state stops for explicit repair; never reuse, overwrite, widen, wrap, or create a mutable
      latest pointer.
 
-7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation →
-   `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
+7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation → `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
    - Receive the exact reservation/version plus the intent, domain coverage, runtime, and
      quarantine records. Do not allocate a version or write the index.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
@@ -124,8 +117,7 @@ selection, and downstream authorization decisions.
      structural references; do not add readiness findings, a recommendation, or remediation
      candidates.
 
-8. **The Conductor** — validate and bind the corrected audit →
-   `RUN_DIR/audit/version-index.ndjson` (`corrected` event)
+8. **The Conductor** — validate and bind the corrected audit → `RUN_DIR/audit/version-index.ndjson` (`corrected` event)
    - Revalidate the complete ledger, reservation state, corrected-audit path/content, target
      commit, required inputs, evidence rules, and exact bytes. Hash the published artifact and
      append the canonical event only after every check passes.
@@ -147,8 +139,7 @@ selection, and downstream authorization decisions.
    - An `audited` evidence-retention seal has the same exact-bound non-blocked premium gate as any
      other audited seal.
 
-10. **The Conductor** — validate sealability, publish the seal, and append its event →
-    `RUN_DIR/audit/versions/vNNNN/seal.json`, `RUN_DIR/audit/version-index.ndjson` (`sealed` event)
+10. **The Conductor** — validate sealability, publish the seal, and append its event → `RUN_DIR/audit/versions/vNNNN/seal.json`, `RUN_DIR/audit/version-index.ndjson` (`sealed` event)
     - Revalidate the ledger, corrected audit, profile gate, hashes, evidence ceilings, and the
       shared completeness/conclusiveness seal matrix. Refuse invalid states and any profile-gate
       mismatch.
