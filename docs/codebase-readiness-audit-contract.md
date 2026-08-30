@@ -11,6 +11,39 @@ hexadecimal SHA-256 values of the exact file bytes. An artifact described as imm
 through a same-directory temporary file and an atomic no-clobber publication; an existing target
 is never removed, truncated, normalized, repaired, or replaced.
 
+### Safe path-bearing identifiers
+
+Every `attempt_id`, `output_id`, and `approval_id`, and any future identifier interpolated into an
+artifact path, uses this exact byte grammar:
+
+```text
+\A[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\z
+```
+
+The value is 1–64 ASCII bytes, begins and ends with a lowercase ASCII letter or digit, and has
+only lowercase ASCII letters, digits, or `-` between them. The executable reference validator is:
+
+```sh
+python3 -c 'import re,sys; b=sys.argv[1].encode("utf-8"); raise SystemExit(0 if re.fullmatch(rb"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?", b) else 1)' "$1"
+```
+
+Validation applies to the raw supplied value before any path is constructed. Implementations MUST
+reject an invalid value; they MUST NOT trim, case-fold, Unicode-normalize, percent-decode, replace
+characters, collapse separators, or otherwise turn it into a valid value. Thus two raw values can
+never be accepted as one normalized identifier. A NUL, non-ASCII byte, `.`, `/`, `\`, whitespace,
+leading or trailing `-`, or a value outside the byte-length bound is invalid.
+
+After validation, the adapter concatenates the identifier only into the fixed paths named by this
+contract. It resolves and verifies the already-existing parent directory without following a
+symlink supplied by the packet, rejects every symlink component, and proves that the constructed
+parent equals the authorized parent before an exclusive create. A path that escapes, resolves
+outside, normalizes to a different target, names an existing object, or collides under the host
+filesystem's case/normalization behavior is rejected before provider invocation. `attempt_id`
+names `<attempt_id>-packet/`, `<attempt_id>-result/`, and `verdicts/<attempt_id>.json`;
+`approval_id` names `audit/execute-plan-approvals/<approval_id>.json`. If `output_id` names an
+adapter result member, that member is exactly `<output_id>.json` directly under the validated
+`<attempt_id>-result/` directory; it cannot supply a subpath.
+
 ## Closed enums
 
 The following enums are closed. There are no aliases and no implicit defaults.
@@ -195,10 +228,27 @@ colliding directory is never reused for another allocation. A correction or amen
 new reservation and version. A published corrected audit is never edited or replaced. If `v9999`
 exists, the Conductor stops and requires a new audit run; it MUST NOT widen or wrap the version.
 
-On resume, only the same recorded allocation and reconciliation attempt may complete an empty
-reservation or append its missing validated event. A different attempt allocates a new version.
-An artifact present without a valid matching reservation, a nonempty unpublished reservation,
-or conflicting reservation data stops mutation for repair.
+The exact permitted unpublished state is **reserved-only**: the version directory contains one
+regular file named `reservation.json`, that file has the required fields and exact recorded
+allocation values, and there are no other entries (including hidden files, temporary files,
+subdirectories, or symlinks). “Empty reservation” means this reserved-only state—empty of audit
+artifacts—not a filesystem-empty directory. Only the same recorded allocation and reconciliation
+attempt may resume a reserved-only directory and publish its corrected audit.
+
+One additional interrupted state is recoverable: the directory contains exactly the valid
+`reservation.json` and the same allocation's immutable `corrected-audit.md`, but the matching
+`corrected` index event is absent. The Conductor revalidates and hashes both files, then appends
+the missing event; it does not republish either file. After the `corrected` event, those same two
+files are the only entries until sealing begins. A matching immutable `seal.json` may be present
+without its `sealed` event only as the analogous interrupted seal-publication state; after full
+revalidation, the Conductor may append only that missing event.
+
+A filesystem-empty version directory, a missing or malformed `reservation.json`, any extra entry,
+a surviving temporary file, a symlink or special file, an audit or seal with no matching valid
+reservation, a seal before the `corrected` event, a nonmatching allocation/attempt, or conflicting
+reservation data is invalid. Any other nonempty unpublished state stops mutation for explicit
+repair. A different attempt never completes or adopts an existing directory; it allocates a new
+version.
 
 ## Sealability and remediation selectability
 
@@ -224,7 +274,18 @@ non-`BLOCKED` verdict bound to the exact corrected-audit version, path, and hash
 - product-contract SHA-256;
 - `completeness`, `conclusiveness`, `successful_run`,
   `selectable_for_remediation_planning`, and selection reason;
-- `sealing_path` and cold-review verdict reference.
+- profile-conditional sealing and cold-review fields as follows.
+
+For `catalog` and `full`, the seal MUST contain `sealing_path: standard-non-premium` and
+`cold_review: not-performed`. It MUST omit `cold_review_verdict`,
+`cold_review_verdict_path`, and `cold_review_verdict_sha256`; no verdict exists to reference.
+
+For `audited`, the seal MUST contain `cold_review: performed`, `cold_review_verdict` with exactly
+`APPROVED_WITH_WARNINGS` or `APPROVED`, `cold_review_verdict_path`, and
+`cold_review_verdict_sha256`. The path and hash MUST identify the adapter-published canonical
+verdict whose reviewed-artifact binding exactly matches this seal's corrected-audit version,
+relative path, and SHA-256. A missing field, `BLOCKED`, `not-performed`, or any path, hash, or
+version mismatch prevents publication.
 
 The Conductor validates the profile gate and matrix, exclusively publishes the seal, hashes it,
 and appends its `sealed` event. An existing seal path is a collision and stops publication; it is
