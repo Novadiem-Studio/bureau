@@ -81,6 +81,8 @@ selection, and downstream authorization decisions.
      record are required even when passes run sequentially. Partial coverage and limits remain
      explicit. Zero findings is acceptable only after every applicable domain has completed
      coverage.
+   - For `catalog`, every domain pass is static deep-read only and MUST NOT execute dynamic
+     commands or probes. Any already-supplied authorized runtime procedure belongs only in step 5.
    - Candidate findings follow the shared evidence and disposition contract. Missing evidence is
      not a pass, and an owner question is not silently promoted to a defect.
 
@@ -106,8 +108,9 @@ selection, and downstream authorization decisions.
      latest pointer.
 
 7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation → `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
-   - Receive the exact reservation/version plus the intent, domain coverage, runtime, and
-     quarantine records. Do not allocate a version or write the index.
+   - Receive the exact reservation/version plus the intent, `RUN_DIR/audit/domain-register.md`,
+     domain coverage, runtime, and quarantine records. Do not allocate a version or write the
+     index.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
      Keep owner questions, exclusions, verification limits, and setup quarantine visible.
    - Every substantive finding and the overall conclusion carry the shared evidence
