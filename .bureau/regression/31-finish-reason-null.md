@@ -21,7 +21,7 @@ command: |
   printf 'Improve this draft.\n' > "$WORK/instr.md"
   OUT="$WORK/out.md"
   set +e
-  HOME="$WORK/home" PATH="$WORK/bin:$PATH" bash "$SCRIPT" openrouter:x-ai/grok-4.3 "$WORK/draft.md" "$WORK/instr.md" "$OUT"
+  OPENROUTER_KEYSTORE="$WORK/home/Documents/novadiem/keys/novadiem/openrouter.env" HOME="$WORK/home" PATH="$WORK/bin:$PATH" bash "$SCRIPT" openrouter:x-ai/grok-4.3 "$WORK/draft.md" "$WORK/instr.md" "$OUT"
   code=$?
   set -e
   test "$code" -eq 3 || { echo "FAIL: expected exit 3, got $code" >&2; exit 1; }
