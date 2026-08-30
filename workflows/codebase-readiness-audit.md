@@ -147,8 +147,7 @@ selection, and downstream authorization decisions.
       shared profile-conditional cold-review fields; never overwrite a seal or let the Conductor
       create/repair an audited verdict.
 
-11. **Gate** — end audit execution at remediation-planning eligibility → terminal routing
-    checkpoint
+11. **Gate** — end audit execution at remediation-planning eligibility → terminal routing checkpoint
     - Revalidate all versions and resolve default or explicit selection under the shared contract.
       Offer only a valid seal marked `selectable_for_remediation_planning: true` as requirements
       input to a separately started remediation-planning run. Planning needs no client-fix
@@ -165,8 +164,7 @@ This is a separately invoked Conductor re-entry after remediation planning is co
 part of normal audit execution, and it never invokes `workflows/execute-plan.md` or executes a
 client fix.
 
-1. **The Conductor** — accept exact downstream artifacts for validation → selected seal,
-   completed remediation plan, immutable approval
+1. **The Conductor** — accept exact downstream artifacts for validation → selected seal, completed remediation plan, immutable approval
    - Require explicit paths for all three artifacts and validate any path-bearing identifier under
      the shared safe-identifier contract. Absence or ambiguity stops the re-entry.
 
