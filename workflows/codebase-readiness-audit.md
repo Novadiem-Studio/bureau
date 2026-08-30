@@ -108,15 +108,18 @@ selection, and downstream authorization decisions.
      latest pointer.
 
 7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation → `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
-   - Receive the exact reservation/version plus the intent, `RUN_DIR/audit/domain-register.md`,
-     domain coverage, runtime, and quarantine records. Do not allocate a version or write the
-     index.
+   - Always receive the exact reservation/version plus `RUN_DIR/audit/profile.md`,
+     `RUN_DIR/audit/product-contract.md`, `RUN_DIR/audit/runtime-verification.md`, and
+     `RUN_DIR/audit/setup-quarantine.md`. Do not allocate a version or write the index.
+   - On the normal path, additionally receive `RUN_DIR/audit/domain-register.md` and every
+     applicable coverage artifact under `RUN_DIR/audit/coverage/`.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
      Keep owner questions, exclusions, verification limits, and setup quarantine visible.
    - Every substantive finding and the overall conclusion carry the shared evidence
      classification plus the required evidence reference or unavailability reason. Evidence
      ceilings are preserved. Publish no-clobber to the reserved version only.
-   - For evidence-retention closure, write only the permitted contract-gap content and mandatory
+   - For evidence-retention closure, explicitly omit the domain-register and coverage artifacts
+     skipped in steps 3 and 4. Write only the permitted contract-gap content and mandatory
      structural references; do not add readiness findings, a recommendation, or remediation
      candidates.
 
