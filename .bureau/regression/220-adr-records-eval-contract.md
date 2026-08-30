@@ -1,4 +1,5 @@
 name: adr-records-eval-contract
+retired: 01 · feature — asserts ignored local docs/evaluation and ideas records that are unavailable in a clean clone
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   EVAL="$ROOT/docs/evaluation/adr-records-eval.md"

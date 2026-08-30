@@ -22,7 +22,7 @@ command: |
   OUT="$WORK/out.md"
   RUN="$WORK/run"; mkdir -p "$RUN"; : > "$RUN/log.md"
   set +e
-  HOME="$WORK/home" PATH="$WORK/bin:$PATH" bash "$SCRIPT" openrouter:x-ai/grok-4.3 "$WORK/draft.md" "$WORK/instr.md" "$OUT" --run-dir "$RUN"
+  OPENROUTER_KEYSTORE="$WORK/home/Documents/novadiem/keys/novadiem/openrouter.env" HOME="$WORK/home" PATH="$WORK/bin:$PATH" bash "$SCRIPT" openrouter:x-ai/grok-4.3 "$WORK/draft.md" "$WORK/instr.md" "$OUT" --run-dir "$RUN"
   code=$?
   set -e
   test "$code" -eq 0 || { echo "FAIL: expected exit 0, got $code" >&2; exit 1; }
