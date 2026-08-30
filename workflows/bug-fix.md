@@ -29,7 +29,8 @@ is its own artifact (separate from `log.md`) so the Conductor can hand it to the
 without the run log; it is what keeps the review cold. `repro.md` is also the single home for
 the regression-test record: test path, pre-fix red evidence, post-fix green evidence, or the
 explicit no-correct-seam finding. The fix itself lands as a reviewed diff in this run's **git
-worktree**, merged to the dev/integration branch at close-out. No `spec.md`, no `plan.md`, no
+worktree**, delivered by linked pull request for public GitHub repos (or the recorded local
+fallback), and merged to the dev/integration branch at close-out. No `spec.md`, no `plan.md`, no
 `prompts.md`.
 
 **Leans on skills:** `docs/conventions/diagnosing-bugs.md` (red-capable feedback loop,
@@ -70,12 +71,17 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
      --run-dir "$RUN_DIR" \
      --repo <absolute repo path> \
      --base <integration branch; default devel from project-context.md> \
-     --merge-policy end_of_job
+     --merge-policy end_of_job \
+     --delivery <auto by default; project-context.md may require github or local>
    ```
 
    Record paths in `state.json` (`git` block). The build spawn in step 3 gets **`WORKTREE:`** —
    the absolute `worktree_path`. Never edit `devel` (or the integration branch) directly during
    the run. Commit in the worktree before the diff is handed to review.
+   Write the reproduction criteria to `RUN_DIR/github/issue.md`, then follow
+   `docs/github-delivery.md` and run `scripts/pr-delivery.sh open` before step 3. Creating/linking
+   the issue and draft PR is an external action; use existing task/project authorization or raise
+   `[EXTERNAL-ACTION CHECKPOINT]`. Public GitHub repos may not silently fall back to local merge.
 3. **The Conductor** dispatches the coder the domain names — **The Mage** (frontend/UI) ·
    **The Systemsmith** (backend/data/contract) · **The Mechanic** (ops/infra) — at tier
    **strong** to fix exactly the located cause in **`WORKTREE`** (not the integration branch
@@ -110,9 +116,13 @@ an absolute path in every spawn prompt; build/fix spawns also get `WORKTREE`.
      has one; reuse its commands) to confirm no regression. The fix is not accepted until the
      original repro passes, the regression-test record is present (or the no-correct-seam finding
      is explicit and reviewed), and the suite is green.
-   - **Close out** at the `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`): human
-     go, then merge the worktree to the **dev/integration branch only**, then `run-worktree.sh remove`
-     (on conflict: `[CHECKPOINT]`); check for new packages after the merge and install into the
+   - **Close out**: publish the Challenger summary/evidence, mark the PR ready (`pr-delivery.sh
+     ready`), then merge per `git.merge_gate` (`docs/github-delivery.md § Merge gate`) — **`self`
+     (default for GitHub delivery): the Conductor runs `pr-delivery.sh merge` itself once tests are
+     green and the cold review is `accepted`, no human checkpoint; `human`: raise the
+     `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`) and merge on the human "go".**
+     Use `run-worktree.sh merge` only for a recorded local fallback. Then `run-worktree.sh remove`
+     (on conflict or blocked branch protection: `[CHECKPOINT]`); check for new packages and install into the
      running container; append the run to `log.md`. As the **final** close-out action, run
      `scripts/account-run.sh <RUN_DIR>` and set `state.json#accounting` per
      `docs/run-accounting.md`. The run ends at **dev-verified** —

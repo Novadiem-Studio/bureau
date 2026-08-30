@@ -28,6 +28,17 @@ scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
 `run-start.sh`. Claude remains the default when `--runtime` is omitted. Host
 spawn/resume mappings and accounting guarantees live in `docs/host-runtime.md`.
 
+`grok` is the Grok Bot host adapter (`config/runtimes/grok.json`, `GROK.md`).
+Start with `--runtime grok`. Live spawn is Task/executor; `scripts/run-grok-specialist.sh --plan`
+is the pre-spawn audit. `openrouter` and `hermes` remain routing-only.
+
+Base tiers resolve native spawn models. Optional `execution_profiles` resolve narrow alternate
+transports without changing a role's default tier. In the OpenAI adapter,
+`granular-ui-fast` maps a qualifying first-pass Mage prompt to Spark/high through
+`scripts/run-codex-spark-specialist.sh`; all normal spawns and every fallback continue to use the
+resolved Terra/Sol role route. Profile eligibility lives in `config/model-policy.v2.json`, not in
+the adapter.
+
 ## Local Aliases
 
 Canonical adapters may use symbolic model aliases when exact provider names are likely to drift.

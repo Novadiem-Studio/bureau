@@ -40,6 +40,8 @@ topology:
 - spawn the resumable Conductor with `collaboration.spawn_agent`,
   `fork_turns: "none"`, and explicit resolved model/reasoning;
 - let the Conductor spawn workflow specialists in fresh contexts;
+- for a policy-qualified `execute-plan` Mage prompt only, let the Conductor use the one-shot
+  Spark helper from `docs/host-runtime.md` instead of the native child-agent endpoint;
 - resume idle agents with `collaboration.followup_task`;
 - use `scripts/run-cold-reviewer.sh` for every cold gating verdict;
 - persist genuine forks before asking Robin in the top-level response.
@@ -67,8 +69,8 @@ Conductor remains the Orchestrator**:
   verification directly back to The Conductor.
 - Approve routine, reversible, in-scope progression when the evidence is clean:
   sequential prompt dispatch, revision loops, local verification, commits in
-  the run worktree, build-diff review, local integration-branch merge, and safe
-  worktree cleanup.
+  the run worktree, build-diff review, policy-authorized issue/PR evidence updates,
+  GitHub merge (or the recorded local fallback), and safe worktree cleanup.
 - Let The Conductor perform the run: spawning specialists, editing files,
   executing prompts, running checks, updating `RUN_DIR`, committing, merging,
   and closing out all remain The Conductor's job. Codex must not silently take

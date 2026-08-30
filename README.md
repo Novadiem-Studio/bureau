@@ -70,6 +70,11 @@ Build workflows stop at the development boundary unless a separate, explicit pro
 
 Code-changing runs receive their own branch and worktree. Concurrent runs can work against the same repository without sharing a checkout or writing directly to the integration branch. The worktree lifecycle is defined in [the git worktree contract](docs/git-worktree.md).
 
+For public GitHub repositories, the delivery unit is a linked issue and pull request: Bureau opens
+a draft early, publishes test and cold-review evidence, marks it ready only after review passes,
+and merges through GitHub. Private repositories may opt in; non-GitHub work keeps an explicit local
+fallback. See [GitHub delivery](docs/github-delivery.md).
+
 ### Honest accounting
 
 The close-out record distinguishes exact, estimated, inferred, partial, and unavailable evidence. Missing provider data is recorded as unavailable rather than counted as zero. See [run accounting](docs/run-accounting.md).
@@ -92,6 +97,7 @@ The Bureau is a dispatcher, not one fixed pipeline. Its registered workflows cur
 | [`execute-plan`](workflows/execute-plan.md) | Turn an approved plan into vetted prompts and build them | Isolated implementation with per-part review |
 | [`design-build`](workflows/design-build.md) | Implement an existing design handoff | Design manifest, build prompts, implementation, and fidelity review |
 | [`code-review`](workflows/code-review.md) | Review a branch, pull request, diff, or working tree | Findings-first cold review with no edits by default |
+| [`upstream-contribution`](workflows/upstream-contribution.md) | Contribute a real fix to an unrelated dependency or tool | Focused, tested, cold-reviewed upstream pull request |
 | [`docs-reconcile`](workflows/docs-reconcile.md) | Reconcile planning or status documents with code | Updated documents rechecked against repository ground truth |
 | [`operational-build`](workflows/operational-build.md) | Run a defined build or operations runbook | Verified build or operations record, stopping before production |
 | [`message-framing`](workflows/message-framing.md) and [`copy-review`](workflows/copy-review.md) | Frame and review public-facing language | Audience-aware copy with a separate voice pass |
@@ -180,6 +186,7 @@ The public README describes the system. The operational contracts remain in the 
 
 - Codex entrypoint and repository rules: [`AGENTS.md`](AGENTS.md) and [`CODEX.md`](CODEX.md)
 - Claude Code entrypoint: [`CLAUDE.md`](CLAUDE.md)
+- Grok Bot entrypoint: [`GROK.md`](GROK.md)
 - Workflow selection: [`workflows/index.md`](workflows/index.md)
 - Run lifecycle: [`docs/run-protocol.md`](docs/run-protocol.md)
 - Host transport and isolation: [`docs/host-runtime.md`](docs/host-runtime.md)

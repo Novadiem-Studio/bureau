@@ -22,7 +22,8 @@ ask for it — this workflow does not start without a handoff.
 
 **Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `design/manifest.md`,
 `plan.md` (the build map), `prompts/` (`00-index.md` + `NN-<slug>.md`), `log.md`, `state.json`;
-then — once gated — built code in an isolated worktree, merged to the **integration branch only**.
+then — once gated — built code in an isolated worktree, delivered through a linked pull request
+for public GitHub repositories (or the recorded local fallback), merged to the **integration branch only**.
 
 **Leans on skills:** **novadiem-engineering** (cross-project coding standards — loaded by The
 Architect, The Challenger, The Spellwright, and every build-party coder) + `monorepo-orientation`
@@ -78,7 +79,7 @@ and is run by reference, not re-documented here.
    each chunk in the worktree; **The Cleric** (mode: review) checks each built UI screen against
    `design/manifest.md` (components, tokens, states, flow, real data — FAITHFUL or DRIFTED, drift
    routes back to The Mage); **The Challenger** cold-reviews each diff; the Conductor adjudicates,
-   captures fixtures, then closes out (merge to integration branch, package install, fixture
+   captures fixtures, then closes out (PR/local merge to integration branch, package install, fixture
    promotion, run accounting) → built code on the integration branch, updated `log.md`,
    `state.json`. The **production boundary** and **external-action boundary** apply unchanged: the
    run stops at **dev-verified** — nothing deploys or merges toward prod. Follow

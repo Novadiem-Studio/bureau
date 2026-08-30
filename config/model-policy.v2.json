@@ -4,140 +4,360 @@
   "default_runtime": "claude",
   "host_policy": {
     "claude": {
-      "allowed_spawn_models": ["haiku", "sonnet", "opus", "fable"],
-      "forbidden": ["premium"],
-      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only — re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
+      "allowed_spawn_models": [
+        "haiku",
+        "sonnet",
+        "opus",
+        "fable"
+      ],
+      "forbidden": [
+        "premium"
+      ],
+      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
     },
     "openai": {
-      "allowed_spawn_models": ["gpt-5.6-terra", "gpt-5.6-sol"],
+      "allowed_spawn_models": [
+        "gpt-5.6-terra",
+        "gpt-5.6-sol"
+      ],
+      "allowed_exec_models": [
+        "gpt-5.3-codex-spark"
+      ],
       "forbidden": [],
-      "note": "Codex host: gpt-5.6-terra is the economical rung; gpt-5.6-sol is the demanding-work rung. Pass model and reasoning effort explicitly on every spawn."
+      "note": "Codex host: native subagent spawns use gpt-5.6-terra or gpt-5.6-sol. gpt-5.3-codex-spark is allowed only through the granular-ui-fast one-shot exec profile. Pass model and reasoning effort explicitly on every launch."
+    },
+    "grok": {
+      "allowed_spawn_models": [
+        "grok-4.3",
+        "grok-4.6"
+      ],
+      "allowed_exec_models": [
+        "grok-build-0.1"
+      ],
+      "forbidden": [],
+      "note": "Grok Bot host: native specialist spawns use grok-4.3 (cheap/standard) or grok-4.6 (strong/frontier/escalated). grok-build-0.1 is exec-only until a one-shot helper exists. Pass model and reasoning effort explicitly on every launch. Live transport is Grok Bot Task/executor (GROK.md); scripts/run-grok-specialist.sh --plan is the audit record."
     }
   },
-  "manual_experiments": ["conductor-sonnet"],
-  "tiers": ["cheap", "standard", "strong", "frontier", "escalated"],
+  "manual_experiments": [
+    "conductor-sonnet"
+  ],
+  "tiers": [
+    "cheap",
+    "standard",
+    "strong",
+    "frontier",
+    "escalated"
+  ],
+  "execution_profiles": {
+    "granular-ui-fast": {
+      "description": "Fast first-pass implementation for a bounded, text-only change to one existing frontend surface.",
+      "allowed_workflows": [
+        "execute-plan"
+      ],
+      "first_attempt_only": true,
+      "requires_all": [
+        "existing_frontend_surface",
+        "single_component_or_style_boundary",
+        "text_only_inputs",
+        "known_local_validation_command"
+      ],
+      "disqualify_when": [
+        "new_feature_or_architecture",
+        "new_state_api_navigation_or_contract",
+        "new_dependency_or_generated_files",
+        "cross_coder_seam",
+        "auth_data_money_or_irreversible_effect",
+        "image_or_visual_fidelity_judgment",
+        "critic_revision_or_retry",
+        "broad_or_ambiguous_scope"
+      ],
+      "fallback": "role_default"
+    }
+  },
   "roles": {
     "conductor": {
       "agent": "The Conductor",
       "default_tier": "strong",
-      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": false,
       "lock": false,
-      "escalate_when": ["hard_adjudication", "conflicting_specialists", "second_critic_loop", "checkpoint_decision"],
-      "deescalate_when": ["routing_only", "budget_pressure"]
+      "escalate_when": [
+        "hard_adjudication",
+        "conflicting_specialists",
+        "second_critic_loop",
+        "checkpoint_decision"
+      ],
+      "deescalate_when": [
+        "routing_only",
+        "budget_pressure"
+      ]
     },
     "challenger": {
       "agent": "The Challenger",
       "default_tier": "strong",
-      "allowed": ["strong", "frontier", "escalated"],
+      "allowed": [
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["final_gate", "second_critic_loop", "high_stakes_backend_or_security", "prior_review_missed_issue"],
-      "deescalate_when": ["low_risk_docs_review_with_frontier_followup"]
+      "escalate_when": [
+        "final_gate",
+        "second_critic_loop",
+        "high_stakes_backend_or_security",
+        "prior_review_missed_issue"
+      ],
+      "deescalate_when": [
+        "low_risk_docs_review_with_frontier_followup"
+      ]
     },
     "architect": {
       "agent": "The Architect",
       "default_tier": "strong",
-      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["novel_architecture", "irreversible_data_model", "critic_finds_design_gap"],
-      "deescalate_when": ["small_plan_revision", "budget_pressure"]
+      "escalate_when": [
+        "novel_architecture",
+        "irreversible_data_model",
+        "critic_finds_design_gap"
+      ],
+      "deescalate_when": [
+        "small_plan_revision",
+        "budget_pressure"
+      ]
     },
     "mage": {
       "agent": "The Mage",
       "default_tier": "strong",
-      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
+      "allowed_profiles": [
+        "granular-ui-fast"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["complex_state", "design_fidelity_failure", "mobile_web_split", "animation_or_layout_bug"],
-      "deescalate_when": ["small_component_patch", "budget_pressure"]
+      "escalate_when": [
+        "complex_state",
+        "design_fidelity_failure",
+        "mobile_web_split",
+        "animation_or_layout_bug"
+      ],
+      "deescalate_when": [
+        "small_component_patch",
+        "budget_pressure"
+      ]
     },
     "analyst": {
       "agent": "Analizer 2000",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["huge_scope", "fuzzy_product_boundary", "regulated_domain"],
-      "deescalate_when": ["narrow_existing_plan", "budget_pressure"]
+      "escalate_when": [
+        "huge_scope",
+        "fuzzy_product_boundary",
+        "regulated_domain"
+      ],
+      "deescalate_when": [
+        "narrow_existing_plan",
+        "budget_pressure"
+      ]
     },
     "cleric": {
       "agent": "The Cleric",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["ambiguous_design_handoff", "manifest_extraction_failed", "subtle_visual_drift"],
-      "deescalate_when": ["straightforward_manifest_ingest", "budget_pressure"]
+      "escalate_when": [
+        "ambiguous_design_handoff",
+        "manifest_extraction_failed",
+        "subtle_visual_drift"
+      ],
+      "deescalate_when": [
+        "straightforward_manifest_ingest",
+        "budget_pressure"
+      ]
     },
     "spellwright": {
       "agent": "The Spellwright",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["incoherent_after_one_fix", "many_cross_repo_dependencies"],
-      "deescalate_when": ["approved_single_repo_plan", "budget_pressure"]
+      "escalate_when": [
+        "incoherent_after_one_fix",
+        "many_cross_repo_dependencies"
+      ],
+      "deescalate_when": [
+        "approved_single_repo_plan",
+        "budget_pressure"
+      ]
     },
     "counselor": {
       "agent": "The Counselor",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["sensitive_audience", "legal_medical_political_copy"],
-      "deescalate_when": ["routine_copy_review", "budget_pressure"]
+      "escalate_when": [
+        "sensitive_audience",
+        "legal_medical_political_copy"
+      ],
+      "deescalate_when": [
+        "routine_copy_review",
+        "budget_pressure"
+      ]
     },
     "scribe": {
       "agent": "The Scribe",
       "default_tier": "standard",
-      "allowed": ["standard", "strong"],
+      "allowed": [
+        "standard",
+        "strong"
+      ],
       "fresh_context_required": false,
       "lock": false,
-      "escalate_when": ["long_draft", "complex_revision", "promotion_authority_step"],
-      "deescalate_when": ["outline_only", "format_only"]
+      "escalate_when": [
+        "long_draft",
+        "complex_revision",
+        "promotion_authority_step"
+      ],
+      "deescalate_when": [
+        "outline_only",
+        "format_only"
+      ]
     },
     "systemsmith": {
       "agent": "The Systemsmith",
       "default_tier": "strong",
-      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["auth", "migrations", "idempotency", "money_or_credit", "permissions", "data_integrity"],
-      "deescalate_when": ["read_only_contract_audit", "small_controller_patch", "budget_pressure"]
+      "escalate_when": [
+        "auth",
+        "migrations",
+        "idempotency",
+        "money_or_credit",
+        "permissions",
+        "data_integrity"
+      ],
+      "deescalate_when": [
+        "read_only_contract_audit",
+        "small_controller_patch",
+        "budget_pressure"
+      ]
     },
     "mechanic": {
       "agent": "The Mechanic",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["prod_deploy", "irreversible_infra", "secret_handling", "database_restore_or_migration"],
-      "deescalate_when": ["local_build_or_smoke_test", "budget_pressure"]
+      "escalate_when": [
+        "prod_deploy",
+        "irreversible_infra",
+        "secret_handling",
+        "database_restore_or_migration"
+      ],
+      "deescalate_when": [
+        "local_build_or_smoke_test",
+        "budget_pressure"
+      ]
     },
     "witness": {
       "agent": "The Witness",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "cheap",
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["huge_log_volume", "many_installs_first_pass_thin"],
-      "deescalate_when": ["routine_briefing", "budget_pressure"]
+      "escalate_when": [
+        "huge_log_volume",
+        "many_installs_first_pass_thin"
+      ],
+      "deescalate_when": [
+        "routine_briefing",
+        "budget_pressure"
+      ]
     },
     "tally": {
       "agent": "Tally",
       "default_tier": "standard",
-      "allowed": ["cheap", "standard"],
+      "allowed": [
+        "cheap",
+        "standard"
+      ],
       "fresh_context_required": true,
       "lock": true,
       "escalate_when": [],
-      "deescalate_when": ["trivial_lookup", "budget_pressure"]
+      "deescalate_when": [
+        "trivial_lookup",
+        "budget_pressure"
+      ]
     },
     "scoot": {
       "agent": "Scoot",
       "default_tier": "cheap",
-      "allowed": ["cheap"],
+      "allowed": [
+        "cheap"
+      ],
       "fresh_context_required": true,
       "lock": true,
       "escalate_when": [],
@@ -146,25 +366,49 @@
     "coupler": {
       "agent": "The Coupler",
       "default_tier": "standard",
-      "allowed": ["standard", "strong", "frontier", "escalated"],
+      "allowed": [
+        "standard",
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["security_critical_seam", "repro_failure_needs_deep_trace"],
-      "deescalate_when": ["routine_ui_api_smoke", "budget_pressure"]
+      "escalate_when": [
+        "security_critical_seam",
+        "repro_failure_needs_deep_trace"
+      ],
+      "deescalate_when": [
+        "routine_ui_api_smoke",
+        "budget_pressure"
+      ]
     },
     "notary": {
       "agent": "The Notary",
       "default_tier": "strong",
-      "allowed": ["strong", "frontier", "escalated"],
+      "allowed": [
+        "strong",
+        "frontier",
+        "escalated"
+      ],
       "fresh_context_required": true,
       "lock": false,
-      "escalate_when": ["high_stakes_sealed_artifact", "irreversible_decision_under_review"],
-      "deescalate_when": ["low_risk_docs_attestation", "budget_pressure"]
+      "escalate_when": [
+        "high_stakes_sealed_artifact",
+        "irreversible_decision_under_review"
+      ],
+      "deescalate_when": [
+        "low_risk_docs_attestation",
+        "budget_pressure"
+      ]
     },
     "delegate": {
       "agent": "The Delegate",
       "default_tier": "strong",
-      "allowed": ["standard", "strong"],
+      "allowed": [
+        "standard",
+        "strong"
+      ],
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
@@ -178,7 +422,9 @@
         "unexpected_scope_expansion",
         "spec_compliant_but_doctrine_violating"
       ],
-      "deescalate_when": ["bundle04_benchmark_replay_clean"]
+      "deescalate_when": [
+        "bundle04_benchmark_replay_clean"
+      ]
     }
   }
 }

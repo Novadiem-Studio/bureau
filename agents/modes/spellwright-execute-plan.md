@@ -17,6 +17,22 @@ from your `Coder:` tag, not from inference.
 - Add `Reviewability:` to every prompt: expected primary files/dirs, expected generated files or
   lockfiles, and the boundary where the coder must stop instead of expanding scope.
 
+## Execution-profile assignment
+
+Tag every prompt with `Execution-profile:`. The safe default is `role-default`.
+
+Use `granular-ui-fast` only in the `execute-plan` workflow and when **all** of these are explicit
+in the prompt: The Mage owns it; this is the first implementation attempt; it is a bounded change
+to one existing component or style boundary; all inputs are text; and the local validation
+command is already known. Do not
+select it for a new feature or architecture choice; state, API, navigation, or contract work; a
+new dependency or generated file; a cross-coder seam; auth/data/money or external effects;
+image/visual-fidelity judgment; broad scope; or any retry, review fix, or revision. Those prompts
+stay `role-default`. Every `design-build` prompt also stays `role-default`.
+
+This tag selects an execution transport, not a different coder or review standard. Do not mention
+Spark by name in implementation instructions; the resolved runtime profile owns the model choice.
+
 ## Domain gotchas to carry into prompts
 
 Load the owner's domain gotchas into the prompt so the coder does not rediscover them:
@@ -31,4 +47,5 @@ Load the owner's domain gotchas into the prompt so the coder does not rediscover
 ## Prompt folder format
 
 Use `workflows/execute-plan/prompt-folder-format.md` as the canonical format. This appendix
-adds the coder ownership and domain-gotcha rules; it does not replace that workflow module.
+adds the coder ownership, execution-profile, and domain-gotcha rules; it does not replace that
+workflow module.

@@ -17,7 +17,7 @@
 #
 # Usage:
 #   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
-#                [--runtime <claude|openai>] [--no-pointer-echo]
+#                [--runtime <claude|openai|grok>] [--no-pointer-echo]
 #
 # Arguments:
 #   <RUN_DIR>          absolute path where the new run dir will be created
@@ -61,8 +61,8 @@ Usage:
 
 Options:
   --runtime <id>     Resolve this run for an explicit host runtime. Supported
-                     first-class hosts: claude and openai (codex is an alias
-                     for openai). If omitted, model-policy.v2.json decides.
+                     first-class hosts: claude, openai, and grok (codex is an
+                     alias for openai). If omitted, model-policy.v2.json decides.
   --no-pointer-echo  Write the normal run-scope file but do not echo its nonce.
                      Use only when a Delegate v2 top session is creating the run;
                      the Conductor subagent will read the pointer privately before
@@ -155,7 +155,7 @@ if [ "$MODEL_RUNTIME" = "codex" ]; then
   MODEL_RUNTIME="openai"
 fi
 case "$MODEL_RUNTIME" in
-  ""|claude|openai) ;;
+  ""|claude|openai|grok) ;;
   *) echo "run-start: unsupported first-class runtime: $MODEL_RUNTIME" >&2; exit 1 ;;
 esac
 

@@ -202,6 +202,8 @@ echo "== model routing policy"
 [[ -f config/delegate-verdict.codex.schema.json ]] || err "missing strict Codex Delegate verdict schema"
 [[ -x scripts/resolve-model-routing.sh ]] || err "scripts/resolve-model-routing.sh missing or not executable"
 [[ -x scripts/run-cold-reviewer.sh ]] || err "scripts/run-cold-reviewer.sh missing or not executable"
+[[ -x scripts/run-codex-spark-specialist.sh ]] || err "scripts/run-codex-spark-specialist.sh missing or not executable"
+[[ -x scripts/run-grok-specialist.sh ]] || err "scripts/run-grok-specialist.sh missing or not executable"
 if [[ -f config/model-policy.v2.json ]]; then
   if ! jq -e '.version == 2 and (.tiers | index("standard")) and (.tiers | index("strong")) and (.tiers | index("frontier"))' config/model-policy.v2.json >/dev/null; then
     err "config/model-policy.v2.json missing required v2 tiers"
@@ -221,6 +223,35 @@ if [[ -f config/model-policy.v2.json ]]; then
   ' config/model-policy.v2.json >/dev/null; then
     err "config/model-policy.v2.json missing current Codex host policy"
   fi
+  if ! jq -e '
+    (.host_policy.openai.allowed_spawn_models
+      | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol"))
+    and ((.host_policy.openai.allowed_spawn_models
+      | index("gpt-5.3-codex-spark")) == null)
+    and ((.host_policy.openai.allowed_exec_models
+      | index("gpt-5.3-codex-spark")) != null)
+    and .execution_profiles["granular-ui-fast"].allowed_workflows == ["execute-plan"]
+    and .execution_profiles["granular-ui-fast"].first_attempt_only == true
+    and ((.roles.mage.allowed_profiles | index("granular-ui-fast")) != null)
+  ' config/model-policy.v2.json >/dev/null; then
+    err "config/model-policy.v2.json Spark profile must be exec-only, Mage-only, and first-attempt execute-plan"
+  fi
+if ! jq -e '
+  .host_policy.grok.allowed_spawn_models
+  | index("grok-4.3") and index("grok-4.6")
+' config/model-policy.v2.json >/dev/null; then
+  err "config/model-policy.v2.json missing current Grok host policy"
+fi
+if ! jq -e '
+  (.host_policy.grok.allowed_spawn_models
+    | all(. == "grok-4.3" or . == "grok-4.6"))
+  and ((.host_policy.grok.allowed_spawn_models
+    | index("grok-build-0.1")) == null)
+  and ((.host_policy.grok.allowed_exec_models
+    | index("grok-build-0.1")) != null)
+' config/model-policy.v2.json >/dev/null; then
+  err "config/model-policy.v2.json Grok Build must be exec-only, not a spawn model"
+fi
 fi
 for adapter in config/runtimes/*.json; do
   [[ -e "$adapter" ]] || continue
@@ -233,6 +264,22 @@ if ! jq -e '
   | ($models | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol"))
 ' config/runtimes/openai.json >/dev/null; then
   err "config/runtimes/openai.json should map every tier to gpt-5.6-terra or gpt-5.6-sol"
+fi
+if ! jq -e '
+  .capabilities.supports_one_shot_exec_profiles == true
+  and .execution_profiles["granular-ui-fast"].model == "gpt-5.3-codex-spark"
+  and .execution_profiles["granular-ui-fast"].reasoning_effort == "high"
+  and .execution_profiles["granular-ui-fast"].transport == "codex-exec-one-shot"
+  and .execution_profiles["granular-ui-fast"].helper == "scripts/run-codex-spark-specialist.sh"
+' config/runtimes/openai.json >/dev/null; then
+  err "config/runtimes/openai.json missing the canonical Spark one-shot execution profile"
+fi
+
+if ! jq -e '
+  [.tiers[]?.model] as $models
+  | ($models | all(. == "grok-4.3" or . == "grok-4.6"))
+' config/runtimes/grok.json >/dev/null; then
+  err "config/runtimes/grok.json should map every tier to grok-4.3 or grok-4.6"
 fi
 for exp in config/model-experiments/*.json; do
   [[ -e "$exp" ]] || continue
@@ -575,7 +622,10 @@ echo "== name lint: ${warnings} warnings"
 CHECK_RUNTIME="${NOVADIEM_MODEL_RUNTIME:-claude}"
 [[ "$CHECK_RUNTIME" == "codex" ]] && CHECK_RUNTIME="openai"
 
-if [[ "$CHECK_RUNTIME" == "openai" ]]; then
+if [[ "$CHECK_RUNTIME" == "grok" ]]; then
+  echo "== Grok Bot host wiring"
+  warn "Grok Bot Task subagents currently use host model sand-default; resolved grok-4.3/grok-4.6 stay in model-routing.json"
+elif [[ "$CHECK_RUNTIME" == "openai" ]]; then
   echo "== Codex host wiring"
   if ! command -v codex >/dev/null 2>&1; then
     err "Codex CLI not found — openai host runtime cannot spawn reviewers"

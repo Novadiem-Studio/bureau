@@ -5,7 +5,7 @@
 # Default output: ~/.novadiem/resolved-model-routing.json
 #
 # Env:
-#   NOVADIEM_MODEL_RUNTIME       runtime name (openai, claude, openrouter, hermes)
+#   NOVADIEM_MODEL_RUNTIME       runtime name (openai, claude, grok, openrouter, hermes)
 #   NOVADIEM_MODEL_POLICY_V2     path to provider-neutral policy
 #   NOVADIEM_MODEL_RUNTIME_PATH  path to runtime adapter JSON
 #   NOVADIEM_MODEL_EXPERIMENTS   comma-separated provider-neutral experiment ids
@@ -107,6 +107,8 @@ jq -n \
     | ($runtime[0]) as $runtimeDoc
     | ($policyDoc.tiers // []) as $knownTiers
     | ($runtimeDoc.tiers // {}) as $runtimeTiers
+    | ($policyDoc.execution_profiles // {}) as $policyProfiles
+    | ($runtimeDoc.execution_profiles // {}) as $runtimeProfiles
     | ($runtimeDoc.capabilities // {}) as $runtimeCaps
     | [ $experiments[] | select(active_experiment(.)) ] as $active
     | ($active | map(.overrides // {}) | add // {}) as $mergedOverrides
@@ -161,6 +163,39 @@ jq -n \
                   freshContextRequired: ($cfg.fresh_context_required // false),
                   capabilityWarnings: capability_warning($runtimeCaps; $cfg),
                   allowed: $allowed,
+                  executionProfiles: (
+                    ($cfg.allowed_profiles // [])
+                    | map(
+                        . as $profileId
+                        | ($policyProfiles[$profileId] // null) as $policyProfile
+                        | ($runtimeProfiles[$profileId] // null) as $runtimeProfile
+                        | select($policyProfile != null and $runtimeProfile != null)
+                        | {
+                            id: $profileId,
+                            description: ($policyProfile.description // null),
+                            allowedWorkflows: ($policyProfile.allowed_workflows // []),
+                            firstAttemptOnly: ($policyProfile.first_attempt_only // false),
+                            requiresAll: ($policyProfile.requires_all // []),
+                            disqualifyWhen: ($policyProfile.disqualify_when // []),
+                            transport: ($runtimeProfile.transport // null),
+                            helper: ($runtimeProfile.helper // null),
+                            model: ($runtimeProfile.model // null),
+                            reasoningEffort: ($runtimeProfile.reasoning_effort // null),
+                            serviceTier: ($runtimeProfile.service_tier // null),
+                            availabilityGate: ($runtimeProfile.availability_gate // null),
+                            inputModalities: ($runtimeProfile.input_modalities // []),
+                            runtimeNotes: ($runtimeProfile.notes // null),
+                            fallback: {
+                              kind: ($policyProfile.fallback // "role_default"),
+                              tier: $tier,
+                              model: ($runtimeTier.model // null),
+                              reasoningEffort: ($runtimeTier.reasoning_effort // null),
+                              serviceTier: ($runtimeTier.service_tier // null)
+                            }
+                          }
+                      )
+                    | INDEX(.id)
+                  ),
                   escalateWhen: ($cfg.escalate_when // []),
                   deescalateWhen: ($cfg.deescalate_when // [])
                 }

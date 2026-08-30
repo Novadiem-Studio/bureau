@@ -23,7 +23,7 @@
 # DOES NOT mutation-test (mutation-test is an authoring-convention obligation, not a script gate).
 # DOES NOT repath (repo-relative is an authoring-time guarantee per docs/conventions/regression-fixtures.md).
 # NEVER commits (commit is a Conductor action gated on exit 0).
-# NEVER pushes (push is past the production boundary; always the human's call).
+# NEVER pushes (delivery tooling owns the push).
 #
 # Convention: docs/conventions/regression-fixtures.md § Regression fixture file format
 # Promotion lifecycle: workflows/execute-plan/build-tail.md step 7

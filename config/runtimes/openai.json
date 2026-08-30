@@ -6,7 +6,8 @@
     "supports_parallel_subagents": true,
     "supports_filesystem_tools": true,
     "supports_browser_tools": true,
-    "supports_reasoning_effort": true
+    "supports_reasoning_effort": true,
+    "supports_one_shot_exec_profiles": true
   },
   "tiers": {
     "cheap": {
@@ -35,6 +36,17 @@
       "reasoning_effort": "max",
       "service_tier": "priority",
       "notes": "Use after evidence of trouble or explicit human request."
+    }
+  },
+  "execution_profiles": {
+    "granular-ui-fast": {
+      "model": "gpt-5.3-codex-spark",
+      "reasoning_effort": "high",
+      "transport": "codex-exec-one-shot",
+      "helper": "scripts/run-codex-spark-specialist.sh",
+      "availability_gate": "codex_exec_model_start",
+      "input_modalities": ["text"],
+      "notes": "Spark is a fast, less-capable, text-only implementation worker. Use only for the policy-qualified first Mage pass; use the resolved Mage default for every retry, revision, or ineligible task."
     }
   }
 }

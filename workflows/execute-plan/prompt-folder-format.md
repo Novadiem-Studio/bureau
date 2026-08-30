@@ -27,6 +27,14 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
 - `Coder:` exactly one of **The Mage** (frontend/design), **The Systemsmith** (backend/data/
   contract), **The Mechanic** (ops/deploy/infra). One prompt = one coder; if a unit needs two,
   split it and name the shared contract in both prompts.
+- `Execution-profile:` exactly one of `role-default` or `granular-ui-fast`. Use
+  `granular-ui-fast` only in the `execute-plan` workflow, for a first-pass **Mage** prompt that
+  changes one existing frontend component/style boundary, has text-only inputs, and names a known
+  local validation command.
+  It is ineligible when the prompt adds a feature/architecture decision, state, API, navigation,
+  contract, dependency, generated file, cross-coder seam, auth/data/money/external effect, or
+  needs image/visual-fidelity judgment. It is also ineligible for every retry or review fix.
+  Use `role-default` otherwise. A legacy prompt with no tag is dispatched as `role-default`.
 - `Plan:` the canonical plan section it implements (`../<plan>.md §N`) + the analog to mirror.
 - `Reviewability:` one line naming the expected diff surface: the primary files/dirs, whether
   generated files or lockfiles are expected, and the boundary that would make the coder stop
@@ -39,7 +47,8 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
   `docs/conventions/tdd-seams.md` and mutation-verify the seam tests before handoff.
 - **Release steps are not build steps.** A prompt that deploys beyond dev, promotes a release,
   publishes a build, or pushes to a release/prod branch must be tagged `Release-step: yes` and
-  ordered LAST, after a `[DEV-VERIFIED CHECKPOINT]`. The 01→NN build loop never runs it
+  `Execution-profile: role-default`, and ordered LAST, after a `[DEV-VERIFIED CHECKPOINT]`.
+  The 01→NN build loop never runs it
   autonomously (see `workflows/execute-plan/build-tail.md § Production boundary — hard stop`).
 
 Keep each prompt self-contained but anchored to its plan section. Match the established example at

@@ -8,6 +8,14 @@ Check for:
 - **Missing context** — a prompt that won't work without information not provided
 - **Wrong sequence** — prompts that are ordered incorrectly
 - **Untestable prompts** — no clear definition of what "done" looks like
+- **Invalid execution profile** — every new prompt must name `Execution-profile: role-default`
+  or `Execution-profile: granular-ui-fast`. Treat `granular-ui-fast` as a **Blocker** unless it
+  is a first-pass Mage change to one existing component/style boundary with text-only inputs and
+  a known local validation command in the `execute-plan` workflow. It is a Blocker for
+  `design-build`, new feature/architecture, state, API,
+  navigation, contract, dependency, generated-file, cross-coder, auth/data/money/external-effect,
+  image/visual-fidelity, broad/ambiguous, release, retry, or review-fix work. `role-default` is
+  always the safe correction; do not broaden a prompt merely to justify the fast profile.
 - **Missing seam declaration** — any build prompt checkpoint that lacks
   `Seams under test:` (named public seam or explicit `none — <reason>`). For non-`none`
   seams, verify the prompt names `docs/conventions/tdd-seams.md` and asks the coder to

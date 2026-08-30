@@ -69,8 +69,8 @@ builds the vetted prompts part by part only after the human approves the gate (s
    `workflows/execute-plan/prompt-folder-format.md` and decompose the approved plan into the
    **prompt folder**, beside the plan doc. One prompt = one coherent unit a single Claude Code
    session can finish, owned by **exactly one coder** (carry the Architect's chunk assignment; tag
-   every prompt `Coder:`). Each names exact files and ends with a green checkpoint. Keep every
-   prompt reviewable: it should fit in one focused code-review sitting, touch only one
+   every prompt `Coder:` and `Execution-profile:`). Each names exact files and ends with a green
+   checkpoint. Keep every prompt reviewable: it should fit in one focused code-review sitting, touch only one
    domain/surface, and produce a diff The Challenger can inspect cold. If the plan chunk would
    create a sprawling diff, split it before the build stage; a 10k-line surprise is a planning
    failure, not a productivity win.

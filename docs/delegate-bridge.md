@@ -43,8 +43,8 @@ content.
 
 Phase mapping for v1:
 
-- `execute-plan` close-out merge (worktree to integration branch) → `integration`
-- `bug-fix` merge to main / integration branch → `integration`
+- `execute-plan` close-out merge (GitHub PR or local fallback into integration branch) → `integration`
+- `bug-fix` GitHub PR / local fallback merge to main or integration branch → `integration`
 - `feature` runs (plan-type, no build/merge phase) → no integration checkpoints; a pre-spec
   grill checkpoint, when present, is `checkpoint-type: routine`
 - deploy/promote phases → deferred; set as `routine` for now

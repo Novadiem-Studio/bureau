@@ -35,16 +35,42 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 **Runtime selection:** default `claude`. New Codex runs use
 `scripts/run-start.sh ... --runtime openai`; the lower-level resolver also accepts
 `NOVADIEM_MODEL_RUNTIME=openai`. `openrouter` and `hermes` currently have routing adapters but
-no native Bureau host transport, so they cannot drive a run yet. See `docs/host-runtime.md`.
+no native Bureau host transport, so they cannot drive a run yet. `grok` is a first-class Grok Bot host (`GROK.md`, `--runtime grok`). See `docs/host-runtime.md`.
 
 ### Host policy - Codex
 
 Codex maps `cheap`/`standard` to **gpt-5.6-terra** and
 `strong`/`frontier`/`escalated` to **gpt-5.6-sol**, increasing reasoning effort by tier.
-Every Codex spawn uses the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with
+Every native Codex spawn uses the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with
 `fork_context: false` in the current host), explicit `model`, and explicit `reasoning_effort`.
 Resume retained agents with `multi_agent_v1.send_input`.
+
+Spark is a scoped execution profile, not a base tier. On `execute-plan`, a prompt tagged
+`Execution-profile: granular-ui-fast` may resolve for The Mage to
+**gpt-5.3-codex-spark/high** through the one-shot exec helper when every policy condition holds.
+The role default remains Sol/high, and all ineligible work, retries, and review fixes use it.
+Keeping Spark out of `allowed_spawn_models` is intentional: the native child-agent endpoint does
+not currently accept it. `host_policy.openai.allowed_exec_models` and the runtime profile make it
+known to the Bureau's separate exec transport. See `docs/host-runtime.md § Codex Spark execution
+profile`.
 The full transport, reviewer isolation, and accounting matrix is in `docs/host-runtime.md`.
+
+
+### Host policy - Grok
+
+Grok maps `cheap`/`standard` to **grok-4.3** and
+`strong`/`frontier`/`escalated` to **grok-4.6**, increasing reasoning effort by
+tier where the host accepts it. Model IDs are from the xAI API as of 2026-08-23
+(`docs.x.ai/developers/models`). Do not use retired slugs (`grok-4`, `grok-4-fast`,
+`grok-3`, `grok-3-mini`); those redirect and will not preserve the cheap/strong split.
+
+`grok-build-0.1` is a scoped execution profile candidate (Spark analog), not a
+base tier. Keep it out of `allowed_spawn_models`. There is no one-shot helper yet,
+so do not dispatch Build through that profile until a helper exists.
+
+Grok Bot is a first-class host. Start with `--runtime grok`. The spawn helper
+`scripts/run-grok-specialist.sh --plan` is the audit record; live spawn is the
+Grok Bot Task executor (`GROK.md`). `openrouter` / `hermes` remain routing-only.
 
 ### Host policy - Claude Code
 

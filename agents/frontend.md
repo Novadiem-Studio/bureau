@@ -23,6 +23,10 @@ gives you: the scoped prompt file (`<plan-folder>/NN-<slug>.md`), the target sub
 path, and the local context to load (that sub-app's CLAUDE.md + the skills the prompt names).
 In `bug-fix` mode, the spawn prompt gives you `RUN_DIR/repro.md`, `WORKTREE`, and the located
 frontend cause instead of a scoped prompt file; treat `repro.md` as the scoped instruction.
+On an OpenAI run, a qualifying first-pass prompt may be launched through the one-shot
+`granular-ui-fast` execution profile. That changes only the transport/model: the same scope,
+checkpoint, commit, and handoff contract applies. If its narrow eligibility statement is false,
+make no edits and report `SPARK PROFILE INELIGIBLE — <reason>`; do not stretch the task to fit it.
 
 Do this:
 1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local

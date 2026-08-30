@@ -47,7 +47,9 @@ top-level session and spawns the Conductor underneath it with `topology: integra
 On Codex this instruction explicitly authorizes the required Bureau subagents: use
 the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
 in the current host) and the resolved model/reasoning, then resume them with
-`multi_agent_v1.send_input`.
+`multi_agent_v1.send_input`. The only alternate specialist transport is the policy-qualified,
+one-shot Spark Mage profile documented in `docs/host-runtime.md`; launch it through
+`scripts/run-codex-spark-specialist.sh`, never by passing Spark to the native spawn endpoint.
 
 Use direct Conductor mode only when Robin explicitly asks to bypass Delegate, when resuming a
 legacy/non-integrated run, or when the integrated Delegate topology is unavailable in the

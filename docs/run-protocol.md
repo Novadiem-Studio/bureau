@@ -45,9 +45,10 @@ This is what makes concurrent runs safe on ONE global install: two sessions each
 read-only at runtime and shared freely.
 
 **Git worktrees** (execute build stage) isolate code per run — see `docs/git-worktree.md`.
-Create with `scripts/run-worktree.sh create` before step 6; merge/remove at close-out or per
-policy. Build-party spawns get `WORKTREE:`; all commits land in the worktree branch, not
-`devel` directly.
+Create with `scripts/run-worktree.sh create` before step 6; resolve delivery immediately. Public
+GitHub repositories open a linked issue/draft PR with `scripts/pr-delivery.sh` and merge through
+GitHub at close-out; explicit local delivery retains merge/remove or per-policy behavior.
+Build-party spawns get `WORKTREE:`; all commits land in the worktree branch, not `devel` directly.
 
 **Concurrency rules:**
 
@@ -88,7 +89,12 @@ After each phase, update the run dir's `state.json`:
     "branch": "bureau/20260612-task-slug",
     "worktree_path": "<home>/.bureau/worktrees/target-repo/20260612-task-slug",
     "merge_policy": "end_of_job",
-    "status": "active",
+    "delivery_policy": "auto",
+    "private_delivery": "local",
+    "delivery_mode": "github",
+    "issue_number": 42,
+    "pr_number": 43,
+    "status": "pull_request_open",
     "prompts_merged": []
   },
   "last_updated": "ISO timestamp"
@@ -99,8 +105,9 @@ After each phase, update the run dir's `state.json`:
 target-repo resolution step; an absolute path or the literal `"(no-target)"` sentinel.
 Independent of the execute-only `git` block (which stays `enabled: false` on planning runs).
 
-`git` block: set by `scripts/run-worktree.sh create`; omit or `enabled: false` for
-planning-only runs. Full schema: `templates/state.json`, `docs/git-worktree.md`.
+`git` block: set by `scripts/run-worktree.sh create`, then enriched by
+`scripts/pr-delivery.sh`; omit or `enabled: false` for planning-only runs. Full schema:
+`templates/state.json`, `docs/git-worktree.md`, and `docs/github-delivery.md`.
 
 `accounting` block: part of `templates/state.json`; the close-out step sets its `status`
 and `path` (see `docs/run-accounting.md`). `memory` is an optional Conductor-written key,

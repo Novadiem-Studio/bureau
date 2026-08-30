@@ -12,6 +12,8 @@
 #   --base BRANCH          default: devel
 #   --slug SLUG            default: basename of RUN_DIR
 #   --merge-policy POLICY  end_of_job | per_prompt | checkpoint (default: end_of_job)
+#   --delivery POLICY      auto | github | local (default: auto)
+#   --private-delivery P   github | local (default: local; used when --delivery auto)
 #   --worktree-dir PATH    default: $HOME/.bureau/worktrees/REPO_BASENAME/SLUG (override: BUREAU_WORKTREE_ROOT)
 
 set -euo pipefail
@@ -32,6 +34,8 @@ REPO=""
 BASE_BRANCH="devel"
 SLUG=""
 MERGE_POLICY="end_of_job"
+DELIVERY_POLICY="auto"
+PRIVATE_DELIVERY="local"
 WORKTREE_DIR=""
 MERGE_MSG=""
 FORCE=0
@@ -46,6 +50,8 @@ while [[ $# -gt 0 ]]; do
     --base) BASE_BRANCH="$2"; shift 2 ;;
     --slug) SLUG="$2"; shift 2 ;;
     --merge-policy) MERGE_POLICY="$2"; shift 2 ;;
+    --delivery) DELIVERY_POLICY="$2"; shift 2 ;;
+    --private-delivery) PRIVATE_DELIVERY="$2"; shift 2 ;;
     --worktree-dir) WORKTREE_DIR="$2"; shift 2 ;;
     --message) MERGE_MSG="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
@@ -97,6 +103,17 @@ cmd_create() {
     end_of_job|per_prompt|checkpoint) ;;
     *) die "invalid --merge-policy: $MERGE_POLICY" ;;
   esac
+  case "$DELIVERY_POLICY" in
+    auto|github|local) ;;
+    *) die "invalid --delivery: $DELIVERY_POLICY" ;;
+  esac
+  case "$PRIVATE_DELIVERY" in
+    github|local) ;;
+    *) die "invalid --private-delivery: $PRIVATE_DELIVERY" ;;
+  esac
+  if [[ "$DELIVERY_POLICY" != "local" && "$MERGE_POLICY" != "end_of_job" ]]; then
+    die "GitHub/auto delivery supports only --merge-policy end_of_job; use --delivery local for incremental local merges"
+  fi
 
   git -C "$REPO" rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1 \
     || die "base branch not found: $BASE_BRANCH (in $REPO)"
@@ -126,6 +143,8 @@ cmd_create() {
     --arg branch "$branch" \
     --arg worktree "$WORKTREE_DIR" \
     --arg policy "$MERGE_POLICY" \
+    --arg delivery "$DELIVERY_POLICY" \
+    --arg private_delivery "$PRIVATE_DELIVERY" \
     --arg slug "$SLUG" \
     --arg created "$now" \
     '{
@@ -135,6 +154,21 @@ cmd_create() {
       branch: $branch,
       worktree_path: $worktree,
       merge_policy: $policy,
+      delivery_policy: $delivery,
+      private_delivery: $private_delivery,
+      delivery_mode: "unresolved",
+      delivery_fallback_reason: null,
+      github_repo: null,
+      github_visibility: null,
+      issue_number: null,
+      issue_url: null,
+      pr_number: null,
+      pr_url: null,
+      pr_is_draft: null,
+      pr_evidence_path: null,
+      cold_review_status: null,
+      cold_review_url: null,
+      coauthors: [],
       run_slug: $slug,
       prompts_merged: [],
       status: "active",
@@ -188,13 +222,19 @@ cmd_sync() {
 cmd_merge() {
   local git
   git="$(read_git_state)"
-  local repo wt base branch policy
+  local repo wt base branch policy delivery_policy delivery_mode
   repo="$(jq -r '.repo' <<<"$git")"
   wt="$(jq -r '.worktree_path' <<<"$git")"
   base="$(jq -r '.base_branch' <<<"$git")"
   branch="$(jq -r '.branch' <<<"$git")"
   policy="$(jq -r '.merge_policy' <<<"$git")"
+  delivery_policy="$(jq -r '.delivery_policy // "local"' <<<"$git")"
+  delivery_mode="$(jq -r '.delivery_mode // "unresolved"' <<<"$git")"
   [[ -d "$wt" ]] || die "worktree missing: $wt"
+
+  if [[ "$delivery_policy" != "local" && "$delivery_mode" != "local" ]]; then
+    die "local merge disabled for delivery policy '$delivery_policy' (resolved mode: '$delivery_mode') — use pr-delivery.sh open/ready/merge; auto mode must be resolved before a local fallback merge"
+  fi
 
   # Ensure bureau branch commits are flushed
   if ! git -C "$wt" diff --quiet || ! git -C "$wt" diff --cached --quiet; then
@@ -227,11 +267,12 @@ cmd_merge() {
 cmd_remove() {
   local git
   git="$(read_git_state)"
-  local repo wt branch status
+  local repo wt branch status delivery_mode
   repo="$(jq -r '.repo' <<<"$git")"
   wt="$(jq -r '.worktree_path' <<<"$git")"
   branch="$(jq -r '.branch' <<<"$git")"
   status="$(jq -r '.status' <<<"$git")"
+  delivery_mode="$(jq -r '.delivery_mode // "local"' <<<"$git")"
 
   if [[ -d "$wt" ]]; then
     if [[ "$FORCE" -eq 1 ]]; then
@@ -242,7 +283,13 @@ cmd_remove() {
   fi
 
   if [[ "$status" == "merged" ]]; then
-    git -C "$repo" branch -d "$branch" 2>/dev/null || true
+    if [[ "$delivery_mode" == "github" ]]; then
+      # A squash/rebase merge does not make the feature tip an ancestor of the local base.
+      # GitHub already accepted the exact PR, so remove this exact local run branch explicitly.
+      git -C "$repo" branch -D "$branch" 2>/dev/null || true
+    else
+      git -C "$repo" branch -d "$branch" 2>/dev/null || true
+    fi
   fi
 
   local now

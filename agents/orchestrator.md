@@ -70,8 +70,8 @@ modules only when their trigger appears.
 - `docs/delegate-bridge.md` — only when checkpoint traffic flows through the Delegate bridge.
   Load its `v2-integrated.md` or `watcher-v1.md` module only when that topology is active or
   implementation detail is needed.
-- `docs/git-worktree.md` — only for execute/build workflows that actually create/merge/remove a
-  worktree.
+- `docs/git-worktree.md` + `docs/github-delivery.md` — only for code-changing workflows that
+  create/merge/remove a worktree or pull request.
 
 If a module is not triggered, do not read it "just in case." Load late, use it, and continue.
 
@@ -158,10 +158,10 @@ as a hard quality bar:
 
 ## How to spawn an agent
 
-Read `docs/host-runtime.md` and select transport from `model-routing.json#runtime`. Claude uses
-the Agent tool; Codex uses the Codex multi-agent tool surface (currently
-`multi_agent_v1.spawn_agent` with `fork_context: false`) and explicit
-`reasoning_effort`. Retain resumable agent ids; resume with `SendMessage` (Claude) or
+Read `docs/host-runtime.md` and select transport from `model-routing.json#runtime`. Claude uses the Agent tool; Codex normally uses
+`multi_agent_v1.spawn_agent` with `fork_context: false` and explicit reasoning. The only exception is an eligible first-pass
+`execute-plan` Mage under `roles.mage.executionProfiles.granular-ui-fast`, using `scripts/run-codex-spark-specialist.sh`;
+it is one-shot/non-resumable, and all other roles/retries use role-default. Retain native ids; resume with `SendMessage` (Claude) or
 `multi_agent_v1.send_input` (Codex).
 
 **Always pass `model` explicitly — never omit it.** An omitted `model` makes the subagent

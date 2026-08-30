@@ -15,17 +15,26 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
      --run-dir "$RUN_DIR" \
      --repo <absolute repo path> \
      --base <integration branch; default devel from project-context.md> \
-     --merge-policy end_of_job
+     --merge-policy end_of_job \
+     --delivery <auto by default; project-context.md may require github or local>
    ```
 
    Record paths in `state.json` (`git` block). All build-party spawns get **`WORKTREE:`** —
    the absolute `worktree_path`. Never edit `devel` (or the integration branch) directly during
    the run. Commit in the worktree before each prompt handoff is accepted.
 
+   **Issue + draft PR immediately after worktree creation.** Follow
+   `docs/github-delivery.md`: derive bug reproduction or feature acceptance criteria into
+   `RUN_DIR/github/issue.md`, obtain external-action authorization if the task/project policy did
+   not already grant it, then run `scripts/pr-delivery.sh open`. Public GitHub repositories resolve
+   `auto` to GitHub and must have the linked draft PR before the first coder dispatch. Private or
+   non-GitHub repositories may resolve to the recorded local fallback.
+
    **Merge policy** (`git.merge_policy` in `state.json`):
    - `end_of_job` (default) — merge at step 7 only.
-   - `per_prompt` — after each accepted prompt: `run-worktree.sh merge`, then `sync` before the next.
-   - `checkpoint` — merge only when the human says so at `[CHECKPOINT]`.
+   - `per_prompt` — local delivery only; after each accepted prompt: `run-worktree.sh merge`, then
+     `sync` before the next.
+   - `checkpoint` — local delivery only; merge when the human says so at `[CHECKPOINT]`.
 
 5c. **The Conductor** — run preflight **after the worktree exists, before the build party dispatches** → `RUN_DIR/preflight.md`.
    Invoke `scripts/preflight.sh <target-dir> <RUN_DIR>` where `<target-dir>` is the worktree root
@@ -68,6 +77,47 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
 
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
+   **OpenAI fast profile (Spark; narrow exception).** Read the prompt's
+   `Execution-profile:` before dispatch. Missing (legacy) or `role-default` uses the normal
+   fresh native subagent at `model-routing.json#roles.<role>.model`. On a non-OpenAI runtime,
+   `granular-ui-fast` also degrades to `role-default` with no model override. When the runtime is
+   `openai` and the tag is `granular-ui-fast`, verify it is the first attempt at this exact
+   prompt and still satisfies every eligibility/disqualifier in
+   `model-routing.json#roles.mage.executionProfiles.granular-ui-fast`. Then launch it only with:
+
+   ```sh
+   <FRAMEWORK>/scripts/run-codex-spark-specialist.sh \
+     "$RUN_DIR" "$WORKTREE" <absolute-prompt-file> <mage-attempt-id>
+   ```
+
+   The helper is a deliberately separate one-shot `codex exec` transport because the native
+   Codex collaboration spawn currently rejects Spark as an unknown child-agent model. Do not
+   pass Spark to the native spawn call, substitute another helper, or use this profile for a
+   design-build run. The helper enforces Spark/high, text-only scope, a clean worktree, the run
+   nonce, no release step, a committed HEAD change, and the exact Mage handoff. It persists only
+   sanitized evidence under `RUN_DIR/codex-specialists/<attempt-id>/`; the private launch prompt and raw
+   event stream are ephemeral.
+
+   Since `roles.mage.model` remains the configured base model, append a deliberate
+   `MODEL-OVERRIDE:` record (`configured` = Mage base model, `actual` = profile model,
+   `reason` = `granular-ui-fast execution profile`, shell-computed `at`) before launch. Emit the
+   normal started and terminal `SPAWN-EVENT` pair with the same configured/actual values. Never
+   put the nonce in either record. Treat the helper's normalized envelope as execution evidence;
+   Codex specialist totals remain the named accounting gap until the accounting rail explicitly
+   consumes these one-shot envelopes.
+
+   Interpret the helper exit status strictly:
+
+   - `0` — read the returned result and persisted `handoff.md`; verify the recorded commit/diff,
+     then continue through the same Challenger/Cleric review loop as any Mage build.
+   - `75` — Spark failed without changing HEAD or dirtying the worktree. Log the terminal failed
+     attempt, then dispatch a **new fresh Mage attempt** through the native transport using the
+     resolved Mage base model. Mark it rework. This and every later retry/review fix use
+     `role-default`, regardless of the original prompt tag.
+   - `2`, `76`, or any unrecognized/interrupted status — do not reset, retry, or silently fall
+     back. The profile contract/setup failed, or Spark may have changed the worktree. Inspect the
+     helper result and worktree and adjudicate or raise `[CHECKPOINT]`.
+
    Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
    sub-app's CLAUDE.md + the skills the prompt names, builds exactly that one prompt, commits
    in the worktree, and gets its checkpoint green. After each part:
@@ -90,7 +140,7 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
      than the prompt, crosses into another coder's domain, or hides large conceptual work behind
      generated churn, do not accept it just because checkpoints are green. Route it back, split the
      prompt, or checkpoint for a human call.
-   - If `merge_policy` is `per_prompt` and the prompt is accepted: `run-worktree.sh merge`,
+   - If local delivery uses `merge_policy: per_prompt` and the prompt is accepted: `run-worktree.sh merge`,
      then `sync`, append prompt id to `git.prompts_merged` in `state.json`.
 
    **Parallel tracks (optional).** No more than two prompts may build SIMULTANEOUSLY (e.g. The
@@ -169,16 +219,33 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
 > **regardless of deployment stage** (a dev-stage step that fires a real email is still gated);
 > neither boundary subsumes the other.
 
-7. **The Conductor** (**strong**) — close out: if `git.merge_policy` is `end_of_job` and worktree is active, human go, then merge, then remove (on conflict: `[CHECKPOINT]`); then check for new packages, install into the running container, summarize what shipped to dev vs. planned, and move the plan doc out of `todo/` → updated `RUN_DIR/log.md`, `state.json`, relocated plan doc. (Run accounting **last** — see the end of this step.)
-   human go → `run-worktree.sh merge` → `run-worktree.sh remove` (on conflict: `[CHECKPOINT]`,
-   human resolves on integration branch, then `remove`). This merge targets the **dev/integration
-   branch only** (e.g. `devel`), never a release/prod branch.
+7. **The Conductor** (**strong**) — close out: promote/commit accepted fixtures in the worktree,
+   finish the final cold review and evidence, then merge by the resolved delivery path per
+   `git.merge_gate` (self default: hands-off once tests green + cold review accepted; human: on the
+   human go) and remove the worktree; check packages, summarize, and move the plan out of `todo/` →
+   updated `RUN_DIR/log.md`, `state.json`, relocated plan doc. (Run accounting **last**.)
 
-   **After the merge, immediately check for new packages:**
+   **GitHub delivery:** complete `RUN_DIR/github/evidence.md`, including tests, screenshots or
+   not-applicable, risks, rollback, Challenger verdict, and every objection's resolution. Publish
+   the cold summary with `pr-delivery.sh review`; useful line-specific findings use its inline
+   comment input. Only an authenticated collaborator who is not the PR author may submit a real
+   approval. Then `pr-delivery.sh ready`, and merge per `git.merge_gate`
+   (`docs/github-delivery.md § Merge gate`): **`self` (default) — the Conductor runs
+   `pr-delivery.sh merge` itself once tests are green and the cold review is `accepted`, no human
+   checkpoint; `human` — raise the `[DEV-VERIFIED CHECKPOINT]` and merge on the human "go".** Then
+   `run-worktree.sh remove`. Do not use `run-worktree.sh merge` in GitHub mode and do not bypass
+   branch protection.
+
+   **Local fallback:** merge per `git.merge_gate` (`self` — merge once green + review accepted;
+   `human` — on the human go); `run-worktree.sh merge`; `run-worktree.sh remove` (on conflict:
+   `[CHECKPOINT]`, human resolves on the integration branch, then `remove`). Both paths target the
+   configured **dev/integration branch only**, never a release/prod branch.
+
+   **Before merge/removal, capture whether the branch adds packages:**
    ```bash
-   git diff HEAD~1 -- package.json | grep '^\+' | grep -v '^\+\+\+'
+   git -C "$WORKTREE" diff "$BASE...HEAD" -- package.json | grep '^\+' | grep -v '^\+\+\+'
    ```
-   If any dependency lines were added, install into the **running** container — not a fresh
+   After the merge, if any dependency lines were added, install into the **running** container — not a fresh
    `run --rm` one. Apps that use `- /app/node_modules` in docker-compose keep node_modules
    in an anonymous volume scoped to the running service; a `run --rm` container gets its own
    throwaway volume and the install is lost when it exits:
@@ -206,8 +273,8 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
    ends at **dev-verified**; taking anything past dev is a separate, human-initiated action
    (see "Production boundary").
 
-   **Fixture promotion (close-out step, after merge).** Promote accepted fixtures from
-   `RUN_DIR/regression/` into the repo's standing suite at `<repo>/.bureau/regression/`.
+   **Fixture promotion (close-out step, before final review/merge).** Promote accepted fixtures from
+   `RUN_DIR/regression/` into the worktree's standing suite at `<WORKTREE>/.bureau/regression/`.
    This is an explicit Conductor action — it is NOT silent, NOT automatic on merge.
 
    1. **Select which fixtures to promote** — review `RUN_DIR/regression/` and select the
@@ -226,13 +293,13 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
       # Dry-run first (no writes, no suite run):
       sh <FRAMEWORK>/scripts/promote-fixtures.sh \
         --src "$RUN_DIR/regression" \
-        --repo <target-repo> \
+        --repo "$WORKTREE" \
         --only <selected-slugs>
 
       # Then apply:
       sh <FRAMEWORK>/scripts/promote-fixtures.sh \
         --src "$RUN_DIR/regression" \
-        --repo <target-repo> \
+        --repo "$WORKTREE" \
         --only <selected-slugs> \
         --apply
       ```
@@ -240,7 +307,7 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
       fixtures (reports `SKIP not-repo-relative`, logs as non-promoted, does NOT rewrite) →
       dedupes by slug + `command:`/`expected:` content (skip-if-identical / exit 3
       `[CHECKPOINT]` if different content) → copies survivors verbatim into
-      `<repo>/.bureau/regression/` → runs `.bureau/regression/run.sh` and requires green.
+      `<WORKTREE>/.bureau/regression/` → runs `.bureau/regression/run.sh` and requires green.
       No repath step — repo-relative is an authoring-time guarantee (FR 13,
       `docs/conventions/regression-fixtures.md § Regression fixture file format`).
 
@@ -252,9 +319,9 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
       - **4** — suite non-green after copy → investigate the failing fixture, do NOT commit.
       - **2** — setup error (bad args / missing dir / no `run.sh`) → fix setup and re-invoke.
 
-   5. **Commit** — after exit 0, commit the new and updated fixtures on the integration branch
-      only (never a release/prod branch). The script does not commit and never pushes — push
-      is past the production boundary, always the human's call.
+   5. **Commit** — after exit 0, commit the new and updated fixtures on the Bureau worktree branch
+      so they are part of the reviewed PR/local merge. The promotion script itself neither commits
+      nor pushes.
 
    6. **Log** the script's per-fixture report (promoted / skipped / clashed) into `log.md`.
 
@@ -263,7 +330,7 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
    If a conflicting `.bureau/` exists, `[CHECKPOINT]` before proceeding (EC 3,
    `docs/conventions/regression-fixtures.md § Regression fixture file format`).
 
-   **Run accounting last.** As the *final* close-out action — after the merge, package install,
+   **Run accounting last.** As the *final* close-out action — after the GitHub/local merge, package install,
    summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
    so `accounting.json` reflects the run's terminal state (not a mid-close-out snapshot), then set
    `state.json#accounting.status` and `.path` per `docs/run-accounting.md`

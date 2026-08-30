@@ -1,0 +1,39 @@
+{
+  "runtime": "grok",
+  "description": "xAI Grok routing defaults for the Grok Bot host. Grok 4.3 handles economical work; Grok 4.6 handles demanding architecture, build, and review work. Live spawn is Grok Bot Task/executor (see GROK.md). grok-build-0.1 remains exec-only.",
+  "capabilities": {
+    "supports_fresh_context_subagents": true,
+    "supports_parallel_subagents": true,
+    "supports_filesystem_tools": true,
+    "supports_browser_tools": true,
+    "supports_reasoning_effort": true,
+    "supports_one_shot_exec_profiles": false
+  },
+  "tiers": {
+    "cheap": {
+      "model": "grok-4.3",
+      "reasoning_effort": "low",
+      "notes": "Fast, low-cost surveys and routine transformations. 4.3 is the cheaper production rung ($1.25/$2.50 per 1M under 200k)."
+    },
+    "standard": {
+      "model": "grok-4.3",
+      "reasoning_effort": "medium",
+      "notes": "Utility roles and straightforward prompt/document work."
+    },
+    "strong": {
+      "model": "grok-4.6",
+      "reasoning_effort": "high",
+      "notes": "Default for architecture, critique, backend, and frontend first pass. xAI's current flagship for code and agents."
+    },
+    "frontier": {
+      "model": "grok-4.6",
+      "reasoning_effort": "high",
+      "notes": "Final gates, subtle design/code risk, or high-stakes reviews. Same model as strong; raise effort and treat as escalation, not a first-pass default."
+    },
+    "escalated": {
+      "model": "grok-4.6",
+      "reasoning_effort": "high",
+      "notes": "Repeated failure, hard adjudication, or explicit human request. No separate super-flagship ID as of 2026-08-23; escalate via posture, not a different slug."
+    }
+  }
+}

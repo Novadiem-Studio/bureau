@@ -97,6 +97,22 @@ last good write. Treat as **stale** if `polledAt` is older than ~30 minutes or `
 4. Legacy Claude-only runs may still use `scripts/resolve-model-tiers.sh` and
    `config/experiments/README.md` until migrated.
 
+### One-shot Spark Mage helper (Codex)
+
+`scripts/run-codex-spark-specialist.sh <RUN_DIR> <WORKTREE> <PROMPT_FILE> <ATTEMPT_ID>`
+is the transport for the resolved `granular-ui-fast` execution profile. It is not a general
+launcher: it accepts only a vetted first-pass `execute-plan` prompt owned by The Mage and tagged
+`Execution-profile: granular-ui-fast`. It runs Spark/high in an ephemeral `codex exec`, requires
+a clean worktree and one committed result, verifies the exact Mage handoff, and stores sanitized
+evidence in `RUN_DIR/codex-specialists/<attempt-id>/`.
+
+Exit `0` means a committed handoff is ready for normal cold review. Exit `75` proves Spark failed
+without touching HEAD or the worktree, so the Conductor may start a fresh role-default Mage
+attempt. Exit `2` is a contract/setup error; exit `76` or an interrupted/unrecognized status may
+include worktree effects. None of those may be reset or retried automatically. The private
+nonce-bearing launch prompt and raw Codex events are temporary and must not be copied into run
+artifacts.
+
 Thresholds (from `agents/orchestrator.md`):
 
 - `sonnetBurnMode` — always `false` from this source; the legacy sonnet-burn auto-trigger is
@@ -222,12 +238,13 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
   --run-dir "$RUN_DIR" \
   --repo /path/to/target/repo \
   --base devel \
-  --merge-policy end_of_job
+  --merge-policy end_of_job \
+  --delivery auto
 
 # During run
 ./scripts/run-worktree.sh status --run-dir "$RUN_DIR"
 
-# Close-out (end_of_job policy)
+# Explicit local close-out only
 ./scripts/run-worktree.sh merge --run-dir "$RUN_DIR"
 ./scripts/run-worktree.sh remove --run-dir "$RUN_DIR"
 ```
@@ -237,13 +254,49 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
 | `create` | `git worktree add` + `state.json` `git` block |
 | `status` | Print `git` state + `git status -sb` in worktree |
 | `sync` | Rebase bureau branch onto integration branch |
-| `merge` | Merge bureau branch into integration branch (in repo root) |
+| `merge` | Merge into integration branch only when delivery resolved to local |
 | `remove` | Drop worktree; delete branch if already merged |
 
 **create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
+`--delivery` (`auto` \| `github` \| `local`), `--private-delivery` (`local` \| `github`),
 `--worktree-dir` (default: `$HOME/.bureau/worktrees/REPO_BASENAME/SLUG`; override with `BUREAU_WORKTREE_ROOT` env var).
 
 Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
+
+---
+
+# GitHub pull-request delivery (`pr-delivery.sh`)
+
+Issue-first, draft-PR-first delivery for code-changing runs. Public GitHub repositories use it by
+default; private/internal repositories opt in. Full policy and evidence contract:
+`docs/github-delivery.md`.
+
+```bash
+./scripts/pr-delivery.sh open \
+  --run-dir "$RUN_DIR" \
+  --issue-title "Describe the problem" \
+  --issue-body-file "$RUN_DIR/github/issue.md" \
+  --title "Implement the fix"
+
+./scripts/pr-delivery.sh refresh --run-dir "$RUN_DIR"
+./scripts/pr-delivery.sh review --run-dir "$RUN_DIR" \
+  --review-summary "$RUN_DIR/github/cold-review.md" --verdict accepted
+./scripts/pr-delivery.sh ready --run-dir "$RUN_DIR"
+./scripts/pr-delivery.sh merge --run-dir "$RUN_DIR" --merge-method squash
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `open` | Resolve policy, create/link issue, push branch, and open draft PR |
+| `refresh` | Push commits and replace the PR body from the run evidence |
+| `review` | Publish cold-review summary and optional inline comments; real collaborators may approve/request changes |
+| `coauthor` | Verify a real human's exact commit trailer and record its provenance |
+| `ready` | Require accepted cold review + complete evidence, then mark ready |
+| `merge` | Merge through GitHub without bypassing branch protection |
+| `status` | Show recorded and live GitHub delivery state |
+
+Requires **git**, **jq**, and authenticated **gh** for GitHub mode. An `auto` policy records a
+local fallback reason when GitHub is unavailable; explicit `github` policy fails closed.
 
 ---
 
@@ -266,7 +319,7 @@ times; idempotent, no lock.
 # Fixture promotion (`promote-fixtures.sh`)
 
 Deterministic mechanical core of Bureau regression fixture promotion. Run at execute-plan
-close-out (step 7) after the integration branch merge, before the commit. Full lifecycle:
+close-out (step 7) in the worktree, before final review and PR/local merge. Full lifecycle:
 `docs/conventions/regression-fixtures.md § Regression fixture file format`. Wiring:
 `workflows/execute-plan/build-tail.md` step 7.
 
@@ -303,7 +356,7 @@ sh scripts/promote-fixtures.sh \
 - DOES NOT mutation-test (mutation-test is an authoring-convention obligation, not a script gate).
 - DOES NOT repath (repo-relative is an authoring-time guarantee per `docs/conventions/regression-fixtures.md`).
 - NEVER commits (commit is a Conductor action gated on exit 0).
-- NEVER pushes (push is past the production boundary; always the human's call).
+- NEVER pushes (delivery tooling owns the push).
 
 ---
 

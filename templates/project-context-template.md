@@ -45,9 +45,12 @@ For each relevant repo / sub-app:
 **Target of this work:** which sub-app(s) / directory(ies) this change touches.
 
 ## Git integration (execute / build runs)
-- **Integration branch:** `devel` (branch that receives Bureau merges — adjust per project)
+- **Integration branch:** `devel` (base branch targeted by Bureau pull requests — adjust per project)
 - **Target repo path:** absolute path to the git root that build prompts edit
 - **Worktrees:** `$HOME/.bureau/worktrees/<repo-basename>/<run-slug>/` (outside the target repo — no `.gitignore` entry needed; override parent with `BUREAU_WORKTREE_ROOT`)
+- **Delivery policy:** `auto` (`public GitHub → PR`, `private/internal → local`) | `github` | `local`
+- **Private-repo delivery:** `local` (default) | `github`
+- **GitHub merge method:** `squash` (default) | `merge` | `rebase`
 
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who
