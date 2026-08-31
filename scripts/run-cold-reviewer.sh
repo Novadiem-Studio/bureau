@@ -880,9 +880,27 @@ def validate_historical_audited_review(version, corrected_hash, seal):
     if verdict_raw != expected_verdict_raw:
         reject("historical audited result raw bytes do not bind the canonical verdict bytes")
 
+    historical_reservation_relative = "audit/versions/%s/reservation.json" % version
+    historical_reservation, unused = load_json_bytes(
+        ensure_plain_path(historical_root, historical_reservation_relative))
+    exact_keys(historical_reservation, ["schema_version", "audit_version", "allocation_id",
+                                       "reconciliation_attempt_id", "reserved_at"],
+               "historical audited reservation")
+    if type(historical_reservation["schema_version"]) is not int or historical_reservation["schema_version"] != 1:
+        reject("historical audited reservation schema_version is invalid")
+    if historical_reservation["audit_version"] != version:
+        reject("historical audited reservation version binding is invalid")
+    safe_id(historical_reservation["allocation_id"], "historical audited reservation allocation_id")
+    safe_id(historical_reservation["reconciliation_attempt_id"],
+            "historical audited reservation reconciliation_attempt_id")
+    valid_timestamp(historical_reservation["reserved_at"], "historical audited reservation reserved_at")
+    if historical_reservation != validate_authoritative_reservation(version):
+        reject("historical audited reservation differs from authoritative immutable reservation")
+
     historical_coverage = validate_coverage_semantics(historical_root, historical_map)
-    historical_events = load_strict_version_index(
-        ensure_plain_path(historical_root, "audit/version-index.ndjson"))
+    historical_index_path = ensure_plain_path(historical_root, "audit/version-index.ndjson")
+    historical_index_raw = read_plain_bytes(historical_index_path)
+    historical_events = load_strict_version_index(historical_index_path)
     historical_versions = {}
     historical_last_number = 0
     historical_last_event = None
@@ -933,6 +951,39 @@ def validate_historical_audited_review(version, corrected_hash, seal):
             selected_event["artifact_sha256"] != corrected_hash or
             historical_map.get(expected_corrected) != corrected_hash):
         reject("historical selected version-index binding is invalid")
+    authoritative_selected = [index for index, event in enumerate(version_events)
+                              if event.get("event") == "corrected" and
+                              event.get("audit_version") == version]
+    if len(authoritative_selected) != 1:
+        reject("authoritative history lacks exactly one historical corrected event")
+    selected_position = authoritative_selected[0]
+    authoritative_prefix = version_events[:selected_position + 1]
+    if historical_events != authoritative_prefix:
+        reject("historical packet-era version index differs from authoritative history")
+    authoritative_index_raw = read_plain_bytes(version_index_source)
+    authoritative_lines = authoritative_index_raw.splitlines(keepends=True)
+    if (len(authoritative_lines) != len(version_events) or
+            historical_index_raw != b"".join(authoritative_lines[:selected_position + 1])):
+        reject("historical packet-era version-index bytes differ from authoritative append-only history")
+    authoritative_version = indexed_versions.get(version)
+    if authoritative_version is None:
+        reject("historical audited version is absent from authoritative index state")
+    following_event = (version_events[selected_position + 1]
+                       if selected_position + 1 < len(version_events) else None)
+    if authoritative_version["sealed"]:
+        seal_relative = "audit/versions/%s/seal.json" % version
+        seal_hash = sha_file(ensure_plain_path(run_dir, seal_relative))
+        if (not isinstance(following_event, dict) or
+                following_event.get("event") != "sealed" or
+                following_event.get("audit_version") != version or
+                following_event.get("corrected_audit_path") != expected_corrected or
+                following_event.get("corrected_audit_sha256") != corrected_hash or
+                following_event.get("seal_path") != seal_relative or
+                following_event.get("seal_sha256") != seal_hash):
+            reject("historical audited sealed event does not bind the authoritative seal lineage")
+    elif following_event is not None and (following_event.get("event") == "sealed" and
+                                           following_event.get("audit_version") == version):
+        reject("historical audited seal/index state is internally inconsistent")
     required = {
         "audit/profile.md", "audit/product-contract.md", "audit/domain-register.md",
         "audit/coverage-index.ndjson", "audit/runtime-verification.md", "audit/setup-quarantine.md",
@@ -1367,6 +1418,7 @@ for version in version_names:
         reject("versions directory contains an invalid version name")
 highest_existing_number = max((int(version[1:]) for version in version_names), default=0)
 version_directory_identities = {}
+version_members = {}
 for version in version_names:
     if AUDIT_VERSION.fullmatch(version) is None:
         reject("versions directory contains an invalid version name")
@@ -1380,6 +1432,7 @@ for version in version_names:
     version_directory_identities[version_identity] = version_dir
     validate_authoritative_reservation(version)
     names = set(os.listdir(version_dir))
+    version_members[version] = names
     for name in names:
         member = os.path.join(version_dir, name)
         member_info = os.lstat(member)
@@ -1425,6 +1478,8 @@ corrected_event = matching[0]
 if (corrected_event["artifact_path"] != expected_corrected or
         corrected_event["artifact_sha256"] != entry_map[expected_corrected]):
     reject("selected corrected index event path/hash binding is invalid")
+if "seal.json" in version_members.get(audit_version, set()):
+    reject("selected audit_version is already sealed")
 
 # A canonical BLOCKED verdict retires its corrected version. A fresh transport
 # attempt may reuse unchanged bytes only while no canonical verdict exists.

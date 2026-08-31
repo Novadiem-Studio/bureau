@@ -506,9 +506,14 @@ a fully valid canonical `BLOCKED` lineage retires that corrected-audit version, 
 requires a new version; malformed existing attempt state fails closed as invalid run state rather
 than becoming retirement evidence. A transport or pre-verdict failure without a canonical verdict
 remains retryable under a fresh identity. Historical audited seals bind contract hashes to their
-immutable packet-era members,
-not later mutable product/framework sources. Standard historical seals likewise retain their
-indexed immutable bindings without being rebound to unversioned current files.
+immutable packet-era members, not later mutable product/framework sources. Standard historical
+seals likewise retain their indexed immutable bindings without being rebound to unversioned
+current files. For an audited historical seal, the staged reservation must equal that version's
+authoritative immutable reservation. Its staged version index must equal the complete semantic and
+exact-byte authoritative append-only prefix ending at the selected corrected event; when the seal
+event is indexed, the immediately following authoritative event must bind that corrected artifact
+and the exact immutable seal. Later authoritative versions are a valid suffix and do not invalidate
+the historical packet.
 
 Recoverable version-directory states must still be appendable under the authoritative ledger
 order. A reserved-only directory must have a version greater than every indexed version. An
@@ -516,6 +521,10 @@ unindexed corrected audit is recoverable only as the highest existing version ab
 versions. A corrected version's unindexed seal is recoverable only when that version is
 the latest existing/indexed version and its corrected event is terminal. An older missing-event
 state requires explicit repair and stops review before provider invocation.
+The adapter never starts a new review for a selected version that already contains an immutable
+`seal.json`, including a recoverable seal whose `sealed` event has not yet been appended. That
+missing-event state remains recoverable by the owning Conductor lifecycle, but it is not eligible
+for another provider attempt.
 
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
