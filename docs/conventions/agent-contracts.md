@@ -83,6 +83,10 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
 
 ## Structured handoff footer spec
 
+Readiness-audit is the sole runtime exception: its isolated Challenger returns exactly the raw
+six-field adapter candidate and no Markdown/footer/second result or live write. The ordinary
+Challenger footer and every other persona footer remain governed byte-for-byte by the rules below.
+
 Every persona file ends with exactly ONE handoff block. The new footer = the three standard
 fields first (fixed order), then every role-specific load-bearing field the prior block
 carried, unchanged, under the role's existing block title. The old block is REPLACED by this
