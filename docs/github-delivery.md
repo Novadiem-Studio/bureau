@@ -48,8 +48,9 @@ add `--github-repo <upstream-owner/repo>`; the helper pushes the Bureau branch t
 opens the PR against that upstream repository with a qualified head ref.
 
 GitHub cannot open a PR from a branch with no commits. When needed, `open` creates one empty
-`chore: start Bureau run …` commit. The default squash merge keeps that setup commit out of the
-target branch's permanent history.
+`chore: start Bureau run …` commit. The default regular merge preserves that truthful start marker
+and every subsequent branch commit in the target branch's history. Use an explicit squash override
+only when the target repository prefers a collapsed history.
 
 `open` creates `RUN_DIR/github/evidence.md` and `pr-body.md`, links the issue with `Fixes #…`,
 records the Bureau run id, pushes the branch, and stores issue/PR identifiers in `state.json`.
@@ -97,13 +98,14 @@ the worktree is clean:
 
 ```sh
 <FRAMEWORK>/scripts/pr-delivery.sh ready --run-dir "$RUN_DIR"
-<FRAMEWORK>/scripts/pr-delivery.sh merge --run-dir "$RUN_DIR" --merge-method squash
+<FRAMEWORK>/scripts/pr-delivery.sh merge --run-dir "$RUN_DIR"
 <FRAMEWORK>/scripts/run-worktree.sh remove --run-dir "$RUN_DIR"
 ```
 
 `ready` rejects placeholder evidence. `merge` rejects drafts and outstanding requested changes,
 then delegates the merge to GitHub without bypassing branch protection. `merge`, `squash`, and
-`rebase` methods are supported; target-repository policy wins. Package checks, dev verification,
+`rebase` methods are supported; regular `merge` is the default so the accepted branch commits stay
+visible on the target branch, and target-repository policy wins. Package checks, dev verification,
 run logs, state updates, and accounting still happen at workflow close-out.
 
 ## Merge gate

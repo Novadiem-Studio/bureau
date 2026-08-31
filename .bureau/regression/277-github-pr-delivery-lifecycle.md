@@ -107,7 +107,7 @@ command: |
 
   ## Rollback
 
-  - Revert the squash commit.
+  - Revert the merged pull request.
 
   ## Bureau cold review
 
@@ -127,7 +127,7 @@ command: |
     --verdict accepted >/dev/null || exit 1
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" ready --run-dir "$RUN" >/dev/null || exit 1
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" merge \
-    --run-dir "$RUN" --merge-method squash >/dev/null || exit 1
+    --run-dir "$RUN" >/dev/null || exit 1
   "$ROOT/scripts/run-worktree.sh" remove --run-dir "$RUN" >/dev/null || exit 1
 
   jq -e --arg sha "$SHA" '
@@ -146,9 +146,9 @@ command: |
   grep -Fq 'pr review 34 --repo acme/demo --approve' "$GH_LOG" || exit 1
   [ "$(grep -Fc 'pr review 34' "$GH_LOG")" -eq 1 ] || exit 1
   grep -Fq 'pr ready 34 --repo acme/demo' "$GH_LOG" || exit 1
-  grep -Fq 'pr merge 34 --repo acme/demo --squash' "$GH_LOG" || exit 1
+  grep -Fq 'pr merge 34 --repo acme/demo --merge' "$GH_LOG" || exit 1
   [ ! -d "$WT" ] || exit 1
   if git -C "$REPO" show-ref --verify --quiet refs/heads/bureau/run; then exit 1; fi
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" status --run-dir "$RUN" >/dev/null || exit 1
   echo PASS
-expected: exit 0; stdout "PASS"; explicit GitHub delivery cannot local-merge, issue/early draft PR evidence is recorded, self cold review stays a comment while a separate collaborator can approve, genuine co-author provenance is verified, and merge goes through GitHub
+expected: exit 0; stdout "PASS"; explicit GitHub delivery cannot local-merge, issue/early draft PR evidence is recorded, self cold review stays a comment while a separate collaborator can approve, genuine co-author provenance is verified, and the default regular merge goes through GitHub while preserving branch commits

@@ -50,7 +50,7 @@ For each relevant repo / sub-app:
 - **Worktrees:** `$HOME/.bureau/worktrees/<repo-basename>/<run-slug>/` (outside the target repo — no `.gitignore` entry needed; override parent with `BUREAU_WORKTREE_ROOT`)
 - **Delivery policy:** `auto` (`public GitHub → PR`, `private/internal → local`) | `github` | `local`
 - **Private-repo delivery:** `local` (default) | `github`
-- **GitHub merge method:** `squash` (default) | `merge` | `rebase`
+- **GitHub merge method:** `merge` (default; preserves branch commits) | `squash` | `rebase`
 
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who
