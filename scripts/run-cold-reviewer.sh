@@ -648,11 +648,12 @@ def load_strict_version_index(path):
     return events
 
 reservation_by_version = {}
+reservation_raw_by_version = {}
 allocation_owner = {}
 
 def validate_authoritative_reservation(version):
     relative = "audit/versions/%s/reservation.json" % version
-    value, unused = load_json_bytes(ensure_plain_path(run_dir, relative))
+    value, raw = load_json_bytes(ensure_plain_path(run_dir, relative))
     exact_keys(value, ["schema_version", "audit_version", "allocation_id",
                        "reconciliation_attempt_id", "reserved_at"], "authoritative reservation")
     if type(value["schema_version"]) is not int or value["schema_version"] != 1:
@@ -665,10 +666,14 @@ def validate_authoritative_reservation(version):
     previous = reservation_by_version.get(version)
     if previous is not None and previous != value:
         reject("authoritative reservation changed across repeated validation")
+    previous_raw = reservation_raw_by_version.get(version)
+    if previous_raw is not None and previous_raw != raw:
+        reject("authoritative reservation bytes changed across repeated validation")
     owner = allocation_owner.get(value["allocation_id"])
     if owner is not None and owner != version:
         reject("reservation allocation_id is reused by another audit version")
     reservation_by_version[version] = value
+    reservation_raw_by_version[version] = raw
     allocation_owner[value["allocation_id"]] = version
     return value
 
@@ -881,7 +886,7 @@ def validate_historical_audited_review(version, corrected_hash, seal):
         reject("historical audited result raw bytes do not bind the canonical verdict bytes")
 
     historical_reservation_relative = "audit/versions/%s/reservation.json" % version
-    historical_reservation, unused = load_json_bytes(
+    historical_reservation, historical_reservation_raw = load_json_bytes(
         ensure_plain_path(historical_root, historical_reservation_relative))
     exact_keys(historical_reservation, ["schema_version", "audit_version", "allocation_id",
                                        "reconciliation_attempt_id", "reserved_at"],
@@ -894,8 +899,16 @@ def validate_historical_audited_review(version, corrected_hash, seal):
     safe_id(historical_reservation["reconciliation_attempt_id"],
             "historical audited reservation reconciliation_attempt_id")
     valid_timestamp(historical_reservation["reserved_at"], "historical audited reservation reserved_at")
-    if historical_reservation != validate_authoritative_reservation(version):
+    authoritative_reservation = validate_authoritative_reservation(version)
+    authoritative_reservation_raw = reservation_raw_by_version[version]
+    historical_reservation_hash = hashlib.sha256(historical_reservation_raw).hexdigest()
+    authoritative_reservation_hash = hashlib.sha256(authoritative_reservation_raw).hexdigest()
+    if historical_reservation != authoritative_reservation:
         reject("historical audited reservation differs from authoritative immutable reservation")
+    if (historical_reservation_raw != authoritative_reservation_raw or
+            historical_reservation_hash != authoritative_reservation_hash or
+            historical_map.get(historical_reservation_relative) != historical_reservation_hash):
+        reject("historical audited reservation bytes do not bind authoritative bytes and manifest hash")
 
     historical_coverage = validate_coverage_semantics(historical_root, historical_map)
     historical_index_path = ensure_plain_path(historical_root, "audit/version-index.ndjson")
