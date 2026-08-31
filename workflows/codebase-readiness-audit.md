@@ -64,7 +64,7 @@ selection, and downstream authorization decisions.
      questions. Any mandatory structural absence records remain non-substantive and use only the
      shared contract's explicit absence forms. Continue through step 3 in structural
      evidence-retention mode, skip only step 4 coverage, run step 5 in no-probe mode, then
-     continue at step 6. It may seal only after the selected profile's normal gate and is never
+     continue at step 6. It may seal only after the selected profile's archival predicate and is never
      successful or selectable for remediation planning.
 
 3. **Analizer 2000** (Orientation, **standard**) — declare domain scope from settled intent → `RUN_DIR/audit/domain-register.md`
@@ -90,6 +90,9 @@ selection, and downstream authorization decisions.
      commands or probes. Any already-supplied authorized runtime procedure belongs only in step 5.
    - Candidate findings follow the shared evidence and disposition contract. Missing evidence is
      not a pass, and an owner question is not silently promoted to a defect.
+   - If coverage stops partway and the operator chooses archival closure, checkpoint with the
+     completed domain set and preserve every valid existing coverage record exactly. Do not delete
+     one, add an unproduced record, force the set to zero, or fabricate an absence record.
 
 5. **The Mechanic** (Runtime verification, **strong**) — verify runtime and quarantine setup → `RUN_DIR/audit/runtime-verification.md`, `RUN_DIR/audit/setup-quarantine.md`
    - Work only in an isolated clone, worktree, or local stack with synthetic data and the supplied
@@ -97,9 +100,9 @@ selection, and downstream authorization decisions.
    - For `catalog`, run only an already-supplied authorized procedure; do not create a runnable
      environment. For `full` and `audited`, actively attempt isolated stand-up and synthetic
      lifecycle probes where technically possible.
-   - For either archival route—unresolved-intent structural retention or settled-intent
-     all-domains-excluded retention—perform no probe and record the applicable reason that runtime
-     evaluation cannot support a readiness conclusion.
+   - For every archival route, preserve any completed runtime evidence, start no new probe solely
+     to archive, and record exact disposition `archival-no-probe`. This disposition is invalid on
+     a complete `full` or `audited` route.
    - Always write both contract-defined records. A failed or unavailable runtime remains
      `unverifiable`, never pass. Every setup-only change is uncommitted, separately quarantined,
      and remains `approved_client_fix: false`; an explicit no-change quarantine is still required.
@@ -129,10 +132,11 @@ selection, and downstream authorization decisions.
    - Every substantive finding and the overall conclusion carry the shared evidence
      classification plus the required evidence reference or unavailability reason. Evidence
      ceilings are preserved. Publish no-clobber to the reserved version only.
-   - For either evidence-retention path, pass the preserved domain register and zero coverage
-     files. Emit explicit structurally empty or non-substantive contract-required sections and
-     only the permitted contract-gap content and mandatory structural references; do not add
-     readiness findings, a recommendation, or remediation candidates.
+   - For every evidence-retention path, pass the preserved domain register and the exact valid
+     existing coverage set: zero only for unresolved intent or all domains excluded, otherwise the
+     completed partial subset. Emit explicit structurally empty or non-substantive contract-
+     required sections and only the permitted contract-gap content and mandatory structural
+     references; do not add readiness findings, a recommendation, or remediation candidates.
 
 8. **The Conductor** — validate and bind the corrected audit → `RUN_DIR/audit/version-index.ndjson` (`corrected` event)
    - Revalidate the complete ledger, reservation state, corrected-audit path/content, target
@@ -154,8 +158,12 @@ selection, and downstream authorization decisions.
    - `audited` stages the exact bounded packet and invokes only the physically restricted
      `readiness-audit` adapter defined by the shared contract. Consume only its adapter-published
      exact-bound canonical verdict. An audited archival packet includes the preserved
-     `RUN_DIR/audit/domain-register.md` and exactly zero coverage files; an absence placeholder is
-     not a valid substitute for the register.
+     `RUN_DIR/audit/domain-register.md` and the exact existing valid coverage set used by
+     reconciliation—zero only for unresolved intent or all domains excluded. An absence
+     placeholder is not a valid substitute for the register or a coverage record.
+   - Before verdict derivation, require `blocker_ids` to correspond one-to-one and in order with
+     unique `blockers[].id`; require candidate attempt, review mode, reviewed-artifact read set,
+     and any supplied verdict to match the packet or mechanically derived value exactly.
    - Require the adapter's contract-defined pre-invocation enumeration and byte-hash validation of
      `packet.json` plus every payload, including retention of the manifest hash. Immediately before
      verdict publication, require its post-provider manifest rehash, reparse, re-enumeration, and
@@ -177,6 +185,9 @@ selection, and downstream authorization decisions.
     - Revalidate the ledger, corrected audit, profile gate, hashes, evidence ceilings, and the
       shared completeness/conclusiveness seal matrix. Refuse invalid states and any profile-gate
       mismatch.
+    - Validate exactly one shared profile predicate: normal for a complete audit or archival for
+      an incomplete audit. Never accept `archival-no-probe` for a complete `full` or `audited`
+      audit, and never downgrade audited archival review to the standard path.
     - Recompute completeness and conclusiveness again from the final immutable inputs; derive
       `successful_run`, `selectable_for_remediation_planning`, and selection reason solely from the
       matrix. Validate the exact profile-conditional `seal.json` and `sealed` index-event schemas
