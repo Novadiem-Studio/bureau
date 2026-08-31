@@ -530,16 +530,22 @@ symlinking either parent path cannot redirect publication; a path-identity chang
 the verified directory was detached after a successful link, the linked artifact remains consumed
 recovery evidence rather than being removed or republished elsewhere.
 The result directory itself is exclusively created relative to a verified reviews-parent descriptor,
-and its device/inode identity is captured during creation. After the provider exits, the adapter
-retains that exact directory through a descriptor only when the canonical pathname still names the
-created identity. The published candidate is reopened through that descriptor and bound by parent
-and member device/inode, exact raw bytes and SHA-256, regular-file type, size, and link count one.
-The same descriptor binding is checked again before canonical derivation, which consumes only the
-newly reopened private copy of those bound bytes.
+and the reservation helper retains that creation-time descriptor continuously through provider
+execution and both publications; it never closes and later adopts the pathname by device/inode.
+Helper descriptors use close-on-exec and live in a separate custody process, so the provider does
+not inherit or gain access to them. The canonical pathname must continue to name the created
+identity. The published candidate is opened relative to the retained result descriptor, then its
+descriptor is retained through canonical publication and bound to parent and member device/inode,
+exact raw bytes and SHA-256, regular-file type, size, and link count one. The same binding is checked
+before derivation, immediately before the verdict link, and immediately after it; derivation consumes
+only a private copy of the bytes read from that retained descriptor. Historical audited lineage uses
+the same exact candidate-byte relationship, not merely parsed-object equivalence.
 Immediately before canonical verdict publication, the adapter repeats the complete packet and
-authoritative-source validation, compares the retained binding state, and reopens the candidate
-through the retained descriptor again. An unlink, replacement, hard-link, parent substitution, or
-packet/authoritative mutation consumes the attempt evidence but produces no canonical verdict.
+authoritative-source validation using no-follow, nonblocking descriptor reads with before/after
+file, parent, link-count, size, byte-hash, and device/inode checks, then compares that retained
+binding state. An unlink, replacement, hard-link, parent substitution, or packet/authoritative
+mutation fails closed. If detection occurs after the no-clobber verdict link, the visible artifact
+remains consumed recovery evidence under the durability/no-repair rule above.
 
 ---
 

@@ -50,6 +50,10 @@ run_readiness_audit() {
   readiness_tmp="$(mktemp -d "${TMPDIR:-/tmp}/bureau-readiness-review.XXXXXX")" \
     || fail "cannot create readiness adapter workspace"
   cleanup_readiness_tmp() {
+    if [ -n "${custody_pid:-}" ]; then
+      kill "$custody_pid" 2>/dev/null || true
+      wait "$custody_pid" 2>/dev/null || true
+    fi
     rm -rf "$readiness_tmp"
   }
   trap cleanup_readiness_tmp EXIT
@@ -85,11 +89,65 @@ def pairs_object(pairs):
         result[key] = value
     return result
 
-def load_json_bytes(path):
+read_bindings = {}
+
+def read_plain_bytes(path):
+    parent = os.path.dirname(path)
     try:
-        raw = open(path, "rb").read()
+        parent_before = os.lstat(parent)
+        path_before = os.lstat(path)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(path, flags)
     except OSError as exc:
-        reject("cannot read %s: %s" % (path, exc))
+        reject("cannot securely open %s: %s" % (path, exc))
+    try:
+        opened_before = os.fstat(descriptor)
+        if (stat.S_ISLNK(path_before.st_mode) or not stat.S_ISREG(path_before.st_mode) or
+                not stat.S_ISREG(opened_before.st_mode) or path_before.st_nlink != 1 or
+                opened_before.st_nlink != 1 or
+                (path_before.st_dev, path_before.st_ino) !=
+                (opened_before.st_dev, opened_before.st_ino)):
+            reject("secure read target is not one exact unaliased regular file: " + path)
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+        opened_after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        path_after = os.lstat(path)
+        parent_after = os.lstat(parent)
+    except OSError as exc:
+        reject("secure read binding disappeared for %s: %s" % (path, exc))
+    opened_identity = (opened_before.st_dev, opened_before.st_ino)
+    if ((opened_after.st_dev, opened_after.st_ino) != opened_identity or
+            opened_after.st_nlink != 1 or opened_after.st_size != len(raw) or
+            (path_after.st_dev, path_after.st_ino) != opened_identity or
+            path_after.st_nlink != 1 or not stat.S_ISREG(path_after.st_mode) or
+            stat.S_ISLNK(parent_before.st_mode) or not stat.S_ISDIR(parent_before.st_mode) or
+            (parent_after.st_dev, parent_after.st_ino) !=
+            (parent_before.st_dev, parent_before.st_ino)):
+        reject("secure read identity, bytes, link count, or parent changed: " + path)
+    binding = {
+        "dev": opened_after.st_dev,
+        "ino": opened_after.st_ino,
+        "parent_dev": parent_after.st_dev,
+        "parent_ino": parent_after.st_ino,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw),
+    }
+    absolute = os.path.abspath(path)
+    if absolute in read_bindings and read_bindings[absolute] != binding:
+        reject("secure read binding changed within validation: " + path)
+    read_bindings[absolute] = binding
+    return raw
+
+def load_json_bytes(path):
+    raw = read_plain_bytes(path)
     if raw.startswith(b"\xef\xbb\xbf"):
         reject("JSON has a byte order mark: " + path)
     try:
@@ -165,11 +223,7 @@ def valid_timestamp(value, label):
         reject(label + " is not a real timestamp")
 
 def sha_file(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return hashlib.sha256(read_plain_bytes(path)).hexdigest()
 
 def ensure_plain_path(root, relative):
     current = root
@@ -803,12 +857,31 @@ def validate_historical_audited_review(version, corrected_hash, seal):
     if (stat.S_ISLNK(result_info.st_mode) or not stat.S_ISREG(result_info.st_mode) or
             result_info.st_nlink != 1):
         reject("historical audited result member is a symlink or not a regular file")
-    candidate, unused = load_json_bytes(result_path)
+    candidate, candidate_raw = load_json_bytes(result_path)
     exact_keys(candidate, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
                            "blockers", "warnings"], "historical audited result candidate")
     expected_candidate = {key: value for key, value in verdict.items() if key not in {"verdict", "timestamp"}}
     if candidate != expected_candidate:
         reject("historical audited result candidate differs from canonical verdict content")
+    try:
+        candidate_text = candidate_raw.decode("utf-8")
+        candidate_decoder = json.JSONDecoder(object_pairs_hook=pairs_object)
+        candidate_start = 0
+        while candidate_start < len(candidate_text) and candidate_text[candidate_start] in " \t\r\n":
+            candidate_start += 1
+        unused_candidate, candidate_end = candidate_decoder.raw_decode(candidate_text, candidate_start)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        reject("historical audited result raw bytes are invalid: %s" % exc)
+    if candidate_end <= candidate_start or candidate_text[candidate_end - 1] != "}":
+        reject("historical audited result raw bytes do not end in one object")
+    expected_verdict_raw = (
+        candidate_text[:candidate_end - 1] +
+        ',"verdict":' + json.dumps(verdict["verdict"], ensure_ascii=True, separators=(",", ":")) +
+        ',"timestamp":' + json.dumps(verdict["timestamp"], ensure_ascii=True, separators=(",", ":")) +
+        '}' + candidate_text[candidate_end:]
+    ).encode("utf-8")
+    if verdict_raw != expected_verdict_raw:
+        reject("historical audited result raw bytes do not bind the canonical verdict bytes")
 
     historical_coverage = validate_coverage_semantics(historical_root, historical_map)
     historical_events = load_strict_version_index(
@@ -1422,6 +1495,7 @@ state = {
     "corrected_audit_sha256": entry_map[expected_corrected],
     "review_question": manifest["review_question"],
     "allowlist": manifest["allowlist"],
+    "read_bindings": read_bindings,
 }
 with open(state_out, "w", encoding="utf-8") as handle:
     json.dump(state, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -1619,19 +1693,31 @@ PY
   fi
 
   publication_identities="$readiness_tmp/publication-identities.json"
-  python3 - "$RUN_DIR/audit/reviews" "${attempt_id}-result" \
-    "$RUN_DIR/verdicts" "$publication_identities" <<'PY' || exit 1
+  candidate_binding="$readiness_tmp/published-candidate-binding.json"
+  custody_channel="$readiness_tmp/custody-channel"
+  mkdir -m 700 "$custody_channel" \
+    || fail "cannot create readiness custody command channel"
+  custody_token="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
+    || fail "cannot create readiness custody capability"
+  custody_stderr="$readiness_tmp/custody-stderr.log"
+  python3 - "$RUN_DIR/audit/reviews" "${attempt_id}-result" "$RUN_DIR/verdicts" \
+    "$publication_identities" "$candidate_binding" "$custody_channel" "$custody_token" \
+    > "$readiness_tmp/custody-stdout.log" 2> "$custody_stderr" <<'PY' &
+import hashlib
 import json
 import os
 import re
+import secrets
 import stat
 import sys
+import time
 
-reviews_parent, result_name, verdict_parent, output = sys.argv[1:]
+reviews_parent, result_name, verdict_parent, identities_path, binding_path, channel_path, token = sys.argv[1:]
 if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?-result", result_name):
     raise SystemExit("run-cold-reviewer: readiness result reservation basename is unsafe")
 
-directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+directory_flags = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) |
+                   getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
 
 def open_anchored(path, label):
     try:
@@ -1646,6 +1732,74 @@ def open_anchored(path, label):
         os.close(descriptor)
         raise SystemExit("run-cold-reviewer: readiness %s identity is unsafe" % label)
     return descriptor, (descriptor_info.st_dev, descriptor_info.st_ino)
+
+def verify_directory(descriptor, path, expected, label):
+    try:
+        descriptor_info = os.fstat(descriptor)
+        path_info = os.lstat(path)
+    except OSError as exc:
+        raise RuntimeError("%s is unavailable: %s" % (label, exc))
+    if (not stat.S_ISDIR(descriptor_info.st_mode) or stat.S_ISLNK(path_info.st_mode) or
+            not stat.S_ISDIR(path_info.st_mode) or
+            (descriptor_info.st_dev, descriptor_info.st_ino) != expected or
+            (path_info.st_dev, path_info.st_ino) != expected):
+        raise RuntimeError(label + " identity changed")
+
+def read_regular_fd(descriptor, label):
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise RuntimeError(label + " is not one unaliased regular file")
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    chunks = []
+    while True:
+        chunk = os.read(descriptor, 1024 * 1024)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    after = os.fstat(descriptor)
+    if ((before.st_dev, before.st_ino, before.st_size, before.st_nlink) !=
+            (after.st_dev, after.st_ino, after.st_size, after.st_nlink) or
+            after.st_nlink != 1 or after.st_size != len(raw)):
+        raise RuntimeError(label + " changed while read")
+    return raw, after
+
+def read_private_source(path):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(path, flags)
+    try:
+        return read_regular_fd(descriptor, "private publication source")[0]
+    finally:
+        os.close(descriptor)
+
+def write_private(path, raw):
+    with open(path, "wb") as handle:
+        handle.write(raw)
+
+def publish_bytes(raw, directory, parent_path, expected_identity, name):
+    verify_directory(directory, parent_path, expected_identity, "publication parent")
+    for existing in os.listdir(directory):
+        if existing == name or existing.lower() == name.lower():
+            raise RuntimeError("no-clobber publication collision: " + name)
+    temporary = ".readiness-publish-%s.tmp" % secrets.token_hex(12)
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                         0o600, dir_fd=directory)
+    try:
+        offset = 0
+        while offset < len(raw):
+            offset += os.write(descriptor, raw[offset:])
+        os.fsync(descriptor)
+        verify_directory(directory, parent_path, expected_identity, "publication parent")
+        os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory,
+                follow_symlinks=False)
+        os.fsync(directory)
+        verify_directory(directory, parent_path, expected_identity, "publication parent")
+    finally:
+        os.close(descriptor)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
 
 reviews_fd, reviews_identity = open_anchored(reviews_parent, "reviews parent")
 try:
@@ -1663,9 +1817,6 @@ try:
         current_reviews = os.lstat(reviews_parent)
     except OSError as exc:
         raise SystemExit("run-cold-reviewer: cannot bind reserved readiness result directory: %s" % exc)
-    finally:
-        if "result_fd" in locals():
-            os.close(result_fd)
     if (not stat.S_ISDIR(result_info.st_mode) or not stat.S_ISDIR(linked_info.st_mode) or
             (result_info.st_dev, result_info.st_ino) != (linked_info.st_dev, linked_info.st_ino)):
         raise SystemExit("run-cold-reviewer: reserved readiness result identity is unsafe")
@@ -1676,46 +1827,201 @@ finally:
     os.close(reviews_fd)
 
 verdict_fd, verdict_identity = open_anchored(verdict_parent, "verdict parent")
-os.close(verdict_fd)
-identities = {}
-identities["candidate"] = {
+result_path = os.path.join(reviews_parent, result_name)
+result_identity = (result_info.st_dev, result_info.st_ino)
+identities = {"candidate": {
     "dev": result_info.st_dev,
     "ino": result_info.st_ino,
-    "path": os.path.join(reviews_parent, result_name),
-}
-identities["verdict"] = {
+    "path": result_path,
+}, "verdict": {
     "dev": verdict_identity[0],
     "ino": verdict_identity[1],
     "path": verdict_parent,
-}
-with open(output, "w", encoding="utf-8") as handle:
+}}
+with open(identities_path, "x", encoding="utf-8") as handle:
     json.dump(identities, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     handle.write("\n")
+
+candidate_fd = None
+candidate_name = None
+candidate_raw = None
+candidate_observed = None
+
+def validate_candidate(output_path=None):
+    global candidate_raw
+    if candidate_fd is None or candidate_observed is None:
+        raise RuntimeError("candidate has not been published")
+    verify_directory(result_fd, result_path, result_identity, "retained result parent")
+    raw, info = read_regular_fd(candidate_fd, "retained candidate")
+    linked = os.stat(candidate_name, dir_fd=result_fd, follow_symlinks=False)
+    canonical = os.lstat(os.path.join(result_path, candidate_name))
+    observed = {
+        "dev": info.st_dev, "ino": info.st_ino, "name": candidate_name,
+        "parent_dev": result_identity[0], "parent_ino": result_identity[1],
+        "sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw),
+    }
+    if (not stat.S_ISREG(linked.st_mode) or linked.st_nlink != 1 or
+            not stat.S_ISREG(canonical.st_mode) or canonical.st_nlink != 1 or
+            (linked.st_dev, linked.st_ino) != (info.st_dev, info.st_ino) or
+            (canonical.st_dev, canonical.st_ino) != (info.st_dev, info.st_ino) or
+            observed != candidate_observed or raw != candidate_raw):
+        raise RuntimeError("candidate identity, bytes, hash, link count, or path binding changed")
+    if output_path:
+        write_private(output_path, raw)
+
+ready_path = os.path.join(channel_path, "ready")
+ready_descriptor = os.open(ready_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+os.write(ready_descriptor, b"ready\n")
+os.close(ready_descriptor)
+try:
+    while True:
+        request_names = sorted(name for name in os.listdir(channel_path)
+                               if re.fullmatch(r"[0-9a-f]{32}\.request", name))
+        if not request_names:
+            time.sleep(0.01)
+            continue
+        request_name = request_names[0]
+        request_path = os.path.join(channel_path, request_name)
+        response_path = os.path.join(channel_path, request_name[:-8] + ".response")
+        try:
+            request_raw = read_private_source(request_path)
+            os.unlink(request_path)
+            request = json.loads(request_raw.decode("utf-8"))
+            if request.get("token") != token:
+                raise RuntimeError("invalid custody capability")
+            action = request.get("action")
+            arguments = request.get("arguments", [])
+            if action == "status":
+                verify_directory(result_fd, result_path, result_identity, "retained result parent")
+            elif action == "check-empty":
+                verify_directory(result_fd, result_path, result_identity, "retained result parent")
+                if os.listdir(result_fd):
+                    raise RuntimeError("reserved result directory is not empty")
+            elif action == "publish-candidate":
+                if candidate_fd is not None or len(arguments) != 3:
+                    raise RuntimeError("candidate publication state is invalid")
+                source, requested_name, reopened_output = arguments
+                if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.json", requested_name):
+                    raise RuntimeError("candidate basename is unsafe")
+                raw = read_private_source(source)
+                publish_bytes(raw, result_fd, result_path, result_identity, requested_name)
+                flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                         getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+                candidate_fd = os.open(requested_name, flags, dir_fd=result_fd)
+                candidate_name = requested_name
+                candidate_raw, info = read_regular_fd(candidate_fd, "published candidate")
+                if candidate_raw != raw:
+                    raise RuntimeError("published candidate differs from provider bytes")
+                candidate_observed = {
+                    "dev": info.st_dev, "ino": info.st_ino, "name": candidate_name,
+                    "parent_dev": result_identity[0], "parent_ino": result_identity[1],
+                    "sha256": hashlib.sha256(candidate_raw).hexdigest(), "size": len(candidate_raw),
+                }
+                with open(binding_path, "x", encoding="utf-8") as handle:
+                    json.dump(candidate_observed, handle, ensure_ascii=True,
+                              separators=(",", ":"), sort_keys=True)
+                    handle.write("\n")
+                validate_candidate(reopened_output)
+            elif action == "validate-candidate":
+                if len(arguments) != 1:
+                    raise RuntimeError("candidate validation arguments are invalid")
+                validate_candidate(arguments[0])
+            elif action == "publish-verdict":
+                if len(arguments) != 2:
+                    raise RuntimeError("verdict publication arguments are invalid")
+                source, verdict_name = arguments
+                validate_candidate()
+                publish_bytes(read_private_source(source), verdict_fd, verdict_parent,
+                              verdict_identity, verdict_name)
+                validate_candidate()
+            else:
+                raise RuntimeError("unknown custody action")
+            response = {"ok": True}
+        except Exception as exc:
+            response = {"error": str(exc), "ok": False}
+        response_raw = (json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8")
+        response_temporary = response_path + ".tmp"
+        response_descriptor = os.open(response_temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(response_descriptor, response_raw)
+            os.fsync(response_descriptor)
+        finally:
+            os.close(response_descriptor)
+        os.rename(response_temporary, response_path)
+finally:
+    if candidate_fd is not None:
+        os.close(candidate_fd)
+    os.close(result_fd)
+    os.close(verdict_fd)
 PY
-  python3 - "$result_dir" "$publication_identities" <<'PY' || exit 1
+  custody_pid=$!
+  custody_command() {
+    action="$1"
+    shift
+    python3 - "$custody_channel" "$custody_token" "$action" "$@" <<'PY'
 import json
 import os
+import secrets
 import stat
 import sys
+import time
 
-path, identity_path = sys.argv[1:]
+channel_path, token, action, *arguments = sys.argv[1:]
+ready_path = os.path.join(channel_path, "ready")
+for unused in range(500):
+    try:
+        ready_info = os.lstat(ready_path)
+        if stat.S_ISREG(ready_info.st_mode) and ready_info.st_nlink == 1:
+            break
+    except FileNotFoundError:
+        pass
+    time.sleep(0.01)
+else:
+    raise SystemExit("run-cold-reviewer: readiness custody helper did not become ready")
+nonce = secrets.token_hex(16)
+request_path = os.path.join(channel_path, nonce + ".request")
+request_temporary = os.path.join(channel_path, nonce + ".request.tmp")
+response_path = os.path.join(channel_path, nonce + ".response")
+request_raw = (json.dumps({"action": action, "arguments": arguments, "token": token},
+                          separators=(",", ":")) + "\n").encode("utf-8")
+descriptor = os.open(request_temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 try:
-    expected = json.loads(open(identity_path, "rb").read())["candidate"]
-    path_info = os.lstat(path)
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
-    descriptor_info = os.fstat(descriptor)
+    os.write(descriptor, request_raw)
+    os.fsync(descriptor)
+finally:
     os.close(descriptor)
-except (OSError, ValueError, KeyError, TypeError) as exc:
-    raise SystemExit("run-cold-reviewer: cannot verify created readiness result identity: %s" % exc)
-expected_identity = (expected.get("dev"), expected.get("ino"))
-if (expected.get("path") != path or type(expected_identity[0]) is not int or
-        type(expected_identity[1]) is not int or stat.S_ISLNK(path_info.st_mode) or
-        not stat.S_ISDIR(path_info.st_mode) or not stat.S_ISDIR(descriptor_info.st_mode) or
-        (path_info.st_dev, path_info.st_ino) != expected_identity or
-        (descriptor_info.st_dev, descriptor_info.st_ino) != expected_identity):
-    raise SystemExit("run-cold-reviewer: created readiness result path identity changed")
+os.rename(request_temporary, request_path)
+for unused in range(3000):
+    try:
+        descriptor = os.open(response_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        break
+    except FileNotFoundError:
+        time.sleep(0.01)
+else:
+    raise SystemExit("run-cold-reviewer: readiness custody helper did not respond")
+try:
+    chunks = []
+    while True:
+        chunk = os.read(descriptor, 65536)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+finally:
+    os.close(descriptor)
+    os.unlink(response_path)
+try:
+    response = json.loads(raw.decode("utf-8"))
+except Exception as exc:
+    raise SystemExit("run-cold-reviewer: invalid readiness custody response: %s" % exc)
+if response.get("ok") is not True:
+    raise SystemExit("run-cold-reviewer: readiness custody failure: " + str(response.get("error")))
 PY
+  }
+  if ! custody_command status; then
+    sed -n '1,20p' "$custody_stderr" >&2
+    exit 1
+  fi
 
   candidate_schema="$readiness_tmp/candidate-schema.json"
   jq -e '
@@ -2019,35 +2325,10 @@ PY
   validate_readiness_packet "$packet_state_after" after || exit 1
   cmp -s "$packet_state_before" "$packet_state_after" \
     || fail "readiness packet or authoritative binding changed during provider invocation"
-  exec 8< "$result_dir" || fail "cannot retain reserved readiness result directory descriptor"
-  python3 - "$result_dir" "$publication_identities" 8 <<'PY' || exit 1
-import json
-import os
-import stat
-import sys
-
-path, identity_path, descriptor_text = sys.argv[1:]
-descriptor = int(descriptor_text)
-try:
-    identities = json.loads(open(identity_path, "rb").read())
-    expected = identities["candidate"]
-    descriptor_info = os.fstat(descriptor)
-    path_info = os.lstat(path)
-except (OSError, ValueError, KeyError, TypeError) as exc:
-    raise SystemExit("run-cold-reviewer: cannot retain reserved result identity: %s" % exc)
-expected_identity = (expected.get("dev"), expected.get("ino"))
-if (expected.get("path") != path or type(expected_identity[0]) is not int or
-        type(expected_identity[1]) is not int or not stat.S_ISDIR(descriptor_info.st_mode) or
-        stat.S_ISLNK(path_info.st_mode) or not stat.S_ISDIR(path_info.st_mode) or
-        (descriptor_info.st_dev, descriptor_info.st_ino) != expected_identity or
-        (path_info.st_dev, path_info.st_ino) != expected_identity):
-    raise SystemExit("run-cold-reviewer: reserved result path changed before descriptor retention")
-PY
+  custody_command check-empty || exit 1
   [ ! -e "$canonical_verdict" ] && [ ! -L "$canonical_verdict" ] \
     || fail "canonical readiness verdict collided after provider invocation"
-  if find "$result_dir" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
-    fail "reserved readiness result directory was modified before adapter publication"
-  fi
+  custody_command check-empty || exit 1
 
   candidate_bytes="$readiness_tmp/validated-candidate.json"
   python3 - "$provider_candidate" "$candidate_bytes" <<'PY' || exit 1
@@ -2331,12 +2612,11 @@ PY
   }
 
   candidate_path="$result_dir/${output_id}.json"
-  publish_no_clobber "$candidate_bytes" "$candidate_path" candidate 8 || exit 1
   reopened_candidate="$readiness_tmp/reopened-candidate.json"
-  validate_published_candidate "$candidate_bytes" initial "$reopened_candidate"
+  custody_command publish-candidate "$candidate_bytes" "${output_id}.json" "$reopened_candidate" || exit 1
   rm -f "$candidate_bytes" || fail "cannot discard private pre-publication candidate bytes"
   derivation_candidate="$readiness_tmp/derivation-candidate.json"
-  validate_published_candidate - final "$derivation_candidate"
+  custody_command validate-candidate "$derivation_candidate" || exit 1
   cmp -s "$reopened_candidate" "$derivation_candidate" \
     || fail "published readiness candidate bytes changed before canonical derivation"
 
@@ -2478,22 +2758,36 @@ if canonical["verdict"] not in schema["properties"]["verdict"].get("enum", []):
     reject("derived verdict is not valid under selected Challenger verdict schema")
 
 try:
-    with open(canonical_out, "w", encoding="utf-8") as handle:
-        json.dump(canonical, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=False)
-        handle.write("\n")
-except OSError as exc:
+    candidate_text = candidate_raw.decode("utf-8")
+    decoder = json.JSONDecoder(object_pairs_hook=pairs_object)
+    candidate_start = 0
+    while candidate_start < len(candidate_text) and candidate_text[candidate_start] in " \t\r\n":
+        candidate_start += 1
+    unused_candidate, candidate_end = decoder.raw_decode(candidate_text, candidate_start)
+    if candidate_end <= candidate_start or candidate_text[candidate_end - 1] != "}":
+        reject("published candidate does not end in one JSON object")
+    adapter_suffix = (
+        ',"verdict":' + json.dumps(verdict, ensure_ascii=True, separators=(",", ":")) +
+        ',"timestamp":' + json.dumps(canonical["timestamp"], ensure_ascii=True, separators=(",", ":")) +
+        '}'
+    )
+    canonical_raw = (candidate_text[:candidate_end - 1] + adapter_suffix +
+                     candidate_text[candidate_end:]).encode("utf-8")
+    with open(canonical_out, "wb") as handle:
+        handle.write(canonical_raw)
+except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
     reject("cannot stage canonical verdict bytes: %s" % exc)
 PY
   validate_readiness_packet "$packet_state_final" final || exit 1
   cmp -s "$packet_state_before" "$packet_state_final" \
     || fail "readiness packet or authoritative binding changed before canonical publication"
   final_reopened_candidate="$readiness_tmp/final-reopened-candidate.json"
-  validate_published_candidate - final "$final_reopened_candidate"
+  custody_command validate-candidate "$final_reopened_candidate" || exit 1
   cmp -s "$reopened_candidate" "$final_reopened_candidate" \
     || fail "published readiness candidate bytes changed before canonical publication"
   [ ! -e "$canonical_verdict" ] && [ ! -L "$canonical_verdict" ] \
     || fail "canonical readiness verdict collided before publication"
-  publish_no_clobber "$canonical_bytes" "$canonical_verdict" verdict || exit 1
+  custody_command publish-verdict "$canonical_bytes" "${attempt_id}.json" || exit 1
   jq -cn \
     --arg runtime "$runtime" \
     --arg model "$model" \
