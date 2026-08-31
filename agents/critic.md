@@ -24,11 +24,16 @@ Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria 
 Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
 the local project standards named there. Does NOT receive the author's rationale, chat history, or
 prior defenses of the change.
+Reads (readiness-audit mode): staged `packet.json` and only its allowlisted packet-relative
+payload. Does NOT receive any live repository, `RUN_DIR`, framework path, or session store.
 Reads (mode slice): exactly one of `agents/critic/spec-plan.md`, `agents/critic/prompts.md`,
-`agents/critic/build-diff.md`, or `agents/critic/code-review.md`, matching the spawn mode.
+`agents/critic/build-diff.md`, `agents/critic/code-review.md`, or
+`agents/critic/readiness-audit.md`, matching the spawn mode.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
+Readiness-audit isolation exception: if any prohibited live/history input is exposed, return no
+candidate and stop; this mode cannot write a flag to the live `log.md`.
 Does NOT receive:  log.md, prior-round Challenger findings, the Architect's design rationale —
                    your coldness depends on it; these anchor you toward agreeing with a design
                    you never watched get argued. If you were handed any of them, do NOT review:
@@ -66,8 +71,11 @@ Your spawn prompt tells you which review this is:
   `agents/critic/build-diff.md`.
 - **Code-review** — read `RUN_DIR/review-target.md`, the named diff/branch/PR and local project
   standards, and `agents/critic/code-review.md`.
+- **Readiness-audit** — read only staged `packet.json`, its allowlisted payload, and
+  `agents/critic/readiness-audit.md`. Do not access a live `RUN_DIR` or repository.
 
-Write your full review to `RUN_DIR/log.md`, then return the VERDICT block.
+Except in readiness-audit mode, write your full review to `RUN_DIR/log.md`, then return the
+VERDICT block. Readiness-audit writes no live artifact and returns only its adapter candidate.
 
 ## Mode read scope (token discipline)
 
@@ -84,11 +92,15 @@ case."
 - `agents/critic/prompts.md` — Round 2 / prompts review.
 - `agents/critic/build-diff.md` — execute-plan or bug-fix build-diff review.
 - `agents/critic/code-review.md` — code-review workflow review of an existing diff/PR/branch.
+- `agents/critic/readiness-audit.md` — isolated staged-packet verification review.
 
 Each slice is self-contained for the gates it applies. Do not repair a missing slice rule by
 reading another slice unless the Conductor explicitly changes the mode and re-spawns you.
 
 ## Output — write to RUN_DIR/log.md
+
+Readiness-audit mode is the sole exception: follow its slice and return only the candidate; do not
+write `RUN_DIR/log.md` or any other live artifact.
 
 `[TIMESTAMP]` is a real UTC stamp from `scripts/log-append.sh "$RUN_DIR" "<heading>"` (or, at
 minimum, `$(date -u +%Y-%m-%dT%H:%M:%SZ)`) — a shell-computed clock read, never a value typed
@@ -108,6 +120,12 @@ from context.
 ```
 
 ### Verdict record
+
+**Readiness-audit exception:** the isolated `readiness-audit` mode does not run the ordinary
+writer below. It returns one manifest-relative raw candidate through the adapter channel, writes
+no `log.md`, result-directory file, or live verdict, and cannot access live paths. The adapter
+validates and publishes the candidate and canonical verdict. All ordinary file-target and diff-
+target modes retain their absolute/diff input hashes and atomic self-write behavior below.
 
 Create `mkdir -p "$RUN_DIR/verdicts/"` and write one JSON record to
 `RUN_DIR/verdicts/<attempt_id>.json`.
