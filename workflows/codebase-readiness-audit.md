@@ -62,16 +62,21 @@ selection, and downstream authorization decisions.
    - Evidence-retention closure is `incomplete` and `non-conclusive`. Its substantive audit
      content is limited to the contract gap, boundaries, evidence inventory, and blocked owner
      questions. Any mandatory structural absence records remain non-substantive and use only the
-     shared contract's explicit absence forms. Skip steps 3 and 4, run step 5 in no-probe mode,
-     then continue at step 6. It may seal only after the selected profile's normal gate and is
-     never successful or selectable for remediation planning.
+     shared contract's explicit absence forms. Continue through step 3 in structural
+     evidence-retention mode, skip only step 4 coverage, run step 5 in no-probe mode, then
+     continue at step 6. It may seal only after the selected profile's normal gate and is never
+     successful or selectable for remediation planning.
 
 3. **Analizer 2000** (Orientation, **standard**) — declare domain scope from settled intent → `RUN_DIR/audit/domain-register.md`
    - Record every baseline domain and any product-intent-required domain by reference to the
      shared contract. Mark each applicable or excluded, preserve an exclusion reason, and carry
      every excluded area forward as not audited.
-   - If every domain is excluded, treat the audit as incomplete/non-conclusive and route it only
-     through the evidence-retention rules from step 2; do not manufacture findings.
+   - For unresolved-intent structural evidence retention, create the normal six-baseline-domain
+     register, mark every baseline domain excluded because intent is unresolved, and add no
+     invented product-specific domain. Preserve this register and skip only step 4 coverage.
+   - If settled intent produces an all-domains-excluded register, preserve that register, treat
+     the audit as incomplete/non-conclusive, and skip only step 4 coverage. Route through the
+     evidence-retention rules from step 2; do not manufacture findings.
 
 4. **Analizer 2000** (Independent coverage, **standard**) — isolate each domain pass → `RUN_DIR/audit/coverage/<domain_id>.md`
    - Spawn a fresh context for each applicable domain. Give it the product contract, domain
@@ -92,8 +97,9 @@ selection, and downstream authorization decisions.
    - For `catalog`, run only an already-supplied authorized procedure; do not create a runnable
      environment. For `full` and `audited`, actively attempt isolated stand-up and synthetic
      lifecycle probes where technically possible.
-   - For an evidence-retention closure, perform no probe and record that the unresolved product
-     contract prevents meaningful runtime evaluation.
+   - For either archival route—unresolved-intent structural retention or settled-intent
+     all-domains-excluded retention—perform no probe and record the applicable reason that runtime
+     evaluation cannot support a readiness conclusion.
    - Always write both contract-defined records. A failed or unavailable runtime remains
      `unverifiable`, never pass. Every setup-only change is uncommitted, separately quarantined,
      and remains `approved_client_fix: false`; an explicit no-change quarantine is still required.
@@ -102,6 +108,10 @@ selection, and downstream authorization decisions.
    - Validate the ledger and filesystem from byte zero, then allocate and exclusively publish the
      next reservation exactly as the shared contract requires. The Conductor is the sole allocator
      and version-directory creator.
+   - Validate every current machine-readable artifact against the contract's exact schema and JSON
+     conventions, recompute completeness and conclusiveness from the recorded facts, and require
+     agreement before reservation. Publish `reservation.json` only with its exact contract key
+     set, types, constants, and bounds.
    - Apply the contract's collision rescan, reserved-only, interruption recovery, idempotency,
      and terminal version rules. Any partial, conflicting, decreasing, mismatched, or unexpected
      state stops for explicit repair; never reuse, overwrite, widen, wrap, or create a mutable
@@ -109,24 +119,28 @@ selection, and downstream authorization decisions.
 
 7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation → `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
    - Always receive the exact reservation/version plus `RUN_DIR/audit/profile.md`,
-     `RUN_DIR/audit/product-contract.md`, `RUN_DIR/audit/runtime-verification.md`, and
-     `RUN_DIR/audit/setup-quarantine.md`. Do not allocate a version or write the index.
-   - On the normal path, additionally receive `RUN_DIR/audit/domain-register.md` and every
-     applicable coverage artifact under `RUN_DIR/audit/coverage/`.
+     `RUN_DIR/audit/product-contract.md`, `RUN_DIR/audit/domain-register.md`,
+     `RUN_DIR/audit/runtime-verification.md`, and `RUN_DIR/audit/setup-quarantine.md`. Do not
+     allocate a version or write the index.
+   - On the normal path, additionally receive every applicable coverage artifact under
+     `RUN_DIR/audit/coverage/`.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
      Keep owner questions, exclusions, verification limits, and setup quarantine visible.
    - Every substantive finding and the overall conclusion carry the shared evidence
      classification plus the required evidence reference or unavailability reason. Evidence
      ceilings are preserved. Publish no-clobber to the reserved version only.
-   - For evidence-retention closure, explicitly omit the domain-register and coverage artifacts
-     skipped in steps 3 and 4. Write only the permitted contract-gap content and mandatory
-     structural references; do not add readiness findings, a recommendation, or remediation
-     candidates.
+   - For either evidence-retention path, pass the preserved domain register and zero coverage
+     files. Emit explicit structurally empty or non-substantive contract-required sections and
+     only the permitted contract-gap content and mandatory structural references; do not add
+     readiness findings, a recommendation, or remediation candidates.
 
 8. **The Conductor** — validate and bind the corrected audit → `RUN_DIR/audit/version-index.ndjson` (`corrected` event)
    - Revalidate the complete ledger, reservation state, corrected-audit path/content, target
      commit, required inputs, evidence rules, and exact bytes. Hash the published artifact and
      append the canonical event only after every check passes.
+   - Recompute completeness and conclusiveness under the deterministic contract rules, require the
+     corrected audit to agree, and validate the exact `reservation.json` and `corrected` index-
+     event schemas before appending the exact event.
    - Treat an identical existing event as idempotent success. Stop on missing, partial,
      conflicting, reordered, decreasing, or path/hash-mismatched state; never normalize or repair
      it implicitly.
@@ -134,11 +148,25 @@ selection, and downstream authorization decisions.
 9. **The Conductor** — apply the selected profile's pre-seal gate → profile gate decision
    - `catalog` and `full` take the shared standard non-premium path and explicitly record that cold
      review was not performed. They never claim the premium gate completed.
+   - Before staging an `audited` packet, preflight both the self-contained readiness-reviewer slice
+     and the physically restricted `readiness-audit` adapter. If either is absent or invalid, stop
+     before packet staging and provider invocation; neither component substitutes for the other.
    - `audited` stages the exact bounded packet and invokes only the physically restricted
      `readiness-audit` adapter defined by the shared contract. Consume only its adapter-published
-     exact-bound canonical verdict. Malformed/contaminated packets, unsafe identifiers, output
-     collisions, read-set/hash mismatches, a stale binding, or `BLOCKED` prevent sealing and
-     require a new attempt; a corrected audit requires a newly allocated version.
+     exact-bound canonical verdict. An audited archival packet includes the preserved
+     `RUN_DIR/audit/domain-register.md` and exactly zero coverage files; an absence placeholder is
+     not a valid substitute for the register.
+   - Require the adapter's contract-defined pre-invocation enumeration and byte-hash validation of
+     `packet.json` plus every payload, including retention of the manifest hash. Immediately before
+     verdict publication, require its post-provider manifest rehash, reparse, re-enumeration, and
+     payload rehash; any addition, removal, reorder, rename, alias, or byte change invalidates the
+     attempt.
+   - A canonical `BLOCKED` verdict requires correction in a newly allocated audit version; the
+     unchanged corrected-audit version cannot be retried with a fresh review attempt. A packet,
+     identifier, collision, transport, or pre-verdict adapter-validation fault may use a fresh
+     attempt id and packet against the same immutable corrected audit only after rehashing proves
+     its bytes are unchanged. Changed corrected-audit bytes require a new reserved version.
+     Every fault remains fail-closed and produces no seal.
    - Until that restricted adapter profile is implemented and mechanically available, every
      direct `audited` exercise stops here at `[CHECKPOINT]`. It produces no premium-review claim,
      canonical verdict, or seal. A native shared-filesystem reviewer is not a fallback.
@@ -149,6 +177,10 @@ selection, and downstream authorization decisions.
     - Revalidate the ledger, corrected audit, profile gate, hashes, evidence ceilings, and the
       shared completeness/conclusiveness seal matrix. Refuse invalid states and any profile-gate
       mismatch.
+    - Recompute completeness and conclusiveness again from the final immutable inputs; derive
+      `successful_run`, `selectable_for_remediation_planning`, and selection reason solely from the
+      matrix. Validate the exact profile-conditional `seal.json` and `sealed` index-event schemas
+      before publishing either record.
     - Exclusively publish the immutable seal, hash it, then append the canonical event. Follow the
       shared profile-conditional cold-review fields; never overwrite a seal or let the Conductor
       create/repair an audited verdict.
@@ -171,21 +203,33 @@ part of normal audit execution, and it never invokes `workflows/execute-plan.md`
 client fix.
 
 1. **The Conductor** — accept exact downstream artifacts for validation → selected seal, completed remediation plan, immutable approval
-   - Require explicit paths for all three artifacts and validate any path-bearing identifier under
-     the shared safe-identifier contract. Absence or ambiguity stops the re-entry.
+   - Accept the raw `approval_id`, the selected-seal request/path, and the completed remediation-
+     plan path. Validate raw `approval_id` against the shared safe-ID grammar before constructing
+     any path, derive only `RUN_DIR/audit/execute-plan-approvals/<approval_id>.json`, and require
+     the approval at that fixed path. Reject an invalid id, normalization, or any supplied or
+     resolved approval path outside that fixed location.
+   - Treat the seal and plan as regular artifact paths, not safe-ID values. Do not apply the
+     identifier grammar to either path; their safety, ledger/lineage, and hashes are validated in
+     step 2. Absence or ambiguity stops the re-entry.
 
 2. **The Conductor** — revalidate lineage and exact bytes → authorization decision
-   - Validate the version index from byte zero; validate the selected seal and its corrected-audit
-     lineage; require a successful selectable seal; and rehash the seal and completed plan.
-   - Validate the immutable approval field-for-field under the shared contract, including
-     `requested_next_workflow: execute-plan`, explicit affirmative decision, approver/checkpoint
-     identity, decision time, audit version, and exact seal/plan paths and hashes.
+   - Validate the version index from byte zero. With no explicit version, resolve the highest
+     numeric valid selectable seal; when the operator explicitly names an earlier valid selectable
+     seal, accept that exact version instead. Validate the chosen seal and corrected-audit lineage
+     and rehash the seal and completed plan at their authorized regular artifact paths.
+   - Validate the immutable approval against the contract's exact approval schema, key set, types,
+     constants, bounds, fixed path, and seal/plan bindings. Reject every unknown, missing,
+     duplicate, wrong-type, non-`approved`, or mismatched value; do not define a second approval
+     schema here.
 
 3. **Gate** — fail closed on stale or mismatched authority
-   - Reject a missing approval, evidence-only/non-selectable seal, superseded selection, changed
-     plan, changed seal, different audit version, invalid decision, malformed identifier, or any
-     path/hash/field mismatch. Conversation, earlier approval, audit completion, and remediation
-     planning never imply authority. A changed plan or selected seal requires a new approval.
+   - Reject a missing approval, invalid `approval_id`, approval outside its derived fixed path,
+     evidence-only/non-selectable or otherwise invalid seal, approval bound to a different seal,
+     different audit version, or different remediation-plan hash, invalid decision, or any other
+     path/hash/field mismatch. An explicitly selected earlier valid selectable seal is not stale
+     merely because a later selectable version exists. Conversation, earlier approval, audit
+     completion, and remediation planning never imply authority. A changed plan or selected seal
+     requires a new approval.
 
 4. **The Conductor** — emit only the contract-bounded authorization result → authorized handoff
    - On success, emit the exact seal, plan, and approval paths and hashes and nothing broader. This
