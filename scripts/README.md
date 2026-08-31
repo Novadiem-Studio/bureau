@@ -529,6 +529,17 @@ write, fsync, link, and unlink operations use only descriptor-relative basenames
 symlinking either parent path cannot redirect publication; a path-identity change fails closed. If
 the verified directory was detached after a successful link, the linked artifact remains consumed
 recovery evidence rather than being removed or republished elsewhere.
+The result directory itself is exclusively created relative to a verified reviews-parent descriptor,
+and its device/inode identity is captured during creation. After the provider exits, the adapter
+retains that exact directory through a descriptor only when the canonical pathname still names the
+created identity. The published candidate is reopened through that descriptor and bound by parent
+and member device/inode, exact raw bytes and SHA-256, regular-file type, size, and link count one.
+The same descriptor binding is checked again before canonical derivation, which consumes only the
+newly reopened private copy of those bound bytes.
+Immediately before canonical verdict publication, the adapter repeats the complete packet and
+authoritative-source validation, compares the retained binding state, and reopens the candidate
+through the retained descriptor again. An unlink, replacement, hard-link, parent substitution, or
+packet/authoritative mutation consumes the attempt evidence but produces no canonical verdict.
 
 ---
 

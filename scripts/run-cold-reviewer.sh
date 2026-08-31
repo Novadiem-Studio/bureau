@@ -55,6 +55,7 @@ run_readiness_audit() {
   trap cleanup_readiness_tmp EXIT
   packet_state_before="$readiness_tmp/packet-before.json"
   packet_state_after="$readiness_tmp/packet-after.json"
+  packet_state_final="$readiness_tmp/packet-final.json"
 
   validate_readiness_packet() {
     state_out="$1"
@@ -70,7 +71,7 @@ import sys
 import unicodedata
 
 run_dir, packet_root, framework_root, state_out, validation_phase = sys.argv[1:]
-if validation_phase not in {"before", "after"}:
+if validation_phase not in {"before", "after", "final"}:
     raise SystemExit("run-cold-reviewer: internal readiness validation phase is invalid")
 
 def reject(message):
@@ -1383,13 +1384,24 @@ for parent, target_name, label in [(reviews_parent, result_name, "result"),
     for existing in os.listdir(parent):
         if existing == target_name or existing.lower() == target_name.lower():
             matches.append(existing)
-    if label == "result" and validation_phase == "after":
+    if label == "result" and validation_phase in {"after", "final"}:
         if matches != [target_name]:
             reject("reserved result directory is missing or case-colliding")
         result_path = os.path.join(parent, target_name)
         info = os.lstat(result_path)
-        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or os.listdir(result_path):
-            reject("reserved result directory is not an empty regular directory")
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            reject("reserved result path is not a regular directory")
+        result_members = os.listdir(result_path)
+        if validation_phase == "after" and result_members:
+            reject("reserved result directory is not empty")
+        if validation_phase == "final":
+            expected_member = manifest["output_id"] + ".json"
+            if result_members != [expected_member]:
+                reject("published result directory does not contain exactly the bound candidate")
+            member_info = os.lstat(os.path.join(result_path, expected_member))
+            if (stat.S_ISLNK(member_info.st_mode) or not stat.S_ISREG(member_info.st_mode) or
+                    member_info.st_nlink != 1):
+                reject("published result candidate is a symlink, special file, or hard-linked")
     elif matches:
         reject(label + " path collides with an existing object")
 
@@ -1606,27 +1618,103 @@ PY
     [ -z "${UNSTAGED_SENTINEL:-}" ] || record_readiness_location "$UNSTAGED_SENTINEL" any UNSTAGED_SENTINEL
   fi
 
-  mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
   publication_identities="$readiness_tmp/publication-identities.json"
-  python3 - "$result_dir" "$RUN_DIR/verdicts" "$publication_identities" <<'PY' || exit 1
+  python3 - "$RUN_DIR/audit/reviews" "${attempt_id}-result" \
+    "$RUN_DIR/verdicts" "$publication_identities" <<'PY' || exit 1
+import json
+import os
+import re
+import stat
+import sys
+
+reviews_parent, result_name, verdict_parent, output = sys.argv[1:]
+if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?-result", result_name):
+    raise SystemExit("run-cold-reviewer: readiness result reservation basename is unsafe")
+
+directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+def open_anchored(path, label):
+    try:
+        path_info = os.lstat(path)
+        descriptor = os.open(path, directory_flags)
+        descriptor_info = os.fstat(descriptor)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: readiness %s cannot be opened: %s" % (label, exc))
+    if (stat.S_ISLNK(path_info.st_mode) or not stat.S_ISDIR(path_info.st_mode) or
+            not stat.S_ISDIR(descriptor_info.st_mode) or
+            (path_info.st_dev, path_info.st_ino) != (descriptor_info.st_dev, descriptor_info.st_ino)):
+        os.close(descriptor)
+        raise SystemExit("run-cold-reviewer: readiness %s identity is unsafe" % label)
+    return descriptor, (descriptor_info.st_dev, descriptor_info.st_ino)
+
+reviews_fd, reviews_identity = open_anchored(reviews_parent, "reviews parent")
+try:
+    for existing in os.listdir(reviews_fd):
+        if existing == result_name or existing.lower() == result_name.lower():
+            raise SystemExit("run-cold-reviewer: readiness result reservation collides: " + result_name)
+    try:
+        os.mkdir(result_name, 0o700, dir_fd=reviews_fd)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: cannot exclusively reserve readiness result directory: %s" % exc)
+    try:
+        result_fd = os.open(result_name, directory_flags, dir_fd=reviews_fd)
+        result_info = os.fstat(result_fd)
+        linked_info = os.stat(result_name, dir_fd=reviews_fd, follow_symlinks=False)
+        current_reviews = os.lstat(reviews_parent)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: cannot bind reserved readiness result directory: %s" % exc)
+    finally:
+        if "result_fd" in locals():
+            os.close(result_fd)
+    if (not stat.S_ISDIR(result_info.st_mode) or not stat.S_ISDIR(linked_info.st_mode) or
+            (result_info.st_dev, result_info.st_ino) != (linked_info.st_dev, linked_info.st_ino)):
+        raise SystemExit("run-cold-reviewer: reserved readiness result identity is unsafe")
+    if ((current_reviews.st_dev, current_reviews.st_ino) != reviews_identity or
+            stat.S_ISLNK(current_reviews.st_mode)):
+        raise SystemExit("run-cold-reviewer: reviews parent identity changed during result reservation")
+finally:
+    os.close(reviews_fd)
+
+verdict_fd, verdict_identity = open_anchored(verdict_parent, "verdict parent")
+os.close(verdict_fd)
+identities = {}
+identities["candidate"] = {
+    "dev": result_info.st_dev,
+    "ino": result_info.st_ino,
+    "path": os.path.join(reviews_parent, result_name),
+}
+identities["verdict"] = {
+    "dev": verdict_identity[0],
+    "ino": verdict_identity[1],
+    "path": verdict_parent,
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(identities, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    handle.write("\n")
+PY
+  python3 - "$result_dir" "$publication_identities" <<'PY' || exit 1
 import json
 import os
 import stat
 import sys
 
-result_dir, verdict_parent, output = sys.argv[1:]
-identities = {}
-for label, path in [("candidate", result_dir), ("verdict", verdict_parent)]:
-    try:
-        info = os.lstat(path)
-    except OSError as exc:
-        raise SystemExit("run-cold-reviewer: readiness publication parent is missing: %s" % exc)
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-        raise SystemExit("run-cold-reviewer: readiness publication parent is a symlink or not a directory: " + path)
-    identities[label] = {"dev": info.st_dev, "ino": info.st_ino, "path": path}
-with open(output, "w", encoding="utf-8") as handle:
-    json.dump(identities, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-    handle.write("\n")
+path, identity_path = sys.argv[1:]
+try:
+    expected = json.loads(open(identity_path, "rb").read())["candidate"]
+    path_info = os.lstat(path)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    descriptor_info = os.fstat(descriptor)
+    os.close(descriptor)
+except (OSError, ValueError, KeyError, TypeError) as exc:
+    raise SystemExit("run-cold-reviewer: cannot verify created readiness result identity: %s" % exc)
+expected_identity = (expected.get("dev"), expected.get("ino"))
+if (expected.get("path") != path or type(expected_identity[0]) is not int or
+        type(expected_identity[1]) is not int or stat.S_ISLNK(path_info.st_mode) or
+        not stat.S_ISDIR(path_info.st_mode) or not stat.S_ISDIR(descriptor_info.st_mode) or
+        (path_info.st_dev, path_info.st_ino) != expected_identity or
+        (descriptor_info.st_dev, descriptor_info.st_ino) != expected_identity):
+    raise SystemExit("run-cold-reviewer: created readiness result path identity changed")
 PY
 
   candidate_schema="$readiness_tmp/candidate-schema.json"
@@ -1931,6 +2019,30 @@ PY
   validate_readiness_packet "$packet_state_after" after || exit 1
   cmp -s "$packet_state_before" "$packet_state_after" \
     || fail "readiness packet or authoritative binding changed during provider invocation"
+  exec 8< "$result_dir" || fail "cannot retain reserved readiness result directory descriptor"
+  python3 - "$result_dir" "$publication_identities" 8 <<'PY' || exit 1
+import json
+import os
+import stat
+import sys
+
+path, identity_path, descriptor_text = sys.argv[1:]
+descriptor = int(descriptor_text)
+try:
+    identities = json.loads(open(identity_path, "rb").read())
+    expected = identities["candidate"]
+    descriptor_info = os.fstat(descriptor)
+    path_info = os.lstat(path)
+except (OSError, ValueError, KeyError, TypeError) as exc:
+    raise SystemExit("run-cold-reviewer: cannot retain reserved result identity: %s" % exc)
+expected_identity = (expected.get("dev"), expected.get("ino"))
+if (expected.get("path") != path or type(expected_identity[0]) is not int or
+        type(expected_identity[1]) is not int or not stat.S_ISDIR(descriptor_info.st_mode) or
+        stat.S_ISLNK(path_info.st_mode) or not stat.S_ISDIR(path_info.st_mode) or
+        (descriptor_info.st_dev, descriptor_info.st_ino) != expected_identity or
+        (path_info.st_dev, path_info.st_ino) != expected_identity):
+    raise SystemExit("run-cold-reviewer: reserved result path changed before descriptor retention")
+PY
   [ ! -e "$canonical_verdict" ] && [ ! -L "$canonical_verdict" ] \
     || fail "canonical readiness verdict collided after provider invocation"
   if find "$result_dir" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
@@ -1989,7 +2101,9 @@ PY
     source_path="$1"
     target_path="$2"
     identity_key="$3"
-    python3 - "$source_path" "$target_path" "$publication_identities" "$identity_key" <<'PY'
+    retained_fd="${4:-}"
+    python3 - "$source_path" "$target_path" "$publication_identities" "$identity_key" \
+      "$retained_fd" <<'PY'
 import json
 import os
 import re
@@ -1997,7 +2111,7 @@ import secrets
 import stat
 import sys
 
-source, target, identity_path, identity_key = sys.argv[1:]
+source, target, identity_path, identity_key, retained_fd = sys.argv[1:]
 parent = os.path.dirname(target)
 name = os.path.basename(target)
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", name):
@@ -2040,7 +2154,7 @@ def verify_parent_path():
 verify_parent_path()
 directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 try:
-    directory = os.open(parent, directory_flags)
+    directory = os.dup(int(retained_fd)) if retained_fd else os.open(parent, directory_flags)
 except OSError as exc:
     raise SystemExit("run-cold-reviewer: cannot open anchored publication parent: %s" % exc)
 temporary = ".readiness-publish-%s.tmp" % secrets.token_hex(12)
@@ -2077,12 +2191,157 @@ finally:
 PY
   }
 
+  candidate_binding="$readiness_tmp/published-candidate-binding.json"
+  validate_published_candidate() {
+    expected_source="$1"
+    binding_mode="$2"
+    reopened_output="$3"
+    python3 - "$result_dir" "$publication_identities" 8 "${output_id}.json" \
+      "$expected_source" "$candidate_binding" "$binding_mode" "$reopened_output" <<'PY' || exit 1
+import hashlib
+import json
+import os
+import stat
+import sys
+
+(parent_path, identity_path, descriptor_text, candidate_name, expected_source,
+ binding_path, binding_mode, reopened_output) = sys.argv[1:]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: published readiness candidate " + message)
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            reject("binding state contains a duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
+def load_private_json(path):
+    try:
+        raw = open(path, "rb").read()
+        text = raw.decode("utf-8")
+        decoder = json.JSONDecoder(
+            object_pairs_hook=pairs,
+            parse_constant=lambda value: reject("binding state contains an invalid constant"),
+        )
+        start = 0
+        while start < len(text) and text[start] in " \t\r\n":
+            start += 1
+        value, end = decoder.raw_decode(text, start)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        reject("binding state cannot be loaded: %s" % exc)
+    if any(character not in " \t\r\n" for character in text[end:]):
+        reject("binding state has trailing content")
+    return value
+
+try:
+    descriptor = int(descriptor_text)
+    identities = load_private_json(identity_path)
+    expected_parent = identities["candidate"]
+    parent_info = os.fstat(descriptor)
+    path_info = os.lstat(parent_path)
+except (OSError, ValueError, KeyError, TypeError) as exc:
+    reject("cannot validate retained result parent: %s" % exc)
+parent_identity = (expected_parent.get("dev"), expected_parent.get("ino"))
+if (expected_parent.get("path") != parent_path or type(parent_identity[0]) is not int or
+        type(parent_identity[1]) is not int or not stat.S_ISDIR(parent_info.st_mode) or
+        stat.S_ISLNK(path_info.st_mode) or not stat.S_ISDIR(path_info.st_mode) or
+        (parent_info.st_dev, parent_info.st_ino) != parent_identity or
+        (path_info.st_dev, path_info.st_ino) != parent_identity):
+    reject("retained result parent identity changed")
+if os.listdir(descriptor) != [candidate_name]:
+    reject("result directory does not contain exactly the bound candidate")
+
+flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+try:
+    candidate_fd = os.open(candidate_name, flags, dir_fd=descriptor)
+except OSError as exc:
+    reject("cannot reopen through retained result descriptor: %s" % exc)
+try:
+    before = os.fstat(candidate_fd)
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        reject("is not one unaliased regular file")
+    chunks = []
+    while True:
+        chunk = os.read(candidate_fd, 1024 * 1024)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    after = os.fstat(candidate_fd)
+finally:
+    os.close(candidate_fd)
+if ((before.st_dev, before.st_ino, before.st_size, before.st_nlink) !=
+        (after.st_dev, after.st_ino, after.st_size, after.st_nlink) or
+        after.st_nlink != 1 or after.st_size != len(raw)):
+    reject("identity or bytes changed while reopened")
+try:
+    linked = os.stat(candidate_name, dir_fd=descriptor, follow_symlinks=False)
+    canonical_member = os.lstat(os.path.join(parent_path, candidate_name))
+    final_parent = os.lstat(parent_path)
+except OSError as exc:
+    reject("path binding changed while reopened: %s" % exc)
+candidate_identity = (after.st_dev, after.st_ino)
+if (not stat.S_ISREG(linked.st_mode) or linked.st_nlink != 1 or
+        (linked.st_dev, linked.st_ino) != candidate_identity or
+        not stat.S_ISREG(canonical_member.st_mode) or canonical_member.st_nlink != 1 or
+        (canonical_member.st_dev, canonical_member.st_ino) != candidate_identity):
+    reject("directory member was unlinked, replaced, or hard-linked")
+if (stat.S_ISLNK(final_parent.st_mode) or not stat.S_ISDIR(final_parent.st_mode) or
+        (final_parent.st_dev, final_parent.st_ino) != parent_identity):
+    reject("result parent path changed while candidate was reopened")
+
+digest = hashlib.sha256(raw).hexdigest()
+observed = {
+    "dev": after.st_dev,
+    "ino": after.st_ino,
+    "name": candidate_name,
+    "parent_dev": parent_identity[0],
+    "parent_ino": parent_identity[1],
+    "sha256": digest,
+    "size": len(raw),
+}
+if binding_mode == "initial":
+    try:
+        expected_raw = open(expected_source, "rb").read()
+    except OSError as exc:
+        reject("cannot read validated provider bytes: %s" % exc)
+    if raw != expected_raw or digest != hashlib.sha256(expected_raw).hexdigest():
+        reject("published raw bytes differ from validated provider bytes")
+    try:
+        with open(binding_path, "x", encoding="utf-8") as handle:
+            json.dump(observed, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+            handle.write("\n")
+    except OSError as exc:
+        reject("cannot retain immutable candidate binding: %s" % exc)
+elif binding_mode == "final":
+    expected_binding = load_private_json(binding_path)
+    if expected_binding != observed:
+        reject("identity, link count, size, or SHA-256 changed after initial reopen")
+else:
+    reject("has an invalid internal validation mode")
+try:
+    with open(reopened_output, "wb") as handle:
+        handle.write(raw)
+except OSError as exc:
+    reject("cannot retain reopened raw bytes: %s" % exc)
+PY
+  }
+
   candidate_path="$result_dir/${output_id}.json"
-  publish_no_clobber "$candidate_bytes" "$candidate_path" candidate || exit 1
+  publish_no_clobber "$candidate_bytes" "$candidate_path" candidate 8 || exit 1
+  reopened_candidate="$readiness_tmp/reopened-candidate.json"
+  validate_published_candidate "$candidate_bytes" initial "$reopened_candidate"
   rm -f "$candidate_bytes" || fail "cannot discard private pre-publication candidate bytes"
+  derivation_candidate="$readiness_tmp/derivation-candidate.json"
+  validate_published_candidate - final "$derivation_candidate"
+  cmp -s "$reopened_candidate" "$derivation_candidate" \
+    || fail "published readiness candidate bytes changed before canonical derivation"
 
   canonical_bytes="$readiness_tmp/canonical-verdict.json"
-  python3 - "$candidate_path" "$packet_state_before" "$readiness_schema" \
+  python3 - "$derivation_candidate" "$packet_state_before" "$readiness_schema" \
     "$canonical_bytes" <<'PY' || exit 1
 import datetime
 import json
@@ -2225,6 +2484,15 @@ try:
 except OSError as exc:
     reject("cannot stage canonical verdict bytes: %s" % exc)
 PY
+  validate_readiness_packet "$packet_state_final" final || exit 1
+  cmp -s "$packet_state_before" "$packet_state_final" \
+    || fail "readiness packet or authoritative binding changed before canonical publication"
+  final_reopened_candidate="$readiness_tmp/final-reopened-candidate.json"
+  validate_published_candidate - final "$final_reopened_candidate"
+  cmp -s "$reopened_candidate" "$final_reopened_candidate" \
+    || fail "published readiness candidate bytes changed before canonical publication"
+  [ ! -e "$canonical_verdict" ] && [ ! -L "$canonical_verdict" ] \
+    || fail "canonical readiness verdict collided before publication"
   publish_no_clobber "$canonical_bytes" "$canonical_verdict" verdict || exit 1
   jq -cn \
     --arg runtime "$runtime" \
