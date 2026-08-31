@@ -282,8 +282,12 @@ default; private/internal repositories opt in. Full policy and evidence contract
 ./scripts/pr-delivery.sh review --run-dir "$RUN_DIR" \
   --review-summary "$RUN_DIR/github/cold-review.md" --verdict accepted
 ./scripts/pr-delivery.sh ready --run-dir "$RUN_DIR"
-./scripts/pr-delivery.sh merge --run-dir "$RUN_DIR" --merge-method squash
+./scripts/pr-delivery.sh merge --run-dir "$RUN_DIR"
 ```
+
+The merge subcommand defaults to GitHub's regular merge method so every accepted branch commit
+remains visible on the target branch. Pass `--merge-method squash` or `--merge-method rebase` only
+when the target repository explicitly prefers that history shape.
 
 | Subcommand | Purpose |
 |---|---|
