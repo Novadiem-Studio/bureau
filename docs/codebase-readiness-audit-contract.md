@@ -44,6 +44,35 @@ names `<attempt_id>-packet/`, `<attempt_id>-result/`, and `verdicts/<attempt_id>
 adapter result member, that member is exactly `<output_id>.json` directly under the validated
 `<attempt_id>-result/` directory; it cannot supply a subpath.
 
+## Machine-readable JSON conventions
+
+Every JSON artifact defined here is exactly one RFC 8259 object encoded as UTF-8 without a byte
+order mark, leading/trailing non-whitespace bytes, or trailing JSON value. Parsers MUST reject
+duplicate object keys at every nesting depth before validation. Each schema table below is an
+exact key set: every listed key is required unless its conditional rule says it MUST be omitted,
+and every unknown key is rejected. JSON `null` is never accepted. Types are exact: a Boolean is
+not an integer, an integer is not a string, and an object/array is not accepted for a scalar.
+
+Common machine types are normative:
+
+| Type | Exact JSON type and validation |
+|---|---|
+| `schema-version` | JSON integer with the sole permitted value `1`. |
+| `sha256` | JSON string matching `^[0-9a-f]{64}$`. |
+| `audit-version` | JSON string matching `^v[0-9]{4}$` whose numeric suffix is in `0001..9999`; `v0000` is invalid. |
+| `timestamp` | JSON string in UTC RFC 3339 second precision, exactly `YYYY-MM-DDTHH:MM:SSZ`; components MUST form a real Gregorian instant. Fractional seconds and offsets other than `Z` are invalid. |
+| `date` | JSON string exactly `YYYY-MM-DD` representing a real Gregorian date. |
+| `safe-id` | JSON string whose UTF-8 bytes satisfy **Safe path-bearing identifiers**: 1–64 ASCII bytes and the exact grammar there. Every machine field ending in `_id` uses this type unless a table explicitly says otherwise. |
+| `bounded-text` | JSON string containing 1–2000 UTF-8 bytes, valid Unicode scalar values, and no NUL, C0, C1, or DEL control character. Used only for `review_question`. |
+| `identity-text` | JSON string containing 1–256 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. Used only for human identity display fields. |
+| `relative-artifact-path` | JSON string containing the exact `/`-separated path relative to `RUN_DIR` named by its schema row; no absolute, empty, `.`, `..`, backslash, symlink, or normalization alias is accepted. |
+| `boolean` | JSON Boolean `true` or `false`. |
+| `object` | JSON object with the exact keys declared by its row/table. |
+| `array` | JSON array in the declared order with elements of exactly the declared type. |
+
+These bounds apply only to machine-readable identifiers and fields named above. Markdown product
+contracts, findings, evidence, and audit prose have no arbitrary length bound from this section.
+
 ## Closed enums
 
 The following enums are closed. There are no aliases and no implicit defaults.
@@ -216,12 +245,24 @@ on. The Conductor is the sole allocator and sole creator of version directories.
    reservations before mutation.
 2. Select one greater than the highest existing numeric suffix, or `v0001` when none exists.
 3. Exclusively create `audit/versions/vNNNN/` and no-clobber publish `reservation.json` containing
-   `audit_version`, `allocation_id`, `reconciliation_attempt_id`, and `reserved_at`.
+   exactly the fields in the schema below.
 4. Give the Architect only that reserved version and path. The Architect writes
    `corrected-audit.md` with same-directory atomic no-clobber publication and never allocates a
    version or writes the index.
 5. Revalidate the reservation and artifact, hash the published bytes, and append the corresponding
    `corrected` event.
+
+`reservation.json` has this exact schema:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `audit_version` | `audit-version` | Equals the containing `vNNNN` directory. |
+| `allocation_id` | `safe-id` | Unique to this reservation. |
+| `reconciliation_attempt_id` | `safe-id` | The only reconciliation attempt allowed to publish here. |
+| `reserved_at` | `timestamp` | Reservation publication time. |
+
+No other key is permitted.
 
 A reservation collision triggers a complete rescan and allocation of the next number; the
 colliding directory is never reused for another allocation. A correction or amendment requires a
@@ -250,6 +291,57 @@ reservation data is invalid. Any other nonempty unpublished state stops mutation
 repair. A different attempt never completes or adopts an existing directory; it allocates a new
 version.
 
+## Deterministic state derivation and profile gates
+
+Before consulting the seal matrix, the Conductor validates mandatory artifacts. Every route
+requires valid `audit/profile.md`, `audit/product-contract.md`, `audit/domain-register.md`,
+`audit/runtime-verification.md`, `audit/setup-quarantine.md`, the exact reservation, the immutable
+corrected audit, and its matching `corrected` index event. A normal route additionally requires a
+completed coverage record for every applicable domain. An archival route requires the preserved
+domain register and zero coverage files. An `audited` route additionally requires its valid packet
+and canonical verdict before sealing. A missing or malformed mandatory artifact, unknown field,
+wrong type, invalid hash/path, or inconsistent binding makes the version **invalid and
+unsealable**; it is not converted into `incomplete` evidence.
+
+For a structurally valid artifact set, derive completeness exactly once from recorded facts:
+
+- `incomplete` if the product intent is missing or materially conflicted, every domain is
+  excluded, or any applicable domain lacks a completed coverage record;
+- otherwise `complete`.
+
+An unavailable or failed runtime alone does not make an otherwise covered audit incomplete; its
+classification and limits still constrain conclusiveness.
+
+Then derive conclusiveness:
+
+- `non-conclusive` if completeness is `incomplete`, contract-critical evidence is
+  `unverifiable`, an evidence conflict remains unresolved, or an owner question explicitly blocks
+  the overall readiness decision;
+- otherwise `conclusive`.
+
+The presence of `inferred` evidence alone does not make a result non-conclusive. The corrected
+audit MUST show the facts used for both derivations. `successful_run` and
+`selectable_for_remediation_planning` are then derived solely from the matrix below; no profile,
+agent, human assertion, or approval may override them.
+
+All profiles share this common gate predicate: intake and authorization validate; the target
+commit still matches; every route-mandatory artifact and exact schema validates; the domain and
+coverage rules above hold; evidence references/classifications and setup quarantine validate;
+the ledger, reservation, corrected-audit path/hash, and derived state agree; and publication has
+no collision or mutable alias.
+
+Profile predicates are exact and additive:
+
+- `catalog` = common gate, independent static deep-read coverage for every applicable domain, no
+  dynamic command/probe in domain passes, no setup-created runtime, and any supplied authorized
+  runtime procedure recorded by the runtime verifier. Its sealing path is standard only.
+- `full` = common gate plus an isolated stand-up and synthetic runtime attempt where technically
+  possible, with every setup-only change quarantined. Runtime unavailability remains recorded
+  evidence rather than an automatic gate failure. Its sealing path is standard only.
+- `audited` = the complete `full` predicate plus a stable, contract-valid bounded packet processed
+  through the physically restricted adapter and a canonical non-`BLOCKED` verdict bound to the
+  exact corrected-audit version, relative path, and SHA-256. It never satisfies a standard gate.
+
 ## Sealability and remediation selectability
 
 The four-state matrix is exhaustive and deterministic:
@@ -267,25 +359,47 @@ review. Every `audited` seal, including an incomplete evidence-only archival sea
 non-`BLOCKED` verdict bound to the exact corrected-audit version, path, and hash being sealed.
 `BLOCKED`, malformed, stale, or differently bound verdicts prevent sealing.
 
-`audit/versions/vNNNN/seal.json` is immutable and contains:
+`audit/versions/vNNNN/seal.json` is immutable. Its base exact key set is:
 
-- schema version, `audit_version: vNNNN`, profile, target commit, and audit date;
-- corrected-audit relative path and SHA-256;
-- product-contract SHA-256;
-- `completeness`, `conclusiveness`, `successful_run`,
-  `selectable_for_remediation_planning`, and selection reason;
-- profile-conditional sealing and cold-review fields as follows.
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `audit_version` | `audit-version` | Equals the containing version directory. |
+| `profile` | JSON string | Exactly `catalog`, `full`, or `audited`; equals `audit/profile.md`. |
+| `target_commit` | JSON string | Exactly 40 or 64 lowercase hexadecimal characters; equals intake. |
+| `audit_date` | `date` | Seal date. |
+| `corrected_audit_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/corrected-audit.md` for `audit_version`. |
+| `corrected_audit_sha256` | `sha256` | Hash of that exact file. |
+| `contract_sha256` | `sha256` | Hash of `audit/product-contract.md`. |
+| `completeness` | JSON string | Exactly `incomplete` or `complete`; mechanically derived above. |
+| `conclusiveness` | JSON string | Exactly `non-conclusive` or `conclusive`; mechanically derived above. |
+| `successful_run` | `boolean` | Exact matrix result. |
+| `selectable_for_remediation_planning` | `boolean` | Exact matrix result. |
+| `selection_reason` | JSON string | Closed value `incomplete-evidence-only`, `complete-evidence-limited`, or `complete-conclusive`, matching the three sealable matrix rows respectively. |
+| `sealing_path` | JSON string | Profile-conditional constant below. |
+| `cold_review` | JSON string | Profile-conditional constant below. |
 
-For `catalog` and `full`, the seal MUST contain `sealing_path: standard-non-premium` and
-`cold_review: not-performed`. It MUST omit `cold_review_verdict`,
-`cold_review_verdict_path`, and `cold_review_verdict_sha256`; no verdict exists to reference.
+For `catalog` and `full`, the exact conditional key set adds no keys:
 
-For `audited`, the seal MUST contain `cold_review: performed`, `cold_review_verdict` with exactly
-`APPROVED_WITH_WARNINGS` or `APPROVED`, `cold_review_verdict_path`, and
-`cold_review_verdict_sha256`. The path and hash MUST identify the adapter-published canonical
-verdict whose reviewed-artifact binding exactly matches this seal's corrected-audit version,
-relative path, and SHA-256. A missing field, `BLOCKED`, `not-performed`, or any path, hash, or
-version mismatch prevents publication.
+- `sealing_path` is exactly `standard-non-premium`;
+- `cold_review` is exactly `not-performed`;
+- `cold_review_verdict`, `cold_review_verdict_path`, and `cold_review_verdict_sha256` MUST be
+  omitted; no verdict exists to reference.
+
+For `audited`, the exact conditional key set additionally requires:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `sealing_path` | JSON string | Exactly `premium-independent-cold-review`. |
+| `cold_review` | JSON string | Exactly `performed`. |
+| `cold_review_verdict` | JSON string | Exactly `APPROVED_WITH_WARNINGS` or `APPROVED`; `BLOCKED` is unsealable. |
+| `cold_review_verdict_path` | `relative-artifact-path` | Exactly `verdicts/<attempt_id>.json` for the accepted `safe-id`. |
+| `cold_review_verdict_sha256` | `sha256` | Hash of that exact adapter-published verdict. |
+
+No other seal key is permitted. The audited verdict path/hash and reviewed-artifact binding MUST
+match this seal's corrected-audit version, relative path, and SHA-256. A missing conditional key,
+forbidden standard-profile verdict key, `BLOCKED`, wrong sealing-path constant, or any path, hash,
+or version mismatch prevents publication.
 
 The Conductor validates the profile gate and matrix, exclusively publishes the seal, hashes it,
 and appends its `sealed` event. An existing seal path is a collision and stops publication; it is
@@ -294,41 +408,83 @@ never overwritten.
 ## Audited packet manifest and premium verdict
 
 For `audited`, the Conductor stages one fresh bounded packet at
-`audit/reviews/<attempt_id>-packet/`. `packet.json` contains:
+`audit/reviews/<attempt_id>-packet/` with no-clobber directory and file creation. `packet.json` has
+this exact key set:
 
-- `audit_version`;
-- exactly one `corrected_audit_path` naming a staged packet-relative allowlist member;
-- exactly one bounded review question;
-- safe attempt and output identifiers;
-- `allowlist`: a canonically path-sorted array of `{path,sha256}` objects.
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `audit_version` | `audit-version` | Exact corrected-audit version under review. |
+| `corrected_audit_path` | packet-member-path string | Exactly one allowlist member containing that version's corrected audit. |
+| `review_question` | `bounded-text` | One bounded question; 1–2000 UTF-8 bytes under the common type. |
+| `attempt_id` | `safe-id` | Equals the packet/result/verdict path identifier. |
+| `output_id` | `safe-id` | Names only the direct result member allowed by the safe-ID rule. |
+| `denied_inputs` | array of JSON strings | Exactly the fixed ordered array below. |
+| `allowlist` | nonempty array of objects | Canonically sorted exact `{path,sha256}` entries defined below. |
+
+`denied_inputs` is this exact array in this exact order; a missing, added, renamed, or reordered
+element is malformed:
+
+```json
+[
+  "run-log",
+  "run-state-and-delegate-state",
+  "checkpoint-log-slices",
+  "prior-challenger-or-notary-findings-and-verdicts",
+  "conductor-or-author-rationale",
+  "visionary-back-and-forth",
+  "chat-and-session-transcripts",
+  "files-absent-from-allowlist"
+]
+```
+
+Each allowlist element is an object with exactly two keys:
+
+| Key | Type | Rule |
+|---|---|---|
+| `path` | packet-member-path string | Raw staged payload path under the rules below. |
+| `sha256` | `sha256` | Hash of the exact staged file bytes. |
+
+No other `packet.json` or allowlist-entry key is permitted.
 
 The allowlist is a closed packet-relative file set. It contains exactly once every readable
 regular payload file except `packet.json`: the product contract, domain register, coverage
 records, runtime-verification and setup-quarantine records, corrected audit, this shared contract,
-the readiness workflow, and the self-contained readiness-reviewer slice. Each `path` is a safe
-relative path within the packet, and each `sha256` is lowercase. Absolute paths, empty or `..`
-segments, path escape, symlinks at any traversed component, duplicate normalized paths, duplicate
-entries, missing hashes, non-lowercase hashes, missing files, extra regular files, special files,
-and hash mismatches make the packet malformed.
+the readiness workflow, and the self-contained readiness-reviewer slice. An archival packet still
+contains its domain register and contains zero coverage files.
 
-`packet.json` explicitly denies these history categories:
+A packet-member path is 1–512 raw ASCII bytes, POSIX-relative, uses `/` as its sole separator,
+and has segments of 1–64 bytes matching exactly
+`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$`. Empty, `.`, `..`, absolute, backslash,
+Unicode, control-byte, trailing-dot, normalization-dependent, and escaping paths are rejected.
+Every traversed and final object MUST be a regular no-symlink path beneath the packet root. The
+adapter rejects symlinks, hard-link/identity aliases, and any pair of paths that the host
+filesystem treats as the same object or whose raw ASCII lowercase forms collide. It does not
+normalize or rewrite a path.
 
-- `log.md`, `state.json`, and delegate state;
-- checkpoint log slices;
-- prior Challenger or Notary findings and verdicts;
-- Conductor or author rationale and Visionary back-and-forth;
-- chat and session transcripts;
-- every file absent from the allowlist.
+The allowlist is sorted ascending by unsigned bytewise lexicographic comparison of the complete
+raw ASCII `path` bytes. Raw paths and host-collision keys are unique. The adapter rejects an
+unsorted/reordered array, duplicate raw or alias path, missing hash, non-lowercase hash, missing
+file, extra regular file, special file, or hash mismatch.
 
 The documented deny list explains the coldness boundary; the closed staged file set and provider
 sandbox enforce it. The reviewer receives no live `RUN_DIR`, target-repository path, framework
 path, home-directory path, or session-store path.
 
-Before invoking a provider, the readiness adapter validates the packet and refuses a pre-existing
-canonical verdict, result directory, unsafe output identifier, or any malformed condition above.
-It then exclusively creates `audit/reviews/<attempt_id>-result/`. Any collision, partial result,
-or validation failure blocks the attempt; nothing is deleted, reused, or repaired. A new attempt
-requires a new attempt id and freshly staged packet.
+Before invoking a provider, the readiness adapter validates `packet.json`, exclusively enumerates
+the staged directory without following links, proves exact file-set equality, and hashes every
+payload. It also hashes the exact `packet.json` bytes and retains that manifest SHA-256 in the
+adapter's private state for this invocation. It refuses a pre-existing canonical verdict, result
+directory, unsafe identifier, or any malformed condition above, then exclusively creates
+`audit/reviews/<attempt_id>-result/`.
+
+After the provider returns and immediately before verdict validation/publication, the same adapter
+rehashes `packet.json` and requires equality with the retained manifest hash, reparses it under the
+exact schema, then re-enumerates and rehashes every payload. Any manifest or payload addition,
+removal, reorder, rename, byte change, alias, or type change invalidates the attempt and publishes
+no canonical verdict. Any collision, partial result, or validation failure blocks the attempt;
+nothing is deleted, reused, or repaired. A new attempt requires a new attempt id and freshly
+no-clobber-staged packet.
 
 The Challenger is a candidate-only producer. It returns one structured candidate with
 `review_mode: verification`, blockers, warnings, and `reviewed_artifacts`; it MUST NOT write
@@ -356,15 +512,33 @@ fresh packet and review. Only a non-`BLOCKED`, exact-bound verdict satisfies the
 writer. Each line is one complete UTF-8 compact JSON object with keys sorted lexicographically.
 The one-active-Conductor invariant serializes all version mutations.
 
-A `corrected` event has exactly these fields:
+A `corrected` event has this exact key set:
 
-- `audit_version`, `event: corrected`, `artifact_path`, `artifact_sha256`, `recorded_at`, and
-  `schema_version`.
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `audit_version` | `audit-version` | Version being recorded. |
+| `event` | JSON string | Exactly `corrected`. |
+| `artifact_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/corrected-audit.md` for `audit_version`. |
+| `artifact_sha256` | `sha256` | Hash of that exact file. |
+| `recorded_at` | `timestamp` | Append time. |
 
-A `sealed` event has exactly these fields:
+A `sealed` event has this exact key set:
 
-- `audit_version`, `event: sealed`, `corrected_audit_path`, `corrected_audit_sha256`,
-  `recorded_at`, `schema_version`, `seal_path`, and `seal_sha256`.
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `audit_version` | `audit-version` | Version being recorded. |
+| `event` | JSON string | Exactly `sealed`. |
+| `corrected_audit_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/corrected-audit.md` for `audit_version`. |
+| `corrected_audit_sha256` | `sha256` | Equals the corrected event hash and exact file bytes. |
+| `recorded_at` | `timestamp` | Append time. |
+| `seal_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/seal.json` for `audit_version`. |
+| `seal_sha256` | `sha256` | Hash of that exact seal. |
+
+No other event key is permitted. In the compact serialized object, keys are ordered
+lexicographically by raw ASCII bytes; the two event classes retain their distinct path/hash key
+names exactly as shown.
 
 Before every allocation, publication, append, resume, or selection, the Conductor reads and
 validates the ledger from byte zero. The order is always: validate ledger and reservation,
@@ -392,15 +566,25 @@ remediation-planning run. Remediation planning needs no client-fix approval, cre
 record, grants no authority to change the client repository, and never auto-executes fixes.
 
 Only after a remediation plan is complete may a human-facing client-fix checkpoint create the
-immutable approval `audit/execute-plan-approvals/<approval_id>.json`. It contains:
+immutable approval `audit/execute-plan-approvals/<approval_id>.json`. It has this exact key set:
 
-- `requested_next_workflow: execute-plan`;
-- selected `audit_version`;
-- seal relative path and SHA-256;
-- remediation-plan path and SHA-256;
-- explicit decision and decision time;
-- checkpoint id;
-- approver identity.
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `approval_id` | `safe-id` | Equals `<approval_id>` in the fixed approval path. |
+| `requested_next_workflow` | JSON string | Exactly `execute-plan`. |
+| `audit_version` | `audit-version` | Exact selected valid selectable seal version. |
+| `seal_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/seal.json` for `audit_version`. |
+| `seal_sha256` | `sha256` | Hash of that exact seal. |
+| `remediation_plan_path` | JSON string | Canonical absolute path exactly of the form `<absolute-remediation-run-dir>/plan.md`, where the parent is the separately started authorized remediation-planning `RUN_DIR`; no symlink, empty, `.`, `..`, backslash, normalization alias, or non-regular target is allowed. |
+| `remediation_plan_sha256` | `sha256` | Hash of that exact completed `plan.md`. |
+| `decision` | JSON string | Exactly `approved`; every other value is invalid. |
+| `decided_at` | `timestamp` | Explicit approval time. |
+| `checkpoint_id` | `safe-id` | Human-facing client-fix checkpoint identifier. |
+| `approver_identity` | `identity-text` | Explicit human approver identity. |
+
+No other approval key is permitted. The `approval_id` is validated before deriving the fixed
+approval path; a caller-supplied alternative approval path is never accepted.
 
 Approval is never inferred from conversation, planning, a previous version, or a superseded
 artifact. Approval bound to a different seal, corrected-audit lineage, or remediation-plan hash is
@@ -411,9 +595,9 @@ invalid. A changed plan or newer selected seal requires a new immutable approval
 `workflows/codebase-readiness-audit.md § Downstream execute-plan authorization validation` is the
 only later validation surface. The Conductor explicitly re-enters that section after the plan and
 approval exist. It revalidates the ledger and selected seal, rehashes the seal and plan, requires
-the seal to be selectable, validates every approval field including
-`requested_next_workflow: execute-plan`, and rejects missing, stale, superseded, or mismatched
-bindings.
+the seal to be selectable, validates the exact approval schema above, and rejects missing,
+different, invalid, or hash-mismatched bindings. An explicitly selected earlier valid selectable
+seal remains eligible when the approval binds that exact seal and plan.
 
 Success emits only a bounded handoff containing the exact seal, remediation-plan, and approval
 paths and hashes. That handoff may authorize the Conductor to start a separate execute-plan run.
