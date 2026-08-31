@@ -209,6 +209,12 @@ A failed or missing runnable environment is `unverifiable`, never a pass. `catal
 create a runnable environment. `full` and `audited` attempt isolated stand-up and synthetic probes
 where technically possible.
 
+An archival route records the exact runtime disposition `archival-no-probe`. It preserves any
+valid runtime evidence already completed for this audit, but starts no new command, stand-up, or
+probe solely to produce an archival seal. This disposition is valid only when the mechanically
+derived completeness is `incomplete`; a complete `full` or `audited` audit carrying
+`archival-no-probe` fails its profile gate.
+
 `audit/setup-quarantine.md` is always present. It contains either an explicit `none` record or,
 for every setup-only change:
 
@@ -296,12 +302,17 @@ version.
 Before consulting the seal matrix, the Conductor validates mandatory artifacts. Every route
 requires valid `audit/profile.md`, `audit/product-contract.md`, `audit/domain-register.md`,
 `audit/runtime-verification.md`, `audit/setup-quarantine.md`, the exact reservation, the immutable
-corrected audit, and its matching `corrected` index event. A normal route additionally requires a
-completed coverage record for every applicable domain. An archival route requires the preserved
-domain register and zero coverage files. An `audited` route additionally requires its valid packet
-and canonical verdict before sealing. A missing or malformed mandatory artifact, unknown field,
-wrong type, invalid hash/path, or inconsistent binding makes the version **invalid and
-unsealable**; it is not converted into `incomplete` evidence.
+corrected audit, and its matching `corrected` index event. A normal route requires a completed
+coverage record for every applicable domain. An archival route requires the preserved domain
+register and the exact set of valid coverage records actually completed before archival closure;
+that set is zero for unresolved intent or an all-domains-excluded register, but may be a nonempty
+proper subset when coverage stopped partway. Deleting an existing valid record, adding an
+unproduced record, forcing the set to zero, or fabricating an absence record is invalid. Every
+existing coverage record still obeys the selected profile's isolation, evidence, and static-only
+rules. An `audited` route additionally requires its valid packet and canonical verdict before
+sealing. A missing or malformed mandatory artifact, unknown field, wrong type, invalid hash/path,
+or inconsistent binding makes the version **invalid and unsealable**; it is not converted into
+`incomplete` evidence.
 
 For a structurally valid artifact set, derive completeness exactly once from recorded facts:
 
@@ -330,17 +341,30 @@ coverage rules above hold; evidence references/classifications and setup quarant
 the ledger, reservation, corrected-audit path/hash, and derived state agree; and publication has
 no collision or mutable alias.
 
-Profile predicates are exact and additive:
+Normal and archival profile predicates are separate, exact, and additive.
 
-- `catalog` = common gate, independent static deep-read coverage for every applicable domain, no
+The **normal predicate** requires mechanically derived `complete` state and the common gate, then:
+
+- normal `catalog` requires independent static deep-read coverage for every applicable domain, no
   dynamic command/probe in domain passes, no setup-created runtime, and any supplied authorized
-  runtime procedure recorded by the runtime verifier. Its sealing path is standard only.
-- `full` = common gate plus an isolated stand-up and synthetic runtime attempt where technically
-  possible, with every setup-only change quarantined. Runtime unavailability remains recorded
-  evidence rather than an automatic gate failure. Its sealing path is standard only.
-- `audited` = the complete `full` predicate plus a stable, contract-valid bounded packet processed
-  through the physically restricted adapter and a canonical non-`BLOCKED` verdict bound to the
-  exact corrected-audit version, relative path, and SHA-256. It never satisfies a standard gate.
+  runtime procedure recorded by the runtime verifier; it uses the standard path;
+- normal `full` requires an isolated stand-up and synthetic runtime attempt where technically
+  possible, with every setup-only change quarantined; runtime unavailability remains evidence
+  rather than an automatic gate failure, but `archival-no-probe` is invalid; it uses the standard
+  path;
+- normal `audited` requires the complete normal `full` predicate plus a stable contract-valid
+  packet, the physically restricted adapter, and a canonical non-`BLOCKED` verdict bound to the
+  exact corrected audit; `archival-no-probe` is invalid and the premium path is mandatory.
+
+The **archival predicate** requires mechanically derived `incomplete` and `non-conclusive` state,
+the common gate, the preserved domain register, the exact existing valid coverage set defined
+above, and `runtime_disposition: archival-no-probe`. Existing coverage must satisfy the same
+profile rules it would on the normal route. Archival `catalog` and archival `full` use
+`standard-non-premium` with `cold_review: not-performed`, record `successful_run: false`, and are
+not selectable. Archival `audited` additionally requires the same stable bounded packet,
+physically restricted adapter, and exact-bound canonical non-`BLOCKED` premium verdict as normal
+`audited`; it is likewise unsuccessful and non-selectable. No normal predicate can be satisfied by
+an incomplete audit, and no archival predicate can be satisfied by a complete audit.
 
 ## Sealability and remediation selectability
 
@@ -348,7 +372,7 @@ The four-state matrix is exhaustive and deterministic:
 
 | Completeness | Conclusiveness | Seal rule | Remediation-planning selection |
 |---|---|---|---|
-| `incomplete` | `non-conclusive` | Evidence-only archival seal is permitted after the selected profile's normal gate and records `successful_run: false`. For `audited`, even this archival seal requires an exact-bound non-`BLOCKED` premium verdict. | `selectable_for_remediation_planning: false`; never a default or explicit planning input. |
+| `incomplete` | `non-conclusive` | Evidence-only archival seal is permitted only after the selected profile's archival predicate and records `successful_run: false`. For `audited`, even this archival seal requires an exact-bound non-`BLOCKED` premium verdict. | `selectable_for_remediation_planning: false`; never a default or explicit planning input. |
 | `complete` | `non-conclusive` | Seal is permitted after the selected profile's normal gate, records `successful_run: true`, and preserves every material `unverifiable` ceiling. | `selectable_for_remediation_planning: true`; planning must preserve the evidence limits. |
 | `complete` | `conclusive` | Seal is permitted after the selected profile's normal gate and records `successful_run: true`. | `selectable_for_remediation_planning: true`. |
 | `incomplete` | `conclusive` | Invalid state; refuse sealing. | Not selectable. |
@@ -451,7 +475,9 @@ The allowlist is a closed packet-relative file set. It contains exactly once eve
 regular payload file except `packet.json`: the product contract, domain register, coverage
 records, runtime-verification and setup-quarantine records, corrected audit, this shared contract,
 the readiness workflow, and the self-contained readiness-reviewer slice. An archival packet still
-contains its domain register and contains zero coverage files.
+contains its domain register and contains exactly the existing valid coverage set used by
+reconciliation: zero for unresolved intent or all domains excluded, otherwise the completed
+partial subset. An absence placeholder is never an allowlist member.
 
 A packet-member path is 1–512 raw ASCII bytes, POSIX-relative, uses `/` as its sole separator,
 and has segments of 1–64 bytes matching exactly
@@ -486,14 +512,20 @@ no canonical verdict. Any collision, partial result, or validation failure block
 nothing is deleted, reused, or repaired. A new attempt requires a new attempt id and freshly
 no-clobber-staged packet.
 
-The Challenger is a candidate-only producer. It returns one structured candidate with
-`review_mode: verification`, blockers, warnings, and `reviewed_artifacts`; it MUST NOT write
-`log.md`, a Markdown review, the result record, or the live verdict. The readiness adapter is the
+The Challenger is a candidate-only producer. It returns one structured candidate containing the
+packet's exact `attempt_id`, `review_mode: verification`, `reviewed_artifacts`, `blockers`,
+`blocker_ids`, and `warnings`; it MUST NOT write `log.md`, a Markdown review, the result record, or
+the live verdict. Every blocker object has one unique safe `id`. `blocker_ids` is required and is
+exactly the ordered array of `blockers[].id`, with one entry per blocker and no missing, duplicate,
+extra, reordered, or mismatched value. An absent `blocker_ids` field is invalid. If the candidate
+supplies a `verdict`, it MUST equal the adapter-derived value exactly. The readiness adapter is the
 sole canonical validator and writer. It:
 
-1. Derives exactly `BLOCKED`, `APPROVED_WITH_WARNINGS`, or `APPROVED` from the candidate blockers
-   and warnings.
-2. Validates the existing Challenger verdict schema and `review_mode: verification`.
+1. Validates the exact blocker object/ID correspondence, then derives `BLOCKED` when
+   `blocker_ids` is nonempty, `APPROVED_WITH_WARNINGS` when `blocker_ids` is empty and `warnings`
+   is nonempty, and `APPROVED` when both arrays are empty.
+2. Validates the existing Challenger verdict schema and requires candidate `attempt_id`,
+   `review_mode`, and any supplied `verdict` to equal the packet or derived value exactly.
 3. Requires `reviewed_artifacts` to equal the manifest's canonically sorted allowlist exactly,
    in the same order, with the same packet-relative paths and lowercase SHA-256 values and no
    missing or extra element.
@@ -585,6 +617,8 @@ immutable approval `audit/execute-plan-approvals/<approval_id>.json`. It has thi
 
 No other approval key is permitted. The `approval_id` is validated before deriving the fixed
 approval path; a caller-supplied alternative approval path is never accepted.
+
+requested_next_workflow: execute-plan
 
 Approval is never inferred from conversation, planning, a previous version, or a superseded
 artifact. Approval bound to a different seal, corrected-audit lineage, or remediation-plan hash is
