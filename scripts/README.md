@@ -464,7 +464,11 @@ In `readiness-audit` mode, `packet.json`—not the three legacy checkpoint/spawn
 placeholders—owns the attempt, output, question, allowlist, hashes, and corrected-audit binding.
 The adapter requires a readable, valid `model-routing.json` with a supported runtime and a
 nonempty `roles.challenger.model` (plus a valid Challenger reasoning effort for Codex); audited
-mode has no silent routing defaults. It validates the closed staged and authoritative read set
+mode has no silent routing defaults. Routing, the selected verdict schema, and Codex `state.json`
+are read through no-follow, nonblocking descriptors and copied into the private adapter workspace
+only after regular-file, link-count-one, before/after identity, raw-byte, pathname, and parent
+bindings succeed; later routing and schema decisions consume those private exact-byte snapshots.
+It validates the closed staged and authoritative read set
 before and after the provider, including the exact machine-readable domain register, canonical
 coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
 seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
@@ -538,8 +542,19 @@ identity. The published candidate is opened relative to the retained result desc
 descriptor is retained through canonical publication and bound to parent and member device/inode,
 exact raw bytes and SHA-256, regular-file type, size, and link count one. The same binding is checked
 before derivation, immediately before the verdict link, and immediately after it; derivation consumes
-only a private copy of the bytes read from that retained descriptor. Historical audited lineage uses
-the same exact candidate-byte relationship, not merely parsed-object equivalence.
+only a private copy of the bytes read from that retained descriptor. Existing unsealed verification
+lineage and historical audited lineage both require the canonical verdict's exact bytes to be the
+retained candidate bytes plus only the adapter-owned `verdict` and `timestamp` members; parsed-object
+equivalence is insufficient.
+The canonical verdict is likewise reopened relative to the retained verdict-directory descriptor
+immediately after its no-clobber link. Its descriptor remains in custody through the terminal helper
+handshake, with exact raw bytes/SHA-256, device/inode, type, size, link count, member path, and parent
+identity checked after publication and again immediately before helper success. The private helper
+command channel publishes descriptor-relative regular files and binds every request and response to
+a fresh cryptographic nonce, fresh command token, and monotonic sequence. Responses are consumed
+with no-follow/nonblocking bounded descriptor reads, strict single-value duplicate-free JSON, and
+before/after file, path, link-count, and channel-parent identity checks; FIFOs, symlinks, hard links,
+replacement, trailing data, forged tokens/nonces, and replay fail closed.
 Immediately before canonical verdict publication, the adapter repeats the complete packet and
 authoritative-source validation using no-follow, nonblocking descriptor reads with before/after
 file, parent, link-count, size, byte-hash, and device/inode checks, then compares that retained

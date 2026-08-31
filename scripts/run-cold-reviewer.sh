@@ -413,7 +413,7 @@ def parse_compact_json_object(line, label):
 
 def load_ndjson(root, relative):
     path = ensure_plain_path(root, relative)
-    raw = open(path, "rb").read()
+    raw = read_plain_bytes(path)
     if not raw or not raw.endswith(b"\n"):
         reject(relative + " is not complete newline-terminated NDJSON")
     values = []
@@ -425,7 +425,7 @@ def load_ndjson(root, relative):
 
 def parse_domain_register(root, relative):
     path = ensure_plain_path(root, relative)
-    raw = open(path, "rb").read()
+    raw = read_plain_bytes(path)
     if raw.startswith(b"\xef\xbb\xbf"):
         reject("domain register has a byte order mark")
     try:
@@ -637,10 +637,7 @@ safe_id(reservation["reconciliation_attempt_id"], "reservation reconciliation_at
 valid_timestamp(reservation["reserved_at"], "reservation reserved_at")
 
 def load_strict_version_index(path):
-    try:
-        raw = open(path, "rb").read()
-    except OSError as exc:
-        reject("cannot read authoritative version index: %s" % exc)
+    raw = read_plain_bytes(path)
     if not raw or not raw.endswith(b"\n"):
         reject("version index is not nonempty complete newline-terminated NDJSON")
     events = []
@@ -1011,7 +1008,7 @@ def validate_recoverable_or_indexed_seal(version, corrected_hash):
 
 def validate_existing_readiness_verdict(verdict_relative):
     match = re.fullmatch(r"verdicts/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\.json", verdict_relative)
-    value, unused = load_json_bytes(ensure_plain_path(run_dir, verdict_relative))
+    value, verdict_raw = load_json_bytes(ensure_plain_path(run_dir, verdict_relative))
     if not isinstance(value, dict):
         reject("existing canonical verdict is not an object: " + verdict_relative)
     if value.get("review_mode") != "verification":
@@ -1260,11 +1257,30 @@ def validate_existing_readiness_verdict(verdict_relative):
     info = os.lstat(result_path)
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         reject("existing readiness result member is not a regular no-alias file")
-    candidate, unused = load_json_bytes(result_path)
+    candidate, candidate_raw = load_json_bytes(result_path)
     exact_keys(candidate, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
                            "blockers", "warnings"], "existing readiness result candidate")
     if candidate != {key: item for key, item in value.items() if key not in {"verdict", "timestamp"}}:
         reject("existing readiness result candidate differs from canonical verdict")
+    try:
+        candidate_text = candidate_raw.decode("utf-8")
+        candidate_decoder = json.JSONDecoder(object_pairs_hook=pairs_object)
+        candidate_start = 0
+        while candidate_start < len(candidate_text) and candidate_text[candidate_start] in " \t\r\n":
+            candidate_start += 1
+        unused_candidate, candidate_end = candidate_decoder.raw_decode(candidate_text, candidate_start)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        reject("existing readiness result raw bytes are invalid: %s" % exc)
+    if candidate_end <= candidate_start or candidate_text[candidate_end - 1] != "}":
+        reject("existing readiness result raw bytes do not end in one object")
+    expected_verdict_raw = (
+        candidate_text[:candidate_end - 1] +
+        ',"verdict":' + json.dumps(value["verdict"], ensure_ascii=True, separators=(",", ":")) +
+        ',"timestamp":' + json.dumps(value["timestamp"], ensure_ascii=True, separators=(",", ":")) +
+        '}' + candidate_text[candidate_end:]
+    ).encode("utf-8")
+    if verdict_raw != expected_verdict_raw:
+        reject("existing readiness result raw bytes do not bind the canonical verdict bytes")
     return manifest["audit_version"], value["verdict"]
 
 version_index_source = ensure_plain_path(run_dir, "audit/version-index.ndjson")
@@ -1508,10 +1524,15 @@ PY
   output_id="$(jq -er '.output_id' "$packet_state_before")" || fail "cannot read validated output_id"
   result_dir="$RUN_DIR/audit/reviews/${attempt_id}-result"
   canonical_verdict="$RUN_DIR/verdicts/${attempt_id}.json"
-  [ -f "$ROUTING" ] && [ -r "$ROUTING" ] \
-    || fail "readiness audit requires readable model-routing.json: $ROUTING"
-  python3 - "$ROUTING" "$readiness_schema" <<'PY' || exit 1
+  readiness_routing="$readiness_tmp/model-routing.json"
+  readiness_schema_snapshot="$readiness_tmp/challenger-verdict.schema.json"
+  readiness_control_bindings="$readiness_tmp/control-bindings.json"
+  python3 - "$readiness_control_bindings" "$ROUTING" "$readiness_routing" \
+    "$readiness_schema" "$readiness_schema_snapshot" <<'PY' || exit 1
+import hashlib
 import json
+import os
+import stat
 import sys
 
 def reject(message):
@@ -1527,28 +1548,106 @@ def pairs(label):
         return result
     return hook
 
-for path in sys.argv[1:]:
+binding_out = sys.argv[1]
+
+def secure_read(path):
+    canonical_path = os.path.realpath(path)
+    parent = os.path.dirname(canonical_path)
     try:
-        raw = open(path, "rb").read()
+        supplied_before = os.lstat(path)
+        supplied_target_before = os.stat(path)
+        parent_before = os.lstat(parent)
+        path_before = os.lstat(canonical_path)
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                 getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+        descriptor = os.open(canonical_path, flags)
     except OSError as exc:
         reject("cannot read %s: %s" % (path, exc))
+    try:
+        opened_before = os.fstat(descriptor)
+        if (stat.S_ISLNK(path_before.st_mode) or not stat.S_ISREG(path_before.st_mode) or
+                not stat.S_ISREG(opened_before.st_mode) or path_before.st_nlink != 1 or
+                opened_before.st_nlink != 1 or
+                (path_before.st_dev, path_before.st_ino) !=
+                (opened_before.st_dev, opened_before.st_ino)):
+            reject(path + " is not one exact unaliased regular file")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+        opened_after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        path_after = os.lstat(path)
+        canonical_after = os.lstat(canonical_path)
+        supplied_target_after = os.stat(path)
+        parent_after = os.lstat(parent)
+    except OSError as exc:
+        reject("secure binding disappeared for %s: %s" % (path, exc))
+    identity = (opened_before.st_dev, opened_before.st_ino)
+    if (stat.S_ISLNK(supplied_before.st_mode) or
+            (supplied_target_before.st_dev, supplied_target_before.st_ino) != identity or
+            (opened_after.st_dev, opened_after.st_ino) != identity or
+            opened_after.st_nlink != 1 or opened_after.st_size != len(raw) or
+            (path_after.st_dev, path_after.st_ino) != identity or
+            (canonical_after.st_dev, canonical_after.st_ino) != identity or
+            (supplied_target_after.st_dev, supplied_target_after.st_ino) != identity or
+            canonical_after.st_nlink != 1 or not stat.S_ISREG(canonical_after.st_mode) or
+            stat.S_ISLNK(parent_before.st_mode) or
+            not stat.S_ISDIR(parent_before.st_mode) or
+            (parent_after.st_dev, parent_after.st_ino) !=
+            (parent_before.st_dev, parent_before.st_ino)):
+        reject(path + " identity, bytes, link count, or parent changed while read")
+    return raw, {
+        "canonical_path": canonical_path, "dev": opened_after.st_dev,
+        "ino": opened_after.st_ino, "parent_dev": parent_after.st_dev,
+        "parent_ino": parent_after.st_ino, "sha256": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw), "supplied_path": path,
+    }
+
+bindings = []
+for source, destination in zip(sys.argv[2::2], sys.argv[3::2]):
+    raw, binding = secure_read(source)
+    bindings.append(binding)
     if raw.startswith(b"\xef\xbb\xbf"):
-        reject(path + " has a byte order mark")
+        reject(source + " has a byte order mark")
     try:
         text = raw.decode("utf-8")
         decoder = json.JSONDecoder(
-            object_pairs_hook=pairs(path),
-            parse_constant=lambda value: reject(path + " contains non-RFC-8259 constant: " + value),
+            object_pairs_hook=pairs(source),
+            parse_constant=lambda value: reject(source + " contains non-RFC-8259 constant: " + value),
         )
         start = 0
         while start < len(text) and text[start] in " \t\r\n":
             start += 1
         unused, end = decoder.raw_decode(text, start)
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-        reject("invalid JSON in %s: %s" % (path, exc))
+        reject("invalid JSON in %s: %s" % (source, exc))
     if any(character not in " \t\r\n" for character in text[end:]):
-        reject(path + " has trailing content or non-RFC-8259 whitespace")
+        reject(source + " has trailing content or non-RFC-8259 whitespace")
+    try:
+        descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            offset = 0
+            while offset < len(raw):
+                offset += os.write(descriptor, raw[offset:])
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        reject("cannot retain secure snapshot of %s: %s" % (source, exc))
+try:
+    with open(binding_out, "x", encoding="utf-8") as handle:
+        json.dump(bindings, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        handle.write("\n")
+except OSError as exc:
+    reject("cannot retain secure readiness control bindings: %s" % exc)
 PY
+  readiness_schema="$readiness_schema_snapshot"
   jq -e '
     type == "object"
     and (.runtime == "claude" or .runtime == "openai" or .runtime == "codex")
@@ -1562,30 +1661,31 @@ PY
                     or . == "high" or . == "xhigh" or . == "max" or . == "ultra"))
          else true
          end)
-  ' "$ROUTING" >/dev/null 2>&1 \
+  ' "$readiness_routing" >/dev/null 2>&1 \
     || fail "readiness audit model-routing.json lacks a valid Challenger route"
 
-  runtime="$(jq -er '.runtime' "$ROUTING")" \
+  runtime="$(jq -er '.runtime' "$readiness_routing")" \
     || fail "cannot read readiness reviewer runtime"
   case "$runtime" in
     openai|codex) runtime="openai" ;;
     claude) ;;
     *) fail "reviewer host '$runtime' has no cold-reviewer adapter" ;;
   esac
-  model="$(jq -er '.roles.challenger.model' "$ROUTING")" \
+  model="$(jq -er '.roles.challenger.model' "$readiness_routing")" \
     || fail "cannot read readiness Challenger model"
-  reasoning_effort="$(jq -r '.roles.challenger.reasoningEffort // empty' "$ROUTING")" \
+  reasoning_effort="$(jq -r '.roles.challenger.reasoningEffort // empty' "$readiness_routing")" \
     || fail "cannot read readiness Challenger reasoning effort"
 
   target_repo=""
   if [ "$runtime" = "openai" ]; then
-    target_repo="$(python3 - "$RUN_DIR/state.json" <<'PY'
+    target_repo="$(python3 - "$RUN_DIR/state.json" "$readiness_tmp/state-control-binding.json" <<'PY'
+import hashlib
 import json
 import os
 import stat
 import sys
 
-state_path = sys.argv[1]
+state_path, binding_out = sys.argv[1:]
 
 def reject(message):
     raise SystemExit("run-cold-reviewer: readiness Codex target deny " + message)
@@ -1599,12 +1699,56 @@ def pairs_object(pairs):
     return result
 
 try:
-    info = os.lstat(state_path)
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
-        reject("state.json is a symlink or not a regular file")
-    raw = open(state_path, "rb").read()
+    canonical_state = os.path.realpath(state_path)
+    parent = os.path.dirname(canonical_state)
+    supplied_before = os.lstat(state_path)
+    supplied_target_before = os.stat(state_path)
+    parent_before = os.lstat(parent)
+    path_before = os.lstat(canonical_state)
+    flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+             getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+    descriptor = os.open(canonical_state, flags)
 except OSError as exc:
     reject("cannot read state.json: %s" % exc)
+try:
+    opened_before = os.fstat(descriptor)
+    if (stat.S_ISLNK(path_before.st_mode) or not stat.S_ISREG(path_before.st_mode) or
+            not stat.S_ISREG(opened_before.st_mode) or path_before.st_nlink != 1 or
+            opened_before.st_nlink != 1 or
+            (path_before.st_dev, path_before.st_ino) !=
+            (opened_before.st_dev, opened_before.st_ino)):
+        reject("state.json is not one exact unaliased regular file")
+    chunks = []
+    while True:
+        chunk = os.read(descriptor, 1024 * 1024)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    opened_after = os.fstat(descriptor)
+finally:
+    os.close(descriptor)
+try:
+    path_after = os.lstat(state_path)
+    canonical_after = os.lstat(canonical_state)
+    supplied_target_after = os.stat(state_path)
+    parent_after = os.lstat(parent)
+except OSError as exc:
+    reject("state.json secure binding disappeared: %s" % exc)
+identity = (opened_before.st_dev, opened_before.st_ino)
+if (stat.S_ISLNK(supplied_before.st_mode) or
+        (supplied_target_before.st_dev, supplied_target_before.st_ino) != identity or
+        (opened_after.st_dev, opened_after.st_ino) != identity or
+        opened_after.st_nlink != 1 or opened_after.st_size != len(raw) or
+        (path_after.st_dev, path_after.st_ino) != identity or
+        (canonical_after.st_dev, canonical_after.st_ino) != identity or
+        (supplied_target_after.st_dev, supplied_target_after.st_ino) != identity or
+        canonical_after.st_nlink != 1 or not stat.S_ISREG(canonical_after.st_mode) or
+        stat.S_ISLNK(parent_before.st_mode) or
+        not stat.S_ISDIR(parent_before.st_mode) or
+        (parent_after.st_dev, parent_after.st_ino) !=
+        (parent_before.st_dev, parent_before.st_ino)):
+    reject("state.json identity, bytes, link count, or parent changed while read")
 if raw.startswith(b"\xef\xbb\xbf"):
     reject("state.json has a byte order mark")
 try:
@@ -1633,6 +1777,17 @@ except OSError as exc:
     reject("target_repo cannot be resolved: %s" % exc)
 if not stat.S_ISDIR(target_mode):
     reject("target_repo does not resolve to an existing directory")
+try:
+    with open(binding_out, "x", encoding="utf-8") as handle:
+        json.dump({
+            "canonical_path": canonical_state, "dev": opened_after.st_dev,
+            "ino": opened_after.st_ino, "parent_dev": parent_after.st_dev,
+            "parent_ino": parent_after.st_ino, "sha256": hashlib.sha256(raw).hexdigest(),
+            "size": len(raw), "supplied_path": state_path,
+        }, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        handle.write("\n")
+except OSError as exc:
+    reject("cannot retain state.json secure binding: %s" % exc)
 print(target)
 PY
 )" || exit 1
@@ -1764,6 +1919,91 @@ def read_regular_fd(descriptor, label):
         raise RuntimeError(label + " changed while read")
     return raw, after
 
+def read_anchored_member(directory, parent_path, expected_identity, name, label,
+                         maximum=64 * 1024 * 1024):
+    verify_directory(directory, parent_path, expected_identity, label + " parent")
+    try:
+        path_before = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                 getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+        descriptor = os.open(name, flags, dir_fd=directory)
+    except OSError as exc:
+        raise RuntimeError("%s cannot be securely opened: %s" % (label, exc))
+    try:
+        opened_before = os.fstat(descriptor)
+        if (not stat.S_ISREG(path_before.st_mode) or path_before.st_nlink != 1 or
+                not stat.S_ISREG(opened_before.st_mode) or opened_before.st_nlink != 1 or
+                (path_before.st_dev, path_before.st_ino) !=
+                (opened_before.st_dev, opened_before.st_ino)):
+            raise RuntimeError(label + " is not one exact unaliased regular file")
+        chunks = []
+        size = 0
+        while True:
+            chunk = os.read(descriptor, min(65536, maximum + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > maximum:
+                raise RuntimeError(label + " exceeds the bounded channel size")
+        raw = b"".join(chunks)
+        opened_after = os.fstat(descriptor)
+    except Exception:
+        os.close(descriptor)
+        raise
+    try:
+        linked_after = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        canonical_after = os.lstat(os.path.join(parent_path, name))
+        verify_directory(directory, parent_path, expected_identity, label + " parent")
+    except Exception:
+        os.close(descriptor)
+        raise
+    identity = (opened_before.st_dev, opened_before.st_ino)
+    if ((opened_after.st_dev, opened_after.st_ino, opened_after.st_size,
+         opened_after.st_nlink) !=
+            (opened_before.st_dev, opened_before.st_ino, opened_before.st_size,
+             opened_before.st_nlink) or opened_after.st_nlink != 1 or
+            opened_after.st_size != len(raw) or
+            (linked_after.st_dev, linked_after.st_ino) != identity or
+            not stat.S_ISREG(linked_after.st_mode) or linked_after.st_nlink != 1 or
+            (canonical_after.st_dev, canonical_after.st_ino) != identity or
+            not stat.S_ISREG(canonical_after.st_mode) or canonical_after.st_nlink != 1):
+        os.close(descriptor)
+        raise RuntimeError(label + " identity, bytes, link count, or path binding changed")
+    observed = {
+        "dev": opened_after.st_dev, "ino": opened_after.st_ino,
+        "parent_dev": expected_identity[0], "parent_ino": expected_identity[1],
+        "sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw), "name": name,
+    }
+    return descriptor, raw, observed
+
+def strict_json(raw, label):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise RuntimeError(label + " contains a duplicate JSON key")
+            result[key] = value
+        return result
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raise RuntimeError(label + " contains a byte order mark")
+    try:
+        text = raw.decode("utf-8")
+        decoder = json.JSONDecoder(
+            object_pairs_hook=pairs,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                RuntimeError(label + " contains a non-RFC-8259 constant")),
+        )
+        start = 0
+        while start < len(text) and text[start] in " \t\r\n":
+            start += 1
+        value, end = decoder.raw_decode(text, start)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("%s is invalid JSON: %s" % (label, exc))
+    if any(character not in " \t\r\n" for character in text[end:]):
+        raise RuntimeError(label + " contains trailing data or non-RFC-8259 whitespace")
+    return value
+
 def read_private_source(path):
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
@@ -1782,6 +2022,7 @@ def publish_bytes(raw, directory, parent_path, expected_identity, name):
         if existing == name or existing.lower() == name.lower():
             raise RuntimeError("no-clobber publication collision: " + name)
     temporary = ".readiness-publish-%s.tmp" % secrets.token_hex(12)
+    published_identity = None
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
                          0o600, dir_fd=directory)
     try:
@@ -1789,9 +2030,19 @@ def publish_bytes(raw, directory, parent_path, expected_identity, name):
         while offset < len(raw):
             offset += os.write(descriptor, raw[offset:])
         os.fsync(descriptor)
+        temporary_info = os.fstat(descriptor)
+        if (not stat.S_ISREG(temporary_info.st_mode) or temporary_info.st_nlink != 1 or
+                temporary_info.st_size != len(raw)):
+            raise RuntimeError("publication temporary identity or bytes changed")
         verify_directory(directory, parent_path, expected_identity, "publication parent")
         os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory,
                 follow_symlinks=False)
+        linked_info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if ((linked_info.st_dev, linked_info.st_ino) !=
+                (temporary_info.st_dev, temporary_info.st_ino) or
+                not stat.S_ISREG(linked_info.st_mode)):
+            raise RuntimeError("published member identity differs from linked temporary")
+        published_identity = (temporary_info.st_dev, temporary_info.st_ino)
         os.fsync(directory)
         verify_directory(directory, parent_path, expected_identity, "publication parent")
     finally:
@@ -1800,6 +2051,7 @@ def publish_bytes(raw, directory, parent_path, expected_identity, name):
             os.unlink(temporary, dir_fd=directory)
         except FileNotFoundError:
             pass
+    return published_identity
 
 reviews_fd, reviews_identity = open_anchored(reviews_parent, "reviews parent")
 try:
@@ -1846,6 +2098,10 @@ candidate_fd = None
 candidate_name = None
 candidate_raw = None
 candidate_observed = None
+verdict_member_fd = None
+verdict_name = None
+verdict_raw = None
+verdict_observed = None
 
 def validate_candidate(output_path=None):
     global candidate_raw
@@ -1869,31 +2125,93 @@ def validate_candidate(output_path=None):
     if output_path:
         write_private(output_path, raw)
 
-ready_path = os.path.join(channel_path, "ready")
-ready_descriptor = os.open(ready_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+def validate_verdict():
+    if verdict_member_fd is None or verdict_observed is None:
+        raise RuntimeError("canonical verdict has not been published")
+    verify_directory(verdict_fd, verdict_parent, verdict_identity, "retained verdict parent")
+    raw, info = read_regular_fd(verdict_member_fd, "retained canonical verdict")
+    linked = os.stat(verdict_name, dir_fd=verdict_fd, follow_symlinks=False)
+    canonical = os.lstat(os.path.join(verdict_parent, verdict_name))
+    observed = {
+        "dev": info.st_dev, "ino": info.st_ino, "name": verdict_name,
+        "parent_dev": verdict_identity[0], "parent_ino": verdict_identity[1],
+        "sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw),
+    }
+    if (not stat.S_ISREG(linked.st_mode) or linked.st_nlink != 1 or
+            not stat.S_ISREG(canonical.st_mode) or canonical.st_nlink != 1 or
+            (linked.st_dev, linked.st_ino) != (info.st_dev, info.st_ino) or
+            (canonical.st_dev, canonical.st_ino) != (info.st_dev, info.st_ino) or
+            observed != verdict_observed or raw != verdict_raw):
+        raise RuntimeError("canonical verdict identity, bytes, hash, link count, or path binding changed")
+
+channel_fd, channel_identity = open_anchored(channel_path, "custody channel")
+
+ready_descriptor = os.open("ready", os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                           getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=channel_fd)
 os.write(ready_descriptor, b"ready\n")
+os.fsync(ready_descriptor)
 os.close(ready_descriptor)
+os.fsync(channel_fd)
+seen_nonces = set()
+last_sequence = 0
 try:
     while True:
-        request_names = sorted(name for name in os.listdir(channel_path)
+        verify_directory(channel_fd, channel_path, channel_identity, "custody channel")
+        request_names = sorted(name for name in os.listdir(channel_fd)
                                if re.fullmatch(r"[0-9a-f]{32}\.request", name))
         if not request_names:
             time.sleep(0.01)
             continue
         request_name = request_names[0]
-        request_path = os.path.join(channel_path, request_name)
-        response_path = os.path.join(channel_path, request_name[:-8] + ".response")
         try:
-            request_raw = read_private_source(request_path)
-            os.unlink(request_path)
-            request = json.loads(request_raw.decode("utf-8"))
-            if request.get("token") != token:
+            pending_request = os.stat(request_name, dir_fd=channel_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(pending_request.st_mode) and pending_request.st_nlink != 1:
+            time.sleep(0.01)
+            continue
+        request_nonce = request_name[:-8]
+        response_name = request_nonce + ".response"
+        response_action = "invalid"
+        response_sequence = -1
+        response_command_token = "invalid"
+        stop_after_response = False
+        try:
+            request_descriptor, request_raw, unused_request_binding = read_anchored_member(
+                channel_fd, channel_path, channel_identity, request_name, "custody request",
+                maximum=1024 * 1024)
+            os.close(request_descriptor)
+            os.unlink(request_name, dir_fd=channel_fd)
+            request = strict_json(request_raw, "custody request")
+            if not isinstance(request, dict) or set(request) != {
+                    "action", "arguments", "capability", "command_token", "nonce", "sequence"}:
+                raise RuntimeError("custody request has the wrong exact field set")
+            response_action = request["action"]
+            response_sequence = request["sequence"]
+            response_command_token = request["command_token"]
+            if request["capability"] != token:
                 raise RuntimeError("invalid custody capability")
-            action = request.get("action")
-            arguments = request.get("arguments", [])
+            if (request["nonce"] != request_nonce or
+                    not re.fullmatch(r"[0-9a-f]{32}", request["nonce"] or "") or
+                    not re.fullmatch(r"[0-9a-f]{64}", request["command_token"] or "")):
+                raise RuntimeError("custody request nonce or command token is invalid")
+            if request_nonce in seen_nonces:
+                raise RuntimeError("custody request nonce was replayed")
+            if type(request["sequence"]) is not int or request["sequence"] != last_sequence + 1:
+                raise RuntimeError("custody request sequence is invalid or replayed")
+            if not isinstance(request["action"], str) or not isinstance(request["arguments"], list):
+                raise RuntimeError("custody request action or arguments type is invalid")
+            seen_nonces.add(request_nonce)
+            last_sequence = request["sequence"]
+            action = request["action"]
+            arguments = request["arguments"]
             if action == "status":
+                if arguments:
+                    raise RuntimeError("status arguments are invalid")
                 verify_directory(result_fd, result_path, result_identity, "retained result parent")
             elif action == "check-empty":
+                if arguments:
+                    raise RuntimeError("check-empty arguments are invalid")
                 verify_directory(result_fd, result_path, result_identity, "retained result parent")
                 if os.listdir(result_fd):
                     raise RuntimeError("reserved result directory is not empty")
@@ -1904,13 +2222,14 @@ try:
                 if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.json", requested_name):
                     raise RuntimeError("candidate basename is unsafe")
                 raw = read_private_source(source)
-                publish_bytes(raw, result_fd, result_path, result_identity, requested_name)
+                candidate_published_identity = publish_bytes(
+                    raw, result_fd, result_path, result_identity, requested_name)
                 flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
                          getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
                 candidate_fd = os.open(requested_name, flags, dir_fd=result_fd)
                 candidate_name = requested_name
                 candidate_raw, info = read_regular_fd(candidate_fd, "published candidate")
-                if candidate_raw != raw:
+                if candidate_raw != raw or (info.st_dev, info.st_ino) != candidate_published_identity:
                     raise RuntimeError("published candidate differs from provider bytes")
                 candidate_observed = {
                     "dev": info.st_dev, "ino": info.st_ino, "name": candidate_name,
@@ -1929,36 +2248,74 @@ try:
             elif action == "publish-verdict":
                 if len(arguments) != 2:
                     raise RuntimeError("verdict publication arguments are invalid")
-                source, verdict_name = arguments
+                source, requested_verdict_name = arguments
+                if verdict_member_fd is not None:
+                    raise RuntimeError("canonical verdict publication state is invalid")
                 validate_candidate()
-                publish_bytes(read_private_source(source), verdict_fd, verdict_parent,
-                              verdict_identity, verdict_name)
+                source_raw = read_private_source(source)
+                verdict_published_identity = publish_bytes(
+                    source_raw, verdict_fd, verdict_parent, verdict_identity,
+                    requested_verdict_name)
+                verdict_name = requested_verdict_name
+                verdict_member_fd, verdict_raw, verdict_observed = read_anchored_member(
+                    verdict_fd, verdict_parent, verdict_identity, verdict_name,
+                    "published canonical verdict")
+                if (verdict_raw != source_raw or
+                        (verdict_observed["dev"], verdict_observed["ino"]) !=
+                        verdict_published_identity):
+                    raise RuntimeError("published canonical verdict differs from adapter bytes")
                 validate_candidate()
+                validate_verdict()
+            elif action == "finalize":
+                if arguments or verdict_member_fd is None:
+                    raise RuntimeError("terminal custody state is invalid")
+                validate_candidate()
+                validate_verdict()
+                stop_after_response = True
             else:
                 raise RuntimeError("unknown custody action")
-            response = {"ok": True}
+            if verdict_member_fd is not None:
+                validate_candidate()
+                validate_verdict()
+            response = {
+                "action": response_action, "command_token": response_command_token,
+                "nonce": request_nonce, "ok": True, "sequence": response_sequence,
+            }
         except Exception as exc:
-            response = {"error": str(exc), "ok": False}
-        response_raw = (json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8")
-        response_temporary = response_path + ".tmp"
-        response_descriptor = os.open(response_temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            response = {
+                "action": response_action, "command_token": response_command_token,
+                "error": str(exc), "nonce": request_nonce, "ok": False,
+                "sequence": response_sequence,
+            }
+        response_raw = (json.dumps(response, ensure_ascii=True, separators=(",", ":"),
+                                   sort_keys=True) + "\n").encode("utf-8")
         try:
-            os.write(response_descriptor, response_raw)
-            os.fsync(response_descriptor)
-        finally:
-            os.close(response_descriptor)
-        os.rename(response_temporary, response_path)
+            publish_bytes(response_raw, channel_fd, channel_path, channel_identity, response_name)
+        except Exception as exc:
+            print("run-cold-reviewer: readiness custody response publication failed: %s" % exc,
+                  file=sys.stderr)
+            break
+        if verdict_member_fd is not None:
+            validate_candidate()
+            validate_verdict()
+        if stop_after_response:
+            break
 finally:
+    if verdict_member_fd is not None:
+        os.close(verdict_member_fd)
     if candidate_fd is not None:
         os.close(candidate_fd)
+    os.close(channel_fd)
     os.close(result_fd)
     os.close(verdict_fd)
 PY
   custody_pid=$!
+  custody_sequence=0
   custody_command() {
     action="$1"
     shift
-    python3 - "$custody_channel" "$custody_token" "$action" "$@" <<'PY'
+    custody_sequence=$((custody_sequence + 1))
+    python3 - "$custody_channel" "$custody_token" "$custody_sequence" "$action" "$@" <<'PY'
 import json
 import os
 import secrets
@@ -1966,54 +2323,183 @@ import stat
 import sys
 import time
 
-channel_path, token, action, *arguments = sys.argv[1:]
-ready_path = os.path.join(channel_path, "ready")
+channel_path, capability, sequence_text, action, *arguments = sys.argv[1:]
+try:
+    sequence = int(sequence_text)
+except ValueError:
+    raise SystemExit("run-cold-reviewer: readiness custody sequence is invalid")
+directory_flags = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) |
+                   getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+try:
+    channel_path_info = os.lstat(channel_path)
+    channel_fd = os.open(channel_path, directory_flags)
+    channel_info = os.fstat(channel_fd)
+except OSError as exc:
+    raise SystemExit("run-cold-reviewer: readiness custody channel cannot be opened: %s" % exc)
+channel_identity = (channel_info.st_dev, channel_info.st_ino)
+if (stat.S_ISLNK(channel_path_info.st_mode) or not stat.S_ISDIR(channel_path_info.st_mode) or
+        not stat.S_ISDIR(channel_info.st_mode) or
+        (channel_path_info.st_dev, channel_path_info.st_ino) != channel_identity):
+    raise SystemExit("run-cold-reviewer: readiness custody channel identity is unsafe")
+
+def verify_channel():
+    try:
+        descriptor_info = os.fstat(channel_fd)
+        path_info = os.lstat(channel_path)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: readiness custody channel disappeared: %s" % exc)
+    if (not stat.S_ISDIR(descriptor_info.st_mode) or stat.S_ISLNK(path_info.st_mode) or
+            not stat.S_ISDIR(path_info.st_mode) or
+            (descriptor_info.st_dev, descriptor_info.st_ino) != channel_identity or
+            (path_info.st_dev, path_info.st_ino) != channel_identity):
+        raise SystemExit("run-cold-reviewer: readiness custody channel identity changed")
+
+def strict_json(raw):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raise ValueError("byte order mark")
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder(
+        object_pairs_hook=pairs,
+        parse_constant=lambda value: (_ for _ in ()).throw(ValueError("invalid constant")),
+    )
+    start = 0
+    while start < len(text) and text[start] in " \t\r\n":
+        start += 1
+    value, end = decoder.raw_decode(text, start)
+    if any(character not in " \t\r\n" for character in text[end:]):
+        raise ValueError("trailing data or non-RFC-8259 whitespace")
+    return value
+
 for unused in range(500):
     try:
-        ready_info = os.lstat(ready_path)
-        if stat.S_ISREG(ready_info.st_mode) and ready_info.st_nlink == 1:
+        verify_channel()
+        ready_path_info = os.stat("ready", dir_fd=channel_fd, follow_symlinks=False)
+        ready_fd = os.open("ready", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                           getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0),
+                           dir_fd=channel_fd)
+        ready_info = os.fstat(ready_fd)
+        ready_raw = os.read(ready_fd, 16)
+        ready_after = os.fstat(ready_fd)
+        os.close(ready_fd)
+        if (stat.S_ISREG(ready_info.st_mode) and ready_info.st_nlink == 1 and
+                (ready_info.st_dev, ready_info.st_ino) ==
+                (ready_path_info.st_dev, ready_path_info.st_ino) and
+                (ready_after.st_dev, ready_after.st_ino, ready_after.st_nlink) ==
+                (ready_info.st_dev, ready_info.st_ino, ready_info.st_nlink) and
+                ready_raw == b"ready\n"):
             break
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         pass
     time.sleep(0.01)
 else:
     raise SystemExit("run-cold-reviewer: readiness custody helper did not become ready")
 nonce = secrets.token_hex(16)
-request_path = os.path.join(channel_path, nonce + ".request")
-request_temporary = os.path.join(channel_path, nonce + ".request.tmp")
-response_path = os.path.join(channel_path, nonce + ".response")
-request_raw = (json.dumps({"action": action, "arguments": arguments, "token": token},
-                          separators=(",", ":")) + "\n").encode("utf-8")
-descriptor = os.open(request_temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+command_token = secrets.token_hex(32)
+request_name = nonce + ".request"
+request_temporary = nonce + ".request.tmp"
+response_name = nonce + ".response"
+request_raw = (json.dumps({
+    "action": action, "arguments": arguments, "capability": capability,
+    "command_token": command_token, "nonce": nonce, "sequence": sequence,
+}, ensure_ascii=True, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+verify_channel()
+descriptor = os.open(request_temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                     getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=channel_fd)
 try:
-    os.write(descriptor, request_raw)
+    offset = 0
+    while offset < len(request_raw):
+        offset += os.write(descriptor, request_raw[offset:])
     os.fsync(descriptor)
 finally:
     os.close(descriptor)
-os.rename(request_temporary, request_path)
+try:
+    verify_channel()
+    os.link(request_temporary, request_name, src_dir_fd=channel_fd, dst_dir_fd=channel_fd,
+            follow_symlinks=False)
+    os.fsync(channel_fd)
+    verify_channel()
+finally:
+    try:
+        os.unlink(request_temporary, dir_fd=channel_fd)
+    except FileNotFoundError:
+        pass
+aliased_response_polls = 0
 for unused in range(3000):
     try:
-        descriptor = os.open(response_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        verify_channel()
+        path_before = os.stat(response_name, dir_fd=channel_fd, follow_symlinks=False)
+        if not stat.S_ISREG(path_before.st_mode):
+            raise SystemExit("run-cold-reviewer: readiness custody response is not a regular file")
+        if path_before.st_nlink != 1:
+            aliased_response_polls += 1
+            if aliased_response_polls > 100:
+                raise SystemExit("run-cold-reviewer: readiness custody response is hard-linked")
+            time.sleep(0.01)
+            continue
+        descriptor = os.open(response_name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                             getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0),
+                             dir_fd=channel_fd)
         break
     except FileNotFoundError:
         time.sleep(0.01)
 else:
     raise SystemExit("run-cold-reviewer: readiness custody helper did not respond")
 try:
+    before = os.fstat(descriptor)
+    if (not stat.S_ISREG(path_before.st_mode) or path_before.st_nlink != 1 or
+            not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+            (path_before.st_dev, path_before.st_ino) != (before.st_dev, before.st_ino)):
+        raise ValueError("response is not one exact unaliased regular file")
     chunks = []
+    size = 0
     while True:
-        chunk = os.read(descriptor, 65536)
+        chunk = os.read(descriptor, min(65536, 1024 * 1024 + 1 - size))
         if not chunk:
             break
         chunks.append(chunk)
+        size += len(chunk)
+        if size > 1024 * 1024:
+            raise ValueError("response exceeds bounded channel size")
     raw = b"".join(chunks)
-finally:
-    os.close(descriptor)
-    os.unlink(response_path)
-try:
-    response = json.loads(raw.decode("utf-8"))
+    after = os.fstat(descriptor)
 except Exception as exc:
     raise SystemExit("run-cold-reviewer: invalid readiness custody response: %s" % exc)
+finally:
+    os.close(descriptor)
+try:
+    linked_after = os.stat(response_name, dir_fd=channel_fd, follow_symlinks=False)
+    canonical_after = os.lstat(os.path.join(channel_path, response_name))
+    verify_channel()
+    if ((after.st_dev, after.st_ino, after.st_size, after.st_nlink) !=
+            (before.st_dev, before.st_ino, before.st_size, before.st_nlink) or
+            after.st_nlink != 1 or after.st_size != len(raw) or
+            (linked_after.st_dev, linked_after.st_ino) != (after.st_dev, after.st_ino) or
+            not stat.S_ISREG(linked_after.st_mode) or linked_after.st_nlink != 1 or
+            (canonical_after.st_dev, canonical_after.st_ino) != (after.st_dev, after.st_ino) or
+            not stat.S_ISREG(canonical_after.st_mode) or canonical_after.st_nlink != 1):
+        raise ValueError("response identity, bytes, link count, or path binding changed")
+    response = strict_json(raw)
+except Exception as exc:
+    raise SystemExit("run-cold-reviewer: invalid readiness custody response: %s" % exc)
+finally:
+    try:
+        os.unlink(response_name, dir_fd=channel_fd)
+    except FileNotFoundError:
+        pass
+    os.close(channel_fd)
+expected_keys = ({"action", "command_token", "nonce", "ok", "sequence"} if response.get("ok") is True
+                 else {"action", "command_token", "error", "nonce", "ok", "sequence"})
+if (not isinstance(response, dict) or set(response) != expected_keys or
+        response.get("action") != action or response.get("command_token") != command_token or
+        response.get("nonce") != nonce or response.get("sequence") != sequence):
+    raise SystemExit("run-cold-reviewer: invalid readiness custody response binding")
 if response.get("ok") is not True:
     raise SystemExit("run-cold-reviewer: readiness custody failure: " + str(response.get("error")))
 PY
@@ -2118,10 +2604,48 @@ def reject(message):
     raise SystemExit("run-cold-reviewer: readiness Codex snapshot " + message)
 
 def sha_file(path):
+    parent = os.path.dirname(path)
+    try:
+        parent_before = os.lstat(parent)
+        path_before = os.lstat(path)
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                 getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        reject("cannot securely hash snapshot member %s: %s" % (path, exc))
     digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+    size = 0
+    try:
+        opened_before = os.fstat(descriptor)
+        if (stat.S_ISLNK(path_before.st_mode) or not stat.S_ISREG(path_before.st_mode) or
+                path_before.st_nlink != 1 or not stat.S_ISREG(opened_before.st_mode) or
+                opened_before.st_nlink != 1 or
+                (path_before.st_dev, path_before.st_ino) !=
+                (opened_before.st_dev, opened_before.st_ino)):
+            reject("snapshot hash target is not one exact unaliased regular file")
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
+            size += len(chunk)
+        opened_after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        path_after = os.lstat(path)
+        parent_after = os.lstat(parent)
+    except OSError as exc:
+        reject("snapshot hash binding disappeared: %s" % exc)
+    identity = (opened_before.st_dev, opened_before.st_ino)
+    if ((opened_after.st_dev, opened_after.st_ino) != identity or
+            opened_after.st_nlink != 1 or opened_after.st_size != size or
+            (path_after.st_dev, path_after.st_ino) != identity or path_after.st_nlink != 1 or
+            not stat.S_ISREG(path_after.st_mode) or stat.S_ISLNK(parent_before.st_mode) or
+            not stat.S_ISDIR(parent_before.st_mode) or
+            (parent_after.st_dev, parent_after.st_ino) !=
+            (parent_before.st_dev, parent_before.st_ino)):
+        reject("snapshot hash identity, bytes, link count, or parent changed")
     return digest.hexdigest()
 
 def pairs_object(pairs):
@@ -2788,6 +3312,7 @@ PY
   [ ! -e "$canonical_verdict" ] && [ ! -L "$canonical_verdict" ] \
     || fail "canonical readiness verdict collided before publication"
   custody_command publish-verdict "$canonical_bytes" "${attempt_id}.json" || exit 1
+  readiness_metadata="$readiness_tmp/readiness-metadata.json"
   jq -cn \
     --arg runtime "$runtime" \
     --arg model "$model" \
@@ -2802,7 +3327,11 @@ PY
       verdict_path: $verdict_path,
       candidate_path: $candidate_path,
       result_dir: $result_dir
-    }'
+    }' > "$readiness_metadata" || fail "cannot stage readiness result metadata"
+  custody_command finalize || exit 1
+  wait "$custody_pid" || fail "readiness custody helper did not exit cleanly"
+  custody_pid=""
+  cat "$readiness_metadata"
 }
 
 # Readiness owns a distinct closed-packet/result contract. Dispatch it before
