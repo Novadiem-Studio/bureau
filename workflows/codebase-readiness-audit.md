@@ -237,7 +237,7 @@ This is a separately invoked Conductor re-entry after remediation planning is co
 part of normal audit execution, and it never invokes `workflows/execute-plan.md` or executes a
 client fix.
 
-1. **The Conductor** — accept exact downstream artifacts for validation → selected seal, completed remediation plan, immutable approval
+1. **The Conductor** — accept exact downstream artifacts for validation → `RUN_DIR/audit/execute-plan-approvals/<approval_id>.json`
    - Accept the raw `approval_id`, explicit decision, selected-seal request/path, and completed
      remediation-plan path while the derived approval path is absent. Validate raw `approval_id`
      against the shared safe-ID grammar before constructing
