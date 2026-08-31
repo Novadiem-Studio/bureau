@@ -145,7 +145,10 @@ def safe_packet_path(value, label):
 def bounded_text(value, limit, label):
     if not isinstance(value, str):
         reject(label + " is not a string")
-    size = len(value.encode("utf-8"))
+    try:
+        size = len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        reject(label + " contains an invalid Unicode scalar value")
     if not 1 <= size <= limit or any(unicodedata.category(ch) == "Cc" for ch in value):
         reject(label + " is empty, over limit, or contains a control character")
 
@@ -291,7 +294,7 @@ def load_ndjson(relative):
     values = []
     for line_no, line in enumerate(raw.splitlines(), 1):
         try:
-            text = line.decode("utf-8")
+            text = line.decode("ascii")
             value = json.loads(
                 text,
                 object_pairs_hook=pairs_object,
@@ -301,11 +304,113 @@ def load_ndjson(relative):
             reject("invalid %s line %d: %s" % (relative, line_no, exc))
         if not isinstance(value, dict):
             reject("%s line %d is not an object" % (relative, line_no))
+        canonical = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
+        if line != canonical:
+            reject("%s line %d is not compact raw-ASCII-key-sorted JSON" % (relative, line_no))
         values.append(value)
     return values
 
+def parse_domain_register(relative):
+    path = ensure_plain_path(packet_root, relative)
+    raw = open(path, "rb").read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        reject("domain register has a byte order mark")
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        reject("domain register is not UTF-8")
+    heading = b"## Machine-readable domain register"
+    opening = b"<!-- BEGIN CODEBASE-READINESS-DOMAIN-REGISTER v1 -->"
+    closing = b"<!-- END CODEBASE-READINESS-DOMAIN-REGISTER v1 -->"
+    lines = raw.splitlines()
+    if (lines.count(heading) != 1 or lines.count(opening) != 1 or lines.count(closing) != 1 or
+            raw.count(b"```json\n") != 1 or raw.count(b"\n```\n") != 1):
+        reject("domain register lacks exactly one fixed heading and sentinel pair")
+    start = raw.find(opening)
+    end = raw.find(closing)
+    heading_at = raw.find(heading)
+    after_closing = end + len(closing)
+    if (heading_at > start or end < start or (start and raw[start - 1:start] != b"\n") or
+            (after_closing < len(raw) and raw[after_closing:after_closing + 1] != b"\n")):
+        reject("domain register machine block order is invalid")
+    between_heading = raw[heading_at + len(heading):start]
+    if re.search(rb"(?:^|\n)## ", between_heading):
+        reject("domain register machine block is not under the fixed heading")
+    prefix = opening + b"\n```json\n"
+    suffix = b"\n```\n" + closing
+    if raw[start:start + len(prefix)] != prefix or raw[end - len(b"\n```\n"):end] != b"\n```\n":
+        reject("domain register machine block delimiters are invalid")
+    payload_start = start + len(prefix)
+    payload_end = end - len(b"\n```\n")
+    payload = raw[payload_start:payload_end]
+    if not payload or b"\n" in payload or b"\r" in payload:
+        reject("domain register machine payload is not exactly one nonempty line")
+    if raw[start:end + len(closing)] != prefix + payload + suffix:
+        reject("domain register machine block physical shape is invalid")
+    try:
+        text = payload.decode("ascii")
+        value = json.loads(
+            text,
+            object_pairs_hook=pairs_object,
+            parse_constant=lambda item: reject("domain register contains non-RFC-8259 constant: " + item),
+        )
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        reject("domain register machine payload is invalid JSON: %s" % exc)
+    exact_keys(value, ["domains", "schema_version"], "domain register")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        reject("domain register schema_version is invalid")
+    domains = value["domains"]
+    if not isinstance(domains, list) or not domains:
+        reject("domain register domains must be a nonempty array")
+    canonical = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
+    if payload != canonical:
+        reject("domain register payload is not compact raw-ASCII-key-sorted JSON")
+    baseline = {
+        "architecture-scale": "architecture/scale",
+        "code-health": "code health",
+        "data-business-correctness": "data/business correctness",
+        "feature-completeness": "feature completeness",
+        "schema-drift-deploy": "schema/drift/deploy",
+        "security-authorization": "security/authorization",
+    }
+    ids = []
+    seen_aliases = set()
+    applicable = set()
+    excluded = set()
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict) or domain.get("applicability") not in {"applicable", "excluded"}:
+            reject("domain register member %d applicability is invalid" % index)
+        expected_keys = (["applicability", "domain_id", "label"] if domain["applicability"] == "applicable"
+                         else ["applicability", "domain_id", "exclusion_reason", "label"])
+        exact_keys(domain, expected_keys, "domain register member %d" % index)
+        safe_id(domain["domain_id"], "domain register domain_id")
+        bounded_text(domain["label"], 200, "domain register label")
+        if domain["label"] != domain["label"].strip():
+            reject("domain register label has leading or trailing whitespace")
+        domain_id = domain["domain_id"]
+        alias = unicodedata.normalize("NFC", domain_id).casefold()
+        if domain_id in ids or alias in seen_aliases:
+            reject("domain register contains a duplicate or normalization/case alias ID")
+        ids.append(domain_id)
+        seen_aliases.add(alias)
+        if domain_id in baseline and domain["label"] != baseline[domain_id]:
+            reject("domain register baseline label is invalid: " + domain_id)
+        if domain["applicability"] == "applicable":
+            applicable.add(domain_id)
+        else:
+            bounded_text(domain["exclusion_reason"], 1000, "domain register exclusion_reason")
+            if domain["exclusion_reason"] != domain["exclusion_reason"].strip():
+                reject("domain register exclusion_reason has leading or trailing whitespace")
+            excluded.add(domain_id)
+    if ids != sorted(ids, key=lambda item: item.encode("ascii")):
+        reject("domain register domains are not sorted by raw ASCII domain_id")
+    if not set(baseline).issubset(set(ids)):
+        reject("domain register lacks one or more mandatory baseline domains")
+    return value, applicable, excluded, baseline
+
 # The closed coverage ledger defines the only dynamic packet members.
 coverage_events = load_ndjson("audit/coverage-index.ndjson")
+domain_register, applicable_ids, excluded_ids, baseline_domains = parse_domain_register("audit/domain-register.md")
 coverage_paths = []
 coverage_pairs = []
 seen_domains = set()
@@ -356,14 +461,23 @@ for index, event in enumerate(coverage_events, 1):
         reject("coverage ledger contains an unknown event")
 if not coverage_events or coverage_events[-1].get("event") != "coverage-closed":
     reject("coverage ledger is not closed")
-if not coverage_paths and closure_reason not in {"unresolved-intent", "all-domains-excluded"}:
-    reject("zero completed coverage is valid only for unresolved intent or all domains excluded")
-if coverage_paths and closure_reason in {"unresolved-intent", "all-domains-excluded"}:
-    reject("unresolved intent and all-domains-excluded closures require zero completed coverage")
-if closure_reason == "all-applicable-completed" and not coverage_paths:
-    reject("all-applicable-completed requires a nonempty completed coverage set")
-if closure_reason == "partial-coverage-archival" and not coverage_paths:
-    reject("partial-coverage-archival requires a nonempty partial coverage set")
+completed_ids = set(seen_domains)
+if not completed_ids.issubset(applicable_ids):
+    reject("coverage completion names an excluded or unknown domain")
+if closure_reason == "all-applicable-completed":
+    if not completed_ids or completed_ids != applicable_ids:
+        reject("all-applicable-completed does not exactly equal the nonempty applicable set")
+elif closure_reason == "partial-coverage-archival":
+    if not completed_ids or not completed_ids < applicable_ids:
+        reject("partial-coverage-archival is not a nonempty proper subset of applicable domains")
+elif closure_reason == "all-domains-excluded":
+    if completed_ids or applicable_ids:
+        reject("all-domains-excluded requires empty completed and applicable sets")
+elif closure_reason == "unresolved-intent":
+    domains = domain_register["domains"]
+    if (completed_ids or applicable_ids or len(domains) != 6 or set(excluded_ids) != set(baseline_domains) or
+            any(domain.get("exclusion_reason") != "unresolved-intent" for domain in domains)):
+        reject("unresolved-intent requires only six unresolved baseline exclusions and zero coverage")
 for pair in coverage_pairs:
     if entry_map.get(pair["path"]) != pair["sha256"]:
         reject("coverage ledger member/hash is not bound to allowlist: " + pair["path"])
@@ -417,6 +531,9 @@ def load_strict_version_index(path):
         events.append(event)
     return events
 
+reservation_by_version = {}
+allocation_owner = {}
+
 def validate_authoritative_reservation(version):
     relative = "audit/versions/%s/reservation.json" % version
     value, unused = load_json_bytes(ensure_plain_path(run_dir, relative))
@@ -429,6 +546,201 @@ def validate_authoritative_reservation(version):
     safe_id(value["allocation_id"], "authoritative reservation allocation_id")
     safe_id(value["reconciliation_attempt_id"], "authoritative reservation reconciliation_attempt_id")
     valid_timestamp(value["reserved_at"], "authoritative reservation reserved_at")
+    previous = reservation_by_version.get(version)
+    if previous is not None and previous != value:
+        reject("authoritative reservation changed across repeated validation")
+    owner = allocation_owner.get(value["allocation_id"])
+    if owner is not None and owner != version:
+        reject("reservation allocation_id is reused by another audit version")
+    reservation_by_version[version] = value
+    allocation_owner[value["allocation_id"]] = version
+    return value
+
+def validate_historical_audited_review(version, corrected_hash, seal):
+    verdict_relative = seal["cold_review_verdict_path"]
+    match = re.fullmatch(r"verdicts/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\.json", verdict_relative)
+    if match is None:
+        reject("audited seal verdict path is invalid")
+    attempt_id = match.group(1)
+    safe_id(attempt_id, "historical audited attempt_id")
+    verdict, verdict_raw = load_json_bytes(ensure_plain_path(run_dir, verdict_relative))
+    verdict_keys = ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
+                    "blockers", "warnings", "verdict", "timestamp"]
+    exact_keys(verdict, verdict_keys, "historical audited verdict")
+    if verdict["attempt_id"] != attempt_id or verdict["review_mode"] != "verification":
+        reject("historical audited verdict attempt/review-mode binding is invalid")
+    valid_timestamp(verdict["timestamp"], "historical audited verdict timestamp")
+    if not isinstance(verdict["reviewed_artifacts"], list) or not verdict["reviewed_artifacts"]:
+        reject("historical audited verdict reviewed_artifacts is invalid")
+    if not isinstance(verdict["blocker_ids"], list) or not isinstance(verdict["blockers"], list):
+        reject("historical audited verdict blockers are invalid")
+    if not isinstance(verdict["warnings"], list):
+        reject("historical audited verdict warnings are invalid")
+    allowed_paths = set()
+    reviewed_paths = []
+    for index, item in enumerate(verdict["reviewed_artifacts"]):
+        exact_keys(item, ["path", "sha256"], "historical reviewed_artifacts[%d]" % index)
+        raw_path = safe_packet_path(item["path"], "historical reviewed_artifacts path")
+        if not isinstance(item["sha256"], str) or SHA256.fullmatch(item["sha256"]) is None:
+            reject("historical reviewed_artifacts hash is invalid")
+        if item["path"] in allowed_paths:
+            reject("historical reviewed_artifacts contains a duplicate path")
+        allowed_paths.add(item["path"])
+        reviewed_paths.append(raw_path)
+    if reviewed_paths != sorted(reviewed_paths):
+        reject("historical reviewed_artifacts is not canonically sorted")
+    all_ids = set()
+    derived_blocker_ids = []
+    for index, blocker in enumerate(verdict["blockers"]):
+        exact_keys(blocker, ["id", "summary", "citation"], "historical blocker[%d]" % index)
+        safe_id(blocker["id"], "historical blocker id")
+        bounded_text(blocker["summary"], 1000, "historical blocker summary")
+        if blocker["id"] in all_ids:
+            reject("historical verdict contains duplicate or colliding IDs")
+        all_ids.add(blocker["id"])
+        derived_blocker_ids.append(blocker["id"])
+        citation = blocker["citation"]
+        if not isinstance(citation, dict) or citation.get("kind") not in {"presence", "absence"}:
+            reject("historical blocker citation kind is invalid")
+        if citation["kind"] == "presence":
+            exact_keys(citation, ["kind", "path", "anchor"], "historical presence citation")
+            bounded_text(citation["anchor"], 1000, "historical citation anchor")
+        else:
+            exact_keys(citation, ["kind", "path", "missing"], "historical absence citation")
+            bounded_text(citation["missing"], 1000, "historical citation missing")
+        if citation["path"] not in allowed_paths:
+            reject("historical blocker citation path is absent from reviewed_artifacts")
+    if verdict["blocker_ids"] != derived_blocker_ids:
+        reject("historical blocker_ids does not exactly repeat blockers[].id")
+    for index, warning in enumerate(verdict["warnings"]):
+        exact_keys(warning, ["id", "summary"], "historical warning[%d]" % index)
+        safe_id(warning["id"], "historical warning id")
+        bounded_text(warning["summary"], 1000, "historical warning summary")
+        if warning["id"] in all_ids:
+            reject("historical verdict contains duplicate or cross-category colliding IDs")
+        all_ids.add(warning["id"])
+    derived_verdict = ("BLOCKED" if derived_blocker_ids else
+                       "APPROVED_WITH_WARNINGS" if verdict["warnings"] else "APPROVED")
+    if verdict["verdict"] != derived_verdict:
+        reject("historical audited verdict value is not mechanically derived")
+    if derived_verdict == "BLOCKED" or seal["cold_review_verdict"] != derived_verdict:
+        reject("historical audited verdict is blocked or differs from the seal assertion")
+
+    reviews_parent = os.path.join(run_dir, "audit", "reviews")
+    expected_name = attempt_id + "-packet"
+    matches = [name for name in os.listdir(reviews_parent) if name.lower() == expected_name.lower()]
+    if matches != [expected_name]:
+        reject("historical audited packet is missing, non-unique, or case-colliding")
+    historical_root = os.path.join(reviews_parent, expected_name)
+    mode = os.lstat(historical_root).st_mode
+    if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+        reject("historical audited packet root is a symlink or not a directory")
+    manifest, unused = load_json_bytes(ensure_plain_path(historical_root, "packet.json"))
+    manifest_keys = ["schema_version", "audit_version", "corrected_audit_path", "review_question",
+                     "attempt_id", "output_id", "review_mode", "denied_inputs", "allowlist"]
+    exact_keys(manifest, manifest_keys, "historical audited packet manifest")
+    if type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1:
+        reject("historical audited packet schema_version is invalid")
+    if (manifest["attempt_id"] != attempt_id or manifest["review_mode"] != "verification" or
+            manifest["audit_version"] != version):
+        reject("historical audited packet attempt/review/version binding is invalid")
+    safe_id(manifest["output_id"], "historical audited packet output_id")
+    bounded_text(manifest["review_question"], 2000, "historical audited packet review_question")
+    expected_corrected = "audit/versions/%s/corrected-audit.md" % version
+    if manifest["corrected_audit_path"] != expected_corrected:
+        reject("historical audited packet corrected path is invalid")
+    expected_denied = [
+        "run-log", "run-state-and-delegate-state", "checkpoint-log-slices",
+        "prior-challenger-or-notary-findings-and-verdicts", "conductor-or-author-rationale",
+        "visionary-back-and-forth", "chat-and-session-transcripts", "files-absent-from-allowlist",
+    ]
+    if manifest["denied_inputs"] != expected_denied:
+        reject("historical audited packet denied_inputs is invalid")
+    if not isinstance(manifest["allowlist"], list) or not manifest["allowlist"]:
+        reject("historical audited packet allowlist is invalid")
+    historical_entries = []
+    historical_raw_paths = []
+    historical_lower = set()
+    for index, item in enumerate(manifest["allowlist"]):
+        exact_keys(item, ["path", "sha256"], "historical allowlist[%d]" % index)
+        raw_path = safe_packet_path(item["path"], "historical allowlist path")
+        if not isinstance(item["sha256"], str) or SHA256.fullmatch(item["sha256"]) is None:
+            reject("historical allowlist hash is invalid")
+        if raw_path in historical_raw_paths or raw_path.lower() in historical_lower:
+            reject("historical allowlist contains a duplicate or case-colliding path")
+        historical_raw_paths.append(raw_path)
+        historical_lower.add(raw_path.lower())
+        historical_entries.append((item["path"], item["sha256"]))
+    if historical_raw_paths != sorted(historical_raw_paths):
+        reject("historical allowlist is not canonically sorted")
+    historical_map = dict(historical_entries)
+    if manifest["allowlist"] != verdict["reviewed_artifacts"]:
+        reject("historical audited verdict read set differs from immutable packet allowlist")
+    if historical_map.get(expected_corrected) != corrected_hash:
+        reject("historical audited packet corrected version/hash binding is invalid")
+
+    actual = []
+    identities = {}
+    for current, directories, files in os.walk(historical_root, topdown=True, followlinks=False):
+        for name in directories:
+            member = os.path.join(current, name)
+            member_mode = os.lstat(member).st_mode
+            if stat.S_ISLNK(member_mode) or not stat.S_ISDIR(member_mode):
+                reject("historical packet contains a symlink or special directory")
+        for name in files:
+            member = os.path.join(current, name)
+            info = os.lstat(member)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                reject("historical packet contains a symlink or special file")
+            relative = os.path.relpath(member, historical_root)
+            safe_packet_path(relative, "historical staged file path")
+            actual.append(relative)
+            identity = (info.st_dev, info.st_ino)
+            if identity in identities:
+                reject("historical packet contains a hard-link or identity alias")
+            identities[identity] = relative
+    if set(actual) != {"packet.json"} | set(historical_map):
+        reject("historical packet file set does not equal packet.json plus allowlist")
+    for relative, expected_hash in historical_entries:
+        if sha_file(ensure_plain_path(historical_root, relative)) != expected_hash:
+            reject("historical staged payload hash mismatch: " + relative)
+
+    ledger_path = ensure_plain_path(historical_root, "audit/coverage-index.ndjson")
+    ledger_raw = open(ledger_path, "rb").read()
+    if not ledger_raw or not ledger_raw.endswith(b"\n") or b"\n\n" in ledger_raw:
+        reject("historical packet coverage ledger is incomplete")
+    historical_coverage = []
+    closed = False
+    for line_no, line in enumerate(ledger_raw.splitlines(), 1):
+        try:
+            item = json.loads(line.decode("ascii"), object_pairs_hook=pairs_object,
+                              parse_constant=lambda value: reject("historical coverage has invalid constant"))
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            reject("historical packet coverage line %d is invalid: %s" % (line_no, exc))
+        canonical = json.dumps(item, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
+        if line != canonical or not isinstance(item, dict):
+            reject("historical packet coverage is not exact canonical NDJSON")
+        if item.get("event") == "coverage-completed":
+            if closed or item.get("coverage_path") != "audit/coverage/%s.md" % item.get("domain_id", ""):
+                reject("historical packet coverage event/path is invalid")
+            historical_coverage.append(item["coverage_path"])
+        elif item.get("event") == "coverage-closed":
+            if closed or line_no != len(ledger_raw.splitlines()):
+                reject("historical packet coverage closure is not unique and terminal")
+            closed = True
+        else:
+            reject("historical packet coverage contains an unknown event")
+    if not closed:
+        reject("historical packet coverage is not closed")
+    required = {
+        "audit/profile.md", "audit/product-contract.md", "audit/domain-register.md",
+        "audit/coverage-index.ndjson", "audit/runtime-verification.md", "audit/setup-quarantine.md",
+        "audit/versions/%s/reservation.json" % version, "audit/version-index.ndjson", expected_corrected,
+        "docs/codebase-readiness-audit-contract.md", "workflows/codebase-readiness-audit.md",
+        "agents/critic/readiness-audit.md",
+    } | set(historical_coverage)
+    if set(historical_map) != required:
+        reject("historical audited packet allowlist is not the exact contract member set")
 
 def validate_recoverable_or_indexed_seal(version, corrected_hash):
     relative = "audit/versions/%s/seal.json" % version
@@ -495,6 +807,7 @@ def validate_recoverable_or_indexed_seal(version, corrected_hash):
             reject("audited seal verdict hash is invalid")
         if sha_file(ensure_plain_path(run_dir, verdict_path)) != value["cold_review_verdict_sha256"]:
             reject("audited seal verdict file/hash mismatch")
+        validate_historical_audited_review(version, corrected_hash, value)
 
 version_index_source = ensure_plain_path(run_dir, "audit/version-index.ndjson")
 version_events = load_strict_version_index(version_index_source)
@@ -763,9 +1076,63 @@ except OSError as exc:
     reject("target_repo cannot be resolved: %s" % exc)
 if not stat.S_ISDIR(target_mode):
     reject("target_repo does not resolve to an existing directory")
-print(canonical)
+print(target)
 PY
 )" || exit 1
+
+    codex_deny_locations="$readiness_tmp/codex-deny-locations.jsonl"
+    : > "$codex_deny_locations" || fail "cannot initialize readiness Codex deny set"
+    record_readiness_location() {
+      location="$1"
+      required_kind="$2"
+      location_label="$3"
+      python3 - "$location" "$required_kind" "$location_label" <<'PY' >> "$codex_deny_locations" || exit 1
+import json
+import os
+import pathlib
+import stat
+import sys
+
+location, required_kind, label = sys.argv[1:]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: readiness Codex deny location %s %s" % (label, message))
+
+if not location or not os.path.isabs(location):
+    reject("must be one nonempty absolute path")
+if "\n" in location or "\r" in location or "\x00" in location:
+    reject("contains a forbidden control byte")
+try:
+    canonical = str(pathlib.Path(location).resolve(strict=True))
+    info = os.stat(canonical)
+except (OSError, RuntimeError) as exc:
+    reject("cannot be physically resolved: %s" % exc)
+if required_kind == "directory" and not stat.S_ISDIR(info.st_mode):
+    reject("does not resolve to an existing directory")
+if required_kind == "regular" and not stat.S_ISREG(info.st_mode):
+    reject("does not resolve to an existing regular file")
+if required_kind not in {"directory", "regular", "any"}:
+    reject("has an invalid internal kind")
+print(json.dumps({"canonical": canonical, "supplied": location},
+                 ensure_ascii=True, separators=(",", ":"), sort_keys=True))
+PY
+    }
+
+    record_readiness_location "$RUN_DIR" directory RUN_DIR
+    record_readiness_location "$CTX" directory CTX
+    record_readiness_location "$ROOT" directory framework-root
+    record_readiness_location "${HOME:-}" directory HOME
+    record_readiness_location "$target_repo" directory target_repo
+    [ -z "${CODEX_HOME:-}" ] || record_readiness_location "$CODEX_HOME" directory CODEX_HOME
+    [ -z "${CODEX_SESSION_ROOT:-}" ] || record_readiness_location "$CODEX_SESSION_ROOT" any CODEX_SESSION_ROOT
+    [ -z "${CODEX_CONFIG_ROOT:-}" ] || record_readiness_location "$CODEX_CONFIG_ROOT" any CODEX_CONFIG_ROOT
+    [ -z "${CLAUDE_CONFIG_DIR:-}" ] || record_readiness_location "$CLAUDE_CONFIG_DIR" directory CLAUDE_CONFIG_DIR
+    [ -z "${BUREAU_CLAUDE_PROJECTS_DIR:-}" ] || record_readiness_location "$BUREAU_CLAUDE_PROJECTS_DIR" directory BUREAU_CLAUDE_PROJECTS_DIR
+    [ -z "${BUREAU_POINTER_DIR:-}" ] || record_readiness_location "$BUREAU_POINTER_DIR" directory BUREAU_POINTER_DIR
+    [ -z "${BUREAU_REVIEWER_SESSION_ROOT:-}" ] || record_readiness_location "$BUREAU_REVIEWER_SESSION_ROOT" any BUREAU_REVIEWER_SESSION_ROOT
+    [ -z "${BUREAU_REVIEWER_CONFIG_ROOT:-}" ] || record_readiness_location "$BUREAU_REVIEWER_CONFIG_ROOT" any BUREAU_REVIEWER_CONFIG_ROOT
+    [ -z "${BUREAU_REVIEWER_UNSTAGED_SENTINEL:-}" ] || record_readiness_location "$BUREAU_REVIEWER_UNSTAGED_SENTINEL" any BUREAU_REVIEWER_UNSTAGED_SENTINEL
+    [ -z "${UNSTAGED_SENTINEL:-}" ] || record_readiness_location "$UNSTAGED_SENTINEL" any UNSTAGED_SENTINEL
   fi
 
   mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
@@ -850,16 +1217,19 @@ PY
       esac
       fs_rules="${fs_rules},${quoted}=\"deny\""
     }
-    append_readiness_deny "$RUN_DIR"
-    append_readiness_deny "$CTX"
-    append_readiness_deny "$ROOT"
-    append_readiness_deny "${HOME:-}"
-    append_readiness_deny "${CODEX_HOME:-${HOME:-}/.codex}"
-    append_readiness_deny "${HOME:-}/.claude"
-    append_readiness_deny "${HOME:-}/.novadiem"
-    append_readiness_deny "$target_repo"
-    append_readiness_deny "${BUREAU_REVIEWER_UNSTAGED_SENTINEL:-}"
-    append_readiness_deny "${UNSTAGED_SENTINEL:-}"
+    while IFS= read -r deny_location; do
+      supplied_location="$(printf '%s' "$deny_location" | jq -er '.supplied')" \
+        || fail "cannot read validated readiness Codex supplied deny path"
+      canonical_location="$(printf '%s' "$deny_location" | jq -er '.canonical')" \
+        || fail "cannot read validated readiness Codex canonical deny path"
+      append_readiness_deny "$supplied_location"
+      append_readiness_deny "$canonical_location"
+    done < "$codex_deny_locations"
+    # These default stores are already physically covered by the mandatory HOME
+    # deny. Retain their explicit spellings for diagnostics and policy clarity.
+    append_readiness_deny "${HOME}/.codex"
+    append_readiness_deny "${HOME}/.claude"
+    append_readiness_deny "${HOME}/.novadiem"
 
     permissions="{bureau-review={filesystem={${fs_rules}},network={enabled=false}}}"
     task_prompt="$(build_readiness_prompt "$snap_ctx")"

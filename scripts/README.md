@@ -465,14 +465,18 @@ placeholders—owns the attempt, output, question, allowlist, hashes, and correc
 The adapter requires a readable, valid `model-routing.json` with a supported runtime and a
 nonempty `roles.challenger.model` (plus a valid Challenger reasoning effort for Codex); audited
 mode has no silent routing defaults. It validates the closed staged and authoritative read set
-before and after the provider, and gives the provider only that isolated packet. Claude runs from
-the staged root with Read-only tools, no settings, and no session
-persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
+before and after the provider, including the exact machine-readable domain register, canonical
+coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
+seal's immutable packet and semantic canonical-verdict binding. It gives the provider only that
+isolated packet. Claude runs from the staged root with Read-only tools, no settings, and no
+session persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
 session/configuration stores, and any supplied unstaged sentinel. Before reserving a Codex result,
 the adapter strictly parses `RUN_DIR/state.json`, requires `target_repo` to resolve to one existing
-absolute directory, and denies that physical canonical path; malformed or missing state fails
-before provider invocation.
+absolute directory, and resolves every mandatory or explicitly overridden deny location. It denies
+both the caller-supplied absolute spelling and physical canonical path when they differ; malformed,
+missing, relative, or unresolvable state, home, store, sentinel, or mandatory location fails before
+provider invocation.
 
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
@@ -480,7 +484,10 @@ revalidates those immutable published bytes, derives the standard Challenger ver
 that reopened candidate, and atomically publishes `verdicts/<attempt_id>.json`. Any malformed
 packet, changed binding, result or verdict collision, provider mismatch, or partial attempt fails
 closed. It never deletes, repairs, reuses, or overwrites readiness output; retry with a freshly
-staged packet and a new attempt identity.
+staged packet and a new attempt identity. Publication links the immutable artifact before syncing
+its parent directory. A durability error after that link does not roll the visible artifact back:
+the attempt remains consumed for explicit recovery or a fresh identity, preserving the same
+no-repair rule.
 
 ---
 
