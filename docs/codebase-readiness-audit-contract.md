@@ -53,6 +53,11 @@ exact key set: every listed key is required unless its conditional rule says it 
 and every unknown key is rejected. JSON `null` is never accepted. Types are exact: a Boolean is
 not an integer, an integer is not a string, and an object/array is not accepted for a scalar.
 
+The only NDJSON exceptions are `audit/coverage-index.ndjson` and
+`audit/version-index.ndjson`. Each is UTF-8 without BOM and consists solely of complete newline-
+terminated JSON objects, each independently parsed with duplicate-key rejection and validated
+against its exact event schema; partial lines, blank lines, trailing bytes, and unknown events fail.
+
 Common machine types are normative:
 
 | Type | Exact JSON type and validation |
@@ -111,20 +116,26 @@ reconciliation alone MUST NOT promote `inferred` to `verified`.
 There is no default profile. A missing or unknown profile, unreadable target repository or ref,
 or missing authorization stops intake before an audit agent is spawned. The packet remains bound
 to `target_commit` even if the target changes during the run; a newer commit requires a new audit
-run or version. Repository size has no fixed limit: the Conductor batches independent passes
+run only; a new version in the existing run cannot retarget it. Repository size has no fixed limit: the Conductor batches independent passes
 within the host concurrency cap and checkpoints when the authorized runtime cannot finish within
 the operator's stated constraints.
 
-The profiles share every record in this contract and differ only in depth and gates:
+The profiles share every record in this contract and differ only in depth and gates. Every
+`audit/runtime-verification.md` contains required `runtime_disposition`, exactly one of
+`not-supplied | attempted-succeeded | attempted-failed | attempted-unavailable |
+archival-no-probe`:
 
 - `catalog` performs independent static deep-read coverage for every applicable domain. It
   attempts an already-supplied and authorized local procedure and records its observed outcome,
   but does no setup work to create a runnable environment. When absent it records exact
-  disposition `not-supplied`; archival uses `archival-no-probe`.
+  disposition `not-supplied`; a supplied procedure MUST yield one of the three `attempted-*`
+  dispositions; archival uses `archival-no-probe`.
 - `full` adds isolated local stand-up, synthetic lifecycle probes, and runtime verification where
   technically possible. Every setup-only change is quarantined.
 - `audited` includes all `full` obligations and adds a fresh premium Challenger cold review of
-  the exact corrected-audit version before every seal.
+  the exact corrected-audit version before every seal. Normal `full` and `audited` require an
+  `attempted-*` disposition; normal `catalog` permits `not-supplied` or `attempted-*`; only an
+  incomplete archival predicate permits `archival-no-probe`.
 
 ## Product-intent contract
 
@@ -160,6 +171,11 @@ or `excluded`:
 4. feature completeness
 5. code health
 6. architecture/scale
+
+Their fixed safe IDs are respectively `data-business-correctness`, `security-authorization`,
+`schema-drift-deploy`, `feature-completeness`, `code-health`, and `architecture-scale`.
+Every product-specific domain declares one unique safe ID under the exact safe-ID grammar. IDs
+are compared as raw bytes; normalization, rewriting, aliases, and collisions are rejected.
 
 An excluded domain requires a reason and is a final scope boundary. Product-intent-driven domains
 may be added, but use the same record shape. Every applicable domain has one fresh, independently
@@ -487,6 +503,7 @@ this exact key set:
 | `review_question` | `bounded-text` | One bounded question; 1–2000 UTF-8 bytes under the common type. |
 | `attempt_id` | `safe-id` | Equals the packet/result/verdict path identifier. |
 | `output_id` | `safe-id` | Names only the direct result member allowed by the safe-ID rule. |
+| `review_mode` | JSON string | Exactly `verification`. |
 | `denied_inputs` | array of JSON strings | Exactly the fixed ordered array below. |
 | `allowlist` | nonempty array of objects | Canonically sorted exact `{path,sha256}` entries defined below. |
 
@@ -536,7 +553,7 @@ The packet-member to authoritative-source map is fixed:
 | `audit/versions/vNNNN/corrected-audit.md` | Exact artifact named by the corrected event |
 | `docs/codebase-readiness-audit-contract.md` | Framework `docs/codebase-readiness-audit-contract.md` |
 | `workflows/codebase-readiness-audit.md` | Framework `workflows/codebase-readiness-audit.md` |
-| `agents/readiness-reviewer.md` | Framework `agents/readiness-reviewer.md` validated by adapter preflight |
+| `agents/critic/readiness-audit.md` | Framework `agents/critic/readiness-audit.md` validated by adapter preflight |
 
 Each manifest SHA-256 MUST equal both authoritative-source bytes and staged bytes. Before the
 provider and again immediately before verdict publication, the adapter reopens and rehashes every
@@ -576,29 +593,34 @@ no canonical verdict. Any collision, partial result, or validation failure block
 nothing is deleted, reused, or repaired. A new attempt requires a new attempt id and freshly
 no-clobber-staged packet.
 
-The Challenger is a candidate-only producer. Its raw candidate exact key set is only `attempt_id`,
-`review_mode`, `reviewed_artifacts`, `blockers`, `blocker_ids`, and `warnings`. A candidate
-`verdict`, timestamp, or unknown key is prohibited; it MUST NOT write `log.md`, a Markdown review,
-the result record, or the live verdict. Every blocker object has one unique safe `id`.
-`blocker_ids` is required and is
-exactly the ordered array of `blockers[].id`, with one entry per blocker and no missing, duplicate,
-extra, reordered, or mismatched value. An absent `blocker_ids` field is invalid. The readiness
-adapter is the sole canonical validator and writer. It:
+The provider emits exactly one raw candidate through the adapter's structured-result channel and
+cannot access or write the result directory. The raw candidate exact key set is only `attempt_id`,
+`review_mode`, `reviewed_artifacts`, `blockers`, `blocker_ids`, and `warnings`; verdict, timestamp,
+and unknown keys are prohibited. Each blocker has exact keys `{id,summary,citation}`. `id` is a
+nonempty safe ID, `summary` is nonempty bounded text, and `citation` has exactly either
+`{path,sha256}` or `{unavailable_evidence_reason}` with nonempty bounded reason. Each warning has
+exact keys `{id,summary}` with the same ID/summary rules. Unknown keys, wrong types, empty values,
+duplicate IDs, or an ID collision across blockers and warnings are invalid. `blocker_ids` is
+exactly the ordered unique `blockers[].id` array.
+
+The adapter validates the six-key candidate, exclusively creates the result directory, and
+atomically no-clobber publishes the exact candidate bytes as `<output_id>.json`. It reopens and
+revalidates those bytes before constructing the canonical verdict. It:
 
 1. Validates the exact blocker object/ID correspondence, then derives `BLOCKED` when
    `blocker_ids` is nonempty, `APPROVED_WITH_WARNINGS` when `blocker_ids` is empty and `warnings`
    is nonempty, and `APPROVED` when both arrays are empty.
-2. Requires candidate `attempt_id` and `review_mode` to equal the packet values exactly.
+2. Requires candidate `attempt_id` and `review_mode: verification` to equal the packet values.
 3. Requires `reviewed_artifacts` to equal the manifest's canonically sorted allowlist exactly,
    in the same order, with the same packet-relative paths and lowercase SHA-256 values and no
    missing or extra element.
-4. Requires the allowlist member named by `corrected_audit_path` and the candidate binding to
-   equal the reserved versioned corrected-audit path and hash.
-5. Supplies current UTC second-precision `reviewed_at`, constructs and validates the exact
-   canonical record containing only `schema_version`, `attempt_id`, `audit_version`, `review_mode`,
-   derived `verdict`, `reviewed_artifacts`, `blockers`, `blocker_ids`, `warnings`,
-   `corrected_audit_path`, `corrected_audit_sha256`, and `reviewed_at`, then atomically no-clobber
-   publishes `verdicts/<attempt_id>.json`. A caller-owned verdict or timestamp is invalid.
+4. Validates the seal binding chain exactly: candidate attempt → immutable packet → packet
+   `audit_version` and `corrected_audit_path` → that allowlist member's path/hash → candidate
+   `reviewed_artifacts` exact equality → selected corrected-audit bytes.
+5. Supplies UTC second-precision `timestamp` and constructs the canonical verdict with exactly the
+   eight existing fields `attempt_id`, `review_mode`, `reviewed_artifacts`, `blocker_ids`,
+   `blockers`, `warnings`, `verdict`, and `timestamp`. It validates that exact schema, then
+   atomically no-clobber publishes `verdicts/<attempt_id>.json`.
 
 The Conductor consumes the canonical verdict path and hash but MUST NOT create, rewrite,
 normalize, or repair it. `BLOCKED` requires correction in a newly allocated version followed by a
@@ -666,6 +688,8 @@ record, grants no authority to change the client repository, and never auto-exec
 Only after a remediation plan is complete may the Conductor observe an explicit human-facing
 client-fix checkpoint decision and publish the immutable approval
 `audit/execute-plan-approvals/<approval_id>.json`. The Conductor is the sole approval publisher. It
+accepts the plan, seal, raw `approval_id`, and explicit decision while the derived approval path is
+absent; no pre-existing approval is an input or prerequisite. It
 rehashes the selected seal and completed plan, constructs and validates the record, writes a
 same-directory temporary file, and atomically publishes no-clobber. Any existing derived approval
 path, even with identical bytes, is a collision and requires a new `approval_id`. The approval has
