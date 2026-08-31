@@ -68,7 +68,9 @@ Common machine types are normative:
 | `timestamp` | JSON string in UTC RFC 3339 second precision, exactly `YYYY-MM-DDTHH:MM:SSZ`; components MUST form a real Gregorian instant. Fractional seconds and offsets other than `Z` are invalid. |
 | `date` | JSON string exactly `YYYY-MM-DD` representing a real Gregorian date. |
 | `safe-id` | JSON string whose UTF-8 bytes satisfy **Safe path-bearing identifiers**: 1–64 ASCII bytes and the exact grammar there. Every machine field ending in `_id` uses this type unless a table explicitly says otherwise. |
-| `bounded-text` | JSON string containing 1–2000 UTF-8 bytes, valid Unicode scalar values, and no NUL, C0, C1, or DEL control character. Used only for `review_question`. |
+| `review-question-text` | JSON string of 1–2000 UTF-8 bytes with no control character. |
+| `summary-text` | JSON string of 1–1000 UTF-8 bytes with no control character. |
+| `citation-text` | JSON string of 1–1000 UTF-8 bytes with no control character, for `anchor` or `missing`. |
 | `identity-text` | JSON string containing 1–256 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. Used only for human identity display fields. |
 | `relative-artifact-path` | JSON string containing the exact `/`-separated path relative to `RUN_DIR` named by its schema row; no absolute, empty, `.`, `..`, backslash, symlink, or normalization alias is accepted. |
 | `boolean` | JSON Boolean `true` or `false`. |
@@ -119,6 +121,10 @@ to `target_commit` even if the target changes during the run; a newer commit req
 run only; a new version in the existing run cannot retarget it. Repository size has no fixed limit: the Conductor batches independent passes
 within the host concurrency cap and checkpoints when the authorized runtime cannot finish within
 the operator's stated constraints.
+
+Before target reads, probes, or publication, resolve the authorized Git checkout using
+`git rev-parse HEAD^{commit}` (or its recorded immutable checkout commit) and require exact
+lowercase 40/64-hex equality with `profile.md` `target_commit`. Mismatch requires a new run.
 
 The profiles share every record in this contract and differ only in depth and gates. Every
 `audit/runtime-verification.md` contains required `runtime_disposition`, exactly one of
@@ -455,6 +461,8 @@ non-`BLOCKED` verdict bound to the exact corrected-audit version, path, and hash
 | `corrected_audit_path` | `relative-artifact-path` | Exactly `audit/versions/vNNNN/corrected-audit.md` for `audit_version`. |
 | `corrected_audit_sha256` | `sha256` | Hash of that exact file. |
 | `contract_sha256` | `sha256` | Hash of `audit/product-contract.md`. |
+| `shared_contract_path` | `relative-artifact-path` | Exactly `docs/codebase-readiness-audit-contract.md`. |
+| `shared_contract_sha256` | `sha256` | Governing contract hash; the sealer reopens and rehashes it. |
 | `completeness` | JSON string | Exactly `incomplete` or `complete`; mechanically derived above. |
 | `conclusiveness` | JSON string | Exactly `non-conclusive` or `conclusive`; mechanically derived above. |
 | `successful_run` | `boolean` | Exact matrix result. |
@@ -500,7 +508,7 @@ this exact key set:
 | `schema_version` | `schema-version` | `1`. |
 | `audit_version` | `audit-version` | Exact corrected-audit version under review. |
 | `corrected_audit_path` | packet-member-path string | Exactly one allowlist member containing that version's corrected audit. |
-| `review_question` | `bounded-text` | One bounded question; 1–2000 UTF-8 bytes under the common type. |
+| `review_question` | `review-question-text` | One bounded question. |
 | `attempt_id` | `safe-id` | Equals the packet/result/verdict path identifier. |
 | `output_id` | `safe-id` | Names only the direct result member allowed by the safe-ID rule. |
 | `review_mode` | JSON string | Exactly `verification`. |
@@ -533,9 +541,9 @@ Each allowlist element is an object with exactly two keys:
 No other `packet.json` or allowlist-entry key is permitted.
 
 The allowlist is a closed packet-relative file set. It contains exactly once every readable
-regular payload file except `packet.json`: the product contract, domain register, closed coverage
+regular payload file except `packet.json`: profile, product contract, domain register, closed coverage
 ledger and its indexed records, runtime-verification and setup-quarantine records, corrected audit, this shared contract,
-the readiness workflow, and the self-contained readiness-reviewer slice. An archival packet still
+the selected reservation, version index, readiness workflow, and self-contained readiness-reviewer slice. An archival packet still
 contains its domain register and contains exactly the existing valid coverage set used by
 reconciliation: zero for unresolved intent or all domains excluded, otherwise the completed
 partial subset. An absence placeholder is never an allowlist member.
@@ -544,12 +552,15 @@ The packet-member to authoritative-source map is fixed:
 
 | Packet member | Authoritative source |
 |---|---|
+| `audit/profile.md` | `RUN_DIR/audit/profile.md` |
 | `audit/product-contract.md` | `RUN_DIR/audit/product-contract.md` |
 | `audit/domain-register.md` | `RUN_DIR/audit/domain-register.md` |
 | `audit/coverage-index.ndjson` | `RUN_DIR/audit/coverage-index.ndjson` |
 | `audit/coverage/<domain_id>.md` | Exact record named by the closed coverage ledger |
 | `audit/runtime-verification.md` | `RUN_DIR/audit/runtime-verification.md` |
 | `audit/setup-quarantine.md` | `RUN_DIR/audit/setup-quarantine.md` |
+| `audit/versions/vNNNN/reservation.json` | Selected version's immutable reservation |
+| `audit/version-index.ndjson` | `RUN_DIR/audit/version-index.ndjson` |
 | `audit/versions/vNNNN/corrected-audit.md` | Exact artifact named by the corrected event |
 | `docs/codebase-readiness-audit-contract.md` | Framework `docs/codebase-readiness-audit-contract.md` |
 | `workflows/codebase-readiness-audit.md` | Framework `workflows/codebase-readiness-audit.md` |
@@ -596,14 +607,16 @@ no-clobber-staged packet.
 The provider emits exactly one raw candidate through the adapter's structured-result channel and
 cannot access or write the result directory. The raw candidate exact key set is only `attempt_id`,
 `review_mode`, `reviewed_artifacts`, `blockers`, `blocker_ids`, and `warnings`; verdict, timestamp,
-and unknown keys are prohibited. Each blocker has exact keys `{id,summary,citation}`. `id` is a
-nonempty safe ID, `summary` is nonempty bounded text, and `citation` has exactly either
-`{path,sha256}` or `{unavailable_evidence_reason}` with nonempty bounded reason. Each warning has
-exact keys `{id,summary}` with the same ID/summary rules. Unknown keys, wrong types, empty values,
+and unknown keys are prohibited. Matching `config/challenger-verdict.schema.json`, each blocker is
+exactly `{id,summary,citation}` and each warning exactly `{id,summary}`. Citation is exactly
+`{kind,path,anchor}` with `kind: present` or `{kind,path,missing}` with `kind: absent`; anchor and
+missing use `citation-text`. Citation path is a safe packet-relative allowlist/reviewed-artifact
+member and its hash comes only from that entry. IDs use `safe-id`, summaries `summary-text`.
+Unknown keys, wrong types, empty values,
 duplicate IDs, or an ID collision across blockers and warnings are invalid. `blocker_ids` is
 exactly the ordered unique `blockers[].id` array.
 
-The adapter validates the six-key candidate, exclusively creates the result directory, and
+The adapter validates the six-key candidate, uses the one already exclusively created result directory, and
 atomically no-clobber publishes the exact candidate bytes as `<output_id>.json`. It reopens and
 revalidates those bytes before constructing the canonical verdict. It:
 
