@@ -466,34 +466,40 @@ PY
   output_id="$(jq -er '.output_id' "$packet_state_before")" || fail "cannot read validated output_id"
   result_dir="$RUN_DIR/audit/reviews/${attempt_id}-result"
   canonical_verdict="$RUN_DIR/verdicts/${attempt_id}.json"
-  mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
+  [ -f "$ROUTING" ] && [ -r "$ROUTING" ] \
+    || fail "readiness audit requires readable model-routing.json: $ROUTING"
+  jq -e '
+    type == "object"
+    and (.runtime == "claude" or .runtime == "openai" or .runtime == "codex")
+    and (.roles | type == "object")
+    and (.roles.challenger | type == "object")
+    and (.roles.challenger.model | type == "string" and length > 0)
+    and (if (.runtime == "openai" or .runtime == "codex")
+         then (.roles.challenger.reasoningEffort
+               | type == "string"
+               and (. == "none" or . == "minimal" or . == "low" or . == "medium"
+                    or . == "high" or . == "xhigh" or . == "max" or . == "ultra"))
+         else true
+         end)
+  ' "$ROUTING" >/dev/null 2>&1 \
+    || fail "readiness audit model-routing.json lacks a valid Challenger route"
 
-  runtime="${BUREAU_REVIEWER_HOST:-}"
-  if [ -z "$runtime" ] && [ -f "$ROUTING" ]; then
-    runtime="$(jq -r '.runtime // empty' "$ROUTING" 2>/dev/null)"
-  fi
-  [ -n "$runtime" ] || runtime="claude"
+  runtime="$(jq -er '.runtime' "$ROUTING")" \
+    || fail "cannot read readiness reviewer runtime"
   case "$runtime" in
     openai|codex) runtime="openai" ;;
     claude) ;;
     *) fail "reviewer host '$runtime' has no cold-reviewer adapter" ;;
   esac
+  model="$(jq -er '.roles.challenger.model' "$ROUTING")" \
+    || fail "cannot read readiness Challenger model"
+  reasoning_effort="$(jq -r '.roles.challenger.reasoningEffort // empty' "$ROUTING")" \
+    || fail "cannot read readiness Challenger reasoning effort"
 
-  model=""
-  reasoning_effort=""
-  if [ -f "$ROUTING" ]; then
-    model="$(jq -r '.roles.challenger.model // empty' "$ROUTING" 2>/dev/null)"
-    reasoning_effort="$(jq -r '.roles.challenger.reasoningEffort // empty' "$ROUTING" 2>/dev/null)"
-  fi
-  if [ "$runtime" = "claude" ]; then
-    [ -n "$model" ] || model="opus"
-  else
-    [ -n "$model" ] || model="gpt-5.6-sol"
-    [ -n "$reasoning_effort" ] || reasoning_effort="high"
-  fi
+  mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
 
   candidate_schema="$readiness_tmp/candidate-schema.json"
-  jq '
+  jq -e '
     del(.properties.verdict, .properties.timestamp)
     | .required = ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids", "blockers", "warnings"]
     | .properties.reviewed_artifacts.items = .properties.reviewed_artifacts.items.oneOf[0]
@@ -504,7 +510,8 @@ PY
 
   build_readiness_prompt() {
     prompt_root="$1"
-    question="$(jq -r '.review_question' "$packet_state_before")"
+    question="$(jq -er '.review_question' "$packet_state_before")" \
+      || fail "cannot read validated readiness review question"
     printf '%s' "You are The Challenger performing an isolated Codebase Readiness Audit verification. Read ${prompt_root}/packet.json, then read only the regular packet-relative payload files in its allowlist beneath ${prompt_root}. Do not open any path absent from that allowlist, use network access, or seek live run, repository, framework, home, configuration, or session data. Apply the staged self-contained readiness reviewer slice and answer this bounded question: ${question} Return only the exact six-field structured candidate described by the packet contract; do not include verdict or timestamp and do not write any file."
   }
 
@@ -622,16 +629,100 @@ PY
   fi
 
   candidate_bytes="$readiness_tmp/validated-candidate.json"
+  python3 - "$provider_candidate" "$candidate_bytes" <<'PY' || exit 1
+import json
+import sys
+
+source_path, candidate_out = sys.argv[1:]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: readiness candidate " + message)
+
+def pairs_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            reject("contains duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
+try:
+    raw = open(source_path, "rb").read()
+except OSError as exc:
+    reject("cannot be read: %s" % exc)
+if raw.startswith(b"\xef\xbb\xbf"):
+    reject("contains a byte order mark")
+try:
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder(
+        object_pairs_hook=pairs_object,
+        parse_constant=lambda value: reject("contains non-RFC-8259 constant: " + value),
+    )
+    candidate, end = decoder.raw_decode(text)
+except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+    reject("is invalid JSON: %s" % exc)
+if text[end:].strip():
+    reject("contains trailing JSON content")
+expected = {"attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids", "blockers", "warnings"}
+if not isinstance(candidate, dict) or set(candidate) != expected:
+    reject("object has the wrong exact six-field key set")
+try:
+    with open(candidate_out, "wb") as handle:
+        handle.write(raw)
+except OSError as exc:
+    reject("cannot stage validated provider bytes: %s" % exc)
+PY
+
+  publish_no_clobber() {
+    source_path="$1"
+    target_path="$2"
+    python3 - "$source_path" "$target_path" <<'PY'
+import os
+import secrets
+import sys
+
+source, target = sys.argv[1:]
+parent = os.path.dirname(target)
+name = os.path.basename(target)
+for existing in os.listdir(parent):
+    if existing == name or existing.lower() == name.lower():
+        raise SystemExit("run-cold-reviewer: no-clobber publication collision: " + target)
+temporary = os.path.join(parent, ".readiness-publish-%s.tmp" % secrets.token_hex(12))
+flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+descriptor = os.open(temporary, flags, 0o600)
+try:
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(open(source, "rb").read())
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.link(temporary, target)
+    directory = os.open(parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+finally:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+PY
+  }
+
+  candidate_path="$result_dir/${output_id}.json"
+  publish_no_clobber "$candidate_bytes" "$candidate_path" || exit 1
+  rm -f "$candidate_bytes" || fail "cannot discard private pre-publication candidate bytes"
+
   canonical_bytes="$readiness_tmp/canonical-verdict.json"
-  python3 - "$provider_candidate" "$packet_state_before" "$readiness_schema" \
-    "$candidate_bytes" "$canonical_bytes" <<'PY'
+  python3 - "$candidate_path" "$packet_state_before" "$readiness_schema" \
+    "$canonical_bytes" <<'PY' || exit 1
 import datetime
 import json
 import re
 import sys
 import unicodedata
 
-candidate_path, state_path, schema_path, candidate_out, canonical_out = sys.argv[1:]
+candidate_path, state_path, schema_path, canonical_out = sys.argv[1:]
 
 def reject(message):
     raise SystemExit("run-cold-reviewer: readiness candidate " + message)
@@ -645,7 +736,10 @@ def pairs_object(pairs):
     return result
 
 def load(path):
-    raw = open(path, "rb").read()
+    try:
+        raw = open(path, "rb").read()
+    except OSError as exc:
+        reject("cannot read published or binding input %s: %s" % (path, exc))
     if raw.startswith(b"\xef\xbb\xbf"):
         reject("contains a byte order mark")
     try:
@@ -753,51 +847,13 @@ if canonical["review_mode"] not in schema["properties"]["review_mode"].get("enum
 if canonical["verdict"] not in schema["properties"]["verdict"].get("enum", []):
     reject("derived verdict is not valid under selected Challenger verdict schema")
 
-with open(candidate_out, "wb") as handle:
-    handle.write(candidate_raw)
-with open(canonical_out, "w", encoding="utf-8") as handle:
-    json.dump(canonical, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=False)
-    handle.write("\n")
-PY
-
-  publish_no_clobber() {
-    source_path="$1"
-    target_path="$2"
-    python3 - "$source_path" "$target_path" <<'PY'
-import os
-import secrets
-import sys
-
-source, target = sys.argv[1:]
-parent = os.path.dirname(target)
-name = os.path.basename(target)
-for existing in os.listdir(parent):
-    if existing == name or existing.lower() == name.lower():
-        raise SystemExit("run-cold-reviewer: no-clobber publication collision: " + target)
-temporary = os.path.join(parent, ".readiness-publish-%s.tmp" % secrets.token_hex(12))
-flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-descriptor = os.open(temporary, flags, 0o600)
 try:
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(open(source, "rb").read())
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.link(temporary, target)
-    directory = os.open(parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
-finally:
-    try:
-        os.unlink(temporary)
-    except FileNotFoundError:
-        pass
+    with open(canonical_out, "w", encoding="utf-8") as handle:
+        json.dump(canonical, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=False)
+        handle.write("\n")
+except OSError as exc:
+    reject("cannot stage canonical verdict bytes: %s" % exc)
 PY
-  }
-
-  candidate_path="$result_dir/${output_id}.json"
-  publish_no_clobber "$candidate_bytes" "$candidate_path" || exit 1
   publish_no_clobber "$canonical_bytes" "$canonical_verdict" || exit 1
   jq -cn \
     --arg runtime "$runtime" \

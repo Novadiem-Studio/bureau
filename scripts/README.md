@@ -462,19 +462,22 @@ scripts/run-cold-reviewer.sh \
 
 In `readiness-audit` mode, `packet.json`—not the three legacy checkpoint/spawn/artifact
 placeholders—owns the attempt, output, question, allowlist, hashes, and corrected-audit binding.
-The adapter selects `model-routing.json#roles.challenger`, validates the closed staged and
-authoritative read set before and after the provider, and gives the provider only that isolated
-packet. Claude runs from the staged root with Read-only tools, no settings, and no session
+The adapter requires a readable, valid `model-routing.json` with a supported runtime and a
+nonempty `roles.challenger.model` (plus a valid Challenger reasoning effort for Codex); audited
+mode has no silent routing defaults. It validates the closed staged and authoritative read set
+before and after the provider, and gives the provider only that isolated packet. Claude runs from
+the staged root with Read-only tools, no settings, and no session
 persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
 session/configuration stores, and any supplied unstaged sentinel.
 
-The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates the provider's
-exact six-field candidate, publishes it as `<output_id>.json`, derives the standard Challenger
-verdict, and atomically publishes `verdicts/<attempt_id>.json`. Any malformed packet, changed
-binding, result or verdict collision, provider mismatch, or partial attempt fails closed. It never
-deletes, repairs, reuses, or overwrites readiness output; retry with a freshly staged packet and a
-new attempt identity.
+The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
+publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
+revalidates those immutable published bytes, derives the standard Challenger verdict only from
+that reopened candidate, and atomically publishes `verdicts/<attempt_id>.json`. Any malformed
+packet, changed binding, result or verdict collision, provider mismatch, or partial attempt fails
+closed. It never deletes, repairs, reuses, or overwrites readiness output; retry with a freshly
+staged packet and a new attempt identity.
 
 ---
 
