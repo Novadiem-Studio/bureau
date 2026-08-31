@@ -349,9 +349,32 @@ def parse_domain_register(root, relative):
         reject("domain register machine block physical shape is invalid")
     try:
         text = payload.decode("utf-8")
+        in_string = False
+        escaped = False
+        for character in text:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    in_string = False
+            elif character == '"':
+                in_string = True
+            elif character in " \t\r\n":
+                reject("domain register payload contains whitespace outside a JSON string")
+        def domain_pairs(pairs):
+            keys = [key for key, unused in pairs]
+            try:
+                raw_keys = [key.encode("ascii") for key in keys]
+            except (AttributeError, UnicodeEncodeError):
+                reject("domain register contains a non-ASCII object key")
+            if raw_keys != sorted(raw_keys):
+                reject("domain register object keys are not raw-ASCII sorted")
+            return pairs_object(pairs)
         value = json.loads(
             text,
-            object_pairs_hook=pairs_object,
+            object_pairs_hook=domain_pairs,
             parse_constant=lambda item: reject("domain register contains non-RFC-8259 constant: " + item),
         )
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
@@ -362,10 +385,6 @@ def parse_domain_register(root, relative):
     domains = value["domains"]
     if not isinstance(domains, list) or not domains:
         reject("domain register domains must be a nonempty array")
-    canonical_ascii = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-    canonical_utf8 = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    if payload not in {canonical_ascii, canonical_utf8}:
-        reject("domain register payload is not compact raw-ASCII-key-sorted JSON")
     baseline = {
         "architecture-scale": "architecture/scale",
         "code-health": "code health",
@@ -686,6 +705,10 @@ def validate_historical_audited_review(version, corrected_hash, seal):
         reject("historical audited verdict read set differs from immutable packet allowlist")
     if historical_map.get(expected_corrected) != corrected_hash:
         reject("historical audited packet corrected version/hash binding is invalid")
+    if (seal["contract_sha256"] != historical_map.get("audit/product-contract.md") or
+            seal["shared_contract_path"] != "docs/codebase-readiness-audit-contract.md" or
+            seal["shared_contract_sha256"] != historical_map.get(seal["shared_contract_path"])):
+        reject("historical audited seal contract hashes do not bind packet-era immutable members")
 
     actual = []
     identities = {}
@@ -712,6 +735,29 @@ def validate_historical_audited_review(version, corrected_hash, seal):
     for relative, expected_hash in historical_entries:
         if sha_file(ensure_plain_path(historical_root, relative)) != expected_hash:
             reject("historical staged payload hash mismatch: " + relative)
+
+    result_name = attempt_id + "-result"
+    result_matches = [name for name in os.listdir(reviews_parent) if name.lower() == result_name.lower()]
+    if result_matches != [result_name]:
+        reject("historical audited result directory is missing, non-unique, or case-colliding")
+    result_root = os.path.join(reviews_parent, result_name)
+    result_mode = os.lstat(result_root).st_mode
+    if stat.S_ISLNK(result_mode) or not stat.S_ISDIR(result_mode):
+        reject("historical audited result root is a symlink or not a directory")
+    expected_result_name = manifest["output_id"] + ".json"
+    result_members = os.listdir(result_root)
+    if result_members != [expected_result_name]:
+        reject("historical audited result does not contain exactly the bound output member")
+    result_path = os.path.join(result_root, expected_result_name)
+    result_info = os.lstat(result_path)
+    if stat.S_ISLNK(result_info.st_mode) or not stat.S_ISREG(result_info.st_mode):
+        reject("historical audited result member is a symlink or not a regular file")
+    candidate, unused = load_json_bytes(result_path)
+    exact_keys(candidate, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
+                           "blockers", "warnings"], "historical audited result candidate")
+    expected_candidate = {key: value for key, value in verdict.items() if key not in {"verdict", "timestamp"}}
+    if candidate != expected_candidate:
+        reject("historical audited result candidate differs from canonical verdict content")
 
     historical_coverage = validate_coverage_semantics(historical_root, historical_map)
     historical_events = load_strict_version_index(
@@ -809,12 +855,8 @@ def validate_recoverable_or_indexed_seal(version, corrected_hash):
     for key in ["contract_sha256", "shared_contract_sha256"]:
         if not isinstance(value[key], str) or SHA256.fullmatch(value[key]) is None:
             reject("seal %s is invalid" % key)
-    if value["contract_sha256"] != sha_file(ensure_plain_path(run_dir, "audit/product-contract.md")):
-        reject("seal product-contract hash is invalid")
     if value["shared_contract_path"] != "docs/codebase-readiness-audit-contract.md":
         reject("seal shared-contract path is invalid")
-    if value["shared_contract_sha256"] != sha_file(ensure_plain_path(framework_root, value["shared_contract_path"])):
-        reject("seal shared-contract hash is invalid")
     matrix = {
         ("incomplete", "non-conclusive"): (False, False, "incomplete-evidence-only"),
         ("complete", "non-conclusive"): (True, True, "complete-evidence-limited"),
@@ -842,6 +884,101 @@ def validate_recoverable_or_indexed_seal(version, corrected_hash):
         if sha_file(ensure_plain_path(run_dir, verdict_path)) != value["cold_review_verdict_sha256"]:
             reject("audited seal verdict file/hash mismatch")
         validate_historical_audited_review(version, corrected_hash, value)
+
+def validate_existing_readiness_verdict(verdict_relative):
+    match = re.fullmatch(r"verdicts/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\.json", verdict_relative)
+    value, unused = load_json_bytes(ensure_plain_path(run_dir, verdict_relative))
+    if not isinstance(value, dict):
+        reject("existing canonical verdict is not an object: " + verdict_relative)
+    if value.get("review_mode") != "verification":
+        return None
+    if match is None:
+        reject("existing readiness verdict path has an invalid attempt basename")
+    attempt = match.group(1)
+    exact_keys(value, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
+                       "blockers", "warnings", "verdict", "timestamp"], "existing readiness verdict")
+    if value["attempt_id"] != attempt:
+        reject("existing readiness verdict attempt/path binding is invalid")
+    valid_timestamp(value["timestamp"], "existing readiness verdict timestamp")
+    if not isinstance(value["blocker_ids"], list) or not isinstance(value["blockers"], list) or not isinstance(value["warnings"], list):
+        reject("existing readiness verdict arrays are invalid")
+    ids = []
+    all_ids = set()
+    allowed = set()
+    if not isinstance(value["reviewed_artifacts"], list) or not value["reviewed_artifacts"]:
+        reject("existing readiness verdict reviewed_artifacts is invalid")
+    raw_paths = []
+    for index, item in enumerate(value["reviewed_artifacts"]):
+        exact_keys(item, ["path", "sha256"], "existing readiness reviewed_artifacts[%d]" % index)
+        raw_path = safe_packet_path(item["path"], "existing readiness reviewed path")
+        if not isinstance(item["sha256"], str) or SHA256.fullmatch(item["sha256"]) is None or item["path"] in allowed:
+            reject("existing readiness reviewed artifact path/hash is invalid")
+        allowed.add(item["path"])
+        raw_paths.append(raw_path)
+    if raw_paths != sorted(raw_paths):
+        reject("existing readiness reviewed_artifacts is not canonically sorted")
+    for blocker in value["blockers"]:
+        exact_keys(blocker, ["id", "summary", "citation"], "existing readiness blocker")
+        safe_id(blocker["id"], "existing readiness blocker id")
+        bounded_text(blocker["summary"], 1000, "existing readiness blocker summary")
+        if blocker["id"] in all_ids:
+            reject("existing readiness verdict contains colliding IDs")
+        all_ids.add(blocker["id"]); ids.append(blocker["id"])
+        citation = blocker["citation"]
+        if not isinstance(citation, dict) or citation.get("kind") not in {"presence", "absence"}:
+            reject("existing readiness blocker citation is invalid")
+        citation_keys = ["kind", "path", "anchor"] if citation["kind"] == "presence" else ["kind", "path", "missing"]
+        exact_keys(citation, citation_keys, "existing readiness blocker citation")
+        bounded_text(citation[citation_keys[-1]], 1000, "existing readiness citation text")
+        if citation["path"] not in allowed:
+            reject("existing readiness citation path is outside reviewed_artifacts")
+    if value["blocker_ids"] != ids:
+        reject("existing readiness blocker_ids is not derived from blockers")
+    for warning in value["warnings"]:
+        exact_keys(warning, ["id", "summary"], "existing readiness warning")
+        safe_id(warning["id"], "existing readiness warning id")
+        bounded_text(warning["summary"], 1000, "existing readiness warning summary")
+        if warning["id"] in all_ids:
+            reject("existing readiness verdict contains colliding IDs")
+        all_ids.add(warning["id"])
+    derived = "BLOCKED" if ids else "APPROVED_WITH_WARNINGS" if value["warnings"] else "APPROVED"
+    if value["verdict"] != derived:
+        reject("existing readiness verdict is not mechanically derived")
+
+    reviews_parent = os.path.join(run_dir, "audit", "reviews")
+    packet_name = attempt + "-packet"
+    matches = [name for name in os.listdir(reviews_parent) if name.lower() == packet_name.lower()]
+    if matches != [packet_name]:
+        reject("existing readiness verdict lacks one unique immutable packet")
+    existing_root = os.path.join(reviews_parent, packet_name)
+    manifest, unused = load_json_bytes(ensure_plain_path(existing_root, "packet.json"))
+    exact_keys(manifest, ["schema_version", "audit_version", "corrected_audit_path", "review_question",
+                          "attempt_id", "output_id", "review_mode", "denied_inputs", "allowlist"],
+               "existing readiness packet")
+    if (type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1 or
+            not isinstance(manifest["audit_version"], str) or AUDIT_VERSION.fullmatch(manifest["audit_version"]) is None or
+            manifest["attempt_id"] != attempt or manifest["review_mode"] != "verification" or
+            manifest["allowlist"] != value["reviewed_artifacts"]):
+        reject("existing readiness packet binding is invalid")
+    safe_id(manifest["output_id"], "existing readiness output_id")
+    for item in manifest["allowlist"]:
+        if sha_file(ensure_plain_path(existing_root, item["path"])) != item["sha256"]:
+            reject("existing readiness packet payload hash mismatch")
+    result_root = os.path.join(reviews_parent, attempt + "-result")
+    result_matches = [name for name in os.listdir(reviews_parent) if name.lower() == (attempt + "-result").lower()]
+    if result_matches != [attempt + "-result"] or stat.S_ISLNK(os.lstat(result_root).st_mode):
+        reject("existing readiness result directory is missing or aliased")
+    expected_name = manifest["output_id"] + ".json"
+    if os.listdir(result_root) != [expected_name]:
+        reject("existing readiness result member set is invalid")
+    result_path = os.path.join(result_root, expected_name)
+    info = os.lstat(result_path)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        reject("existing readiness result member is not a regular no-alias file")
+    candidate, unused = load_json_bytes(result_path)
+    if candidate != {key: item for key, item in value.items() if key not in {"verdict", "timestamp"}}:
+        reject("existing readiness result candidate differs from canonical verdict")
+    return manifest["audit_version"], value["verdict"]
 
 version_index_source = ensure_plain_path(run_dir, "audit/version-index.ndjson")
 version_events = load_strict_version_index(version_index_source)
@@ -958,6 +1095,16 @@ corrected_event = matching[0]
 if (corrected_event["artifact_path"] != expected_corrected or
         corrected_event["artifact_sha256"] != entry_map[expected_corrected]):
     reject("selected corrected index event path/hash binding is invalid")
+
+# A canonical BLOCKED verdict retires its corrected version. A fresh transport
+# attempt may reuse unchanged bytes only while no canonical verdict exists.
+verdicts_root = os.path.join(run_dir, "verdicts")
+for verdict_name in os.listdir(verdicts_root):
+    if not verdict_name.endswith(".json"):
+        continue
+    existing = validate_existing_readiness_verdict("verdicts/" + verdict_name)
+    if existing is not None and existing == (audit_version, "BLOCKED"):
+        reject("audit_version already has a canonical BLOCKED readiness verdict")
 
 # Every packet member is rebound to its immutable authoritative source.
 framework_members = {

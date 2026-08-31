@@ -469,7 +469,8 @@ before and after the provider, including the exact machine-readable domain regis
 coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
 seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
 Domain labels and exclusion reasons retain contract-valid UTF-8 Unicode scalar values while the
-machine block still requires its exact compact sorted-key representation. It gives the provider only that
+machine block still requires compact JSON and raw-ASCII sorted object keys. Valid RFC 8259 string
+escape spellings are preserved rather than normalized. It gives the provider only that
 isolated packet. Claude runs from the staged root with Read-only tools, no settings, and no
 session persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
@@ -484,6 +485,14 @@ After copying a Codex packet into its private ephemeral context, the adapter enu
 the exact snapshot against retained validated packet state. It repeats that check after the provider
 returns; an added, removed, changed, linked, or special snapshot member rejects the output before
 candidate acceptance.
+
+Before a new readiness provider invocation, the adapter strictly validates existing canonical
+verification verdicts with their immutable packets and exact result candidates. A canonical
+`BLOCKED` verdict retires that corrected-audit version, so another attempt requires a new version;
+a transport or pre-verdict failure without a canonical verdict remains retryable under a fresh
+identity. Historical audited seals bind contract hashes to their immutable packet-era members,
+not later mutable product/framework sources. Standard historical seals likewise retain their
+indexed immutable bindings without being rebound to unversioned current files.
 
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
