@@ -52,6 +52,8 @@ selection, and downstream authorization decisions.
    - Do not access the source audit-service path. It is read-only design provenance, not a runtime
      dependency, and the workflow must work when it is absent.
    - A target commit change requires a new audit run; never retarget through a new version.
+   - Resolve the authorized checkout commit under the contract before reads, probes, or publication
+     and require exact lowercase equality with `profile.md` `target_commit`.
 
 2. **Analizer 2000** (Product intent, **strong**) — establish intent before evaluation → `RUN_DIR/audit/product-contract.md`
    - Read only authorized intent evidence. Record the intended product/use case, boundary,
@@ -178,13 +180,12 @@ selection, and downstream authorization decisions.
    - Stage the closed coverage ledger and exactly its indexed records. Bind each packet member to
      the fixed authoritative source; before provider invocation and verdict publication rehash
      both authoritative and staged bytes and reject stale or substituted sources.
-   - Require packet `review_mode: verification`. The provider emits exactly one six-key raw
-     candidate through the adapter structured-result channel and cannot write the result directory.
-     Enforce exact blocker `{id,summary,citation}` and warning `{id,summary}` variants, types,
-     nonempty values, unique IDs, and no cross-array collision. Reject candidate verdicts,
-     timestamps, unknown keys, or mismatches. The adapter publishes exact candidate bytes
-     no-clobber as `<output_id>.json`, reopens them, derives the verdict, supplies `timestamp`, and
-     publishes the exact eight-field canonical verdict.
+   - Include profile, selected reservation, and version index in the packet. Apply only the shared
+     contract's review mode, candidate/citation schema, and canonical-verdict schema; do not
+     duplicate their field definitions here.
+   - The provider emits one candidate through the adapter channel and cannot write the result
+     directory. The adapter creates it exactly once before invocation, later publishes candidate
+     bytes no-clobber inside it, reopens them, and constructs the canonical verdict.
    - Validate attempt → immutable packet → audit version/corrected path → allowlist path/hash →
      exact reviewed-artifact equality → selected corrected bytes.
    - Require the adapter's contract-defined pre-invocation enumeration and byte-hash validation of
