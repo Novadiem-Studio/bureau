@@ -51,6 +51,7 @@ selection, and downstream authorization decisions.
      no inferred profile or authorization.
    - Do not access the source audit-service path. It is read-only design provenance, not a runtime
      dependency, and the workflow must work when it is absent.
+   - A target commit change requires a new audit run; never retarget through a new version.
 
 2. **Analizer 2000** (Product intent, **strong**) — establish intent before evaluation → `RUN_DIR/audit/product-contract.md`
    - Read only authorized intent evidence. Record the intended product/use case, boundary,
@@ -71,6 +72,8 @@ selection, and downstream authorization decisions.
    - Record every baseline domain and any product-intent-required domain by reference to the
      shared contract. Mark each applicable or excluded, preserve an exclusion reason, and carry
      every excluded area forward as not audited.
+   - Use the six fixed baseline safe IDs. Product-specific domains declare unique raw safe IDs;
+     reject normalization, rewriting, aliases, and collisions.
    - For unresolved-intent structural evidence retention, create the normal six-baseline-domain
      register, mark every baseline domain excluded because intent is unresolved, and add no
      invented product-specific domain. Preserve this register and skip only step 4 coverage.
@@ -110,6 +113,8 @@ selection, and downstream authorization decisions.
    - For every archival route, preserve any completed runtime evidence, start no new probe solely
      to archive, and record exact disposition `archival-no-probe`. This disposition is invalid on
      a complete `full` or `audited` route.
+   - Validate required `runtime_disposition` against the exact five-value enum and selected normal
+     catalog/full/audited or archival predicate.
    - Always write both contract-defined records. A failed or unavailable runtime remains
      `unverifiable`, never pass. Every setup-only change is uncommitted, separately quarantined,
      and remains `approved_client_fix: false`; an explicit no-change quarantine is still required.
@@ -163,6 +168,7 @@ selection, and downstream authorization decisions.
    - Before staging an `audited` packet, preflight both the self-contained readiness-reviewer slice
      and the physically restricted `readiness-audit` adapter. If either is absent or invalid, stop
      before packet staging and provider invocation; neither component substitutes for the other.
+     The reviewer source is exactly `agents/critic/readiness-audit.md`.
    - `audited` stages the exact bounded packet and invokes only the physically restricted
      `readiness-audit` adapter defined by the shared contract. Consume only its adapter-published
      exact-bound canonical verdict. An audited archival packet includes the preserved
@@ -172,10 +178,15 @@ selection, and downstream authorization decisions.
    - Stage the closed coverage ledger and exactly its indexed records. Bind each packet member to
      the fixed authoritative source; before provider invocation and verdict publication rehash
      both authoritative and staged bytes and reject stale or substituted sources.
-   - Accept only the six-key raw candidate. Require blocker ID/object correspondence, attempt,
-     review mode, and read set; reject candidate verdicts, timestamps, and unknown keys. Only the
-     adapter derives the verdict, supplies its UTC timestamp, constructs the exact canonical
-     record, validates it, and publishes no-clobber.
+   - Require packet `review_mode: verification`. The provider emits exactly one six-key raw
+     candidate through the adapter structured-result channel and cannot write the result directory.
+     Enforce exact blocker `{id,summary,citation}` and warning `{id,summary}` variants, types,
+     nonempty values, unique IDs, and no cross-array collision. Reject candidate verdicts,
+     timestamps, unknown keys, or mismatches. The adapter publishes exact candidate bytes
+     no-clobber as `<output_id>.json`, reopens them, derives the verdict, supplies `timestamp`, and
+     publishes the exact eight-field canonical verdict.
+   - Validate attempt → immutable packet → audit version/corrected path → allowlist path/hash →
+     exact reviewed-artifact equality → selected corrected bytes.
    - Require the adapter's contract-defined pre-invocation enumeration and byte-hash validation of
      `packet.json` plus every payload, including retention of the manifest hash. Immediately before
      verdict publication, require its post-provider manifest rehash, reparse, re-enumeration, and
@@ -226,14 +237,16 @@ part of normal audit execution, and it never invokes `workflows/execute-plan.md`
 client fix.
 
 1. **The Conductor** — accept exact downstream artifacts for validation → selected seal, completed remediation plan, immutable approval
-   - Accept the raw `approval_id`, the selected-seal request/path, and the completed remediation-
-     plan path. Validate raw `approval_id` against the shared safe-ID grammar before constructing
+   - Accept the raw `approval_id`, explicit decision, selected-seal request/path, and completed
+     remediation-plan path while the derived approval path is absent. Validate raw `approval_id`
+     against the shared safe-ID grammar before constructing
      any path, derive only `RUN_DIR/audit/execute-plan-approvals/<approval_id>.json`, and require
      the approval at that fixed path. Reject an invalid id, normalization, or any supplied or
      resolved approval path outside that fixed location.
    - As sole approval publisher, observe the explicit human decision, rehash the seal and plan,
      validate the exact record, then use a same-directory temporary file and atomic no-clobber
      publication. Any existing derived path, even identical, fails and needs a new `approval_id`.
+     Reopen and validate the published approval before continuing.
    - Treat the seal and plan as regular artifact paths, not safe-ID values. Do not apply the
      identifier grammar to either path; their safety, ledger/lineage, and hashes are validated in
      step 2. Absence or ambiguity stops the re-entry.
@@ -282,8 +295,8 @@ exact seal, plan, and approval validation. A rejected re-entry emits no authoriz
   does not compensate for missing coverage.
 - Runtime unavailable or failed is evidence with limits, not a passing probe. Setup enablement is
   always quarantined and never becomes an approved client fix.
-- A target commit change does not retarget the active packet; audit the new commit in a new run or
-  version as allowed by the shared contract.
+- A target commit change does not retarget the active packet; audit the new commit only in a new
+  run, never a new version of the existing run.
 - Repository size does not reduce domain coverage. Batch within the host cap or checkpoint on the
   operator's runtime constraints.
 - Any allocation, ledger, immutable-publication, packet, result, verdict, or seal collision fails
