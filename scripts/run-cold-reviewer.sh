@@ -116,6 +116,7 @@ PATH_SEGMENT = re.compile(rb"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 AUDIT_VERSION = re.compile(r"v(?:000[1-9]|00[1-9][0-9]|0[1-9][0-9]{2}|[1-9][0-9]{3})")
 TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 def safe_id(value, label):
     if not isinstance(value, str):
@@ -308,6 +309,7 @@ coverage_events = load_ndjson("audit/coverage-index.ndjson")
 coverage_paths = []
 coverage_pairs = []
 seen_domains = set()
+closure_reason = None
 for index, event in enumerate(coverage_events, 1):
     if event.get("sequence") != index or type(event.get("sequence")) is not int:
         reject("coverage ledger sequence is not contiguous")
@@ -338,6 +340,7 @@ for index, event in enumerate(coverage_events, 1):
         if event["closure_reason"] not in {"all-applicable-completed", "unresolved-intent",
                                            "all-domains-excluded", "partial-coverage-archival"}:
             reject("coverage closure reason is invalid")
+        closure_reason = event["closure_reason"]
         if event["domain_register_path"] != "audit/domain-register.md":
             reject("coverage closure domain register path is invalid")
         if event["domain_register_sha256"] != entry_map.get("audit/domain-register.md"):
@@ -353,6 +356,14 @@ for index, event in enumerate(coverage_events, 1):
         reject("coverage ledger contains an unknown event")
 if not coverage_events or coverage_events[-1].get("event") != "coverage-closed":
     reject("coverage ledger is not closed")
+if not coverage_paths and closure_reason not in {"unresolved-intent", "all-domains-excluded"}:
+    reject("zero completed coverage is valid only for unresolved intent or all domains excluded")
+if coverage_paths and closure_reason in {"unresolved-intent", "all-domains-excluded"}:
+    reject("unresolved intent and all-domains-excluded closures require zero completed coverage")
+if closure_reason == "all-applicable-completed" and not coverage_paths:
+    reject("all-applicable-completed requires a nonempty completed coverage set")
+if closure_reason == "partial-coverage-archival" and not coverage_paths:
+    reject("partial-coverage-archival requires a nonempty partial coverage set")
 for pair in coverage_pairs:
     if entry_map.get(pair["path"]) != pair["sha256"]:
         reject("coverage ledger member/hash is not bound to allowlist: " + pair["path"])
@@ -380,23 +391,226 @@ safe_id(reservation["allocation_id"], "reservation allocation_id")
 safe_id(reservation["reconciliation_attempt_id"], "reservation reconciliation_attempt_id")
 valid_timestamp(reservation["reserved_at"], "reservation reserved_at")
 
-version_events = load_ndjson("audit/version-index.ndjson")
+def load_strict_version_index(path):
+    try:
+        raw = open(path, "rb").read()
+    except OSError as exc:
+        reject("cannot read authoritative version index: %s" % exc)
+    if not raw or not raw.endswith(b"\n") or b"\n\n" in raw:
+        reject("version index is not nonempty complete newline-terminated NDJSON")
+    events = []
+    for line_no, line in enumerate(raw.splitlines(), 1):
+        try:
+            text = line.decode("ascii")
+            event = json.loads(
+                text,
+                object_pairs_hook=pairs_object,
+                parse_constant=lambda value: reject("version index contains non-RFC-8259 constant: " + value),
+            )
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            reject("invalid version index line %d: %s" % (line_no, exc))
+        if not isinstance(event, dict):
+            reject("version index line %d is not an object" % line_no)
+        canonical = json.dumps(event, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
+        if line != canonical:
+            reject("version index line %d is not compact raw-ASCII-key-sorted JSON" % line_no)
+        events.append(event)
+    return events
+
+def validate_authoritative_reservation(version):
+    relative = "audit/versions/%s/reservation.json" % version
+    value, unused = load_json_bytes(ensure_plain_path(run_dir, relative))
+    exact_keys(value, ["schema_version", "audit_version", "allocation_id",
+                       "reconciliation_attempt_id", "reserved_at"], "authoritative reservation")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        reject("authoritative reservation schema_version is invalid")
+    if value["audit_version"] != version:
+        reject("authoritative reservation version binding is invalid")
+    safe_id(value["allocation_id"], "authoritative reservation allocation_id")
+    safe_id(value["reconciliation_attempt_id"], "authoritative reservation reconciliation_attempt_id")
+    valid_timestamp(value["reserved_at"], "authoritative reservation reserved_at")
+
+def validate_recoverable_or_indexed_seal(version, corrected_hash):
+    relative = "audit/versions/%s/seal.json" % version
+    value, unused = load_json_bytes(ensure_plain_path(run_dir, relative))
+    base_keys = {"schema_version", "audit_version", "profile", "target_commit", "audit_date",
+                 "corrected_audit_path", "corrected_audit_sha256", "contract_sha256",
+                 "shared_contract_path", "shared_contract_sha256", "completeness", "conclusiveness",
+                 "successful_run", "selectable_for_remediation_planning", "selection_reason",
+                 "sealing_path", "cold_review"}
+    audited_keys = {"cold_review_verdict", "cold_review_verdict_path", "cold_review_verdict_sha256"}
+    if not isinstance(value, dict) or value.get("profile") not in {"catalog", "full", "audited"}:
+        reject("seal profile is missing or invalid")
+    expected_keys = base_keys | audited_keys if value["profile"] == "audited" else base_keys
+    if set(value) != expected_keys:
+        reject("seal has the wrong profile-conditional exact key set")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        reject("seal schema_version is invalid")
+    if value["audit_version"] != version:
+        reject("seal audit_version binding is invalid")
+    if not isinstance(value["target_commit"], str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["target_commit"]) is None:
+        reject("seal target_commit is invalid")
+    if not isinstance(value["audit_date"], str) or DATE.fullmatch(value["audit_date"]) is None:
+        reject("seal audit_date is invalid")
+    try:
+        datetime.datetime.strptime(value["audit_date"], "%Y-%m-%d")
+    except ValueError:
+        reject("seal audit_date is not a real date")
+    corrected_relative = "audit/versions/%s/corrected-audit.md" % version
+    if (value["corrected_audit_path"] != corrected_relative or
+            value["corrected_audit_sha256"] != corrected_hash):
+        reject("seal corrected-audit binding is invalid")
+    for key in ["contract_sha256", "shared_contract_sha256"]:
+        if not isinstance(value[key], str) or SHA256.fullmatch(value[key]) is None:
+            reject("seal %s is invalid" % key)
+    if value["contract_sha256"] != sha_file(ensure_plain_path(run_dir, "audit/product-contract.md")):
+        reject("seal product-contract hash is invalid")
+    if value["shared_contract_path"] != "docs/codebase-readiness-audit-contract.md":
+        reject("seal shared-contract path is invalid")
+    if value["shared_contract_sha256"] != sha_file(ensure_plain_path(framework_root, value["shared_contract_path"])):
+        reject("seal shared-contract hash is invalid")
+    matrix = {
+        ("incomplete", "non-conclusive"): (False, False, "incomplete-evidence-only"),
+        ("complete", "non-conclusive"): (True, True, "complete-evidence-limited"),
+        ("complete", "conclusive"): (True, True, "complete-conclusive"),
+    }
+    matrix_value = matrix.get((value["completeness"], value["conclusiveness"]))
+    if (matrix_value is None or type(value["successful_run"]) is not bool or
+            type(value["selectable_for_remediation_planning"]) is not bool or
+            (value["successful_run"], value["selectable_for_remediation_planning"],
+             value["selection_reason"]) != matrix_value):
+        reject("seal completeness/conclusiveness matrix binding is invalid")
+    if value["profile"] in {"catalog", "full"}:
+        if value["sealing_path"] != "standard-non-premium" or value["cold_review"] != "not-performed":
+            reject("standard-profile seal path is invalid")
+    else:
+        if (value["sealing_path"] != "premium-independent-cold-review" or
+                value["cold_review"] != "performed" or
+                value["cold_review_verdict"] not in {"APPROVED_WITH_WARNINGS", "APPROVED"}):
+            reject("audited seal cold-review state is invalid")
+        verdict_path = value["cold_review_verdict_path"]
+        if not isinstance(verdict_path, str) or re.fullmatch(r"verdicts/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\.json", verdict_path) is None:
+            reject("audited seal verdict path is invalid")
+        if not isinstance(value["cold_review_verdict_sha256"], str) or SHA256.fullmatch(value["cold_review_verdict_sha256"]) is None:
+            reject("audited seal verdict hash is invalid")
+        if sha_file(ensure_plain_path(run_dir, verdict_path)) != value["cold_review_verdict_sha256"]:
+            reject("audited seal verdict file/hash mismatch")
+
+version_index_source = ensure_plain_path(run_dir, "audit/version-index.ndjson")
+version_events = load_strict_version_index(version_index_source)
 matching = []
+event_identity = set()
+indexed_versions = {}
+last_version_number = 0
+last_event = None
 for event in version_events:
-    if event.get("event") == "corrected" and event.get("audit_version") == audit_version:
+    kind = event.get("event")
+    if kind == "corrected":
         exact_keys(event, ["schema_version", "audit_version", "event", "artifact_path",
                            "artifact_sha256", "recorded_at"], "corrected index event")
-        matching.append(event)
+    elif kind == "sealed":
+        exact_keys(event, ["schema_version", "audit_version", "event", "corrected_audit_path",
+                           "corrected_audit_sha256", "recorded_at", "seal_path", "seal_sha256"],
+                   "sealed index event")
+    else:
+        reject("version index contains an unknown event")
+    if type(event["schema_version"]) is not int or event["schema_version"] != 1:
+        reject("version index event schema_version is invalid")
+    version = event["audit_version"]
+    if not isinstance(version, str) or AUDIT_VERSION.fullmatch(version) is None:
+        reject("version index event audit_version is invalid")
+    version_number = int(version[1:])
+    if version_number < last_version_number:
+        reject("version index audit versions decrease")
+    identity = (version, kind)
+    if identity in event_identity:
+        reject("version index contains a duplicate or conflicting event identity")
+    event_identity.add(identity)
+    valid_timestamp(event["recorded_at"], "version index recorded_at")
+    validate_authoritative_reservation(version)
+
+    corrected_relative = "audit/versions/%s/corrected-audit.md" % version
+    if kind == "corrected":
+        if version_number <= last_version_number or version in indexed_versions:
+            reject("version index corrected event order is impossible")
+        if event["artifact_path"] != corrected_relative:
+            reject("corrected index event artifact path is invalid")
+        if not isinstance(event["artifact_sha256"], str) or SHA256.fullmatch(event["artifact_sha256"]) is None:
+            reject("corrected index event artifact hash is invalid")
+        corrected_source = ensure_plain_path(run_dir, corrected_relative)
+        if sha_file(corrected_source) != event["artifact_sha256"]:
+            reject("corrected index event artifact file/hash mismatch")
+        indexed_versions[version] = {"corrected_sha256": event["artifact_sha256"], "sealed": False}
+        if version == audit_version:
+            matching.append(event)
+    else:
+        if (version not in indexed_versions or version_number != last_version_number or
+                last_event != (version, "corrected")):
+            reject("version index contains sealed-before-corrected or impossible event order")
+        if event["corrected_audit_path"] != corrected_relative:
+            reject("sealed index event corrected-audit path is invalid")
+        if event["corrected_audit_sha256"] != indexed_versions[version]["corrected_sha256"]:
+            reject("sealed index event corrected-audit hash conflicts with corrected event")
+        corrected_source = ensure_plain_path(run_dir, corrected_relative)
+        if sha_file(corrected_source) != event["corrected_audit_sha256"]:
+            reject("sealed index event corrected-audit file/hash mismatch")
+        seal_relative = "audit/versions/%s/seal.json" % version
+        if event["seal_path"] != seal_relative:
+            reject("sealed index event seal path is invalid")
+        if not isinstance(event["seal_sha256"], str) or SHA256.fullmatch(event["seal_sha256"]) is None:
+            reject("sealed index event seal hash is invalid")
+        seal_source = ensure_plain_path(run_dir, seal_relative)
+        if sha_file(seal_source) != event["seal_sha256"]:
+            reject("sealed index event seal file/hash mismatch")
+        indexed_versions[version]["sealed"] = True
+    last_version_number = version_number
+    last_event = identity
+
+versions_root = os.path.join(run_dir, "audit", "versions")
+try:
+    versions_mode = os.lstat(versions_root).st_mode
+except OSError as exc:
+    reject("authoritative versions directory is missing: %s" % exc)
+if stat.S_ISLNK(versions_mode) or not stat.S_ISDIR(versions_mode):
+    reject("authoritative versions path is not a regular directory")
+for version in os.listdir(versions_root):
+    if AUDIT_VERSION.fullmatch(version) is None:
+        reject("versions directory contains an invalid version name")
+    version_dir = os.path.join(versions_root, version)
+    mode = os.lstat(version_dir).st_mode
+    if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+        reject("version path is a symlink or not a directory: " + version)
+    validate_authoritative_reservation(version)
+    names = set(os.listdir(version_dir))
+    for name in names:
+        member = os.path.join(version_dir, name)
+        member_mode = os.lstat(member).st_mode
+        if stat.S_ISLNK(member_mode) or not stat.S_ISREG(member_mode):
+            reject("version directory contains a symlink or special member: %s/%s" % (version, name))
+    indexed = indexed_versions.get(version)
+    if indexed is None:
+        if names not in ({"reservation.json"}, {"reservation.json", "corrected-audit.md"}):
+            reject("unindexed version directory is not reserved-only or recoverable corrected state")
+    elif indexed["sealed"]:
+        if names != {"reservation.json", "corrected-audit.md", "seal.json"}:
+            reject("sealed version directory has an invalid artifact set")
+    elif names not in ({"reservation.json", "corrected-audit.md"},
+                        {"reservation.json", "corrected-audit.md", "seal.json"}):
+        reject("corrected version directory has an invalid artifact set")
+    if "seal.json" in names:
+        corrected_hash = (indexed["corrected_sha256"] if indexed is not None else
+                          sha_file(ensure_plain_path(run_dir, "audit/versions/%s/corrected-audit.md" % version)))
+        validate_recoverable_or_indexed_seal(version, corrected_hash)
+for version in indexed_versions:
+    if version not in os.listdir(versions_root):
+        reject("version index names a missing version directory")
+
 if len(matching) != 1:
     reject("version index lacks exactly one corrected event for audit_version")
 corrected_event = matching[0]
-if (type(corrected_event["schema_version"]) is not int or corrected_event["schema_version"] != 1 or
-        corrected_event["artifact_path"] != expected_corrected or
-        corrected_event["artifact_sha256"] != entry_map[expected_corrected] or
-        not isinstance(corrected_event["artifact_sha256"], str) or
-        SHA256.fullmatch(corrected_event["artifact_sha256"]) is None):
-    reject("corrected index event path/hash binding is invalid")
-valid_timestamp(corrected_event["recorded_at"], "corrected event recorded_at")
+if (corrected_event["artifact_path"] != expected_corrected or
+        corrected_event["artifact_sha256"] != entry_map[expected_corrected]):
+    reject("selected corrected index event path/hash binding is invalid")
 
 # Every packet member is rebound to its immutable authoritative source.
 framework_members = {
@@ -496,6 +710,64 @@ PY
   reasoning_effort="$(jq -r '.roles.challenger.reasoningEffort // empty' "$ROUTING")" \
     || fail "cannot read readiness Challenger reasoning effort"
 
+  target_repo=""
+  if [ "$runtime" = "openai" ]; then
+    target_repo="$(python3 - "$RUN_DIR/state.json" <<'PY'
+import json
+import os
+import stat
+import sys
+
+state_path = sys.argv[1]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: readiness Codex target deny " + message)
+
+def pairs_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            reject("state.json contains duplicate key: " + key)
+        result[key] = value
+    return result
+
+try:
+    info = os.lstat(state_path)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        reject("state.json is a symlink or not a regular file")
+    raw = open(state_path, "rb").read()
+except OSError as exc:
+    reject("cannot read state.json: %s" % exc)
+if raw.startswith(b"\xef\xbb\xbf"):
+    reject("state.json has a byte order mark")
+try:
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder(
+        object_pairs_hook=pairs_object,
+        parse_constant=lambda value: reject("state.json contains non-RFC-8259 constant: " + value),
+    )
+    state, end = decoder.raw_decode(text)
+except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+    reject("state.json is invalid JSON: %s" % exc)
+if text[end:].strip():
+    reject("state.json contains trailing JSON content")
+if not isinstance(state, dict):
+    reject("state.json is not an object")
+target = state.get("target_repo")
+if not isinstance(target, str) or not target or not os.path.isabs(target):
+    reject("target_repo must be one nonempty absolute path string")
+canonical = os.path.realpath(target)
+try:
+    target_mode = os.stat(canonical).st_mode
+except OSError as exc:
+    reject("target_repo cannot be resolved: %s" % exc)
+if not stat.S_ISDIR(target_mode):
+    reject("target_repo does not resolve to an existing directory")
+print(canonical)
+PY
+)" || exit 1
+  fi
+
   mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
 
   candidate_schema="$readiness_tmp/candidate-schema.json"
@@ -585,10 +857,7 @@ PY
     append_readiness_deny "${CODEX_HOME:-${HOME:-}/.codex}"
     append_readiness_deny "${HOME:-}/.claude"
     append_readiness_deny "${HOME:-}/.novadiem"
-    target_repo="$(jq -r '.target_repo // empty' "$RUN_DIR/state.json" 2>/dev/null)"
-    case "$target_repo" in
-      /*) append_readiness_deny "$target_repo" ;;
-    esac
+    append_readiness_deny "$target_repo"
     append_readiness_deny "${BUREAU_REVIEWER_UNSTAGED_SENTINEL:-}"
     append_readiness_deny "${UNSTAGED_SENTINEL:-}"
 

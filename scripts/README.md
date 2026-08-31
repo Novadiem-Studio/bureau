@@ -469,7 +469,10 @@ before and after the provider, and gives the provider only that isolated packet.
 the staged root with Read-only tools, no settings, and no session
 persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
-session/configuration stores, and any supplied unstaged sentinel.
+session/configuration stores, and any supplied unstaged sentinel. Before reserving a Codex result,
+the adapter strictly parses `RUN_DIR/state.json`, requires `target_repo` to resolve to one existing
+absolute directory, and denies that physical canonical path; malformed or missing state fails
+before provider invocation.
 
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
