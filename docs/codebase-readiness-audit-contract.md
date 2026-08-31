@@ -71,6 +71,8 @@ Common machine types are normative:
 | `review-question-text` | JSON string of 1–2000 UTF-8 bytes with no control character. |
 | `summary-text` | JSON string of 1–1000 UTF-8 bytes with no control character. |
 | `citation-text` | JSON string of 1–1000 UTF-8 bytes with no control character, for `anchor` or `missing`. |
+| `domain-label-text` | JSON string of 1–200 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. |
+| `exclusion-reason-text` | JSON string of 1–1000 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. |
 | `identity-text` | JSON string containing 1–256 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. Used only for human identity display fields. |
 | `relative-artifact-path` | JSON string containing the exact `/`-separated path relative to `RUN_DIR` named by its schema row; no absolute, empty, `.`, `..`, backslash, symlink, or normalization alias is accepted. |
 | `boolean` | JSON Boolean `true` or `false`. |
@@ -182,6 +184,83 @@ Their fixed safe IDs are respectively `data-business-correctness`, `security-aut
 `schema-drift-deploy`, `feature-completeness`, `code-health`, and `architecture-scale`.
 Every product-specific domain declares one unique safe ID under the exact safe-ID grammar. IDs
 are compared as raw bytes; normalization, rewriting, aliases, and collisions are rejected.
+
+### Machine-readable domain register
+
+The human-readable register MUST contain exactly one machine block under the fixed heading
+`## Machine-readable domain register`. The block has these exact physical delimiters and shape:
+
+````markdown
+<!-- BEGIN CODEBASE-READINESS-DOMAIN-REGISTER v1 -->
+```json
+{"domains":[{"applicability":"excluded","domain_id":"architecture-scale","exclusion_reason":"unresolved-intent","label":"architecture/scale"},{"applicability":"excluded","domain_id":"code-health","exclusion_reason":"unresolved-intent","label":"code health"},{"applicability":"excluded","domain_id":"data-business-correctness","exclusion_reason":"unresolved-intent","label":"data/business correctness"},{"applicability":"excluded","domain_id":"feature-completeness","exclusion_reason":"unresolved-intent","label":"feature completeness"},{"applicability":"excluded","domain_id":"schema-drift-deploy","exclusion_reason":"unresolved-intent","label":"schema/drift/deploy"},{"applicability":"excluded","domain_id":"security-authorization","exclusion_reason":"unresolved-intent","label":"security/authorization"}],"schema_version":1}
+```
+<!-- END CODEBASE-READINESS-DOMAIN-REGISTER v1 -->
+````
+
+The opening sentinel, fenced `json` block, one payload line, closing fence, and closing sentinel
+each occur exactly once and in that order. There is no blank or extra line inside the fence. The
+payload is exactly one compact RFC 8259 JSON object on one line, encoded as UTF-8 without BOM,
+leading/trailing whitespace, trailing value, or newline inside the payload. Duplicate keys at any
+depth, JSON `null`, and unknown keys are rejected. Object keys use the exact raw-ASCII order shown
+below; human prose outside this block cannot override or supplement its machine state.
+
+The top object has exactly these keys in this order:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `domains` | nonempty JSON array | Canonically sorted ascending by unsigned bytewise raw-ASCII `domain_id`. |
+| `schema_version` | `schema-version` | Integer `1`. |
+
+Each applicable member has exactly these keys in order:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `applicability` | JSON string | Exactly `applicable`. |
+| `domain_id` | `safe-id` | Unique explicit domain ID. |
+| `label` | `domain-label-text` | Exact display label. |
+
+Each excluded member has exactly these keys in order:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `applicability` | JSON string | Exactly `excluded`. |
+| `domain_id` | `safe-id` | Unique explicit domain ID. |
+| `exclusion_reason` | `exclusion-reason-text` | Nonempty reason. |
+| `label` | `domain-label-text` | Exact display label. |
+
+The six baseline ID/label pairs are mandatory and each appears exactly once:
+
+| `domain_id` | `label` |
+|---|---|
+| `data-business-correctness` | `data/business correctness` |
+| `security-authorization` | `security/authorization` |
+| `schema-drift-deploy` | `schema/drift/deploy` |
+| `feature-completeness` | `feature completeness` |
+| `code-health` | `code health` |
+| `architecture-scale` | `architecture/scale` |
+
+Product-specific members are permitted only when product intent requires them; each declares a
+unique explicit safe ID and nonempty label. Duplicate raw IDs, raw-ASCII case aliases,
+normalization aliases, label substitution for a baseline ID, and any implicit/derived ID are
+invalid.
+
+Let `applicable_ids` be exactly the set of machine-block `domain_id` values whose applicability is
+`applicable`, and `excluded_ids` the corresponding `excluded` set. Coverage-completed event IDs
+and coverage-record IDs MUST be members of `applicable_ids`; coverage of an excluded or unknown ID
+is invalid. Closure binds these sets exactly:
+
+- `all-applicable-completed`: completed IDs equal `applicable_ids` exactly.
+- `partial-coverage-archival`: completed IDs are a nonempty proper subset of `applicable_ids`.
+- `all-domains-excluded`: completed IDs and `applicable_ids` are both empty.
+- `unresolved-intent`: completed IDs are empty; the register contains only the six mandatory
+  baselines, all excluded with exact `exclusion_reason: unresolved-intent`, and no product-specific
+  member.
+
+The closure event's existing `domain_register_sha256` is the hash of the exact complete Markdown
+file bytes, including prose, heading, sentinels, fence, and payload. Validation rehashes those
+bytes, parses this machine block, and checks the closure rule before reconciliation, packet
+staging, or sealing.
 
 An excluded domain requires a reason and is a final scope boundary. Product-intent-driven domains
 may be added, but use the same record shape. Every applicable domain has one fresh, independently

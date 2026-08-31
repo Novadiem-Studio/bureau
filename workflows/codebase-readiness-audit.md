@@ -76,15 +76,20 @@ selection, and downstream authorization decisions.
      every excluded area forward as not audited.
    - Use the six fixed baseline safe IDs. Product-specific domains declare unique raw safe IDs;
      reject normalization, rewriting, aliases, and collisions.
+   - Publish the human-readable register with the contract's one authoritative machine block.
+     Before closure, the Conductor parses that block, rejects malformed/duplicate/aliased state,
+     and derives the applicable and excluded ID sets; surrounding prose cannot override them.
    - For unresolved-intent structural evidence retention, create the normal six-baseline-domain
      register, mark every baseline domain excluded because intent is unresolved, and add no
      invented product-specific domain. Preserve this register and skip only step 4 coverage.
      Return control to the Conductor to no-clobber create the coverage ledger and append its zero-
-     completion `coverage-closed` event with reason `unresolved-intent`.
+     completion `coverage-closed` event with reason `unresolved-intent` only after the parsed block
+     proves exactly six baselines excluded for unresolved intent and no product-specific member.
    - If settled intent produces an all-domains-excluded register, preserve that register, treat
      the audit as incomplete/non-conclusive, and skip only step 4 coverage. Route through the
      evidence-retention rules from step 2; do not manufacture findings. The Conductor closes the
-     no-clobber coverage ledger at zero with reason `all-domains-excluded`.
+     no-clobber coverage ledger at zero with reason `all-domains-excluded` only when the parsed
+     applicable set is empty.
 
 4. **Analizer 2000** (Independent coverage, **standard**) — isolate each domain pass → `RUN_DIR/audit/coverage/<domain_id>.md`
    - Spawn a fresh context for each applicable domain. Give it the product contract, domain
@@ -101,6 +106,9 @@ selection, and downstream authorization decisions.
    - After each no-clobber coverage publication, return control to the Conductor to hash the record
      and append its exact `coverage-completed` event. The Conductor serializes these appends and
      finally appends one terminal `coverage-closed` event; nothing appends after closure.
+   - Reject coverage for an excluded or unknown machine-block ID. For normal closure require the
+     completed-ID set to equal the parsed applicable set; partial archival requires a nonempty
+     proper subset. Bind closure to the exact full-register Markdown hash.
    - If coverage stops partway and the operator chooses archival closure, checkpoint with the
      completed domain set and preserve every valid existing coverage record exactly. Do not delete
      one, add an unproduced record, force the set to zero, or fabricate an absence record.
@@ -141,7 +149,8 @@ selection, and downstream authorization decisions.
      `RUN_DIR/audit/runtime-verification.md`, and `RUN_DIR/audit/setup-quarantine.md`. Do not
      allocate a version or write the index.
    - On every path, receive exactly the completed records in the validated closed coverage ledger;
-     never discover, omit, add, or substitute a coverage file outside that indexed set.
+     require that set to satisfy the machine-block closure rule, and never discover, omit, add, or
+     substitute a coverage file outside that indexed set.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
      Keep owner questions, exclusions, verification limits, and setup quarantine visible.
    - Every substantive finding and the overall conclusion carry the shared evidence
@@ -180,6 +189,9 @@ selection, and downstream authorization decisions.
    - Stage the closed coverage ledger and exactly its indexed records. Bind each packet member to
      the fixed authoritative source; before provider invocation and verdict publication rehash
      both authoritative and staged bytes and reject stale or substituted sources.
+   - Rehash the exact full domain-register Markdown bytes, parse its sole contract-defined machine
+     block, and require the staged ledger/records to match its derived closure sets. Do not infer
+     domain state from surrounding prose.
    - Include profile, selected reservation, and version index in the packet. Apply only the shared
      contract's review mode, candidate/citation schema, and canonical-verdict schema; do not
      duplicate their field definitions here.
