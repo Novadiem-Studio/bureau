@@ -74,9 +74,12 @@ selection, and downstream authorization decisions.
    - For unresolved-intent structural evidence retention, create the normal six-baseline-domain
      register, mark every baseline domain excluded because intent is unresolved, and add no
      invented product-specific domain. Preserve this register and skip only step 4 coverage.
+     Return control to the Conductor to no-clobber create the coverage ledger and append its zero-
+     completion `coverage-closed` event with reason `unresolved-intent`.
    - If settled intent produces an all-domains-excluded register, preserve that register, treat
      the audit as incomplete/non-conclusive, and skip only step 4 coverage. Route through the
-     evidence-retention rules from step 2; do not manufacture findings.
+     evidence-retention rules from step 2; do not manufacture findings. The Conductor closes the
+     no-clobber coverage ledger at zero with reason `all-domains-excluded`.
 
 4. **Analizer 2000** (Independent coverage, **standard**) — isolate each domain pass → `RUN_DIR/audit/coverage/<domain_id>.md`
    - Spawn a fresh context for each applicable domain. Give it the product contract, domain
@@ -90,6 +93,9 @@ selection, and downstream authorization decisions.
      commands or probes. Any already-supplied authorized runtime procedure belongs only in step 5.
    - Candidate findings follow the shared evidence and disposition contract. Missing evidence is
      not a pass, and an owner question is not silently promoted to a defect.
+   - After each no-clobber coverage publication, return control to the Conductor to hash the record
+     and append its exact `coverage-completed` event. The Conductor serializes these appends and
+     finally appends one terminal `coverage-closed` event; nothing appends after closure.
    - If coverage stops partway and the operator chooses archival closure, checkpoint with the
      completed domain set and preserve every valid existing coverage record exactly. Do not delete
      one, add an unproduced record, force the set to zero, or fabricate an absence record.
@@ -97,8 +103,9 @@ selection, and downstream authorization decisions.
 5. **The Mechanic** (Runtime verification, **strong**) — verify runtime and quarantine setup → `RUN_DIR/audit/runtime-verification.md`, `RUN_DIR/audit/setup-quarantine.md`
    - Work only in an isolated clone, worktree, or local stack with synthetic data and the supplied
      credential/data policy. Never commit setup-only target changes.
-   - For `catalog`, run only an already-supplied authorized procedure; do not create a runnable
-     environment. For `full` and `audited`, actively attempt isolated stand-up and synthetic
+   - For normal `catalog`, attempt an already-supplied authorized procedure and record its observed
+     outcome; if absent record `not-supplied`. Never create a runnable environment. For `full` and
+     `audited`, actively attempt isolated stand-up and synthetic
      lifecycle probes where technically possible.
    - For every archival route, preserve any completed runtime evidence, start no new probe solely
      to archive, and record exact disposition `archival-no-probe`. This disposition is invalid on
@@ -123,20 +130,21 @@ selection, and downstream authorization decisions.
 7. **The Architect** (Reconciliation, **strong**) — reconcile only the supplied reservation → `RUN_DIR/audit/versions/vNNNN/corrected-audit.md`
    - Always receive the exact reservation/version plus `RUN_DIR/audit/profile.md`,
      `RUN_DIR/audit/product-contract.md`, `RUN_DIR/audit/domain-register.md`,
+     `RUN_DIR/audit/coverage-index.ndjson`,
      `RUN_DIR/audit/runtime-verification.md`, and `RUN_DIR/audit/setup-quarantine.md`. Do not
      allocate a version or write the index.
-   - On the normal path, additionally receive every applicable coverage artifact under
-     `RUN_DIR/audit/coverage/`.
+   - On every path, receive exactly the completed records in the validated closed coverage ledger;
+     never discover, omit, add, or substitute a coverage file outside that indexed set.
    - Preserve candidate provenance and visibly resolve duplicates, conflicts, and supersessions.
      Keep owner questions, exclusions, verification limits, and setup quarantine visible.
    - Every substantive finding and the overall conclusion carry the shared evidence
      classification plus the required evidence reference or unavailability reason. Evidence
      ceilings are preserved. Publish no-clobber to the reserved version only.
-   - For every evidence-retention path, pass the preserved domain register and the exact valid
-     existing coverage set: zero only for unresolved intent or all domains excluded, otherwise the
-     completed partial subset. Emit explicit structurally empty or non-substantive contract-
-     required sections and only the permitted contract-gap content and mandatory structural
-     references; do not add readiness findings, a recommendation, or remediation candidates.
+   - Split archival reconciliation exactly: unresolved intent emits contract-gap content and no
+     findings; all domains excluded emits exclusion-only content and no findings; partial coverage
+     preserves every indexed finding, provenance item, and evidence ceiling. Every archival form
+     remains incomplete, non-conclusive, unsuccessful, non-selectable, and grants no planning
+     authority.
 
 8. **The Conductor** — validate and bind the corrected audit → `RUN_DIR/audit/version-index.ndjson` (`corrected` event)
    - Revalidate the complete ledger, reservation state, corrected-audit path/content, target
@@ -161,9 +169,13 @@ selection, and downstream authorization decisions.
      `RUN_DIR/audit/domain-register.md` and the exact existing valid coverage set used by
      reconciliation—zero only for unresolved intent or all domains excluded. An absence
      placeholder is not a valid substitute for the register or a coverage record.
-   - Before verdict derivation, require `blocker_ids` to correspond one-to-one and in order with
-     unique `blockers[].id`; require candidate attempt, review mode, reviewed-artifact read set,
-     and any supplied verdict to match the packet or mechanically derived value exactly.
+   - Stage the closed coverage ledger and exactly its indexed records. Bind each packet member to
+     the fixed authoritative source; before provider invocation and verdict publication rehash
+     both authoritative and staged bytes and reject stale or substituted sources.
+   - Accept only the six-key raw candidate. Require blocker ID/object correspondence, attempt,
+     review mode, and read set; reject candidate verdicts, timestamps, and unknown keys. Only the
+     adapter derives the verdict, supplies its UTC timestamp, constructs the exact canonical
+     record, validates it, and publishes no-clobber.
    - Require the adapter's contract-defined pre-invocation enumeration and byte-hash validation of
      `packet.json` plus every payload, including retention of the manifest hash. Immediately before
      verdict publication, require its post-provider manifest rehash, reparse, re-enumeration, and
@@ -219,6 +231,9 @@ client fix.
      any path, derive only `RUN_DIR/audit/execute-plan-approvals/<approval_id>.json`, and require
      the approval at that fixed path. Reject an invalid id, normalization, or any supplied or
      resolved approval path outside that fixed location.
+   - As sole approval publisher, observe the explicit human decision, rehash the seal and plan,
+     validate the exact record, then use a same-directory temporary file and atomic no-clobber
+     publication. Any existing derived path, even identical, fails and needs a new `approval_id`.
    - Treat the seal and plan as regular artifact paths, not safe-ID values. Do not apply the
      identifier grammar to either path; their safety, ledger/lineage, and hashes are validated in
      step 2. Absence or ambiguity stops the re-entry.
@@ -274,7 +289,7 @@ exact seal, plan, and approval validation. A rejected re-entry emits no authoriz
 - Any allocation, ledger, immutable-publication, packet, result, verdict, or seal collision fails
   closed under the contract. Never delete or adopt the colliding object.
 - Correcting an audited blocker allocates a new version and repeats packet, review, and sealing.
-- Incomplete/non-conclusive evidence may be archived after the selected profile's normal gate but
+- Incomplete/non-conclusive evidence may be archived after the selected profile's archival predicate but
   is never remediation-planning input. Incomplete/conclusive is invalid.
 - A default selection skips non-selectable seals; an explicitly requested non-selectable or
   invalid seal is rejected.
