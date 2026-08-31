@@ -286,8 +286,8 @@ for relative, expected_hash in entries:
     if sha_file(staged) != expected_hash:
         reject("staged payload hash mismatch: " + relative)
 
-def load_ndjson(relative):
-    path = ensure_plain_path(packet_root, relative)
+def load_ndjson(root, relative):
+    path = ensure_plain_path(root, relative)
     raw = open(path, "rb").read()
     if not raw or not raw.endswith(b"\n") or b"\n\n" in raw:
         reject(relative + " is not complete newline-terminated NDJSON")
@@ -310,8 +310,8 @@ def load_ndjson(relative):
         values.append(value)
     return values
 
-def parse_domain_register(relative):
-    path = ensure_plain_path(packet_root, relative)
+def parse_domain_register(root, relative):
+    path = ensure_plain_path(root, relative)
     raw = open(path, "rb").read()
     if raw.startswith(b"\xef\xbb\xbf"):
         reject("domain register has a byte order mark")
@@ -348,7 +348,7 @@ def parse_domain_register(relative):
     if raw[start:end + len(closing)] != prefix + payload + suffix:
         reject("domain register machine block physical shape is invalid")
     try:
-        text = payload.decode("ascii")
+        text = payload.decode("utf-8")
         value = json.loads(
             text,
             object_pairs_hook=pairs_object,
@@ -362,8 +362,9 @@ def parse_domain_register(relative):
     domains = value["domains"]
     if not isinstance(domains, list) or not domains:
         reject("domain register domains must be a nonempty array")
-    canonical = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-    if payload != canonical:
+    canonical_ascii = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
+    canonical_utf8 = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if payload not in {canonical_ascii, canonical_utf8}:
         reject("domain register payload is not compact raw-ASCII-key-sorted JSON")
     baseline = {
         "architecture-scale": "architecture/scale",
@@ -408,79 +409,86 @@ def parse_domain_register(relative):
         reject("domain register lacks one or more mandatory baseline domains")
     return value, applicable, excluded, baseline
 
+def validate_coverage_semantics(root, member_map):
+    coverage_events = load_ndjson(root, "audit/coverage-index.ndjson")
+    domain_register, applicable_ids, excluded_ids, baseline_domains = parse_domain_register(
+        root, "audit/domain-register.md")
+    coverage_paths = []
+    coverage_pairs = []
+    seen_domains = set()
+    closure_reason = None
+    for index, event in enumerate(coverage_events, 1):
+        if event.get("sequence") != index or type(event.get("sequence")) is not int:
+            reject("coverage ledger sequence is not contiguous")
+        if event.get("event") == "coverage-completed":
+            exact_keys(event, ["schema_version", "event", "sequence", "domain_id", "coverage_path",
+                               "coverage_sha256", "reviewer_attempt_id", "recorded_at"], "coverage event")
+            if event["schema_version"] != 1 or type(event["schema_version"]) is not int:
+                reject("coverage event schema_version is invalid")
+            safe_id(event["domain_id"], "coverage domain_id")
+            safe_id(event["reviewer_attempt_id"], "coverage reviewer_attempt_id")
+            valid_timestamp(event["recorded_at"], "coverage recorded_at")
+            expected_path = "audit/coverage/%s.md" % event["domain_id"]
+            if event["coverage_path"] != expected_path or event["domain_id"] in seen_domains:
+                reject("coverage event path/domain binding is invalid")
+            if not isinstance(event["coverage_sha256"], str) or SHA256.fullmatch(event["coverage_sha256"]) is None:
+                reject("coverage event hash is invalid")
+            seen_domains.add(event["domain_id"])
+            coverage_paths.append(expected_path)
+            coverage_pairs.append({"path": expected_path, "sha256": event["coverage_sha256"]})
+        elif event.get("event") == "coverage-closed":
+            exact_keys(event, ["schema_version", "event", "sequence", "closure_reason", "domain_register_path",
+                               "domain_register_sha256", "completed_count", "completed_set_sha256", "recorded_at"],
+                       "coverage closure")
+            if index != len(coverage_events):
+                reject("coverage closure is not terminal")
+            if event["schema_version"] != 1 or type(event["schema_version"]) is not int:
+                reject("coverage closure schema_version is invalid")
+            if event["closure_reason"] not in {"all-applicable-completed", "unresolved-intent",
+                                               "all-domains-excluded", "partial-coverage-archival"}:
+                reject("coverage closure reason is invalid")
+            closure_reason = event["closure_reason"]
+            if event["domain_register_path"] != "audit/domain-register.md":
+                reject("coverage closure domain register path is invalid")
+            if (event["domain_register_sha256"] != member_map.get("audit/domain-register.md") or
+                    event["domain_register_sha256"] != sha_file(ensure_plain_path(root, "audit/domain-register.md"))):
+                reject("coverage closure domain register hash is invalid")
+            if type(event["completed_count"]) is not int or event["completed_count"] != len(coverage_paths):
+                reject("coverage closure completed_count is invalid")
+            canonical = json.dumps(sorted(coverage_pairs, key=lambda item: item["path"].encode("ascii")),
+                                   ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+            if event["completed_set_sha256"] != hashlib.sha256(canonical).hexdigest():
+                reject("coverage closure completed-set hash is invalid")
+            valid_timestamp(event["recorded_at"], "coverage closure recorded_at")
+        else:
+            reject("coverage ledger contains an unknown event")
+    if not coverage_events or coverage_events[-1].get("event") != "coverage-closed":
+        reject("coverage ledger is not closed")
+    completed_ids = set(seen_domains)
+    if not completed_ids.issubset(applicable_ids):
+        reject("coverage completion names an excluded or unknown domain")
+    if closure_reason == "all-applicable-completed":
+        if not completed_ids or completed_ids != applicable_ids:
+            reject("all-applicable-completed does not exactly equal the nonempty applicable set")
+    elif closure_reason == "partial-coverage-archival":
+        if not completed_ids or not completed_ids < applicable_ids:
+            reject("partial-coverage-archival is not a nonempty proper subset of applicable domains")
+    elif closure_reason == "all-domains-excluded":
+        if completed_ids or applicable_ids:
+            reject("all-domains-excluded requires empty completed and applicable sets")
+    elif closure_reason == "unresolved-intent":
+        domains = domain_register["domains"]
+        if (completed_ids or applicable_ids or len(domains) != 6 or set(excluded_ids) != set(baseline_domains) or
+                any(domain.get("exclusion_reason") != "unresolved-intent" for domain in domains)):
+            reject("unresolved-intent requires only six unresolved baseline exclusions and zero coverage")
+    for pair in coverage_pairs:
+        if (member_map.get(pair["path"]) != pair["sha256"] or
+                sha_file(ensure_plain_path(root, pair["path"])) != pair["sha256"]):
+            reject("coverage ledger member/hash is not bound to allowlist: " + pair["path"])
+    return coverage_paths
+
 # The closed coverage ledger defines the only dynamic packet members.
-coverage_events = load_ndjson("audit/coverage-index.ndjson")
-domain_register, applicable_ids, excluded_ids, baseline_domains = parse_domain_register("audit/domain-register.md")
-coverage_paths = []
-coverage_pairs = []
-seen_domains = set()
-closure_reason = None
-for index, event in enumerate(coverage_events, 1):
-    if event.get("sequence") != index or type(event.get("sequence")) is not int:
-        reject("coverage ledger sequence is not contiguous")
-    if event.get("event") == "coverage-completed":
-        exact_keys(event, ["schema_version", "event", "sequence", "domain_id", "coverage_path",
-                           "coverage_sha256", "reviewer_attempt_id", "recorded_at"], "coverage event")
-        if event["schema_version"] != 1 or type(event["schema_version"]) is not int:
-            reject("coverage event schema_version is invalid")
-        safe_id(event["domain_id"], "coverage domain_id")
-        safe_id(event["reviewer_attempt_id"], "coverage reviewer_attempt_id")
-        valid_timestamp(event["recorded_at"], "coverage recorded_at")
-        expected_path = "audit/coverage/%s.md" % event["domain_id"]
-        if event["coverage_path"] != expected_path or event["domain_id"] in seen_domains:
-            reject("coverage event path/domain binding is invalid")
-        if not isinstance(event["coverage_sha256"], str) or SHA256.fullmatch(event["coverage_sha256"]) is None:
-            reject("coverage event hash is invalid")
-        seen_domains.add(event["domain_id"])
-        coverage_paths.append(expected_path)
-        coverage_pairs.append({"path": expected_path, "sha256": event["coverage_sha256"]})
-    elif event.get("event") == "coverage-closed":
-        exact_keys(event, ["schema_version", "event", "sequence", "closure_reason", "domain_register_path",
-                           "domain_register_sha256", "completed_count", "completed_set_sha256", "recorded_at"],
-                   "coverage closure")
-        if index != len(coverage_events):
-            reject("coverage closure is not terminal")
-        if event["schema_version"] != 1 or type(event["schema_version"]) is not int:
-            reject("coverage closure schema_version is invalid")
-        if event["closure_reason"] not in {"all-applicable-completed", "unresolved-intent",
-                                           "all-domains-excluded", "partial-coverage-archival"}:
-            reject("coverage closure reason is invalid")
-        closure_reason = event["closure_reason"]
-        if event["domain_register_path"] != "audit/domain-register.md":
-            reject("coverage closure domain register path is invalid")
-        if event["domain_register_sha256"] != entry_map.get("audit/domain-register.md"):
-            reject("coverage closure domain register hash is invalid")
-        if type(event["completed_count"]) is not int or event["completed_count"] != len(coverage_paths):
-            reject("coverage closure completed_count is invalid")
-        canonical = json.dumps(sorted(coverage_pairs, key=lambda item: item["path"].encode("ascii")),
-                               ensure_ascii=True, separators=(",", ":")).encode("utf-8")
-        if event["completed_set_sha256"] != hashlib.sha256(canonical).hexdigest():
-            reject("coverage closure completed-set hash is invalid")
-        valid_timestamp(event["recorded_at"], "coverage closure recorded_at")
-    else:
-        reject("coverage ledger contains an unknown event")
-if not coverage_events or coverage_events[-1].get("event") != "coverage-closed":
-    reject("coverage ledger is not closed")
-completed_ids = set(seen_domains)
-if not completed_ids.issubset(applicable_ids):
-    reject("coverage completion names an excluded or unknown domain")
-if closure_reason == "all-applicable-completed":
-    if not completed_ids or completed_ids != applicable_ids:
-        reject("all-applicable-completed does not exactly equal the nonempty applicable set")
-elif closure_reason == "partial-coverage-archival":
-    if not completed_ids or not completed_ids < applicable_ids:
-        reject("partial-coverage-archival is not a nonempty proper subset of applicable domains")
-elif closure_reason == "all-domains-excluded":
-    if completed_ids or applicable_ids:
-        reject("all-domains-excluded requires empty completed and applicable sets")
-elif closure_reason == "unresolved-intent":
-    domains = domain_register["domains"]
-    if (completed_ids or applicable_ids or len(domains) != 6 or set(excluded_ids) != set(baseline_domains) or
-            any(domain.get("exclusion_reason") != "unresolved-intent" for domain in domains)):
-        reject("unresolved-intent requires only six unresolved baseline exclusions and zero coverage")
-for pair in coverage_pairs:
-    if entry_map.get(pair["path"]) != pair["sha256"]:
-        reject("coverage ledger member/hash is not bound to allowlist: " + pair["path"])
+coverage_paths = validate_coverage_semantics(packet_root, entry_map)
 
 reservation_path = "audit/versions/%s/reservation.json" % audit_version
 required = {
@@ -705,33 +713,59 @@ def validate_historical_audited_review(version, corrected_hash, seal):
         if sha_file(ensure_plain_path(historical_root, relative)) != expected_hash:
             reject("historical staged payload hash mismatch: " + relative)
 
-    ledger_path = ensure_plain_path(historical_root, "audit/coverage-index.ndjson")
-    ledger_raw = open(ledger_path, "rb").read()
-    if not ledger_raw or not ledger_raw.endswith(b"\n") or b"\n\n" in ledger_raw:
-        reject("historical packet coverage ledger is incomplete")
-    historical_coverage = []
-    closed = False
-    for line_no, line in enumerate(ledger_raw.splitlines(), 1):
-        try:
-            item = json.loads(line.decode("ascii"), object_pairs_hook=pairs_object,
-                              parse_constant=lambda value: reject("historical coverage has invalid constant"))
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-            reject("historical packet coverage line %d is invalid: %s" % (line_no, exc))
-        canonical = json.dumps(item, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-        if line != canonical or not isinstance(item, dict):
-            reject("historical packet coverage is not exact canonical NDJSON")
-        if item.get("event") == "coverage-completed":
-            if closed or item.get("coverage_path") != "audit/coverage/%s.md" % item.get("domain_id", ""):
-                reject("historical packet coverage event/path is invalid")
-            historical_coverage.append(item["coverage_path"])
-        elif item.get("event") == "coverage-closed":
-            if closed or line_no != len(ledger_raw.splitlines()):
-                reject("historical packet coverage closure is not unique and terminal")
-            closed = True
+    historical_coverage = validate_coverage_semantics(historical_root, historical_map)
+    historical_events = load_strict_version_index(
+        ensure_plain_path(historical_root, "audit/version-index.ndjson"))
+    historical_versions = {}
+    historical_last_number = 0
+    historical_last_event = None
+    selected_events = []
+    for event in historical_events:
+        kind = event.get("event")
+        if kind == "corrected":
+            exact_keys(event, ["schema_version", "audit_version", "event", "artifact_path",
+                               "artifact_sha256", "recorded_at"], "historical corrected index event")
+        elif kind == "sealed":
+            exact_keys(event, ["schema_version", "audit_version", "event", "corrected_audit_path",
+                               "corrected_audit_sha256", "recorded_at", "seal_path", "seal_sha256"],
+                       "historical sealed index event")
         else:
-            reject("historical packet coverage contains an unknown event")
-    if not closed:
-        reject("historical packet coverage is not closed")
+            reject("historical version index contains an unknown event")
+        if type(event["schema_version"]) is not int or event["schema_version"] != 1:
+            reject("historical version index schema_version is invalid")
+        event_version = event["audit_version"]
+        if not isinstance(event_version, str) or AUDIT_VERSION.fullmatch(event_version) is None:
+            reject("historical version index audit_version is invalid")
+        number = int(event_version[1:])
+        valid_timestamp(event["recorded_at"], "historical version index recorded_at")
+        corrected_relative = "audit/versions/%s/corrected-audit.md" % event_version
+        if kind == "corrected":
+            if number <= historical_last_number or event_version in historical_versions:
+                reject("historical version index corrected order is impossible")
+            if (event["artifact_path"] != corrected_relative or
+                    not isinstance(event["artifact_sha256"], str) or SHA256.fullmatch(event["artifact_sha256"]) is None):
+                reject("historical corrected index path/hash is invalid")
+            historical_versions[event_version] = event["artifact_sha256"]
+            if event_version == version:
+                selected_events.append(event)
+        else:
+            if (event_version not in historical_versions or number != historical_last_number or
+                    historical_last_event != (event_version, "corrected")):
+                reject("historical version index sealed order is impossible")
+            if (event["corrected_audit_path"] != corrected_relative or
+                    event["corrected_audit_sha256"] != historical_versions[event_version] or
+                    event["seal_path"] != "audit/versions/%s/seal.json" % event_version or
+                    not isinstance(event["seal_sha256"], str) or SHA256.fullmatch(event["seal_sha256"]) is None):
+                reject("historical sealed index binding is invalid")
+        historical_last_number = number
+        historical_last_event = (event_version, kind)
+    if len(selected_events) != 1:
+        reject("historical version index lacks exactly one selected corrected event")
+    selected_event = selected_events[0]
+    if (selected_event["artifact_path"] != expected_corrected or
+            selected_event["artifact_sha256"] != corrected_hash or
+            historical_map.get(expected_corrected) != corrected_hash):
+        reject("historical selected version-index binding is invalid")
     required = {
         "audit/profile.md", "audit/product-contract.md", "audit/domain-register.md",
         "audit/coverage-index.ndjson", "audit/runtime-verification.md", "audit/setup-quarantine.md",
@@ -1170,6 +1204,83 @@ PY
     fi
   }
 
+  validate_codex_snapshot() {
+    snapshot_root="$1"
+    snapshot_out="$2"
+    python3 - "$snapshot_root" "$packet_state_before" "$snapshot_out" <<'PY' || exit 1
+import hashlib
+import json
+import os
+import stat
+import sys
+
+root, state_path, out_path = sys.argv[1:]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: readiness Codex snapshot " + message)
+
+def sha_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+try:
+    root_mode = os.lstat(root).st_mode
+    state = json.load(open(state_path, "r", encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    reject("cannot read retained binding state: %s" % exc)
+if stat.S_ISLNK(root_mode) or not stat.S_ISDIR(root_mode):
+    reject("root is a symlink or not a directory")
+expected = {item["path"]: item["sha256"] for item in state["allowlist"]}
+packet_path = os.path.join(root, "packet.json")
+try:
+    packet_mode = os.lstat(packet_path).st_mode
+except OSError as exc:
+    reject("packet.json is missing: %s" % exc)
+if stat.S_ISLNK(packet_mode) or not stat.S_ISREG(packet_mode):
+    reject("packet.json is a symlink or not a regular file")
+if sha_file(packet_path) != state["manifest_sha256"]:
+    reject("packet.json bytes differ from the validated original")
+actual = []
+identities = {}
+for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+    for name in directories:
+        member = os.path.join(current, name)
+        mode = os.lstat(member).st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            reject("contains a symlink or special directory")
+    for name in files:
+        member = os.path.join(current, name)
+        info = os.lstat(member)
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            reject("contains a symlink or special file")
+        relative = os.path.relpath(member, root)
+        try:
+            relative.encode("ascii")
+        except UnicodeEncodeError:
+            reject("contains a non-ASCII path")
+        actual.append(relative)
+        identity = (info.st_dev, info.st_ino)
+        if identity in identities:
+            reject("contains a hard-link or file-identity alias")
+        identities[identity] = relative
+if set(actual) != {"packet.json"} | set(expected):
+    reject("file set is not exact packet.json plus allowlist")
+observed = []
+for relative in sorted(expected, key=lambda item: item.encode("ascii")):
+    path = os.path.join(root, *relative.split("/"))
+    if sha_file(path) != expected[relative]:
+        reject("payload hash mismatch: " + relative)
+    observed.append({"path": relative, "sha256": expected[relative]})
+with open(out_path, "w", encoding="utf-8") as handle:
+    json.dump({"allowlist": observed, "manifest_sha256": state["manifest_sha256"]}, handle,
+              ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    handle.write("\n")
+PY
+  }
+
   provider_candidate="$readiness_tmp/provider-candidate.json"
   provider_stderr="$readiness_tmp/provider-stderr.log"
   if [ "$runtime" = "claude" ]; then
@@ -1206,6 +1317,9 @@ PY
     mkdir -p "$snap_ctx" || fail "cannot create isolated Codex context"
     cp -R "$CTX/." "$snap_ctx/" || fail "cannot copy staged context into isolated Codex snapshot"
     snap_ctx="$(cd "$snap_ctx" && pwd -P)" || fail "cannot resolve isolated Codex context"
+    snapshot_state_before="$readiness_tmp/codex-snapshot-before.json"
+    snapshot_state_after="$readiness_tmp/codex-snapshot-after.json"
+    validate_codex_snapshot "$snap_ctx" "$snapshot_state_before"
 
     fs_rules='":minimal"="read",":workspace_roots"={"."="read"}'
     append_readiness_deny() {
@@ -1254,6 +1368,9 @@ PY
       2> "$provider_stderr"
     cli_rc=$?
     [ "$cli_rc" -eq 0 ] || fail "Codex readiness reviewer exited $cli_rc"
+    validate_codex_snapshot "$snap_ctx" "$snapshot_state_after"
+    cmp -s "$snapshot_state_before" "$snapshot_state_after" \
+      || fail "readiness Codex snapshot changed during provider invocation"
     [ -s "$last_message" ] || fail "Codex readiness reviewer returned no final candidate"
     cp "$last_message" "$provider_candidate" || fail "cannot retain Codex readiness candidate"
   fi

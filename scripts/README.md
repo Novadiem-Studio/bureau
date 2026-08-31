@@ -467,7 +467,9 @@ nonempty `roles.challenger.model` (plus a valid Challenger reasoning effort for 
 mode has no silent routing defaults. It validates the closed staged and authoritative read set
 before and after the provider, including the exact machine-readable domain register, canonical
 coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
-seal's immutable packet and semantic canonical-verdict binding. It gives the provider only that
+seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
+Domain labels and exclusion reasons retain contract-valid UTF-8 Unicode scalar values while the
+machine block still requires its exact compact sorted-key representation. It gives the provider only that
 isolated packet. Claude runs from the staged root with Read-only tools, no settings, and no
 session persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
@@ -477,6 +479,11 @@ absolute directory, and resolves every mandatory or explicitly overridden deny l
 both the caller-supplied absolute spelling and physical canonical path when they differ; malformed,
 missing, relative, or unresolvable state, home, store, sentinel, or mandatory location fails before
 provider invocation.
+
+After copying a Codex packet into its private ephemeral context, the adapter enumerates and hashes
+the exact snapshot against retained validated packet state. It repeats that check after the provider
+returns; an added, removed, changed, linked, or special snapshot member rejects the output before
+candidate acceptance.
 
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
