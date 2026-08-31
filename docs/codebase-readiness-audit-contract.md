@@ -609,7 +609,7 @@ cannot access or write the result directory. The raw candidate exact key set is 
 `review_mode`, `reviewed_artifacts`, `blockers`, `blocker_ids`, and `warnings`; verdict, timestamp,
 and unknown keys are prohibited. Matching `config/challenger-verdict.schema.json`, each blocker is
 exactly `{id,summary,citation}` and each warning exactly `{id,summary}`. Citation is exactly
-`{kind,path,anchor}` with `kind: present` or `{kind,path,missing}` with `kind: absent`; anchor and
+`{kind,path,anchor}` with `kind: presence` or `{kind,path,missing}` with `kind: absence`; anchor and
 missing use `citation-text`. Citation path is a safe packet-relative allowlist/reviewed-artifact
 member and its hash comes only from that entry. IDs use `safe-id`, summaries `summary-text`.
 Unknown keys, wrong types, empty values,
