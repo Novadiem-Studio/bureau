@@ -470,8 +470,13 @@ coverage/version ledgers, reservation-allocation uniqueness, and every historica
 seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
 Domain labels and exclusion reasons retain contract-valid UTF-8 Unicode scalar values while the
 machine block still requires compact JSON and raw-ASCII sorted object keys. Valid RFC 8259 string
-escape spellings are preserved rather than normalized. It gives the provider only that
-isolated packet. Claude runs from the staged root with Read-only tools, no settings, and no
+escape spellings are preserved rather than normalized. Single JSON artifacts permit leading or
+trailing whitespace only from the RFC 8259 set (space, tab, LF, and CR); BOMs, non-breaking spaces,
+vertical tabs, form feeds, duplicate keys, invalid constants, and trailing values fail closed.
+Coverage and version NDJSON remain newline-terminated compact objects with no whitespace outside
+strings and raw-ASCII sorted keys, while equivalent valid string escape spellings are accepted
+without byte-normalizing their values. It gives the provider only that isolated packet. Claude
+runs from the staged root with Read-only tools, no settings, and no
 session persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
 explicit denies for the live run, original packet, target repository, Bureau framework, home and
 session/configuration stores, and any supplied unstaged sentinel. Before reserving a Codex result,
@@ -487,10 +492,14 @@ returns; an added, removed, changed, linked, or special snapshot member rejects 
 candidate acceptance.
 
 Before a new readiness provider invocation, the adapter strictly validates existing canonical
-verification verdicts with their immutable packets and exact result candidates. A canonical
-`BLOCKED` verdict retires that corrected-audit version, so another attempt requires a new version;
-a transport or pre-verdict failure without a canonical verdict remains retryable under a fresh
-identity. Historical audited seals bind contract hashes to their immutable packet-era members,
+verification verdicts with their complete immutable attempt lineage: fixed manifest fields, exact
+allowlist and staged hashes, domain/coverage closure, reservation and version-index semantics,
+authoritative immutable reservation/corrected/index binding, and the exact result candidate. Only
+a fully valid canonical `BLOCKED` lineage retires that corrected-audit version, so another attempt
+requires a new version; malformed existing attempt state fails closed as invalid run state rather
+than becoming retirement evidence. A transport or pre-verdict failure without a canonical verdict
+remains retryable under a fresh identity. Historical audited seals bind contract hashes to their
+immutable packet-era members,
 not later mutable product/framework sources. Standard historical seals likewise retain their
 indexed immutable bindings without being rebound to unversioned current files.
 

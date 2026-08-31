@@ -100,11 +100,14 @@ def load_json_bytes(path):
         parse_constant=lambda value: reject("JSON contains non-RFC-8259 constant: " + value),
     )
     try:
-        value, end = decoder.raw_decode(text)
+        start = 0
+        while start < len(text) and text[start] in " \t\r\n":
+            start += 1
+        value, end = decoder.raw_decode(text, start)
     except (ValueError, json.JSONDecodeError) as exc:
         reject("invalid JSON in %s: %s" % (path, exc))
-    if text[end:].strip():
-        reject("JSON has trailing content: " + path)
+    if any(character not in " \t\r\n" for character in text[end:]):
+        reject("JSON has trailing content or non-RFC-8259 whitespace: " + path)
     return value, raw
 
 def exact_keys(value, keys, label):
@@ -286,28 +289,57 @@ for relative, expected_hash in entries:
     if sha_file(staged) != expected_hash:
         reject("staged payload hash mismatch: " + relative)
 
+def compact_pairs(pairs, label):
+    keys = [key for key, unused in pairs]
+    try:
+        raw_keys = [key.encode("ascii") for key in keys]
+    except (AttributeError, UnicodeEncodeError):
+        reject(label + " contains a non-ASCII object key")
+    if raw_keys != sorted(raw_keys):
+        reject(label + " object keys are not raw-ASCII sorted")
+    return pairs_object(pairs)
+
+def parse_compact_json_object(line, label):
+    try:
+        text = line.decode("utf-8")
+    except UnicodeDecodeError:
+        reject(label + " is not UTF-8")
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+        elif character == '"':
+            in_string = True
+        elif character in " \t\r\n":
+            reject(label + " contains whitespace outside a JSON string")
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=lambda pairs: compact_pairs(pairs, label),
+            parse_constant=lambda item: reject(label + " contains non-RFC-8259 constant: " + item),
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
+        reject(label + " is invalid JSON: %s" % exc)
+    if not isinstance(value, dict):
+        reject(label + " is not an object")
+    return value
+
 def load_ndjson(root, relative):
     path = ensure_plain_path(root, relative)
     raw = open(path, "rb").read()
-    if not raw or not raw.endswith(b"\n") or b"\n\n" in raw:
+    if not raw or not raw.endswith(b"\n"):
         reject(relative + " is not complete newline-terminated NDJSON")
     values = []
-    for line_no, line in enumerate(raw.splitlines(), 1):
-        try:
-            text = line.decode("ascii")
-            value = json.loads(
-                text,
-                object_pairs_hook=pairs_object,
-                parse_constant=lambda value: reject("NDJSON contains non-RFC-8259 constant: " + value),
-            )
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-            reject("invalid %s line %d: %s" % (relative, line_no, exc))
-        if not isinstance(value, dict):
-            reject("%s line %d is not an object" % (relative, line_no))
-        canonical = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-        if line != canonical:
-            reject("%s line %d is not compact raw-ASCII-key-sorted JSON" % (relative, line_no))
-        values.append(value)
+    for line_no, line in enumerate(raw[:-1].split(b"\n"), 1):
+        if not line:
+            reject("%s line %d is blank" % (relative, line_no))
+        values.append(parse_compact_json_object(line, "%s line %d" % (relative, line_no)))
     return values
 
 def parse_domain_register(root, relative):
@@ -363,18 +395,9 @@ def parse_domain_register(root, relative):
                 in_string = True
             elif character in " \t\r\n":
                 reject("domain register payload contains whitespace outside a JSON string")
-        def domain_pairs(pairs):
-            keys = [key for key, unused in pairs]
-            try:
-                raw_keys = [key.encode("ascii") for key in keys]
-            except (AttributeError, UnicodeEncodeError):
-                reject("domain register contains a non-ASCII object key")
-            if raw_keys != sorted(raw_keys):
-                reject("domain register object keys are not raw-ASCII sorted")
-            return pairs_object(pairs)
         value = json.loads(
             text,
-            object_pairs_hook=domain_pairs,
+            object_pairs_hook=lambda pairs: compact_pairs(pairs, "domain register"),
             parse_constant=lambda item: reject("domain register contains non-RFC-8259 constant: " + item),
         )
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
@@ -537,25 +560,13 @@ def load_strict_version_index(path):
         raw = open(path, "rb").read()
     except OSError as exc:
         reject("cannot read authoritative version index: %s" % exc)
-    if not raw or not raw.endswith(b"\n") or b"\n\n" in raw:
+    if not raw or not raw.endswith(b"\n"):
         reject("version index is not nonempty complete newline-terminated NDJSON")
     events = []
-    for line_no, line in enumerate(raw.splitlines(), 1):
-        try:
-            text = line.decode("ascii")
-            event = json.loads(
-                text,
-                object_pairs_hook=pairs_object,
-                parse_constant=lambda value: reject("version index contains non-RFC-8259 constant: " + value),
-            )
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-            reject("invalid version index line %d: %s" % (line_no, exc))
-        if not isinstance(event, dict):
-            reject("version index line %d is not an object" % line_no)
-        canonical = json.dumps(event, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-        if line != canonical:
-            reject("version index line %d is not compact raw-ASCII-key-sorted JSON" % line_no)
-        events.append(event)
+    for line_no, line in enumerate(raw[:-1].split(b"\n"), 1):
+        if not line:
+            reject("version index line %d is blank" % line_no)
+        events.append(parse_compact_json_object(line, "version index line %d" % line_no))
     return events
 
 reservation_by_version = {}
@@ -951,6 +962,9 @@ def validate_existing_readiness_verdict(verdict_relative):
     if matches != [packet_name]:
         reject("existing readiness verdict lacks one unique immutable packet")
     existing_root = os.path.join(reviews_parent, packet_name)
+    existing_root_mode = os.lstat(existing_root).st_mode
+    if stat.S_ISLNK(existing_root_mode) or not stat.S_ISDIR(existing_root_mode):
+        reject("existing readiness packet root is a symlink or not a directory")
     manifest, unused = load_json_bytes(ensure_plain_path(existing_root, "packet.json"))
     exact_keys(manifest, ["schema_version", "audit_version", "corrected_audit_path", "review_question",
                           "attempt_id", "output_id", "review_mode", "denied_inputs", "allowlist"],
@@ -961,21 +975,169 @@ def validate_existing_readiness_verdict(verdict_relative):
             manifest["allowlist"] != value["reviewed_artifacts"]):
         reject("existing readiness packet binding is invalid")
     safe_id(manifest["output_id"], "existing readiness output_id")
-    for item in manifest["allowlist"]:
-        if sha_file(ensure_plain_path(existing_root, item["path"])) != item["sha256"]:
-            reject("existing readiness packet payload hash mismatch")
+    bounded_text(manifest["review_question"], 2000, "existing readiness review_question")
+    expected_denied = [
+        "run-log", "run-state-and-delegate-state", "checkpoint-log-slices",
+        "prior-challenger-or-notary-findings-and-verdicts", "conductor-or-author-rationale",
+        "visionary-back-and-forth", "chat-and-session-transcripts", "files-absent-from-allowlist",
+    ]
+    if manifest["denied_inputs"] != expected_denied:
+        reject("existing readiness packet denied_inputs is invalid")
+    version = manifest["audit_version"]
+    corrected_relative = "audit/versions/%s/corrected-audit.md" % version
+    if manifest["corrected_audit_path"] != corrected_relative:
+        reject("existing readiness packet corrected path is invalid")
+    safe_packet_path(manifest["corrected_audit_path"], "existing readiness corrected path")
+
+    existing_entries = []
+    existing_paths = []
+    existing_lower = set()
+    for index, item in enumerate(manifest["allowlist"]):
+        exact_keys(item, ["path", "sha256"], "existing readiness allowlist[%d]" % index)
+        raw_path = safe_packet_path(item["path"], "existing readiness allowlist path")
+        if not isinstance(item["sha256"], str) or SHA256.fullmatch(item["sha256"]) is None:
+            reject("existing readiness allowlist hash is invalid")
+        if raw_path in existing_paths or raw_path.lower() in existing_lower:
+            reject("existing readiness allowlist contains a duplicate or case-colliding path")
+        existing_paths.append(raw_path)
+        existing_lower.add(raw_path.lower())
+        existing_entries.append((item["path"], item["sha256"]))
+    if existing_paths != sorted(existing_paths):
+        reject("existing readiness allowlist is not canonically sorted")
+    existing_map = dict(existing_entries)
+
+    actual = []
+    identities = {}
+    for current, directories, files in os.walk(existing_root, topdown=True, followlinks=False):
+        for name in directories:
+            member = os.path.join(current, name)
+            member_mode = os.lstat(member).st_mode
+            if stat.S_ISLNK(member_mode) or not stat.S_ISDIR(member_mode):
+                reject("existing readiness packet contains a symlink or special directory")
+        for name in files:
+            member = os.path.join(current, name)
+            info = os.lstat(member)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                reject("existing readiness packet contains a symlink or special file")
+            relative = os.path.relpath(member, existing_root)
+            safe_packet_path(relative, "existing readiness staged file path")
+            actual.append(relative)
+            identity = (info.st_dev, info.st_ino)
+            if identity in identities or info.st_nlink != 1:
+                reject("existing readiness packet contains a hard-link or identity alias")
+            identities[identity] = relative
+    if set(actual) != {"packet.json"} | set(existing_map):
+        reject("existing readiness packet file set does not equal packet.json plus allowlist")
+    for relative, expected_hash in existing_entries:
+        if sha_file(ensure_plain_path(existing_root, relative)) != expected_hash:
+            reject("existing readiness packet payload hash mismatch: " + relative)
+
+    coverage_paths = validate_coverage_semantics(existing_root, existing_map)
+    reservation_relative = "audit/versions/%s/reservation.json" % version
+    required = {
+        "audit/profile.md", "audit/product-contract.md", "audit/domain-register.md",
+        "audit/coverage-index.ndjson", "audit/runtime-verification.md", "audit/setup-quarantine.md",
+        reservation_relative, "audit/version-index.ndjson", corrected_relative,
+        "docs/codebase-readiness-audit-contract.md", "workflows/codebase-readiness-audit.md",
+        "agents/critic/readiness-audit.md",
+    } | set(coverage_paths)
+    if set(existing_map) != required:
+        reject("existing readiness packet allowlist is not the exact contract member set")
+
+    staged_reservation, unused = load_json_bytes(ensure_plain_path(existing_root, reservation_relative))
+    exact_keys(staged_reservation, ["schema_version", "audit_version", "allocation_id",
+                                    "reconciliation_attempt_id", "reserved_at"],
+               "existing readiness reservation")
+    if type(staged_reservation["schema_version"]) is not int or staged_reservation["schema_version"] != 1:
+        reject("existing readiness reservation schema_version is invalid")
+    if staged_reservation["audit_version"] != version:
+        reject("existing readiness reservation version binding is invalid")
+    safe_id(staged_reservation["allocation_id"], "existing readiness reservation allocation_id")
+    safe_id(staged_reservation["reconciliation_attempt_id"],
+            "existing readiness reservation reconciliation_attempt_id")
+    valid_timestamp(staged_reservation["reserved_at"], "existing readiness reservation reserved_at")
+    if staged_reservation != validate_authoritative_reservation(version):
+        reject("existing readiness reservation differs from authoritative immutable reservation")
+
+    staged_events = load_strict_version_index(
+        ensure_plain_path(existing_root, "audit/version-index.ndjson"))
+    staged_versions = {}
+    staged_last_number = 0
+    staged_last_event = None
+    selected = []
+    for event in staged_events:
+        kind = event.get("event")
+        if kind == "corrected":
+            exact_keys(event, ["schema_version", "audit_version", "event", "artifact_path",
+                               "artifact_sha256", "recorded_at"],
+                       "existing readiness corrected index event")
+        elif kind == "sealed":
+            exact_keys(event, ["schema_version", "audit_version", "event", "corrected_audit_path",
+                               "corrected_audit_sha256", "recorded_at", "seal_path", "seal_sha256"],
+                       "existing readiness sealed index event")
+        else:
+            reject("existing readiness version index contains an unknown event")
+        if type(event["schema_version"]) is not int or event["schema_version"] != 1:
+            reject("existing readiness version index schema_version is invalid")
+        event_version = event["audit_version"]
+        if not isinstance(event_version, str) or AUDIT_VERSION.fullmatch(event_version) is None:
+            reject("existing readiness version index audit_version is invalid")
+        number = int(event_version[1:])
+        valid_timestamp(event["recorded_at"], "existing readiness version index recorded_at")
+        event_corrected = "audit/versions/%s/corrected-audit.md" % event_version
+        if kind == "corrected":
+            if number <= staged_last_number or event_version in staged_versions:
+                reject("existing readiness version index corrected order is impossible")
+            if (event["artifact_path"] != event_corrected or
+                    not isinstance(event["artifact_sha256"], str) or
+                    SHA256.fullmatch(event["artifact_sha256"]) is None):
+                reject("existing readiness corrected index path/hash is invalid")
+            staged_versions[event_version] = event["artifact_sha256"]
+            if event_version == version:
+                selected.append(event)
+        else:
+            if (event_version not in staged_versions or number != staged_last_number or
+                    staged_last_event != (event_version, "corrected")):
+                reject("existing readiness version index sealed order is impossible")
+            if (event["corrected_audit_path"] != event_corrected or
+                    event["corrected_audit_sha256"] != staged_versions[event_version] or
+                    event["seal_path"] != "audit/versions/%s/seal.json" % event_version or
+                    not isinstance(event["seal_sha256"], str) or SHA256.fullmatch(event["seal_sha256"]) is None):
+                reject("existing readiness sealed index binding is invalid")
+        staged_last_number = number
+        staged_last_event = (event_version, kind)
+    if len(selected) != 1:
+        reject("existing readiness version index lacks exactly one selected corrected event")
+    selected_event = selected[0]
+    authority_events = [event for event in version_events
+                        if event.get("event") == "corrected" and event.get("audit_version") == version]
+    if len(authority_events) != 1:
+        reject("existing readiness version lacks one authoritative corrected event")
+    authority_event = authority_events[0]
+    if (selected_event["artifact_path"] != corrected_relative or
+            selected_event["artifact_sha256"] != existing_map.get(corrected_relative) or
+            authority_event["artifact_path"] != corrected_relative or
+            authority_event["artifact_sha256"] != selected_event["artifact_sha256"] or
+            sha_file(ensure_plain_path(run_dir, corrected_relative)) != selected_event["artifact_sha256"]):
+        reject("existing readiness corrected/index authority binding is invalid")
+
     result_root = os.path.join(reviews_parent, attempt + "-result")
     result_matches = [name for name in os.listdir(reviews_parent) if name.lower() == (attempt + "-result").lower()]
-    if result_matches != [attempt + "-result"] or stat.S_ISLNK(os.lstat(result_root).st_mode):
+    if result_matches != [attempt + "-result"]:
         reject("existing readiness result directory is missing or aliased")
+    result_mode = os.lstat(result_root).st_mode
+    if stat.S_ISLNK(result_mode) or not stat.S_ISDIR(result_mode):
+        reject("existing readiness result directory is a symlink or not a directory")
     expected_name = manifest["output_id"] + ".json"
     if os.listdir(result_root) != [expected_name]:
         reject("existing readiness result member set is invalid")
     result_path = os.path.join(result_root, expected_name)
     info = os.lstat(result_path)
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         reject("existing readiness result member is not a regular no-alias file")
     candidate, unused = load_json_bytes(result_path)
+    exact_keys(candidate, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
+                           "blockers", "warnings"], "existing readiness result candidate")
     if candidate != {key: item for key, item in value.items() if key not in {"verdict", "timestamp"}}:
         reject("existing readiness result candidate differs from canonical verdict")
     return manifest["audit_version"], value["verdict"]
@@ -1176,6 +1338,45 @@ PY
   canonical_verdict="$RUN_DIR/verdicts/${attempt_id}.json"
   [ -f "$ROUTING" ] && [ -r "$ROUTING" ] \
     || fail "readiness audit requires readable model-routing.json: $ROUTING"
+  python3 - "$ROUTING" "$readiness_schema" <<'PY' || exit 1
+import json
+import sys
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: readiness JSON preflight " + message)
+
+def pairs(label):
+    def hook(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                reject(label + " contains duplicate JSON key: " + key)
+            result[key] = value
+        return result
+    return hook
+
+for path in sys.argv[1:]:
+    try:
+        raw = open(path, "rb").read()
+    except OSError as exc:
+        reject("cannot read %s: %s" % (path, exc))
+    if raw.startswith(b"\xef\xbb\xbf"):
+        reject(path + " has a byte order mark")
+    try:
+        text = raw.decode("utf-8")
+        decoder = json.JSONDecoder(
+            object_pairs_hook=pairs(path),
+            parse_constant=lambda value: reject(path + " contains non-RFC-8259 constant: " + value),
+        )
+        start = 0
+        while start < len(text) and text[start] in " \t\r\n":
+            start += 1
+        unused, end = decoder.raw_decode(text, start)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        reject("invalid JSON in %s: %s" % (path, exc))
+    if any(character not in " \t\r\n" for character in text[end:]):
+        reject(path + " has trailing content or non-RFC-8259 whitespace")
+PY
   jq -e '
     type == "object"
     and (.runtime == "claude" or .runtime == "openai" or .runtime == "codex")
@@ -1240,11 +1441,14 @@ try:
         object_pairs_hook=pairs_object,
         parse_constant=lambda value: reject("state.json contains non-RFC-8259 constant: " + value),
     )
-    state, end = decoder.raw_decode(text)
+    start = 0
+    while start < len(text) and text[start] in " \t\r\n":
+        start += 1
+    state, end = decoder.raw_decode(text, start)
 except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
     reject("state.json is invalid JSON: %s" % exc)
-if text[end:].strip():
-    reject("state.json contains trailing JSON content")
+if any(character not in " \t\r\n" for character in text[end:]):
+    reject("state.json contains trailing content or non-RFC-8259 whitespace")
 if not isinstance(state, dict):
     reject("state.json is not an object")
 target = state.get("target_repo")
@@ -1338,17 +1542,63 @@ PY
   extract_claude_candidate() {
     raw="$1"
     out="$2"
-    if jq -e 'type == "object" and has("attempt_id")' "$raw" >/dev/null 2>&1; then
-      cp "$raw" "$out"
-    elif jq -e '.structured_output | type == "object"' "$raw" >/dev/null 2>&1; then
-      jq -c '.structured_output' "$raw" > "$out"
-    elif jq -e '.result | type == "object"' "$raw" >/dev/null 2>&1; then
-      jq -c '.result' "$raw" > "$out"
-    elif jq -e '.result | type == "string"' "$raw" >/dev/null 2>&1; then
-      jq -r '.result' "$raw" > "$out"
-    else
-      return 1
-    fi
+    python3 - "$raw" "$out" <<'PY'
+import json
+import sys
+
+source, destination = sys.argv[1:]
+
+def reject(message):
+    raise SystemExit("run-cold-reviewer: Claude readiness response " + message)
+
+def pairs_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            reject("contains duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
+try:
+    raw = open(source, "rb").read()
+except OSError as exc:
+    reject("cannot be read: %s" % exc)
+if raw.startswith(b"\xef\xbb\xbf"):
+    reject("contains a byte order mark")
+try:
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder(
+        object_pairs_hook=pairs_object,
+        parse_constant=lambda value: reject("contains non-RFC-8259 constant: " + value),
+    )
+    start = 0
+    while start < len(text) and text[start] in " \t\r\n":
+        start += 1
+    value, end = decoder.raw_decode(text, start)
+except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+    reject("is invalid JSON: %s" % exc)
+if any(character not in " \t\r\n" for character in text[end:]):
+    reject("contains trailing content or non-RFC-8259 whitespace")
+if not isinstance(value, dict):
+    reject("does not contain a structured candidate")
+if "attempt_id" in value:
+    candidate = raw
+elif isinstance(value.get("structured_output"), dict):
+    candidate = json.dumps(value["structured_output"], ensure_ascii=False,
+                           separators=(",", ":")).encode("utf-8")
+elif isinstance(value.get("result"), dict):
+    candidate = json.dumps(value["result"], ensure_ascii=False,
+                           separators=(",", ":")).encode("utf-8")
+elif isinstance(value.get("result"), str):
+    candidate = value["result"].encode("utf-8")
+else:
+    reject("does not contain a structured candidate")
+try:
+    with open(destination, "wb") as handle:
+        handle.write(candidate)
+except OSError as exc:
+    reject("cannot retain candidate: %s" % exc)
+PY
   }
 
   validate_codex_snapshot() {
@@ -1373,11 +1623,35 @@ def sha_file(path):
             digest.update(chunk)
     return digest.hexdigest()
 
+def pairs_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            reject("retained binding state contains duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
 try:
     root_mode = os.lstat(root).st_mode
-    state = json.load(open(state_path, "r", encoding="utf-8"))
-except (OSError, ValueError) as exc:
+    raw = open(state_path, "rb").read()
+except OSError as exc:
     reject("cannot read retained binding state: %s" % exc)
+if raw.startswith(b"\xef\xbb\xbf"):
+    reject("retained binding state contains a byte order mark")
+try:
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder(
+        object_pairs_hook=pairs_object,
+        parse_constant=lambda value: reject("retained binding state contains non-RFC-8259 constant: " + value),
+    )
+    start = 0
+    while start < len(text) and text[start] in " \t\r\n":
+        start += 1
+    state, end = decoder.raw_decode(text, start)
+except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+    reject("retained binding state is invalid JSON: %s" % exc)
+if any(character not in " \t\r\n" for character in text[end:]):
+    reject("retained binding state has trailing content or non-RFC-8259 whitespace")
 if stat.S_ISLNK(root_mode) or not stat.S_ISDIR(root_mode):
     reject("root is a symlink or not a directory")
 expected = {item["path"]: item["sha256"] for item in state["allowlist"]}
@@ -1561,11 +1835,14 @@ try:
         object_pairs_hook=pairs_object,
         parse_constant=lambda value: reject("contains non-RFC-8259 constant: " + value),
     )
-    candidate, end = decoder.raw_decode(text)
+    start = 0
+    while start < len(text) and text[start] in " \t\r\n":
+        start += 1
+    candidate, end = decoder.raw_decode(text, start)
 except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
     reject("is invalid JSON: %s" % exc)
-if text[end:].strip():
-    reject("contains trailing JSON content")
+if any(character not in " \t\r\n" for character in text[end:]):
+    reject("contains trailing content or non-RFC-8259 whitespace")
 expected = {"attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids", "blockers", "warnings"}
 if not isinstance(candidate, dict) or set(candidate) != expected:
     reject("object has the wrong exact six-field key set")
@@ -1651,11 +1928,14 @@ def load(path):
             object_pairs_hook=pairs_object,
             parse_constant=lambda value: reject("contains non-RFC-8259 constant: " + value),
         )
-        value, end = decoder.raw_decode(text)
+        start = 0
+        while start < len(text) and text[start] in " \t\r\n":
+            start += 1
+        value, end = decoder.raw_decode(text, start)
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
         reject("is invalid JSON: %s" % exc)
-    if text[end:].strip():
-        reject("contains trailing JSON content")
+    if any(character not in " \t\r\n" for character in text[end:]):
+        reject("contains trailing content or non-RFC-8259 whitespace")
     return value, raw
 
 def exact_keys(value, keys, label):
