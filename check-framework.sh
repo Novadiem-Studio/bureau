@@ -91,7 +91,7 @@ grep -Fq 'docs/conductor-gates.md' agents/orchestrator.md \
 if rg -n 'canonical source is `agents/orchestrator\.md`|canonical list there|defined in Review 1 above|inlined under Review 1|inline surface list above' agents/critic.md agents/critic >/dev/null 2>&1; then
   err "critic core/slices contain stale pre-split cross-reference or conductor-gates pointer"
 fi
-for slice in spec-plan prompts build-diff code-review; do
+for slice in spec-plan prompts build-diff code-review readiness-audit; do
   [[ -f "agents/critic/${slice}.md" ]] \
     || err "missing agents/critic/${slice}.md"
   grep -Fq "agents/critic/${slice}.md" agents/critic.md \

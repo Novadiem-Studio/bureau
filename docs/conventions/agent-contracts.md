@@ -59,11 +59,16 @@ Reads (round 2):  RUN_DIR/prompts.md (full), and spec.md § Acceptance criteria 
 Reads (code-review mode):  RUN_DIR/review-target.md, the target diff/branch/PR named there, and
 the local project standards named there. Does NOT receive the author's rationale, chat history, or
 prior defenses of the change.
+Reads (readiness-audit mode): staged `packet.json` and only its allowlisted packet-relative
+payload. Does NOT receive any live repository, `RUN_DIR`, framework path, or session store.
 Reads (mode slice): exactly one of `agents/critic/spec-plan.md`, `agents/critic/prompts.md`,
-`agents/critic/build-diff.md`, or `agents/critic/code-review.md`, matching the spawn mode.
+`agents/critic/build-diff.md`, `agents/critic/code-review.md`, or
+`agents/critic/readiness-audit.md`, matching the spawn mode.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
+Readiness-audit isolation exception: if any prohibited live/history input is exposed, return no
+candidate and stop; this mode cannot write a flag to the live `log.md`.
 Does NOT receive:  log.md, prior-round Challenger findings, the Architect's design rationale —
                    your coldness depends on it; these anchor you toward agreeing with a design
                    you never watched get argued. If you were handed any of them, do NOT review:
@@ -77,6 +82,10 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
 ---
 
 ## Structured handoff footer spec
+
+Readiness-audit is the sole runtime exception: its isolated Challenger returns exactly the raw
+six-field adapter candidate and no Markdown/footer/second result or live write. The ordinary
+Challenger footer and every other persona footer remain governed byte-for-byte by the rules below.
 
 Every persona file ends with exactly ONE handoff block. The new footer = the three standard
 fields first (fixed order), then every role-specific load-bearing field the prior block

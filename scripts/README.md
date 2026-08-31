@@ -448,6 +448,131 @@ scripts/integration-gate.sh \
 
 ---
 
+# Cold reviewer dispatcher (`run-cold-reviewer.sh`)
+
+The six-position dispatcher retains its existing `routine` and `integration` calls. An audited
+Codebase Readiness Audit uses the same launcher with the closed staged packet as `CTX`:
+
+```bash
+scripts/run-cold-reviewer.sh \
+  "$RUN_DIR" \
+  "$RUN_DIR/audit/reviews/<attempt_id>-packet" \
+  0 readiness-adapter packet.json readiness-audit
+```
+
+In `readiness-audit` mode, `packet.json`—not the three legacy checkpoint/spawn/artifact
+placeholders—owns the attempt, output, question, allowlist, hashes, and corrected-audit binding.
+The adapter requires a readable, valid `model-routing.json` with a supported runtime and a
+nonempty `roles.challenger.model` (plus a valid Challenger reasoning effort for Codex); audited
+mode has no silent routing defaults. Routing, the selected verdict schema, and Codex `state.json`
+are read through no-follow, nonblocking descriptors and copied into the private adapter workspace
+only after regular-file, link-count-one, before/after identity, raw-byte, pathname, and parent
+bindings succeed; later routing and schema decisions consume those private exact-byte snapshots.
+It validates the closed staged and authoritative read set
+before and after the provider, including the exact machine-readable domain register, canonical
+coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
+seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
+Every required regular file must have link count one; an external hard-link alias on a packet,
+authoritative version artifact, historical verdict/result, or private Codex snapshot fails closed.
+Traversed directories must remain non-symlink directories with stable device/inode identities.
+Domain labels and exclusion reasons retain contract-valid UTF-8 Unicode scalar values while the
+machine block still requires compact JSON and raw-ASCII sorted object keys. Valid RFC 8259 string
+escape spellings are preserved rather than normalized. Single JSON artifacts permit leading or
+trailing whitespace only from the RFC 8259 set (space, tab, LF, and CR); BOMs, non-breaking spaces,
+vertical tabs, form feeds, duplicate keys, invalid constants, and trailing values fail closed.
+Coverage and version NDJSON remain newline-terminated compact objects with no whitespace outside
+strings and raw-ASCII sorted keys, while equivalent valid string escape spellings are accepted
+without byte-normalizing their values. It gives the provider only that isolated packet. Claude
+runs from the staged root with Read-only tools, no settings, and no
+session persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
+explicit denies for the live run, original packet, target repository, Bureau framework, home and
+session/configuration stores, and any supplied unstaged sentinel. Before reserving a Codex result,
+the adapter strictly parses `RUN_DIR/state.json`, requires `target_repo` to resolve to one existing
+absolute directory, and resolves every mandatory or explicitly overridden deny location. It denies
+both the caller-supplied absolute spelling and physical canonical path when they differ; malformed,
+missing, relative, or unresolvable state, home, store, sentinel, or mandatory location fails before
+provider invocation.
+
+After copying a Codex packet into its private ephemeral context, the adapter enumerates and hashes
+the exact snapshot against retained validated packet state. It repeats that check after the provider
+returns; an added, removed, changed, linked, or special snapshot member rejects the output before
+candidate acceptance.
+
+Before a new readiness provider invocation, the adapter strictly validates existing canonical
+verification verdicts with their complete immutable attempt lineage: fixed manifest fields, exact
+allowlist and staged hashes, domain/coverage closure, reservation and version-index semantics,
+authoritative immutable reservation/corrected/index binding, and the exact result candidate. Only
+a fully valid canonical `BLOCKED` lineage retires that corrected-audit version, so another attempt
+requires a new version; malformed existing attempt state fails closed as invalid run state rather
+than becoming retirement evidence. A transport or pre-verdict failure without a canonical verdict
+remains retryable under a fresh identity. Historical audited seals bind contract hashes to their
+immutable packet-era members, not later mutable product/framework sources. Standard historical
+seals likewise retain their indexed immutable bindings without being rebound to unversioned
+current files. For an audited historical seal, the staged reservation must equal that version's
+authoritative immutable reservation. Its staged version index must equal the complete semantic and
+exact-byte authoritative append-only prefix ending at the selected corrected event; when the seal
+event is indexed, the immediately following authoritative event must bind that corrected artifact
+and the exact immutable seal. Later authoritative versions are a valid suffix and do not invalidate
+the historical packet.
+
+Recoverable version-directory states must still be appendable under the authoritative ledger
+order. A reserved-only directory must have a version greater than every indexed version. An
+unindexed corrected audit is recoverable only as the highest existing version above all indexed
+versions. A corrected version's unindexed seal is recoverable only when that version is
+the latest existing/indexed version and its corrected event is terminal. An older missing-event
+state requires explicit repair and stops review before provider invocation.
+The adapter never starts a new review for a selected version that already contains an immutable
+`seal.json`, including a recoverable seal whose `sealed` event has not yet been appended. That
+missing-event state remains recoverable by the owning Conductor lifecycle, but it is not eligible
+for another provider attempt.
+
+The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
+publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
+revalidates those immutable published bytes, derives the standard Challenger verdict only from
+that reopened candidate, and atomically publishes `verdicts/<attempt_id>.json`. Any malformed
+packet, changed binding, result or verdict collision, provider mismatch, or partial attempt fails
+closed. It never deletes, repairs, reuses, or overwrites readiness output; retry with a freshly
+staged packet and a new attempt identity. Publication links the immutable artifact before syncing
+its parent directory. A durability error after that link does not roll the visible artifact back:
+the attempt remains consumed for explicit recovery or a fresh identity, preserving the same
+no-repair rule.
+Candidate and verdict publication are anchored to directory descriptors opened without following
+symlinks and matched to the device/inode identities recorded after reservation. Temporary create,
+write, fsync, link, and unlink operations use only descriptor-relative basenames. Replacing or
+symlinking either parent path cannot redirect publication; a path-identity change fails closed. If
+the verified directory was detached after a successful link, the linked artifact remains consumed
+recovery evidence rather than being removed or republished elsewhere.
+The result directory itself is exclusively created relative to a verified reviews-parent descriptor,
+and the reservation helper retains that creation-time descriptor continuously through provider
+execution and both publications; it never closes and later adopts the pathname by device/inode.
+Helper descriptors use close-on-exec and live in a separate custody process, so the provider does
+not inherit or gain access to them. The canonical pathname must continue to name the created
+identity. The published candidate is opened relative to the retained result descriptor, then its
+descriptor is retained through canonical publication and bound to parent and member device/inode,
+exact raw bytes and SHA-256, regular-file type, size, and link count one. The same binding is checked
+before derivation, immediately before the verdict link, and immediately after it; derivation consumes
+only a private copy of the bytes read from that retained descriptor. Existing unsealed verification
+lineage and historical audited lineage both require the canonical verdict's exact bytes to be the
+retained candidate bytes plus only the adapter-owned `verdict` and `timestamp` members; parsed-object
+equivalence is insufficient.
+The canonical verdict is likewise reopened relative to the retained verdict-directory descriptor
+immediately after its no-clobber link. Its descriptor remains in custody through the terminal helper
+handshake, with exact raw bytes/SHA-256, device/inode, type, size, link count, member path, and parent
+identity checked after publication and again immediately before helper success. The private helper
+command channel publishes descriptor-relative regular files and binds every request and response to
+a fresh cryptographic nonce, fresh command token, and monotonic sequence. Responses are consumed
+with no-follow/nonblocking bounded descriptor reads, strict single-value duplicate-free JSON, and
+before/after file, path, link-count, and channel-parent identity checks; FIFOs, symlinks, hard links,
+replacement, trailing data, forged tokens/nonces, and replay fail closed.
+Immediately before canonical verdict publication, the adapter repeats the complete packet and
+authoritative-source validation using no-follow, nonblocking descriptor reads with before/after
+file, parent, link-count, size, byte-hash, and device/inode checks, then compares that retained
+binding state. An unlink, replacement, hard-link, parent substitution, or packet/authoritative
+mutation fails closed. If detection occurs after the no-clobber verdict link, the visible artifact
+remains consumed recovery evidence under the durability/no-repair rule above.
+
+---
+
 # Revision cap (`revise-cap.sh`)
 
 Deterministic revision-cap enforcement (Delegate v2, spec W-c / FR11 / AC15). On a `revise`
