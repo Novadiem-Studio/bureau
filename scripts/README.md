@@ -448,6 +448,36 @@ scripts/integration-gate.sh \
 
 ---
 
+# Cold reviewer dispatcher (`run-cold-reviewer.sh`)
+
+The six-position dispatcher retains its existing `routine` and `integration` calls. An audited
+Codebase Readiness Audit uses the same launcher with the closed staged packet as `CTX`:
+
+```bash
+scripts/run-cold-reviewer.sh \
+  "$RUN_DIR" \
+  "$RUN_DIR/audit/reviews/<attempt_id>-packet" \
+  0 readiness-adapter packet.json readiness-audit
+```
+
+In `readiness-audit` mode, `packet.json`—not the three legacy checkpoint/spawn/artifact
+placeholders—owns the attempt, output, question, allowlist, hashes, and corrected-audit binding.
+The adapter selects `model-routing.json#roles.challenger`, validates the closed staged and
+authoritative read set before and after the provider, and gives the provider only that isolated
+packet. Claude runs from the staged root with Read-only tools, no settings, and no session
+persistence. Codex runs ephemerally from a read-only packet copy with network disabled and
+explicit denies for the live run, original packet, target repository, Bureau framework, home and
+session/configuration stores, and any supplied unstaged sentinel.
+
+The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates the provider's
+exact six-field candidate, publishes it as `<output_id>.json`, derives the standard Challenger
+verdict, and atomically publishes `verdicts/<attempt_id>.json`. Any malformed packet, changed
+binding, result or verdict collision, provider mismatch, or partial attempt fails closed. It never
+deletes, repairs, reuses, or overwrites readiness output; retry with a freshly staged packet and a
+new attempt identity.
+
+---
+
 # Revision cap (`revise-cap.sh`)
 
 Deterministic revision-cap enforcement (Delegate v2, spec W-c / FR11 / AC15). On a `revise`
