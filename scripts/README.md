@@ -468,6 +468,9 @@ mode has no silent routing defaults. It validates the closed staged and authorit
 before and after the provider, including the exact machine-readable domain register, canonical
 coverage/version ledgers, reservation-allocation uniqueness, and every historical audited
 seal's immutable packet, full domain/coverage/version semantics, and canonical-verdict binding.
+Every required regular file must have link count one; an external hard-link alias on a packet,
+authoritative version artifact, historical verdict/result, or private Codex snapshot fails closed.
+Traversed directories must remain non-symlink directories with stable device/inode identities.
 Domain labels and exclusion reasons retain contract-valid UTF-8 Unicode scalar values while the
 machine block still requires compact JSON and raw-ASCII sorted object keys. Valid RFC 8259 string
 escape spellings are preserved rather than normalized. Single JSON artifacts permit leading or
@@ -503,6 +506,13 @@ immutable packet-era members,
 not later mutable product/framework sources. Standard historical seals likewise retain their
 indexed immutable bindings without being rebound to unversioned current files.
 
+Recoverable version-directory states must still be appendable under the authoritative ledger
+order. A reserved-only directory must have a version greater than every indexed version. An
+unindexed corrected audit is recoverable only as the highest existing version above all indexed
+versions. A corrected version's unindexed seal is recoverable only when that version is
+the latest existing/indexed version and its corrected event is terminal. An older missing-event
+state requires explicit repair and stops review before provider invocation.
+
 The adapter exclusively reserves `audit/reviews/<attempt_id>-result/`, validates and atomically
 publishes the provider's exact six-field candidate as `<output_id>.json`, reopens and fully
 revalidates those immutable published bytes, derives the standard Challenger verdict only from
@@ -513,6 +523,12 @@ staged packet and a new attempt identity. Publication links the immutable artifa
 its parent directory. A durability error after that link does not roll the visible artifact back:
 the attempt remains consumed for explicit recovery or a fresh identity, preserving the same
 no-repair rule.
+Candidate and verdict publication are anchored to directory descriptors opened without following
+symlinks and matched to the device/inode identities recorded after reservation. Temporary create,
+write, fsync, link, and unlink operations use only descriptor-relative basenames. Replacing or
+symlinking either parent path cannot redirect publication; a path-identity change fails closed. If
+the verified directory was detached after a successful link, the linked artifact remains consumed
+recovery evidence rather than being removed or republished elsewhere.
 
 ---
 

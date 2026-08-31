@@ -172,20 +172,29 @@ def sha_file(path):
 
 def ensure_plain_path(root, relative):
     current = root
+    observed = []
     for segment in relative.split("/"):
         current = os.path.join(current, segment)
         try:
-            mode = os.lstat(current).st_mode
+            info = os.lstat(current)
         except OSError as exc:
             reject("missing payload %s: %s" % (relative, exc))
-        if stat.S_ISLNK(mode):
+        if stat.S_ISLNK(info.st_mode):
             reject("contains a symlink: " + relative)
+        observed.append((current, info.st_dev, info.st_ino))
     try:
         common = os.path.commonpath([os.path.realpath(current), os.path.realpath(root)])
     except ValueError:
         reject("path escapes packet root: " + relative)
-    if common != os.path.realpath(root) or not stat.S_ISREG(os.lstat(current).st_mode):
+    final_info = os.lstat(current)
+    if common != os.path.realpath(root) or not stat.S_ISREG(final_info.st_mode):
         reject("payload is not a regular file beneath the packet root: " + relative)
+    if final_info.st_nlink != 1:
+        reject("payload has an external hard-link alias: " + relative)
+    for observed_path, expected_dev, expected_ino in observed:
+        current_info = os.lstat(observed_path)
+        if (current_info.st_dev, current_info.st_ino) != (expected_dev, expected_ino):
+            reject("path identity changed during validation: " + relative)
     return current
 
 run_dir = os.path.abspath(run_dir)
@@ -193,8 +202,10 @@ packet_root_raw = packet_root
 if not os.path.isabs(packet_root_raw) or os.path.normpath(packet_root_raw) != packet_root_raw:
     reject("root must be an absolute, non-normalized path")
 packet_root = packet_root_raw
-if stat.S_ISLNK(os.lstat(packet_root).st_mode):
-    reject("root is a symlink")
+packet_root_info = os.lstat(packet_root)
+if stat.S_ISLNK(packet_root_info.st_mode) or not stat.S_ISDIR(packet_root_info.st_mode):
+    reject("root is a symlink or not a directory")
+packet_root_identity = (packet_root_info.st_dev, packet_root_info.st_ino)
 
 packet_path = ensure_plain_path(packet_root, "packet.json")
 manifest, manifest_raw = load_json_bytes(packet_path)
@@ -261,7 +272,15 @@ safe_packet_path(manifest["corrected_audit_path"], "corrected_audit_path")
 # and the exact allowlist; aliases and special objects fail closed.
 actual = []
 identities = {}
+directory_identities = {}
 for current, directories, files in os.walk(packet_root, topdown=True, followlinks=False):
+    current_info = os.lstat(current)
+    if stat.S_ISLNK(current_info.st_mode) or not stat.S_ISDIR(current_info.st_mode):
+        reject("contains a symlink or special directory entry")
+    current_identity = (current_info.st_dev, current_info.st_ino)
+    if current_identity in directory_identities:
+        reject("contains a directory identity alias")
+    directory_identities[current_identity] = current
     for name in list(directories):
         full = os.path.join(current, name)
         mode = os.lstat(full).st_mode
@@ -276,9 +295,16 @@ for current, directories, files in os.walk(packet_root, topdown=True, followlink
         safe_packet_path(relative, "staged file path")
         actual.append(relative)
         identity = (info.st_dev, info.st_ino)
-        if identity in identities:
+        if identity in identities or info.st_nlink != 1:
             reject("contains a hard-link or file-identity alias")
         identities[identity] = relative
+for identity, directory in directory_identities.items():
+    current_info = os.lstat(directory)
+    if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+        reject("directory identity changed during packet enumeration")
+current_packet_root = os.lstat(packet_root)
+if (current_packet_root.st_dev, current_packet_root.st_ino) != packet_root_identity:
+    reject("packet root identity changed during validation")
 expected_actual = ["packet.json"] + [path for path, unused_hash in entries]
 if sorted(actual, key=lambda value: value.encode("ascii")) != sorted(expected_actual, key=lambda value: value.encode("ascii")):
     reject("regular-file set does not exactly match packet.json plus allowlist")
@@ -723,7 +749,15 @@ def validate_historical_audited_review(version, corrected_hash, seal):
 
     actual = []
     identities = {}
+    directory_identities = {}
     for current, directories, files in os.walk(historical_root, topdown=True, followlinks=False):
+        current_info = os.lstat(current)
+        if stat.S_ISLNK(current_info.st_mode) or not stat.S_ISDIR(current_info.st_mode):
+            reject("historical packet contains a symlink or special directory")
+        current_identity = (current_info.st_dev, current_info.st_ino)
+        if current_identity in directory_identities:
+            reject("historical packet contains a directory identity alias")
+        directory_identities[current_identity] = current
         for name in directories:
             member = os.path.join(current, name)
             member_mode = os.lstat(member).st_mode
@@ -738,9 +772,13 @@ def validate_historical_audited_review(version, corrected_hash, seal):
             safe_packet_path(relative, "historical staged file path")
             actual.append(relative)
             identity = (info.st_dev, info.st_ino)
-            if identity in identities:
+            if identity in identities or info.st_nlink != 1:
                 reject("historical packet contains a hard-link or identity alias")
             identities[identity] = relative
+    for identity, directory in directory_identities.items():
+        current_info = os.lstat(directory)
+        if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+            reject("historical packet directory identity changed during enumeration")
     if set(actual) != {"packet.json"} | set(historical_map):
         reject("historical packet file set does not equal packet.json plus allowlist")
     for relative, expected_hash in historical_entries:
@@ -761,7 +799,8 @@ def validate_historical_audited_review(version, corrected_hash, seal):
         reject("historical audited result does not contain exactly the bound output member")
     result_path = os.path.join(result_root, expected_result_name)
     result_info = os.lstat(result_path)
-    if stat.S_ISLNK(result_info.st_mode) or not stat.S_ISREG(result_info.st_mode):
+    if (stat.S_ISLNK(result_info.st_mode) or not stat.S_ISREG(result_info.st_mode) or
+            result_info.st_nlink != 1):
         reject("historical audited result member is a symlink or not a regular file")
     candidate, unused = load_json_bytes(result_path)
     exact_keys(candidate, ["attempt_id", "review_mode", "reviewed_artifacts", "blocker_ids",
@@ -1008,7 +1047,15 @@ def validate_existing_readiness_verdict(verdict_relative):
 
     actual = []
     identities = {}
+    directory_identities = {}
     for current, directories, files in os.walk(existing_root, topdown=True, followlinks=False):
+        current_info = os.lstat(current)
+        if stat.S_ISLNK(current_info.st_mode) or not stat.S_ISDIR(current_info.st_mode):
+            reject("existing readiness packet contains a symlink or special directory")
+        current_identity = (current_info.st_dev, current_info.st_ino)
+        if current_identity in directory_identities:
+            reject("existing readiness packet contains a directory identity alias")
+        directory_identities[current_identity] = current
         for name in directories:
             member = os.path.join(current, name)
             member_mode = os.lstat(member).st_mode
@@ -1026,6 +1073,10 @@ def validate_existing_readiness_verdict(verdict_relative):
             if identity in identities or info.st_nlink != 1:
                 reject("existing readiness packet contains a hard-link or identity alias")
             identities[identity] = relative
+    for identity, directory in directory_identities.items():
+        current_info = os.lstat(directory)
+        if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+            reject("existing readiness packet directory identity changed during enumeration")
     if set(actual) != {"packet.json"} | set(existing_map):
         reject("existing readiness packet file set does not equal packet.json plus allowlist")
     for relative, expected_hash in existing_entries:
@@ -1214,41 +1265,68 @@ for event in version_events:
 
 versions_root = os.path.join(run_dir, "audit", "versions")
 try:
-    versions_mode = os.lstat(versions_root).st_mode
+    versions_info = os.lstat(versions_root)
 except OSError as exc:
     reject("authoritative versions directory is missing: %s" % exc)
-if stat.S_ISLNK(versions_mode) or not stat.S_ISDIR(versions_mode):
+if stat.S_ISLNK(versions_info.st_mode) or not stat.S_ISDIR(versions_info.st_mode):
     reject("authoritative versions path is not a regular directory")
-for version in os.listdir(versions_root):
+versions_identity = (versions_info.st_dev, versions_info.st_ino)
+version_names = os.listdir(versions_root)
+for version in version_names:
+    if AUDIT_VERSION.fullmatch(version) is None:
+        reject("versions directory contains an invalid version name")
+highest_existing_number = max((int(version[1:]) for version in version_names), default=0)
+version_directory_identities = {}
+for version in version_names:
     if AUDIT_VERSION.fullmatch(version) is None:
         reject("versions directory contains an invalid version name")
     version_dir = os.path.join(versions_root, version)
-    mode = os.lstat(version_dir).st_mode
-    if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+    version_info = os.lstat(version_dir)
+    if stat.S_ISLNK(version_info.st_mode) or not stat.S_ISDIR(version_info.st_mode):
         reject("version path is a symlink or not a directory: " + version)
+    version_identity = (version_info.st_dev, version_info.st_ino)
+    if version_identity in version_directory_identities:
+        reject("version directory contains an identity alias")
+    version_directory_identities[version_identity] = version_dir
     validate_authoritative_reservation(version)
     names = set(os.listdir(version_dir))
     for name in names:
         member = os.path.join(version_dir, name)
-        member_mode = os.lstat(member).st_mode
-        if stat.S_ISLNK(member_mode) or not stat.S_ISREG(member_mode):
+        member_info = os.lstat(member)
+        if (stat.S_ISLNK(member_info.st_mode) or not stat.S_ISREG(member_info.st_mode) or
+                member_info.st_nlink != 1):
             reject("version directory contains a symlink or special member: %s/%s" % (version, name))
     indexed = indexed_versions.get(version)
+    version_number = int(version[1:])
     if indexed is None:
         if names not in ({"reservation.json"}, {"reservation.json", "corrected-audit.md"}):
             reject("unindexed version directory is not reserved-only or recoverable corrected state")
+        if version_number <= last_version_number:
+            reject("unindexed version directory cannot legally follow the version index")
+        if "corrected-audit.md" in names and version_number != highest_existing_number:
+            reject("older unindexed corrected-audit state is not recoverable")
     elif indexed["sealed"]:
         if names != {"reservation.json", "corrected-audit.md", "seal.json"}:
             reject("sealed version directory has an invalid artifact set")
     elif names not in ({"reservation.json", "corrected-audit.md"},
                         {"reservation.json", "corrected-audit.md", "seal.json"}):
         reject("corrected version directory has an invalid artifact set")
+    elif "seal.json" in names and (version_number != highest_existing_number or
+                                    last_event != (version, "corrected")):
+        reject("older or nonterminal unindexed seal state is not recoverable")
     if "seal.json" in names:
         corrected_hash = (indexed["corrected_sha256"] if indexed is not None else
                           sha_file(ensure_plain_path(run_dir, "audit/versions/%s/corrected-audit.md" % version)))
         validate_recoverable_or_indexed_seal(version, corrected_hash)
+for identity, directory in version_directory_identities.items():
+    current_info = os.lstat(directory)
+    if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+        reject("version directory identity changed during validation")
+current_versions_info = os.lstat(versions_root)
+if (current_versions_info.st_dev, current_versions_info.st_ino) != versions_identity:
+    reject("authoritative versions directory identity changed during validation")
 for version in indexed_versions:
-    if version not in os.listdir(versions_root):
+    if version not in version_names:
         reject("version index names a missing version directory")
 
 if len(matching) != 1:
@@ -1314,6 +1392,14 @@ for parent, target_name, label in [(reviews_parent, result_name, "result"),
             reject("reserved result directory is not an empty regular directory")
     elif matches:
         reject(label + " path collides with an existing object")
+
+for identity, directory in directory_identities.items():
+    current_info = os.lstat(directory)
+    if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+        reject("directory identity changed before packet validation completed")
+final_packet_root = os.lstat(packet_root)
+if (final_packet_root.st_dev, final_packet_root.st_ino) != packet_root_identity:
+    reject("packet root identity changed before validation completed")
 
 state = {
     "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
@@ -1521,6 +1607,27 @@ PY
   fi
 
   mkdir "$result_dir" 2>/dev/null || fail "cannot exclusively reserve readiness result directory: $result_dir"
+  publication_identities="$readiness_tmp/publication-identities.json"
+  python3 - "$result_dir" "$RUN_DIR/verdicts" "$publication_identities" <<'PY' || exit 1
+import json
+import os
+import stat
+import sys
+
+result_dir, verdict_parent, output = sys.argv[1:]
+identities = {}
+for label, path in [("candidate", result_dir), ("verdict", verdict_parent)]:
+    try:
+        info = os.lstat(path)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: readiness publication parent is missing: %s" % exc)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise SystemExit("run-cold-reviewer: readiness publication parent is a symlink or not a directory: " + path)
+    identities[label] = {"dev": info.st_dev, "ino": info.st_ino, "path": path}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(identities, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    handle.write("\n")
+PY
 
   candidate_schema="$readiness_tmp/candidate-schema.json"
   jq -e '
@@ -1654,19 +1761,30 @@ if any(character not in " \t\r\n" for character in text[end:]):
     reject("retained binding state has trailing content or non-RFC-8259 whitespace")
 if stat.S_ISLNK(root_mode) or not stat.S_ISDIR(root_mode):
     reject("root is a symlink or not a directory")
+root_info = os.lstat(root)
+root_identity = (root_info.st_dev, root_info.st_ino)
 expected = {item["path"]: item["sha256"] for item in state["allowlist"]}
 packet_path = os.path.join(root, "packet.json")
 try:
     packet_mode = os.lstat(packet_path).st_mode
 except OSError as exc:
     reject("packet.json is missing: %s" % exc)
-if stat.S_ISLNK(packet_mode) or not stat.S_ISREG(packet_mode):
+packet_info = os.lstat(packet_path)
+if stat.S_ISLNK(packet_mode) or not stat.S_ISREG(packet_mode) or packet_info.st_nlink != 1:
     reject("packet.json is a symlink or not a regular file")
 if sha_file(packet_path) != state["manifest_sha256"]:
     reject("packet.json bytes differ from the validated original")
 actual = []
 identities = {}
+directory_identities = {}
 for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+    current_info = os.lstat(current)
+    if stat.S_ISLNK(current_info.st_mode) or not stat.S_ISDIR(current_info.st_mode):
+        reject("contains a symlink or special directory")
+    current_identity = (current_info.st_dev, current_info.st_ino)
+    if current_identity in directory_identities:
+        reject("contains a directory identity alias")
+    directory_identities[current_identity] = current
     for name in directories:
         member = os.path.join(current, name)
         mode = os.lstat(member).st_mode
@@ -1684,9 +1802,16 @@ for current, directories, files in os.walk(root, topdown=True, followlinks=False
             reject("contains a non-ASCII path")
         actual.append(relative)
         identity = (info.st_dev, info.st_ino)
-        if identity in identities:
+        if identity in identities or info.st_nlink != 1:
             reject("contains a hard-link or file-identity alias")
         identities[identity] = relative
+for identity, directory in directory_identities.items():
+    current_info = os.lstat(directory)
+    if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+        reject("directory identity changed during snapshot enumeration")
+current_root_info = os.lstat(root)
+if (current_root_info.st_dev, current_root_info.st_ino) != root_identity:
+    reject("root identity changed during snapshot validation")
 if set(actual) != {"packet.json"} | set(expected):
     reject("file set is not exact packet.json plus allowlist")
 observed = []
@@ -1695,6 +1820,13 @@ for relative in sorted(expected, key=lambda item: item.encode("ascii")):
     if sha_file(path) != expected[relative]:
         reject("payload hash mismatch: " + relative)
     observed.append({"path": relative, "sha256": expected[relative]})
+for identity, directory in directory_identities.items():
+    current_info = os.lstat(directory)
+    if stat.S_ISLNK(current_info.st_mode) or (current_info.st_dev, current_info.st_ino) != identity:
+        reject("directory identity changed before snapshot validation completed")
+current_root_info = os.lstat(root)
+if (current_root_info.st_dev, current_root_info.st_ino) != root_identity:
+    reject("root identity changed before snapshot validation completed")
 with open(out_path, "w", encoding="utf-8") as handle:
     json.dump({"allowlist": observed, "manifest_sha256": state["manifest_sha256"]}, handle,
               ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -1856,41 +1988,97 @@ PY
   publish_no_clobber() {
     source_path="$1"
     target_path="$2"
-    python3 - "$source_path" "$target_path" <<'PY'
+    identity_key="$3"
+    python3 - "$source_path" "$target_path" "$publication_identities" "$identity_key" <<'PY'
+import json
 import os
+import re
 import secrets
+import stat
 import sys
 
-source, target = sys.argv[1:]
+source, target, identity_path, identity_key = sys.argv[1:]
 parent = os.path.dirname(target)
 name = os.path.basename(target)
-for existing in os.listdir(parent):
-    if existing == name or existing.lower() == name.lower():
-        raise SystemExit("run-cold-reviewer: no-clobber publication collision: " + target)
-temporary = os.path.join(parent, ".readiness-publish-%s.tmp" % secrets.token_hex(12))
-flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-descriptor = os.open(temporary, flags, 0o600)
+if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", name):
+    raise SystemExit("run-cold-reviewer: no-clobber publication basename is unsafe")
+def identity_pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError("duplicate identity key")
+        result[key] = value
+    return result
+
 try:
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(open(source, "rb").read())
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.link(temporary, target)
-    directory = os.open(parent, os.O_RDONLY)
+    raw_identity = open(identity_path, "rb").read()
+    text_identity = raw_identity.decode("utf-8")
+    decoder = json.JSONDecoder(object_pairs_hook=identity_pairs,
+                               parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    identity_start = 0
+    while identity_start < len(text_identity) and text_identity[identity_start] in " \t\r\n":
+        identity_start += 1
+    identities, identity_end = decoder.raw_decode(text_identity, identity_start)
+    if any(character not in " \t\r\n" for character in text_identity[identity_end:]):
+        raise ValueError("trailing identity content")
+    expected = identities[identity_key]
+except (OSError, UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
+    raise SystemExit("run-cold-reviewer: cannot load publication parent identity: %s" % exc)
+if expected.get("path") != parent or type(expected.get("dev")) is not int or type(expected.get("ino")) is not int:
+    raise SystemExit("run-cold-reviewer: publication target does not bind the recorded parent")
+expected_identity = (expected["dev"], expected["ino"])
+
+def verify_parent_path():
     try:
+        info = os.lstat(parent)
+    except OSError as exc:
+        raise SystemExit("run-cold-reviewer: publication parent path is unavailable: %s" % exc)
+    if (stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or
+            (info.st_dev, info.st_ino) != expected_identity):
+        raise SystemExit("run-cold-reviewer: publication parent path identity changed")
+
+verify_parent_path()
+directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+try:
+    directory = os.open(parent, directory_flags)
+except OSError as exc:
+    raise SystemExit("run-cold-reviewer: cannot open anchored publication parent: %s" % exc)
+temporary = ".readiness-publish-%s.tmp" % secrets.token_hex(12)
+linked = False
+try:
+    directory_info = os.fstat(directory)
+    if not stat.S_ISDIR(directory_info.st_mode) or (directory_info.st_dev, directory_info.st_ino) != expected_identity:
+        raise SystemExit("run-cold-reviewer: anchored publication parent identity mismatch")
+    verify_parent_path()
+    for existing in os.listdir(directory):
+        if existing == name or existing.lower() == name.lower():
+            raise SystemExit("run-cold-reviewer: no-clobber publication collision: " + target)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    descriptor = os.open(temporary, flags, 0o600, dir_fd=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            with open(source, "rb") as source_handle:
+                handle.write(source_handle.read())
+            handle.flush()
+            os.fsync(handle.fileno())
+        verify_parent_path()
+        os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory,
+                follow_symlinks=False)
+        linked = True
         os.fsync(directory)
+        verify_parent_path()
     finally:
-        os.close(directory)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
 finally:
-    try:
-        os.unlink(temporary)
-    except FileNotFoundError:
-        pass
+    os.close(directory)
 PY
   }
 
   candidate_path="$result_dir/${output_id}.json"
-  publish_no_clobber "$candidate_bytes" "$candidate_path" || exit 1
+  publish_no_clobber "$candidate_bytes" "$candidate_path" candidate || exit 1
   rm -f "$candidate_bytes" || fail "cannot discard private pre-publication candidate bytes"
 
   canonical_bytes="$readiness_tmp/canonical-verdict.json"
@@ -2037,7 +2225,7 @@ try:
 except OSError as exc:
     reject("cannot stage canonical verdict bytes: %s" % exc)
 PY
-  publish_no_clobber "$canonical_bytes" "$canonical_verdict" || exit 1
+  publish_no_clobber "$canonical_bytes" "$canonical_verdict" verdict || exit 1
   jq -cn \
     --arg runtime "$runtime" \
     --arg model "$model" \
