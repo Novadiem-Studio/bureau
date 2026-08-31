@@ -67,6 +67,8 @@ Common machine types are normative:
 | `identity-text` | JSON string containing 1–256 UTF-8 bytes, valid Unicode scalar values, no control character, and no leading or trailing Unicode whitespace. Used only for human identity display fields. |
 | `relative-artifact-path` | JSON string containing the exact `/`-separated path relative to `RUN_DIR` named by its schema row; no absolute, empty, `.`, `..`, backslash, symlink, or normalization alias is accepted. |
 | `boolean` | JSON Boolean `true` or `false`. |
+| `positive-integer` | JSON integer in `1..2147483647`; Booleans are invalid. |
+| `nonnegative-integer` | JSON integer in `0..2147483647`; Booleans are invalid. |
 | `object` | JSON object with the exact keys declared by its row/table. |
 | `array` | JSON array in the declared order with elements of exactly the declared type. |
 
@@ -115,9 +117,10 @@ the operator's stated constraints.
 
 The profiles share every record in this contract and differ only in depth and gates:
 
-- `catalog` performs independent static deep-read coverage for every applicable domain. It runs
-  an already-supplied and authorized local procedure when one exists, but does no setup work to
-  create a runnable environment. Otherwise runtime evidence is `unverifiable`.
+- `catalog` performs independent static deep-read coverage for every applicable domain. It
+  attempts an already-supplied and authorized local procedure and records its observed outcome,
+  but does no setup work to create a runnable environment. When absent it records exact
+  disposition `not-supplied`; archival uses `archival-no-probe`.
 - `full` adds isolated local stand-up, synthetic lifecycle probes, and runtime verification where
   technically possible. Every setup-only change is quarantined.
 - `audited` includes all `full` obligations and adds a fresh premium Challenger cold review of
@@ -171,6 +174,47 @@ recorded file under `audit/coverage/` containing:
 Independent passes MUST be preserved as records. A shallow repository scan or a summary from one
 reviewer cannot substitute for the domain records. Partial coverage is explicit and contributes
 to completeness and evidence ceilings; it is never silently treated as completed coverage.
+
+### Coverage completion ledger
+
+`audit/coverage-index.ndjson` is mandatory, append-only, and Conductor-owned. The Conductor creates
+it no-clobber, validates it from byte zero before every append or consumption, and serializes each
+compact UTF-8 JSON line with raw-ASCII lexicographically sorted keys. Immediately after each
+coverage record is published no-clobber, the Conductor hashes it and appends one exact event:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `event` | JSON string | Exactly `coverage-completed`. |
+| `sequence` | `positive-integer` | Starts at `1`, then contiguous. |
+| `domain_id` | `safe-id` | Unique and equals the record domain. |
+| `coverage_path` | `relative-artifact-path` | Exactly `audit/coverage/<domain_id>.md`. |
+| `coverage_sha256` | `sha256` | Exact immutable record hash. |
+| `reviewer_attempt_id` | `safe-id` | Equals the record attempt. |
+| `recorded_at` | `timestamp` | Append time. |
+
+The Conductor then appends exactly one terminal event:
+
+| Key | Type | Constant or rule |
+|---|---|---|
+| `schema_version` | `schema-version` | `1`. |
+| `event` | JSON string | Exactly `coverage-closed`. |
+| `sequence` | `positive-integer` | One after the final completion, or `1` when none exists. |
+| `closure_reason` | JSON string | Exactly `all-applicable-completed`, `unresolved-intent`, `all-domains-excluded`, or `partial-coverage-archival`. |
+| `domain_register_path` | `relative-artifact-path` | Exactly `audit/domain-register.md`. |
+| `domain_register_sha256` | `sha256` | Exact register hash. |
+| `completed_count` | `nonnegative-integer` | Exact completion-event count. |
+| `completed_set_sha256` | `sha256` | Canonical digest below. |
+| `recorded_at` | `timestamp` | Closure time. |
+
+The completed-set digest is SHA-256 of a compact UTF-8 JSON array of exact
+`{"path":<coverage_path>,"sha256":<coverage_sha256>}` objects sorted by unsigned bytewise raw-ASCII
+path, with no whitespace or trailing newline. Zero completions is valid only for
+`unresolved-intent` or `all-domains-excluded`; normal closure requires every applicable domain and
+partial archival closure a nonempty proper subset. Nothing may append after closure. A missing,
+added, reordered, duplicate, changed, unproduced, or post-closure event/record, or wrong
+sequence/count/reason/digest/path/hash, invalidates reconciliation and sealing. There is no repair
+or identical-event append.
 
 ## Evidence and finding records
 
@@ -301,10 +345,10 @@ version.
 
 Before consulting the seal matrix, the Conductor validates mandatory artifacts. Every route
 requires valid `audit/profile.md`, `audit/product-contract.md`, `audit/domain-register.md`,
-`audit/runtime-verification.md`, `audit/setup-quarantine.md`, the exact reservation, the immutable
+`audit/coverage-index.ndjson`, `audit/runtime-verification.md`, `audit/setup-quarantine.md`, the exact reservation, the immutable
 corrected audit, and its matching `corrected` index event. A normal route requires a completed
 coverage record for every applicable domain. An archival route requires the preserved domain
-register and the exact set of valid coverage records actually completed before archival closure;
+register and the exact closed-ledger set of valid coverage records actually completed before archival closure;
 that set is zero for unresolved intent or an all-domains-excluded register, but may be a nonempty
 proper subset when coverage stopped partway. Deleting an existing valid record, adding an
 unproduced record, forcing the set to zero, or fabricating an absence record is invalid. Every
@@ -472,12 +516,32 @@ Each allowlist element is an object with exactly two keys:
 No other `packet.json` or allowlist-entry key is permitted.
 
 The allowlist is a closed packet-relative file set. It contains exactly once every readable
-regular payload file except `packet.json`: the product contract, domain register, coverage
-records, runtime-verification and setup-quarantine records, corrected audit, this shared contract,
+regular payload file except `packet.json`: the product contract, domain register, closed coverage
+ledger and its indexed records, runtime-verification and setup-quarantine records, corrected audit, this shared contract,
 the readiness workflow, and the self-contained readiness-reviewer slice. An archival packet still
 contains its domain register and contains exactly the existing valid coverage set used by
 reconciliation: zero for unresolved intent or all domains excluded, otherwise the completed
 partial subset. An absence placeholder is never an allowlist member.
+
+The packet-member to authoritative-source map is fixed:
+
+| Packet member | Authoritative source |
+|---|---|
+| `audit/product-contract.md` | `RUN_DIR/audit/product-contract.md` |
+| `audit/domain-register.md` | `RUN_DIR/audit/domain-register.md` |
+| `audit/coverage-index.ndjson` | `RUN_DIR/audit/coverage-index.ndjson` |
+| `audit/coverage/<domain_id>.md` | Exact record named by the closed coverage ledger |
+| `audit/runtime-verification.md` | `RUN_DIR/audit/runtime-verification.md` |
+| `audit/setup-quarantine.md` | `RUN_DIR/audit/setup-quarantine.md` |
+| `audit/versions/vNNNN/corrected-audit.md` | Exact artifact named by the corrected event |
+| `docs/codebase-readiness-audit-contract.md` | Framework `docs/codebase-readiness-audit-contract.md` |
+| `workflows/codebase-readiness-audit.md` | Framework `workflows/codebase-readiness-audit.md` |
+| `agents/readiness-reviewer.md` | Framework `agents/readiness-reviewer.md` validated by adapter preflight |
+
+Each manifest SHA-256 MUST equal both authoritative-source bytes and staged bytes. Before the
+provider and again immediately before verdict publication, the adapter reopens and rehashes every
+authoritative source and staged member. A stale, substituted, changed, missing, or differently
+bound source invalidates the attempt.
 
 A packet-member path is 1–512 raw ASCII bytes, POSIX-relative, uses `/` as its sole separator,
 and has segments of 1–64 bytes matching exactly
@@ -512,27 +576,29 @@ no canonical verdict. Any collision, partial result, or validation failure block
 nothing is deleted, reused, or repaired. A new attempt requires a new attempt id and freshly
 no-clobber-staged packet.
 
-The Challenger is a candidate-only producer. It returns one structured candidate containing the
-packet's exact `attempt_id`, `review_mode: verification`, `reviewed_artifacts`, `blockers`,
-`blocker_ids`, and `warnings`; it MUST NOT write `log.md`, a Markdown review, the result record, or
-the live verdict. Every blocker object has one unique safe `id`. `blocker_ids` is required and is
+The Challenger is a candidate-only producer. Its raw candidate exact key set is only `attempt_id`,
+`review_mode`, `reviewed_artifacts`, `blockers`, `blocker_ids`, and `warnings`. A candidate
+`verdict`, timestamp, or unknown key is prohibited; it MUST NOT write `log.md`, a Markdown review,
+the result record, or the live verdict. Every blocker object has one unique safe `id`.
+`blocker_ids` is required and is
 exactly the ordered array of `blockers[].id`, with one entry per blocker and no missing, duplicate,
-extra, reordered, or mismatched value. An absent `blocker_ids` field is invalid. If the candidate
-supplies a `verdict`, it MUST equal the adapter-derived value exactly. The readiness adapter is the
-sole canonical validator and writer. It:
+extra, reordered, or mismatched value. An absent `blocker_ids` field is invalid. The readiness
+adapter is the sole canonical validator and writer. It:
 
 1. Validates the exact blocker object/ID correspondence, then derives `BLOCKED` when
    `blocker_ids` is nonempty, `APPROVED_WITH_WARNINGS` when `blocker_ids` is empty and `warnings`
    is nonempty, and `APPROVED` when both arrays are empty.
-2. Validates the existing Challenger verdict schema and requires candidate `attempt_id`,
-   `review_mode`, and any supplied `verdict` to equal the packet or derived value exactly.
+2. Requires candidate `attempt_id` and `review_mode` to equal the packet values exactly.
 3. Requires `reviewed_artifacts` to equal the manifest's canonically sorted allowlist exactly,
    in the same order, with the same packet-relative paths and lowercase SHA-256 values and no
    missing or extra element.
 4. Requires the allowlist member named by `corrected_audit_path` and the candidate binding to
    equal the reserved versioned corrected-audit path and hash.
-5. Only after all checks pass, atomically no-clobber publishes the canonical verdict at
-   `verdicts/<attempt_id>.json`.
+5. Supplies current UTC second-precision `reviewed_at`, constructs and validates the exact
+   canonical record containing only `schema_version`, `attempt_id`, `audit_version`, `review_mode`,
+   derived `verdict`, `reviewed_artifacts`, `blockers`, `blocker_ids`, `warnings`,
+   `corrected_audit_path`, `corrected_audit_sha256`, and `reviewed_at`, then atomically no-clobber
+   publishes `verdicts/<attempt_id>.json`. A caller-owned verdict or timestamp is invalid.
 
 The Conductor consumes the canonical verdict path and hash but MUST NOT create, rewrite,
 normalize, or repair it. `BLOCKED` requires correction in a newly allocated version followed by a
@@ -597,8 +663,13 @@ A selected selectable seal may be used by default as requirements input to a sep
 remediation-planning run. Remediation planning needs no client-fix approval, creates no approval
 record, grants no authority to change the client repository, and never auto-executes fixes.
 
-Only after a remediation plan is complete may a human-facing client-fix checkpoint create the
-immutable approval `audit/execute-plan-approvals/<approval_id>.json`. It has this exact key set:
+Only after a remediation plan is complete may the Conductor observe an explicit human-facing
+client-fix checkpoint decision and publish the immutable approval
+`audit/execute-plan-approvals/<approval_id>.json`. The Conductor is the sole approval publisher. It
+rehashes the selected seal and completed plan, constructs and validates the record, writes a
+same-directory temporary file, and atomically publishes no-clobber. Any existing derived approval
+path, even with identical bytes, is a collision and requires a new `approval_id`. The approval has
+this exact key set:
 
 | Key | Type | Constant or rule |
 |---|---|---|
