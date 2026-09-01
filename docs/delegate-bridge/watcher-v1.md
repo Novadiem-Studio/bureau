@@ -44,6 +44,7 @@ mkdir -p "$CTX"
 cp "$ARTIFACT"                    "$CTX/"
 cp "$LOG_SLICE"                   "$CTX/log-slice.md"
 cp "$RUN_DIR/state.json"          "$CTX/"
+cp "$ROOT/AGENTS.md"              "$CTX/bureau-agents.md"
 cp "$ROOT/docs/conventions.md"    "$CTX/"
 mkdir -p "$CTX/conventions"
 cp "$ROOT/docs/conventions/"*.md  "$CTX/conventions/"
@@ -57,7 +58,7 @@ After the verdict is written, `watcher.sh` removes the staging dir:
 The canonical artifacts remain in `$RUN_DIR`; the staged copies are throwaway.
 
 The helper's task prompt names the staged files by their isolated absolute context paths
-(`$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
+(`$CTX/bureau-agents.md`, `$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
 `$CTX/conventions/`, `$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
 checkpoints) — bare relative names are looked up at the git/workspace root, not the
 spawn CWD, and are DENIED by `--add-dir "$CTX"`. Every named path is INSIDE `$CTX`. It

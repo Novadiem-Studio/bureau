@@ -256,6 +256,7 @@ process_request() {
   cp "$REQ_ARTIFACT"               "$CTX/"
   cp "$REQ_LOG_SLICE"              "$CTX/log-slice.md"
   cp "$RUN_DIR/state.json"         "$CTX/"
+  cp "$ROOT/AGENTS.md"             "$CTX/bureau-agents.md"
   cp "$ROOT/docs/conventions.md"   "$CTX/"
   mkdir -p "$CTX/conventions"
   cp "$ROOT/docs/conventions/"*.md "$CTX/conventions/"

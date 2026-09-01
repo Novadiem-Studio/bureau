@@ -3439,6 +3439,7 @@ CHECKPOINTS_DIR="$RUN_DIR/checkpoints"
 mkdir -p "$CHECKPOINTS_DIR" || fail "cannot create checkpoints directory"
 
 for required in \
+  "$CTX/bureau-agents.md" \
   "$CTX/delegate-reviewer.md" \
   "$CTX/conventions.md" \
   "$CTX/log-slice.md" \
@@ -3447,6 +3448,8 @@ for required in \
 do
   [ -f "$required" ] || fail "staged reviewer file missing: $required"
 done
+cmp -s "$CTX/bureau-agents.md" "$ROOT/AGENTS.md" \
+  || fail "staged bureau-agents.md does not match canonical Bureau AGENTS.md"
 if [ "$REVIEW_MODE" = "integration" ] && [ ! -f "$CTX/integration-results.json" ]; then
   fail "integration review requires staged integration-results.json"
 fi
@@ -3495,9 +3498,9 @@ build_task_prompt() {
   prompt_ctx="$1"
   prompt_artifact="$2"
   if [ "$REVIEW_MODE" = "integration" ]; then
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files: ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   else
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files: ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), and ${prompt_ctx}/${prompt_artifact} (the artifact). Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), and ${prompt_ctx}/${prompt_artifact} (the artifact). Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   fi
 }
 
