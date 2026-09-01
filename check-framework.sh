@@ -134,6 +134,8 @@ for slice in spec-plan prompts build-diff; do
 done
 grep -Fq 'cp "$ROOT/docs/conventions/"*.md' scripts/watcher.sh \
   || err "scripts/watcher.sh should stage docs/conventions modules with the conventions router"
+grep -Fq 'cp "$ROOT/AGENTS.md"' scripts/watcher.sh \
+  || err "scripts/watcher.sh should stage canonical Bureau instructions for cold reviewers"
 [[ -f agents/modes/architect-execute-plan.md ]] \
   || err "missing agents/modes/architect-execute-plan.md"
 [[ -f agents/modes/spellwright-execute-plan.md ]] \
@@ -202,6 +204,12 @@ echo "== model routing policy"
 [[ -f config/delegate-verdict.codex.schema.json ]] || err "missing strict Codex Delegate verdict schema"
 [[ -x scripts/resolve-model-routing.sh ]] || err "scripts/resolve-model-routing.sh missing or not executable"
 [[ -x scripts/run-cold-reviewer.sh ]] || err "scripts/run-cold-reviewer.sh missing or not executable"
+grep -Fq '"$CTX/bureau-agents.md"' scripts/run-cold-reviewer.sh \
+  || err "scripts/run-cold-reviewer.sh should require staged Bureau instructions"
+grep -Fq 'cmp -s "$CTX/bureau-agents.md" "$ROOT/AGENTS.md"' scripts/run-cold-reviewer.sh \
+  || err "scripts/run-cold-reviewer.sh should bind staged Bureau instructions to canonical bytes"
+grep -Fq '/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions)' scripts/run-cold-reviewer.sh \
+  || err "scripts/run-cold-reviewer.sh prompt should require canonical Bureau instructions first"
 [[ -x scripts/run-codex-spark-specialist.sh ]] || err "scripts/run-codex-spark-specialist.sh missing or not executable"
 [[ -x scripts/run-grok-specialist.sh ]] || err "scripts/run-grok-specialist.sh missing or not executable"
 if [[ -f config/model-policy.v2.json ]]; then

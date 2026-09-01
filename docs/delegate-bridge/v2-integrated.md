@@ -251,6 +251,8 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
 - **the artifact under review** (copied by name);
 - **`log-slice.md`** — this checkpoint's log slice only;
 - **`state.json`** — the scope projection (the Conductor writes this before returning);
+- **`bureau-agents.md`** — an immutable content-copy of canonical `$ROOT/AGENTS.md`, read first so
+  the reviewer can satisfy the Bureau startup instruction without access to the live framework root;
 - **`conventions.md`** — router from `$ROOT/docs/`;
 - **`conventions/`** — convention modules from `$ROOT/docs/conventions/`, loaded on demand;
 - **`delegate-reviewer.md`** — the cold-reviewer-mode SECTION of `agents/delegate.md`, via the W-d
