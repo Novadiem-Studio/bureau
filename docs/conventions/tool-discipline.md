@@ -6,7 +6,7 @@
 >
 > **Why this matters (eval ledger 2026-09-03):** In the nutrifax-zine run, 74%
 > of all tool calls were Bash and ~47% of run-scoped Bash was sed-editing +
-> cat/grep-inspecting that Edit/Read/Grep do in-context WITHOUT a turn. Cost
+> cat/grep-inspecting that Edit/Read/Grep collapse into far fewer turns. Cost
 > equals turns × accumulated context, so each shell round-trip re-reads
 > ~250-340k of cache. The exemplar: `architect-5` applied 5 blocker fixes to a
 > 1,233-line plan.md in 234 Bash / 0 Edit calls — 60M processed, 99.5%
@@ -24,11 +24,16 @@
 
 ## Rationale
 
-- **Edit/Write/Read/Grep** execute in-context — no new tool-call turn, no re-read of
-  accumulated context. They are free in cost terms.
-- Every **Bash** call is a new turn that re-reads the full accumulated context window.
-  On a run with 200k+ tokens in context, one unnecessary sed call costs as much as a
-  small specialist spawn.
+- **The cost is turns, not the tool.** Every tool call (Bash, Edit, Read, Grep alike) is a
+  turn that re-reads the full accumulated context, billed as cache_read. On a run holding
+  200k+ tokens, one turn costs about the same whether it is a `sed` or an `Edit`.
+- **Dedicated tools do the same work in far fewer turns.** `Read` loads a file into context
+  once and you then work from it; the Bash habit re-`cat`s it every time it wants to look.
+  `Edit` is exact-match-or-fail in one call; `sed -i` invites a `cat`-to-verify then a redo.
+  `Grep` finds matches across files in one call; `find … | xargs grep` is several.
+- So `architect-5`'s 234 Bash calls were costly not because a Bash call beats an `Edit` on
+  price, but because they were 234 turns doing what ~15 dedicated-tool calls would: same
+  per-turn tax, 15× the turns.
 
 ## Practical guidance
 
@@ -38,6 +43,9 @@
 - Running `scripts/preflight-artifacts.sh`, `scripts/verdict-gate.sh`, `git diff`, or
   `pytest`? Those are framework ceremony or test execution — use **Bash**.
 - Unsure? Ask: "Could I do this with Edit/Read/Grep?" If yes, do that.
+- **If you are churning one file** — a third Bash inspect→edit→re-inspect pass — stop: Read it
+  once, land the change in one Edit. If a single artifact is genuinely taking dozens of tool
+  calls, stop and report for re-scope rather than burning turns.
 
 ## Scope
 

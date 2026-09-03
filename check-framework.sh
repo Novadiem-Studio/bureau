@@ -447,7 +447,11 @@ echo "== orchestrator.md regrowth guard"
 # fire today but trips on further growth, forcing a conscious "trim or raise the
 # budget" decision instead of silent creep. When #19's rationale says the file
 # should shrink, LOWER this number rather than let it drift up.
-ORCHESTRATOR_MD_BUDGET=925
+# 2026-09-03: 925 → 927 (+2) for the inline tool-discipline directive in the spawn
+# template (eval lever i enforcement). Justified drift-up: those 2 lines of Conductor
+# startup context prevent specialist Bash-thrash (architect-5 = 234 Bash / 0 Edit,
+# 60M processed), so the directive is strongly net-negative on total run context.
+ORCHESTRATOR_MD_BUDGET=927
 orch_lines=$(wc -l < agents/orchestrator.md | tr -d '[:space:]')
 if [[ "$orch_lines" -gt "$ORCHESTRATOR_MD_BUDGET" ]]; then
   warn "agents/orchestrator.md is ${orch_lines} lines, over the ${ORCHESTRATOR_MD_BUDGET}-line budget — it is the Conductor's startup context and this works against idea #19 (the Conductor context diet). Trim it back or, if the growth is justified, raise ORCHESTRATOR_MD_BUDGET in check-framework.sh with a note why."

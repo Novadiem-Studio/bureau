@@ -208,6 +208,8 @@ spawn, copy its `nonce` only into specialist `Run nonce:` lines, and never retur
    name the specific decision in this agent's task that needs it; if you can't, don't.
    (Convention: <ROOT>/docs/conventions.md. Convention: <ROOT>/docs/conventions/tool-discipline.md.)
 
+   **Tool discipline (load-bearing — do not skip):** change files with Edit/Write, inspect with Read/Grep; use Bash ONLY for tests, git, docker, installs, builds, and bureau ceremony (`run-*.sh`, the gates, `account-*`, `emit-event`, `log-append`). Never `sed`/`awk`/`cat >`/`echo >>` to edit, or `cat`/`head`/`tail`/`grep` to inspect. Every tool call is a turn that re-reads the whole accumulated context, so **turns are the cost** — if you are iterating Bash inspect→edit→re-inspect on one file, stop: Read it once, land the change in one Edit; if an artifact is taking dozens of tool calls, stop and report for re-scope instead of churning.
+
    Treat the input contract as a least-privilege boundary. Do not hand agents broad repo/context
    bundles, external credentials, or write authority they do not need for this step. A subagent
    does not spawn other subagents unless a workflow explicitly says so.
