@@ -44,6 +44,7 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
                    current-run rationale.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## House engineering standards
 
@@ -149,8 +150,8 @@ and `APPROVED` when both arrays are empty. Do not write lowercase `pass`/`fail`/
 `{"path":"<abs_path>","sha256":"<sha256>"}`. Diff-target elements are
 `{"kind":"diff-target","base_ref":"<ref>","base_sha":"<sha>","target_ref":"WORKING-TREE|<ref>","diff_sha":"<sha>"}`;
 do not write an object-shaped diff binding.
-blockers use citations shaped as `{"kind":"presence","path":"<abs_path>","anchor":"<greppable string ≥15 chars>"}` or `{"kind":"absence","path":"<abs_path>","missing":"<description>"}`.
-Validate with inline `python3` before writing: all 8 fields, valid `review_mode`/`verdict` enums, derived-verdict consistency, and kind-required citation fields;
+Each blocker object has three required fields: `id` (stable string, e.g. `"r1-b1"`), `summary` (one-line human description of the blocker), and `citation`. Citations are shaped as `{"kind":"presence","path":"<abs_path>","anchor":"<greppable string ≥15 chars>"}` or `{"kind":"absence","path":"<abs_path>","missing":"<description>"}`. Full blocker shape: `{"id":"<id>","summary":"<one-line description>","citation":{...}}`.
+Validate with inline `python3` before writing: all 8 fields, valid `review_mode`/`verdict` enums, derived-verdict consistency, and kind-required citation fields — including the `summary` field on every blocker;
 on failure write no record and append `CHALLENGER FLAG: verdict record not written — validation failed: <reason>` to `log.md`.
 Write atomically via `TMPF="$RUN_DIR/verdicts/.${attempt_id}.json.tmp"` then `mv "$TMPF" "$RUN_DIR/verdicts/${attempt_id}.json"`; on write or move failure append `CHALLENGER FLAG: verdict record not written — write failed: <reason>`.
 

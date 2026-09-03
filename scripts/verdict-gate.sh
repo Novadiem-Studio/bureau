@@ -104,6 +104,9 @@ if len(blocker_ids) == 0 and len(warnings) == 0 and verdict != "APPROVED":
 if not isinstance(data["reviewed_artifacts"], list):
     print("DEFECT: schema-violation — reviewed_artifacts must be an array")
     sys.exit(1)
+_file_modes = {"spec-plan", "prompts", "verification"}
+_diff_modes = {"build-diff", "code-review"}
+_record_mode = data["review_mode"]
 for i, art in enumerate(data["reviewed_artifacts"]):
     if not isinstance(art, dict):
         print("DEFECT: schema-violation — reviewed_artifacts[%d] is not an object" % i)
@@ -112,6 +115,9 @@ for i, art in enumerate(data["reviewed_artifacts"]):
         # file-target shape: must have path and sha256
         if "path" not in art or "sha256" not in art:
             print("DEFECT: schema-violation — reviewed_artifacts[%d] file-target missing path or sha256" % i)
+            sys.exit(1)
+        if _record_mode in _diff_modes:
+            print("DEFECT: schema-violation — reviewed_artifacts[%d] is file-target but review_mode %s requires diff-target" % (i, _record_mode))
             sys.exit(1)
     else:
         # diff-target shape
@@ -122,6 +128,9 @@ for i, art in enumerate(data["reviewed_artifacts"]):
             if k not in art or art[k] is None:
                 print("DEFECT: schema-violation — reviewed_artifacts[%d] diff-target missing field: %s" % (i, k))
                 sys.exit(1)
+        if _record_mode in _file_modes:
+            print("DEFECT: schema-violation — reviewed_artifacts[%d] is diff-target but review_mode %s requires file-target" % (i, _record_mode))
+            sys.exit(1)
 
 # Check: blockers shape
 if not isinstance(data["blockers"], list):
@@ -275,19 +284,36 @@ EOF
 
     R="$_target_repo"
 
-    # Re-derive base_sha from base_ref
+    # Re-verify base_sha is still a valid git object.
+    #
+    # Design principle (eval ledger 2026-09-03 — D4): the Challenger STORES the
+    # resolved SHA in base_sha at write time (rev-parse HEAD for WORKING-TREE,
+    # merge-base HEAD <branch> for branch heads, rev-parse <left> for ranges).
+    # The gate must NOT re-derive the SHA from the ref at revalidation time —
+    # because refs advance (HEAD, branches) and merge-base shifts when HEAD moves,
+    # causing false diff-target-mutated DEFECTs on clean records.
+    #
+    # Instead: confirm the stored SHA is still a reachable git object.  If the
+    # object exists, _recomputed_base == DIFF_BASE_SHA (pass).  If it was
+    # garbage-collected or is absent, _recomputed_base is empty (fail — genuine
+    # mutation).  The range A..B case still resolves the named left-side ref
+    # because that is a stable tag or commit hash, not a drifting branch head.
     if [ "$DIFF_TARGET_REF" = "WORKING-TREE" ]; then
-      _recomputed_base=$(git -C "$R" rev-parse HEAD 2>/dev/null)
+      # WORKING-TREE: base_sha was git rev-parse HEAD at write time.
+      # Verify the stored SHA is still in the repo rather than re-reading HEAD.
+      _recomputed_base=$(git -C "$R" rev-parse "$DIFF_BASE_SHA" 2>/dev/null)
     else
       case "$DIFF_BASE_REF" in
         *..*)
-          # committed range A..B: base is left side
+          # Committed range A..B: base is the left side (stable ref or SHA).
           _left=$(echo "$DIFF_BASE_REF" | cut -d. -f1)
           _recomputed_base=$(git -C "$R" rev-parse "$_left" 2>/dev/null)
           ;;
         *)
-          # branch head: base is merge-base of HEAD and branch
-          _recomputed_base=$(git -C "$R" merge-base HEAD "$DIFF_BASE_REF" 2>/dev/null)
+          # Bare branch name or commit SHA: base_sha was the merge-base SHA at
+          # write time (or the commit SHA itself).  Verify the stored object
+          # exists — do NOT re-run merge-base against current HEAD, which drifts.
+          _recomputed_base=$(git -C "$R" rev-parse "$DIFF_BASE_SHA" 2>/dev/null)
           ;;
       esac
     fi

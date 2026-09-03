@@ -29,6 +29,7 @@ Mode appendix:  if spawned for execute-plan or design-build prompt-folder work, 
 Does NOT receive:  log.md, the Challenger's findings, the Architect's design rationale — build prompts from the approved spec/plan, not the debate.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Run paths (`RUN_DIR`)
 

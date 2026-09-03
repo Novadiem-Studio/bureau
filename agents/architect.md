@@ -25,6 +25,7 @@ Mode appendix:  if spawned for execute-plan or design-build chunking, read `agen
 Does NOT receive:  log.md, prior Challenger findings — design from the requirement, not the argument.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## House engineering standards
 

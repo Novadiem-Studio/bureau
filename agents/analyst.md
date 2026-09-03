@@ -23,6 +23,7 @@ Does NOT receive:  plan.md, log.md — the Analyst writes Requirements before th
 Bug-fix reproduce mode and reconciliation mode use different inputs; see their sections below.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Run paths (`RUN_DIR`)
 

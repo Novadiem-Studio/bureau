@@ -70,6 +70,7 @@ Reads (self-read):  sub-app CLAUDE.md + named ops skills; docs/conventions/tdd-s
 Does NOT receive:  app code internals, full spec.md — run the named step, don't change app code.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Domain notes
 - `deliver_later` and background jobs run on the queue the worker actually serves (often

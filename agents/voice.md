@@ -23,6 +23,7 @@ their rules.
                    Does NOT receive:  unrelated spec/plan internals — judge the copy on its audience, not the design history.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Run paths (`RUN_DIR`)
 

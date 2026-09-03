@@ -31,6 +31,8 @@ only the module whose trigger matches the work.
   `docs/adr/` decision records.
 - `docs/conventions/diagnosing-bugs.md` — `bug-fix` reproduce/fix work, red-capable feedback
   loops, minimisation/instrumentation, or regression-test seam/home decisions.
+- `docs/conventions/tool-discipline.md` — choosing between Edit/Write/Read/Grep and Bash for
+  file operations; the cost-aware tool-fit rule for every specialist and the Conductor.
 
 If a module is not triggered, do not read it "just in case." The old broad
 `Convention: docs/conventions.md` pointer means: load this router first, then only the matching

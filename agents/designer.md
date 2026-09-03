@@ -36,6 +36,7 @@ you which mode you are in:
                    Does NOT receive:  log.md — fidelity is judged against the manifest, not the history.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Run paths (`RUN_DIR`)
 

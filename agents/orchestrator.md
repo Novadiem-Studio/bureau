@@ -206,7 +206,7 @@ spawn, copy its `nonce` only into specialist `Run nonce:` lines, and never retur
 2. Read your inputs (absolute paths). Pass EXACTLY what the role's `## Inputs` block in
    `<ROOT>/agents/<role>.md` declares — not a default pair. If you're tempted to add more,
    name the specific decision in this agent's task that needs it; if you can't, don't.
-   (Convention: <ROOT>/docs/conventions.md.)
+   (Convention: <ROOT>/docs/conventions.md. Convention: <ROOT>/docs/conventions/tool-discipline.md.)
 
    Treat the input contract as a least-privilege boundary. Do not hand agents broad repo/context
    bundles, external credentials, or write authority they do not need for this step. A subagent

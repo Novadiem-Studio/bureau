@@ -95,14 +95,34 @@ add_defect() {
   printf '%s\n' "$1" >> "$DEFECTS"
 }
 
+# ── Read workflow from state.json ─────────────────────────────────────────────
+# design-build runs never produce spec.md — skip the spec-presence check for
+# them.  All other spec-dependent checks still run against plan.md (which
+# design-build DOES produce).  The check degrades gracefully when state.json is
+# absent or unreadable.
+
+WORKFLOW=""
+_STATE_JSON="$RUN_DIR/state.json"
+if [ -f "$_STATE_JSON" ]; then
+  WORKFLOW=$(grep '"workflow"' "$_STATE_JSON" 2>/dev/null | \
+    sed 's/.*"workflow"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+fi
+
 # ── (a) Presence ─────────────────────────────────────────────────────────────
 # round1: spec.md + plan.md required; prompts.md absence is expected, not flagged.
 # final:  spec.md + plan.md + prompts.md all required.
+#
+# Exception: design-build runs produce design/manifest.md instead of spec.md.
+# When workflow == "design-build" the spec.md presence check is skipped; all
+# other checks (including spec-dependent ones) run against plan.md only.
 
 MISSING_SPEC=0
 MISSING_PLAN=0
 
-if [ ! -f "$SPEC" ]; then
+if [ "$WORKFLOW" = "design-build" ]; then
+  # design-build: no spec.md expected — skip spec-presence check silently.
+  MISSING_SPEC=0
+elif [ ! -f "$SPEC" ]; then
   add_defect "spec.md:0 — presence — required artifact absent: spec.md"
   MISSING_SPEC=1
 fi
@@ -114,7 +134,8 @@ if [ "$PHASE" = "final" ] && [ ! -f "$PROMPTS" ]; then
   add_defect "prompts.md:0 — presence — required artifact absent: prompts.md"
 fi
 
-# Without spec + plan the remaining checks cannot run meaningfully
+# Without plan (or spec when not design-build) the remaining checks cannot run
+# meaningfully.  For design-build: MISSING_SPEC=0, so only a missing plan halts.
 if [ "$MISSING_SPEC" -eq 1 ] || [ "$MISSING_PLAN" -eq 1 ]; then
   cat "$DEFECTS"
   exit 1
@@ -391,10 +412,12 @@ EOF
 
 FR_DEFS="$WORK/fr_defs.txt"
 > "$FR_DEFS"
-grep -E '^[[:space:]]*\*\*FR [0-9]+' "$SPEC" | \
-  sed -E 's/^[[:space:]]*\*\*FR ([0-9]+).*/FR \1/' >> "$FR_DEFS"
-grep -E '^[[:space:]]*#{1,6} FR [0-9]+' "$SPEC" | \
-  sed -E 's/^[[:space:]]*#{1,6} FR ([0-9]+).*/FR \1/' >> "$FR_DEFS"
+if [ -f "$SPEC" ]; then
+  grep -E '^[[:space:]]*\*\*FR [0-9]+' "$SPEC" | \
+    sed -E 's/^[[:space:]]*\*\*FR ([0-9]+).*/FR \1/' >> "$FR_DEFS"
+  grep -E '^[[:space:]]*#{1,6} FR [0-9]+' "$SPEC" | \
+    sed -E 's/^[[:space:]]*#{1,6} FR ([0-9]+).*/FR \1/' >> "$FR_DEFS"
+fi
 sort -u "$FR_DEFS" -o "$FR_DEFS"
 
 fr_id=""
@@ -524,7 +547,9 @@ check_snippets() {
   done < "$f"
 }
 
-check_snippets "$SPEC"
+# Spec-dependent checks: only run when spec.md is present (i.e. not skipped
+# for design-build runs).
+[ -f "$SPEC" ] && check_snippets "$SPEC"
 check_snippets "$PLAN"
 if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
   check_snippets "$PROMPTS"
@@ -535,7 +560,7 @@ fi
 
 if [ "$PHASE" = "round1" ] || [ "$PHASE" = "final" ]; then
   check_adr_records
-  check_convention_citations "$SPEC"
+  [ -f "$SPEC" ] && check_convention_citations "$SPEC"
   check_convention_citations "$PLAN"
 fi
 
@@ -543,7 +568,7 @@ fi
 # Every AC N defined in spec.md must be cited by ID in plan.md or prompts.md.
 # This is the scripted half of the FR 7a completion-checklist AC-coverage check.
 
-if [ "$PHASE" = "final" ]; then
+if [ "$PHASE" = "final" ] && [ -f "$SPEC" ]; then
   AC_DEFS="$WORK/ac_defs.txt"
   > "$AC_DEFS"
   grep -E '^[[:space:]]*\*\*AC [0-9]+' "$SPEC" | \

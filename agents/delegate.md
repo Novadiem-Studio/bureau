@@ -274,6 +274,11 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    - the artifact under review (copied by name),
    - `log-slice.md` (this checkpoint's slice only),
    - `state.json` (the scope projection the Conductor wrote before returning),
+   - `bureau-agents.md` — a byte-identical content-copy of `$ROOT/AGENTS.md`, so the cold
+     reviewer can satisfy the Bureau startup instruction without access to the live framework root:
+     ```sh
+     cp "$ROOT/AGENTS.md" "$CTX/bureau-agents.md"
+     ```
    - `conventions.md` (router from `$ROOT/docs/`),
    - `conventions/` (modules from `$ROOT/docs/conventions/`, loaded on demand),
    - `delegate-reviewer.md` — the cold-reviewer-mode SECTION of THIS file, via the W-d slice:

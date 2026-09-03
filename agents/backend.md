@@ -57,6 +57,7 @@ Reads (self-read):  sub-app CLAUDE.md + named skills; docs/conventions/tdd-seams
 Does NOT receive:  full spec.md, log.md, unrelated prompts — build exactly the one scoped prompt assigned.
 
 Convention: docs/conventions.md
+Convention: docs/conventions/tool-discipline.md
 
 ## Domain notes
 - Migrations **additive + latin1**: local MySQL is utf8mb4 and `db:migrate` rewrites every
