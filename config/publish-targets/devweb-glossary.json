@@ -1,0 +1,22 @@
+{
+  "repo": "<path-to-devweb-checkout>",
+  "page_type": "glossary",
+  "content_dir": "content/glossary",
+  "articles_dir": "content/articles",
+  "build_cmd": "npx next build",
+  "build_check": "all-static",
+  "live_url": "https://devweb.org",
+  "categories": ["frameworks", "memory", "engineering"],
+  "mdx_components": [],
+  "author": "site",
+  "frontmatter": {
+    "required": ["term", "slug", "pillar", "definition", "date", "related"],
+    "optional": ["updated", "aliases", "seoTitle", "draft"],
+    "definition_min_chars": 40,
+    "definition_max_chars": 240,
+    "seo_title_max_chars": 60,
+    "related_min": 1
+  },
+  "body": { "min_words": 250, "max_words": 600, "max_h2": 2 },
+  "_schema_note": "Mirrors lib/glossary.ts in the devweb repo (the Zod schema is the source of truth; the build fails and names the file on any violation, including a `related` slug that does not exist under articles_dir)."
+}
