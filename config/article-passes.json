@@ -1,7 +1,25 @@
 {
   "passes": [
     {
+      "id": "grok-ideas",
+      "kind": "memo",
+      "stage": "after-outline",
+      "model": "openrouter:x-ai/grok-4.3",
+      "instruction": "config/passes/ideas-grok.md",
+      "enabled": true
+    },
+    {
+      "id": "grok-skeptic",
+      "kind": "memo",
+      "stage": "after-revise",
+      "model": "openrouter:x-ai/grok-4.3",
+      "instruction": "config/passes/skeptic-grok.md",
+      "enabled": true
+    },
+    {
       "id": "grok",
+      "kind": "improve",
+      "stage": "cross-model",
       "model": "openrouter:x-ai/grok-4.3",
       "instruction": "config/passes/improve-grok.md",
       "enabled": true

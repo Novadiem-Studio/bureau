@@ -1,8 +1,9 @@
 # Workflow: write-article
 
 **When to use:** Robin wants to write a long-form article and run it through the full pipeline —
-outline → draft → higher-level improvement → a configurable chain of cross-model improvement
-passes (Grok et al., editable per run) → two humanizer passes → MDX output. Point it at a
+outline → a cross-model **ideas memo** → draft → higher-level improvement → a cross-model
+**skeptic memo** → a configurable chain of cross-model improvement passes (Grok et al., editable
+per run) → two humanizer passes → MDX output. Point it at a
 topic. The publish destination is driven by an optional `RUN_DIR/publish-target.json`; if absent,
 the workflow produces `RUN_DIR/article.mdx` only with no build or push.
 
@@ -21,6 +22,12 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
 - A topic description — Robin provides it inline in the spawn or as a file path.
 - Optionally a per-run `RUN_DIR/article-passes.json`. If present, it **replaces**
   `config/article-passes.json` entirely for this run (not a merge — predictable and explicit).
+  Each pass carries `id`, `model`, `instruction`, `enabled`, plus two fields that decide WHERE and
+  HOW it runs: `kind` — `improve` (default; the model returns a revised candidate the Scribe
+  reconciles, step 8) or `memo` (the model returns ideas/objections the Scribe WEIGHS, never
+  merges); and `stage` — for memo passes, `after-outline` (step 3a, the ideas memo) or
+  `after-revise` (step 5a, the skeptic memo); improve passes run at the cross-model stage. The
+  default config ships one of each: `grok-ideas`, `grok-skeptic`, `grok`.
 - Optionally a `RUN_DIR/publish-target.json`. If present, it drives: the category/section enum
   (step 2), allowed MDX components (step 12), and the publish destination — repo path, content
   dir, build command, and live URL (step 14). If absent, the workflow produces `RUN_DIR/article.mdx`
@@ -45,10 +52,17 @@ script (`scripts/model-pass.sh`) plus a cross-repo publish into devweb. It borro
   highest-numbered `versions/` file. This is what makes the run auditable end to end — diff any
   two stages forever. Typical sequence: `00-outline.md`, `01-draft.md`, `02-revise.md`,
   `03-grounding.md` (only if the figure gate triggers), `04-reconcile.md`, `05-humanize-1.md`,
-  `06-humanize-2.md`, `07-article.mdx`.
+  `06-humanize-2.md`, `07-article.mdx`. Memos live beside the spine in `memos/`, not in it: they
+  are inputs to a version, never a version.
 - `RUN_DIR/figure-check.md` — per-claim grounding record (only if the figure gate triggers).
 - `RUN_DIR/passes/NN-<id>.md` — one durable candidate per cleared cross-model pass (the
   cross-model perspectives; kept in their own dir because the resume-skip predicate keys on them).
+- `RUN_DIR/memos/input-<id>.md` — the packet handed to a memo pass (angle + outline + grounding
+  notes for `after-outline`; the latest version for `after-revise`), kept so the memo is auditable
+  against exactly what the model saw.
+- `RUN_DIR/memos/NN-<id>.md` — one cleared memo per memo pass (ideas after the outline, objections
+  after the revise). Memos are inputs to the Scribe, never merged mechanically; the Scribe's
+  handoff records which ideas it adopted and which it declined, and the Conductor logs that.
 - `RUN_DIR/manifest.md` — auto-written at close-out: one row per `versions/` stage (file, word
   count, one-line "what changed"). The audit index.
 - `RUN_DIR/proofread.md` — the step-13 proofreader verdict (`CLEAR` | `HOLD`) + any concerns.
@@ -71,8 +85,8 @@ as sub-workflows; they reuse the same Counselor mode the other workflow runs.
 **Automation policy — RESOLVED standing authorizations (Robin, 2026-06-24).** "Write an article"
 runs to completion **autonomously and ships live** — it is automation, not a relay of approval
 gates. The only thing that halts a run is a *real problem*, never a preference:
-- **Cross-model spend — standing-authorized.** The cross-model stage (step 6) fires the configured
-  passes automatically; no per-run `[EXTERNAL-ACTION CHECKPOINT]`. Each call is still logged to
+- **Cross-model spend — standing-authorized.** The memo passes (steps 3a, 5a) and the cross-model
+  stage (step 8) fire the configured passes automatically; no per-run `[EXTERNAL-ACTION CHECKPOINT]`. Each call is still logged to
   `RUN_DIR/log.md` with an `[EXTERNAL-ACTION]` line (model, bytes, cost-signal, exit) for audit —
   the principal pre-authorized the *class* (Grok/OpenRouter passes on his own drafts), every firing
   is logged. This is how a recurring gated action is automated legitimately; it is NOT an un-gated
@@ -100,8 +114,9 @@ The run is complete when ALL hold (the success path — proofreader `CLEAR`):
   article is committed and **pushed to `main`** — live at the target's `live_url` (step 14c).
 - **If no publish-target:** `RUN_DIR/article.mdx` is the deliverable; step 14 logs article-only
   output and completes without build or push.
-- `RUN_DIR/log.md` carries: the figure-gate decision; the logged cross-model pass list; one
-  `[EXTERNAL-ACTION]` line per cross-model call that actually fired; the proofreader verdict; the
+- `RUN_DIR/log.md` carries: the memo passes that fired (or were skipped) and the Scribe's
+  adopted / declined ideas from each memo; the figure-gate decision; the logged cross-model pass
+  list; one `[EXTERNAL-ACTION]` line per cross-model call that actually fired (memo and improve); the proofreader verdict; the
   push (if applicable); and the step-15 close-out with the count of paid passes.
 - `RUN_DIR/state.json#accounting` is set (status `available` or, on failure, `unavailable`).
 
@@ -114,6 +129,12 @@ concerns, then re-run from step 13. A build failure (14b) halts the same way.
 - **Figure gate skipped (no numbers).** If the latest version carries no quantitative claims, step
   6 logs `grounding: not-triggered` to `RUN_DIR/log.md` and the run continues at step 7 without
   entering 6a (no `NN-grounding.md` version is created). This is a branch, not a failure.
+- **A memo pass fails or is disabled.** Steps 3a / 5a log the failure (or `memo: not-configured`)
+  and the run continues: the Scribe drafts from the outline alone, or reconciles without a skeptic
+  memo. A memo is an input, never a gate.
+- **A memo pass returns a rewrite instead of a memo.** `model-pass.sh --mode memo` cannot tell
+  prose from ideas; the Scribe reads whatever cleared as a source of ideas only and never pastes
+  it in. It notes the off-brief output in its handoff so the instruction file can be tightened.
 - **All cross-model passes fail.** The step-8 batch may produce zero candidates (every pass
   errored, was skipped, or failed integrity). Step 9 then runs as a Claude-only final revision of
   the latest version. Every prior version is preserved — `model-pass.sh` writes nothing on failure.
@@ -148,8 +169,11 @@ concerns, then re-run from step 13. A build failure (14b) halts the same way.
 ## Observability
 
 Everything that spends money or branches is logged to `RUN_DIR/log.md`:
-- Every cross-model call (step 8) writes an `[EXTERNAL-ACTION]` line (model, bytes in/out,
-  `finish_reason`, status, exit) — written by `model-pass.sh --run-dir`. These audit lines, not a
+- Every cross-model call (steps 3a, 5a, 8) writes an `[EXTERNAL-ACTION]` line (model, mode, bytes
+  in/out, `finish_reason`, status, exit) — written by `model-pass.sh --run-dir`. Memo calls carry
+  `mode=memo`, so the close-out count can split ideas/skeptic spend from improve spend.
+- Each memo pass logs the packet it built and, after the consuming Scribe step, the adopted /
+  declined ideas list from the Scribe's handoff. These audit lines, not a
   per-run human `go`, are the control on the standing-authorized spend.
 - The planned cross-model pass list (step 7) is logged before any POST (no `go` awaited).
 - The figure-gate decision (`grounding: not-triggered`, or the 6a grounding record) is logged.
@@ -200,14 +224,44 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    heading structure (h2/h3) in order, the key claim per section, and any figures/examples to
    gather before drafting. Outline only, no prose.
 
-4. **The Scribe** (Draft, **strong**) — reads the outline → next version `NN-draft.md`
+   - 3a. **Action** — ideas memo (cross-model, standing-authorized, no human stop) → `memos/NN-<id>.md`
+     For every enabled pass with `kind: memo` and `stage: after-outline` in the effective config
+     (validated with step 7's guards first — halt and name the file on failure): build the packet
+     `RUN_DIR/memos/input-<id>.md` by concatenating `angle.md`, the latest version (the outline),
+     and any grounding notes or source material the run was handed, each under a `## <file>`
+     heading; ensure `RUN_DIR/memos/` exists; skip if `memos/*-<id>.md` already exists (resume);
+     else run
+     ```
+     bash scripts/model-pass.sh <model> "$RUN_DIR/memos/input-<id>.md" \
+       "<bureau-root>/<instruction>" "$RUN_DIR/memos/NN-<id>.md" --run-dir "$RUN_DIR" --mode memo
+     ```
+     On non-zero exit log and continue (a memo is an input, not a gate). This is where a second
+     model gets real room: it sees the plan before any prose exists and is briefed to disagree,
+     find gaps, and propose sharper angles and examples (`config/passes/ideas-grok.md`).
+
+4. **The Scribe** (Draft, **strong**) — reads the outline + the ideas memo → next version `NN-draft.md`
    Writes the full article body end-to-end in the house voice (loads the lite voice rules from
    `~/.claude/CLAUDE.md`). Escalated to **strong** (Opus) — this is the piece's first real prose.
+   Reads every cleared `RUN_DIR/memos/*` from step 3a (if any) as a source of ideas: adopt what
+   sharpens the piece — an angle, a missing section, an objection to answer, a better example, a
+   sharper thesis — and decline the rest. **Grounding rule for memo ideas:** an argument or
+   structural idea may be adopted freely; a fact, number, name or example marked
+   `[PROPOSED: needs grounding]` (or otherwise absent from the run's inputs and the draft's own
+   sources) enters the draft ONLY if the Scribe can point at a source in the run inputs, and is
+   otherwise declined. The handoff footer lists adopted and declined ideas with one line of why
+   each; the Conductor copies that list into `log.md`.
 
 5. **The Scribe** (Revise, **strong**) — higher-level improvement → next version `NN-revise.md`
    Reads the latest version (the draft); standard revision sub-mode: argument structure, evidence
    quality, section balance, transitions. Structural work, not a line-edit. Writes the improved
    article as a NEW version file — the prior draft version is preserved untouched.
+
+   - 5a. **Action** — skeptic memo (cross-model, standing-authorized, no human stop) → `memos/NN-<id>.md`
+     For every enabled pass with `kind: memo` and `stage: after-revise`: the packet is the latest
+     version (the revised draft) copied to `RUN_DIR/memos/input-<id>.md`; same resume-skip,
+     invocation (`--mode memo`) and partial-failure policy as 3a. The brief
+     (`config/passes/skeptic-grok.md`) asks the model to argue against the draft: weakest claim,
+     hand-waves, expert pushback, what it should have said. The memo is consumed at step 9.
 
 6. **Gate** — figure check (conditional): the Conductor reads the latest version for real numbers
    or quantitative claims. If present, proceed to step 6a; else log `grounding: not-triggered` to
@@ -235,8 +289,14 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    - For each enabled pass, confirm its `instruction` path resolves to a real file under the bureau
      root: `test -f "<bureau-root>/<instruction>"`. A missing
      instruction file fails **before** the API call, not as an empty-instruction POST.
-   Log the ordered enabled-pass list (model IDs + planned call count) to `RUN_DIR/log.md` for the
-   record, then proceed to step 8. (No `go` is awaited — the standing authorization + the per-call
+   - `jq -e '[.passes[] | (.kind // "improve") | IN("improve","memo")] | all' <config>` — every
+     pass's `kind` is known.
+   - `jq -e '[.passes[] | select((.kind // "improve") == "memo") | .stage | IN("after-outline","after-revise")] | all' <config>`
+     — every memo pass names a stage this workflow runs.
+   These same guards run before 3a (the first paid call), so a malformed config halts the run
+   before any POST, at whichever step meets it first.
+   Log the ordered enabled **improve**-pass list (model IDs + planned call count) to `RUN_DIR/log.md`
+   for the record, then proceed to step 8. Memo passes were already dispatched at 3a / 5a. (No `go` is awaited — the standing authorization + the per-call
    `[EXTERNAL-ACTION]` audit lines are the control.)
 
 8. **Action** — cross-model stage (post-approval)
@@ -244,8 +304,9 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    `RUN_DIR/passes/` exist (create `passes/` if missing). `model-pass.sh` only writes its
    `[EXTERNAL-ACTION]` audit line when `--run-dir` points at an existing dir (silent no-op
    otherwise) — without this, a fired paid call goes unlogged and step 15's count under-reports.
-   Iterate the effective passes config **in order**. For each pass with `enabled: true`, where
-   `<id>` is its stable `id` and `NN` is the pass's zero-padded position in the list (`01`, `02`, …):
+   Iterate the effective passes config **in order**. For each pass with `enabled: true` **and
+   `kind` `improve` (or absent)** — memo passes belong to 3a / 5a and never run here — where `<id>`
+   is its stable `id` and `NN` is the pass's zero-padded position in the list (`01`, `02`, …):
    - **Resume check (keyed on the pass `id`, not list position)** — if a cleared candidate for
      pass `<id>` already exists in `RUN_DIR/passes/` (match the glob `*-<id>.md`), **skip this
      pass** (resume-idempotent — a completed candidate is never re-charged; the file existing
@@ -269,9 +330,15 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
      written in this step (candidates land only in `passes/`; step 9 writes the next version). The
      batch continues with whatever cleared.
 
-9. **The Scribe** (Revise, **strong**, generous integration) — reconcile the cross-model passes → next version `NN-reconcile.md`
+9. **The Scribe** (Revise, **strong**, generous integration) — reconcile the cross-model passes + answer the skeptic → next version `NN-reconcile.md`
    Given the latest `versions/` file (the current draft) + every **cleared** candidate in
-   `RUN_DIR/passes/` (if any). **The point of the cross-model stage is that other models' perspectives
+   `RUN_DIR/passes/` (if any) + the skeptic memo(s) from step 5a in `RUN_DIR/memos/` (if any).
+   **The skeptic memo first:** for each objection, the Scribe fixes the passage, answers the
+   objection in the text where the piece is stronger for it, or declines with one line of why in
+   the handoff. A memo-sourced fact, number or example enters the article only when a run input or
+   a source the draft already cites supports it; otherwise it is declined and logged, never shipped
+   as `[unverified]`. The Conductor copies the adopted / declined list into `log.md`. Then the
+   improve candidates: **The point of the cross-model stage is that other models' perspectives
    improve the piece and let it evolve — so integrate GENEROUSLY: adopt the candidates' edits by
    default.** This is NOT a gate that defends the original wording, and it is NOT a "promotion
    authority" with editorial veto. The Scribe reverts a candidate's change to its own prior wording
@@ -366,7 +433,8 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     `passes/` cross-model candidates. This is the end-state audit: the `versions/` dir holds every
     stage immutably and `manifest.md` is its table of contents.
     Surface the **count of paid external passes** fired this run, read back from the
-    `[EXTERNAL-ACTION]` entries in `RUN_DIR/log.md`. Summarize what ran and what was staged; flag
+    `[EXTERNAL-ACTION]` entries in `RUN_DIR/log.md`, split by `mode=memo` (ideas, skeptic) and
+    `mode=improve`, plus the adopted / declined idea counts from the two Scribe handoffs. Summarize what ran and what was staged; flag
     anything deferred. As the **final** close-out action — after the manifest, the summary, and the
     final `state.json` / `log.md` updates — run `scripts/account-run.sh <RUN_DIR>` so
     `accounting.json` reflects the terminal state, then set `state.json#accounting` per

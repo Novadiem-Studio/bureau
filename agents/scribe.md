@@ -32,9 +32,9 @@ during outline, or candidates during format, self-anchors you and breaks the sta
 
 **mode: outline** — Reads (handed):  RUN_DIR path; angle.md (from the Counselor); the approved working title + pillar.
                     Does NOT receive:  draft.md, passes/ — you produce the outline; consuming the draft would self-anchor.
-**mode: draft**   — Reads (handed):  RUN_DIR path; outline.md.
-                    Does NOT receive:  prior candidates — draft fresh from the outline.
-**mode: revise**  — Reads (handed):  RUN_DIR path; the latest version file (the current draft); optionally passes/ candidate files (for cross-model reconciliation after the cross-model stage). Writes the next version file.
+**mode: draft**   — Reads (handed):  RUN_DIR path; outline.md; the ideas memo(s) in RUN_DIR/memos/ from write-article step 3a, if any.
+                    Does NOT receive:  prior candidates — draft fresh from the outline, with the memo as a source of ideas to weigh, never text to paste.
+**mode: revise**  — Reads (handed):  RUN_DIR path; the latest version file (the current draft); optionally passes/ candidate files and the skeptic memo(s) in RUN_DIR/memos/ (for cross-model reconciliation after the cross-model stage). Writes the next version file.
                     Does NOT receive:  spec/plan internals — revise the draft against itself and its sources.
 **mode: format**  — Reads (handed):  RUN_DIR path; draft.md; the approved slug + pillar.
                     Does NOT receive:  passes/ — formatting only; no content changes.
@@ -77,6 +77,16 @@ Figures/examples to research: <list, or none>
 Write the full article draft from `outline.md`. Follow the outline's section structure and
 the per-section arguments; this is the body, written end-to-end.
 
+**The ideas memo.** If the Conductor hands you a cleared memo from `RUN_DIR/memos/` (write-article
+step 3a), read it before you write. It is another model's fresh read of the plan: alternative
+angles, gaps, the objections a disagreeing reader would raise, examples that land harder, sharper
+thesis sentences. Take what makes the piece better and say so; decline the rest and say why. You
+may adopt an argument, a section, an objection to answer, or a sharper thesis freely. A fact,
+number, name or example the memo marks `[PROPOSED: needs grounding]` (or that is absent from the
+outline and the run's inputs) goes in ONLY if you can point at a source in the run's inputs;
+otherwise decline it. Never paste memo prose into the draft. List every adopted and declined idea
+in the handoff footer, one line of why each; the Conductor logs that list.
+
 The **house voice** applies: load the lite voice rules from `~/.claude/CLAUDE.md` — plain,
 specific, simple verbs, concrete nouns and numbers over vague adjectives, no em dashes,
 straight quotes, no emoji, none of the banned vocabulary (delve, robust, leverage, seamless,
@@ -88,7 +98,7 @@ Produce `RUN_DIR/draft.md`. End with the draft-mode handoff footer below.
 
 ```
 SCRIBE COMPLETE
-Consumed: RUN_DIR (path); outline.md; ~/.claude/CLAUDE.md voice rules; no prior candidates
+Consumed: RUN_DIR (path); outline.md; memos/ ideas memo (if handed); ~/.claude/CLAUDE.md voice rules; no prior candidates
 Produced: RUN_DIR/draft.md
 Passing forward:
 - draft ready for the revise step
@@ -96,6 +106,8 @@ Passing forward:
 Mode: draft
 Word count: <N>
 Sections written: <N>
+Ideas adopted from memo: <list with one line of why each, or: no memo / none>
+Ideas declined from memo: <list with one line of why each, or: no memo / none>
 Open questions / gaps left for revise: <list, or none>
 ```
 
@@ -123,7 +135,12 @@ Three sub-behaviors. Your spawn prompt names which one (the workflow step decide
   listing each claim, its source, and its status (grounded / corrected / `[unverified]`).
 
 - **Cross-model reconciliation (step 9, post cross-model stage):** read the latest version plus
-  every cleared candidate file in `RUN_DIR/passes/` (if any exist). The cross-model stage exists
+  every cleared candidate file in `RUN_DIR/passes/` (if any exist) plus the skeptic memo(s) in
+  `RUN_DIR/memos/` (write-article step 5a, if any). **Answer the skeptic first.** For each
+  objection in the memo: fix the passage, answer the objection in the text where the piece is
+  stronger for it, or decline with one line of why in the handoff. A memo-sourced fact, number or
+  example enters the article only when a run input or a source the draft already cites supports it;
+  otherwise decline it, never ship it as `[unverified]`. Then the candidates: The cross-model stage exists
   so other models' perspectives improve the piece — **integrate generously, adopting the
   candidates' edits by default.** You are not defending your own wording. Revert a candidate's
   change only on a hard guard: it breaks a grounded fact, undoes a correction the run already made,
@@ -148,8 +165,9 @@ Passing forward:
 - revised draft ready for the next step
 - <…or: none>
 Mode: revise
-Sub-behavior: standard | figure-grounding | promotion-authority
+Sub-behavior: standard | figure-grounding | cross-model-reconciliation
 Candidates reconciled: <N, or n/a>
+Skeptic objections: <fixed N / answered in text N / declined N (one line of why each), or: no memo>
 Unverified figures flagged: <count, or none>
 ```
 

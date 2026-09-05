@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# One deterministic "improve this draft" cross-model pass for the write-article workflow.
+# One deterministic cross-model pass for the write-article family of workflows, in one of two
+# modes:
+#   improve (default) — "improve this draft": the model returns a full revised candidate that
+#                       the Scribe reconciles into the next version.
+#   memo              — "read this and write a memo": the model returns ideas / objections as a
+#                       memo the Scribe WEIGHS, never merges. Used by the ideas pass (after the
+#                       outline) and the skeptic pass (after the revise step).
 #
 # Makes no routing decisions and promotes nothing: the caller supplies model, draft,
 # instruction, and out-file. The script does ONE chat-completions POST and writes the
@@ -8,7 +14,7 @@
 # "this candidate cleared all checks". The prior draft is never touched on failure.
 #
 # Usage:
-#   model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR]
+#   model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR] [--mode improve|memo]
 #
 # Arguments:
 #   <model-spec>        provider-prefixed model id, e.g. openrouter:x-ai/grok-4.3
@@ -17,14 +23,19 @@
 #   <out-file>          absolute path to write the candidate (written only on full success;
 #                       its parent directory must already exist)
 #   --run-dir RUN_DIR   optional; when given, append one external-action log line to
-#                       RUN_DIR/log.md (model, bytes in/out, finish_reason, status, exit)
+#                       RUN_DIR/log.md (model, mode, bytes in/out, finish_reason, status, exit)
+#   --mode MODE         optional; `improve` (default) or `memo`. Selects the user-message frame
+#                       and the length integrity check: improve requires 50%-300% of the input
+#                       bytes (a rewrite of the same piece); memo requires 300B-40000B absolute
+#                       (a memo about a short outline is legitimately longer than its input).
 #
 # Exit codes:
 #   0   candidate written to <out-file>
 #   1   bad arguments or missing input files (before any network call)
 #   2   provider error (non-2xx HTTP, curl failure, or .error in the response body)
 #   3   integrity check failed (finish_reason != "stop", empty/whitespace content,
-#       or output byte count outside 50%-300% of input)
+#       or output bytes outside the mode's bound: 50%-300% of input for improve,
+#       300B-40000B absolute for memo)
 #   4   OpenRouter key missing (OPENROUTER_API_KEY absent and no configured keystore)
 #
 # v1 routes the openrouter: provider prefix ONLY. The prefix is the extension seam:
@@ -41,9 +52,11 @@ readonly OPENROUTER_URL="https://openrouter.ai/api/v1/chat/completions"
 readonly MAX_TIME=120
 readonly MAX_TOKENS=8192
 readonly TEMPERATURE=0.3
+readonly MEMO_MIN_BYTES=300
+readonly MEMO_MAX_BYTES=40000
 
 usage() {
-  echo "Usage: model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR]" >&2
+  echo "Usage: model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR] [--mode improve|memo]" >&2
   exit 1
 }
 
@@ -59,12 +72,18 @@ die() {
 # after them. Parse the optional pair out first, then require 4 positionals.
 
 RUN_DIR=""
+MODE="improve"
 POSITIONAL=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --run-dir)
       [ "$#" -ge 2 ] || usage
       RUN_DIR="$2"
+      shift 2
+      ;;
+    --mode)
+      [ "$#" -ge 2 ] || usage
+      MODE="$2"
       shift 2
       ;;
     *)
@@ -75,6 +94,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "${#POSITIONAL[@]}" -eq 4 ] || usage
+case "$MODE" in
+  improve|memo) ;;
+  *) die 1 "unknown --mode '$MODE' (expected improve or memo)" ;;
+esac
 
 MODEL_SPEC="${POSITIONAL[0]}"
 DRAFT_FILE="${POSITIONAL[1]}"
@@ -127,8 +150,8 @@ log_action() {
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   {
-    printf '[EXTERNAL-ACTION] model-pass: model=%s bytes_in=%s bytes_out=%s finish_reason=%s status=%s exit=%s ts=%s\n' \
-      "$MODEL_SPEC" "$INPUT_BYTES" "$out_bytes" "$finish" "$status" "$exit_code" "$ts" \
+    printf '[EXTERNAL-ACTION] model-pass: model=%s mode=%s bytes_in=%s bytes_out=%s finish_reason=%s status=%s exit=%s ts=%s\n' \
+      "$MODEL_SPEC" "$MODE" "$INPUT_BYTES" "$out_bytes" "$finish" "$status" "$exit_code" "$ts" \
       >> "$RUN_DIR/log.md"
   } || true
 }
@@ -142,11 +165,19 @@ die_logged() {
 }
 
 # ── build the request body with jq -n (NEVER string-interpolate the draft) ──────
+# The user-message frame is the only mode-dependent part of the request: improve asks for a
+# revised draft, memo asks for a memo about the material. The instruction file carries the rest.
+if [ "$MODE" = "memo" ]; then
+  USER_FRAME="Read the following material and write your memo:"
+else
+  USER_FRAME="Improve the following draft:"
+fi
 
 BODY="$(jq -n \
   --arg model "$MODEL_ID" \
   --argjson max_tokens "$MAX_TOKENS" \
   --argjson temperature "$TEMPERATURE" \
+  --arg frame "$USER_FRAME" \
   --rawfile instruction "$INSTRUCTION_FILE" \
   --rawfile draft "$DRAFT_FILE" \
   '{
@@ -155,7 +186,7 @@ BODY="$(jq -n \
     temperature: $temperature,
     messages: [
       {role: "system", content: $instruction},
-      {role: "user",   content: ("Improve the following draft:\n\n" + $draft)}
+      {role: "user",   content: ($frame + "\n\n" + $draft)}
     ]
   }')"
 
@@ -204,7 +235,8 @@ if [ -z "$(printf '%s' "$CONTENT" | tr -d '[:space:]')" ]; then
   die_logged 3 "$FINISH_REASON" "0" "model returned empty or whitespace-only content"
 fi
 
-# e. length-delta sanity — bytes, integer arithmetic. Reject < 50% or > 300% of input.
+# e. length sanity — bytes, integer arithmetic. improve: reject < 50% or > 300% of input;
+#    memo: reject < MEMO_MIN_BYTES or > MEMO_MAX_BYTES.
 #    Write the candidate to a temp file FIRST (this is also the atomic-write staging),
 #    measure its byte count, and only mv into place after this final check passes.
 OUT_TMP="${OUT_FILE}.tmp.$$"
@@ -213,12 +245,19 @@ trap 'rm -f "$OUT_TMP"' EXIT
 printf '%s' "$CONTENT" > "$OUT_TMP"
 OUTPUT_BYTES="$(wc -c < "$OUT_TMP" | tr -d '[:space:]')"
 
-LOWER=$(( INPUT_BYTES * 50 / 100 ))
-UPPER=$(( INPUT_BYTES * 300 / 100 ))
+if [ "$MODE" = "memo" ]; then
+  # A memo is not a rewrite: its length is unrelated to the input's. Absolute bounds catch a
+  # refusal / one-liner (too short) or a runaway (too long).
+  LOWER="$MEMO_MIN_BYTES"
+  UPPER="$MEMO_MAX_BYTES"
+else
+  LOWER=$(( INPUT_BYTES * 50 / 100 ))
+  UPPER=$(( INPUT_BYTES * 300 / 100 ))
+fi
 if [ "$OUTPUT_BYTES" -lt "$LOWER" ] || [ "$OUTPUT_BYTES" -gt "$UPPER" ]; then
   rm -f "$OUT_TMP"
   die_logged 3 "$FINISH_REASON" "$OUTPUT_BYTES" \
-    "length-delta out of range: output ${OUTPUT_BYTES}B vs input ${INPUT_BYTES}B (allowed ${LOWER}B-${UPPER}B); likely a refusal, summary, or runaway"
+    "length out of range for mode=${MODE}: output ${OUTPUT_BYTES}B vs input ${INPUT_BYTES}B (allowed ${LOWER}B-${UPPER}B); likely a refusal, summary, or runaway"
 fi
 
 # ── atomic write — all checks passed; promote the temp file into place ──────────
