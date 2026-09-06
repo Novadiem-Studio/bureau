@@ -199,3 +199,17 @@ At archive, also update the run's index entry: set `status: "archived"`, update 
 
 The framework runs mostly autonomously. If you see `[CHECKPOINT] — Human input
 needed`, answer in plain language and it resumes.
+
+## "Full tilt" run semantics
+When Robin greenlights a run with "this can go full tilt", "don't spare the whip", or "just barrel
+through", treat token/quota **cost as a non-constraint** for that run and run **autonomously to the
+definition of done**. He says it to remove the throughput brake and to stop being a bottleneck — NOT
+to lower quality.
+- **Don't stop to re-confirm what he has already approved.** A "surface for your ok" gate on
+  already-approved content (e.g. a signed-off FOUNDATION.md) is a courtesy — offer it once; if he
+  waives it, barrel through. The gate that matters is one surfacing a genuinely NEW, unapproved
+  decision.
+- **Keep the internal adversarial cold review ON.** Challenger passes + the Delegate cold reviewer are
+  correctness machinery, not Robin-facing gates. "Barrel through" waives stops for HIM, not the review.
+- **Still surface genuine forks** — a real design fork with material cost/irreversibility he hasn't
+  already decided. Just not routine confirmations or re-approvals.
