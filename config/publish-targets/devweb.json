@@ -3,7 +3,51 @@
   "content_dir": "content/articles",
   "build_cmd": "npx next build",
   "live_url": "https://devweb.org",
-  "categories": ["frameworks", "memory", "engineering"],
-  "mdx_components": ["PullQuote", "RunTable"],
-  "build_check": "all-static"
+  "categories": [
+    "frameworks",
+    "memory",
+    "engineering"
+  ],
+  "mdx_components": [
+    "PullQuote",
+    "RunTable"
+  ],
+  "build_check": "all-static",
+  "frontmatter": {
+    "required": [
+      "title",
+      "dek",
+      "date",
+      "pillar",
+      "slug",
+      "author",
+      "seoTitle",
+      "seoDescription"
+    ],
+    "optional": [
+      "read",
+      "draft",
+      "run"
+    ],
+    "seo_title_max_chars": 60,
+    "seo_description_min_chars": 40,
+    "seo_description_max_chars": 240
+  },
+  "authors_by_pillar": {
+    "frameworks": [
+      "Evan Handler",
+      "Bob Loblaw",
+      "Wren Method"
+    ],
+    "memory": [
+      "Pat Cache",
+      "Rick Ursion"
+    ],
+    "engineering": [
+      "Mark Down",
+      "Dee Fault",
+      "Justin Time"
+    ]
+  },
+  "author_note": "Pen names from devweb lib/authors.ts, mapped by pillar. Essays carry a pen name; reference pages (glossary, topics, data, evidence) carry no author field."
 }

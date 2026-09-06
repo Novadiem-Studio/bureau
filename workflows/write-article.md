@@ -204,7 +204,11 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    Reuses the Counselor **frame** mode (see `workflows/message-framing.md`) inline — spawned, not
    nested. The Counselor classifies the audience's value system (`spiral-dynamics`), chooses the
    angle and working title in the house voice, and proposes a pillar. Writes the angle, working
-   title, and proposed pillar to `RUN_DIR/angle.md` for Robin's approval at the next gate.
+   title, and proposed pillar to `RUN_DIR/angle.md` for Robin's approval at the next gate. It also
+   proposes the **search-facing pair**: `seoTitle` (≤ 60 chars, in the phrasing the target reader
+   types — the editorial title stays on the page and in the social cards) and `seoDescription`
+   (40–240 chars); when the publish target names a `target_query`, or the brief does, the seoTitle
+   carries it. Demand shapes for devweb are in `devweb/docs/plan-content-taxonomy.md` §2.
    **Voice calibration (anti-homogenization):** from the audience read here, the Conductor selects
    the voice-calibration exemplar from `config/calibration-exemplars/index.md` — match the bucket to
    the Counselor's value-system read, rotate within the bucket across runs — and passes that
@@ -380,7 +384,9 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
     Given the latest version (the final prose) + the approved slug + category. A mechanical transform
     (no content edits): emits the next version as `NN-article.mdx` with correct frontmatter
     (`title`, `dek`, `date` ISO, `slug` matching `^[a-z0-9-]+$`; a `category`/`pillar` field using
-    the value from step 2; optional `read` as an integer, `draft`, `run`). For allowed MDX
+    the value from step 2; `seoTitle` and `seoDescription` from `angle.md`; `author` chosen from the
+    publish target's `authors_by_pillar[pillar]` list, rotating across recent articles in that
+    pillar so one pen name does not take every piece; optional `read` as an integer, `draft`, `run`). For allowed MDX
     components: if `RUN_DIR/publish-target.json` has an `mdx_components` array, only those
     components may appear as JSX — any others will break the target's build. If no `mdx_components`
     is set, avoid custom JSX components entirely and emit plain MDX. The Conductor copies this final

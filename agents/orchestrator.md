@@ -237,6 +237,17 @@ Always pass **absolute paths** for `RUN_DIR`, persona inputs, and writes. Subage
 the working directory, but absolute paths remove all doubt. Spawn one agent at a time and
 wait for its handoff before deciding the next move — this pipeline is sequential by design.
 
+### Spawn synchronously when you are a Delegate-run Conductor (integrated topology)
+
+When you run under the Delegate (`topology: integrated`), every specialist spawn and every long
+wait (a deploy poll, a build) MUST run in the foreground of your turn: `run_in_background: false`
+on the Agent tool, no detached watchers. If you end a turn while a child is still running, the
+host delivers that child's completion to the Delegate, not to you, and you never resume: the run
+stalls until the Delegate re-spawns a fresh Conductor leg from `state.json` + `log.md`
+(observed 2026-09-06, devweb data-page and evidence runs). Sequential blocking spawns cost
+nothing extra; a stall costs a full Conductor re-read. End your turn ONLY with a CONDUCTOR-RETURN
+block or the completion handoff, never mid-step.
+
 ### Codex producer artifact guard
 
 On Codex, a producer specialist can return prose or stall without writing the files its persona
