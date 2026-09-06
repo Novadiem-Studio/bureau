@@ -1,0 +1,25 @@
+{
+  "repo": "<path-to-devweb-checkout>",
+  "page_type": "topic-overview",
+  "content_dir": "content/topics",
+  "articles_dir": "content/articles",
+  "glossary_dir": "content/glossary",
+  "build_cmd": "npx next build",
+  "build_check": "all-static",
+  "live_url": "https://devweb.org",
+  "live_path_pattern": "/topics/<pillar>",
+  "categories": ["frameworks", "memory", "engineering"],
+  "mdx_components": [],
+  "author": "site",
+  "file_name": "<pillar>.mdx",
+  "frontmatter": {
+    "required": ["pillar", "seoTitle", "seoDescription", "date"],
+    "optional": ["updated", "draft"],
+    "seo_title_min_chars": 10,
+    "seo_title_max_chars": 60,
+    "seo_description_min_chars": 40,
+    "seo_description_max_chars": 240
+  },
+  "body": { "min_words": 400, "max_words": 700, "max_h2": 3, "min_article_links": 3, "min_term_links": 2, "no_h1": true },
+  "_schema_note": "Mirrors lib/topics.ts in the devweb repo (the Zod schema is the source of truth). Every /articles/<slug> and /glossary/<slug> link in the body is resolved at build; a dead link or a body with zero essay links fails the build and names the file."
+}
