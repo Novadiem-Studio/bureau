@@ -1,0 +1,23 @@
+{
+  "repo": "<path-to-devweb-checkout>",
+  "page_type": "data-page",
+  "content_dir": "content/data",
+  "public_data_dir": "public/data",
+  "articles_dir": "content/articles",
+  "glossary_dir": "content/glossary",
+  "build_cmd": "npx next build",
+  "build_check": "all-static",
+  "live_url": "https://devweb.org",
+  "live_path_pattern": "/data/<slug>",
+  "mdx_components": [],
+  "author": "site",
+  "dataset_script": "scripts/run-cost-dataset.py",
+  "pricing": "config/model-pricing.json",
+  "frontmatter": {
+    "required": ["title", "slug", "dek", "date", "asOf", "sources"],
+    "optional": ["seoTitle", "seoDescription", "updated", "dataset", "draft"],
+    "dek_min_chars": 40, "dek_max_chars": 240, "seo_title_max_chars": 60, "seo_description_max_chars": 240
+  },
+  "body": { "min_words": 600, "max_words": 1200, "max_h2": 5, "tables_verbatim_from": "RUN_DIR/dataset/tables.md", "numbers_check": "scripts/check-numbers.py" },
+  "_schema_note": "Mirrors lib/data.ts in the devweb repo (the Zod schema is the source of truth). dataset.file must exist under public/ or the build fails; every /articles and /glossary link is resolved at build."
+}
