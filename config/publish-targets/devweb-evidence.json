@@ -1,0 +1,26 @@
+{
+  "repo": "<path-to-devweb-checkout>",
+  "page_type": "evidence-page",
+  "content_dir": "content/evidence",
+  "public_data_dir": "public/data",
+  "articles_dir": "content/articles",
+  "glossary_dir": "content/glossary",
+  "data_dir": "content/data",
+  "build_cmd": "npx next build",
+  "build_check": "all-static",
+  "live_url": "https://devweb.org",
+  "live_path_pattern": "/evidence/<slug>",
+  "mdx_components": [],
+  "author": "site",
+  "dataset_script": "scripts/review-evidence-dataset.py",
+  "dataset_script_args": ["--roots", "/Users/robin/Code/novadiem/*", "--patterns", "docs/evaluation/architect-challenger-patterns.md"],
+  "grades": ["strong", "mixed", "limited", "insufficient"],
+  "frontmatter": {
+    "required": ["question", "slug", "answer", "grade", "gradeNote", "date", "asOf", "sources"],
+    "optional": ["seoTitle", "seoDescription", "updated", "dataset", "draft"],
+    "answer_min_chars": 40, "answer_max_chars": 280, "grade_note_min_chars": 20, "grade_note_max_chars": 280,
+    "seo_title_max_chars": 60, "seo_description_max_chars": 240
+  },
+  "body": { "min_words": 600, "max_words": 1200, "max_h2": 5, "tables_verbatim_from": "RUN_DIR/dataset/tables.md", "numbers_check": "scripts/check-numbers.py" },
+  "_schema_note": "Mirrors lib/evidence.ts in the devweb repo (the Zod schema is the source of truth). The grade rates the EVIDENCE for the answer; a sentence recommending doing or not doing the practice is a proofreader HOLD."
+}
