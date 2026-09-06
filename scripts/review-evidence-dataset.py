@@ -175,7 +175,8 @@ def main():
         'challenger_spawns_recorded_total': sum(r['challenger_spawns_recorded'] for r in runs),
     }
     patterns = parse_patterns(a.patterns)
-    dataset = {'as_of': a.as_of, 'roots': a.roots, 'runs': runs, 'rollup': rollup, 'challenger_findings_taxonomy': patterns,
+    # Never record the local filesystem glob in a publishable file: name the repos scanned instead.
+    dataset = {'as_of': a.as_of, 'scanned_repos': sorted({r['repo'] for r in runs}), 'runs': runs, 'rollup': rollup, 'challenger_findings_taxonomy': patterns,
                'notes': ['The corpus is every run directory with an accounting.json under the scanned roots; runs without one are not counted.',
                          'Runs are identified by repo, workflow family and date only; no task names or finding text from non-devweb repos.',
                          'critic_loops counts revise cycles the Challenger forced at the analyst/architect/prompts stages (recorded in accounting.json); content workflows have no critic stage and are excluded from loop rates.',
