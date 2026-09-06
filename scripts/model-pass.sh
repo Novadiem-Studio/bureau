@@ -34,8 +34,11 @@
 #   1   bad arguments or missing input files (before any network call)
 #   2   provider error (non-2xx HTTP, curl failure, or .error in the response body)
 #   3   integrity check failed (finish_reason != "stop", empty/whitespace content,
-#       or output bytes outside the mode's bound: 50%-300% of input for improve,
-#       300B-40000B absolute for memo)
+#       output bytes outside the mode's bound: 50%-300% of input for improve,
+#       300B-40000B absolute for memo; or, in improve mode, a markdown link target
+#       present in the draft is missing from the candidate — scripts/link-set-check.sh.
+#       Set MODEL_PASS_ALLOW_LINK_DROP=1 to waive the link check for a pass whose
+#       instruction deliberately permits removing links)
 #   4   OpenRouter key missing (OPENROUTER_API_KEY absent and no configured keystore)
 #
 # v1 routes the openrouter: provider prefix ONLY. The prefix is the extension seam:
@@ -54,6 +57,8 @@ readonly MAX_TOKENS=8192
 readonly TEMPERATURE=0.3
 readonly MEMO_MIN_BYTES=300
 readonly MEMO_MAX_BYTES=40000
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+readonly SCRIPT_DIR
 
 usage() {
   echo "Usage: model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR] [--mode improve|memo]" >&2
@@ -258,6 +263,18 @@ if [ "$OUTPUT_BYTES" -lt "$LOWER" ] || [ "$OUTPUT_BYTES" -gt "$UPPER" ]; then
   rm -f "$OUT_TMP"
   die_logged 3 "$FINISH_REASON" "$OUTPUT_BYTES" \
     "length out of range for mode=${MODE}: output ${OUTPUT_BYTES}B vs input ${INPUT_BYTES}B (allowed ${LOWER}B-${UPPER}B); likely a refusal, summary, or runaway"
+fi
+
+# f. link-set invariant (improve mode only). Every improve instruction forbids removing links,
+#    but a model can turn them into plain text while staying inside the byte-ratio bound, and
+#    the loss then surfaces only as a target build failing a link floor (2026-09-06). Compare
+#    link TARGETS as a set; text and order may change. MODEL_PASS_ALLOW_LINK_DROP=1 waives it.
+if [ "$MODE" = "improve" ] && [ -z "${MODEL_PASS_ALLOW_LINK_DROP:-}" ]; then
+  if ! LINK_ERR="$("$SCRIPT_DIR/link-set-check.sh" "$DRAFT_FILE" "$OUT_TMP" 2>&1)"; then
+    rm -f "$OUT_TMP"
+    die_logged 3 "$FINISH_REASON" "$OUTPUT_BYTES" \
+      "candidate dropped link target(s) the draft carried — rejecting (set MODEL_PASS_ALLOW_LINK_DROP=1 to waive): ${LINK_ERR}"
+  fi
 fi
 
 # ── atomic write — all checks passed; promote the temp file into place ──────────
