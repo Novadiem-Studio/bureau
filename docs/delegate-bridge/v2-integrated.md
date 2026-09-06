@@ -187,6 +187,11 @@ The **Delegate** (top-level session, manager mode) appends each verdict via the 
 `scripts/ledger-append.sh`** — one call per cold-reviewer verdict = one appended record (the
 per-verdict / single-writer / append-only invariants of FR10, § 9 schema).
 
+Record labels: `NN.A` for a cold-reviewer verdict at checkpoint NN, attempt A; `NN.Fk` for the k-th
+Conductor-raised genuine fork at checkpoint NN (no reviewer ran; the Delegate appends it before
+asking Robin). `ledger-set-robins-call.sh` accepts either form, and a bare `NN` when exactly one
+escalation record at that checkpoint still has a blank `Robin's call:` line.
+
 `Robin's call:` on an escalation-resolution entry is filled by the deterministic one-shot
 **`scripts/ledger-set-robins-call.sh`**, NOT by a model hand-edit:
 

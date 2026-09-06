@@ -204,7 +204,9 @@ To start a new Delegate-run:
      its nonce only in specialist `Run nonce:` prompt lines; never return, log, or summarize it.
 
    Use the same `$_delegate_conductor_attempt_id` as the `attempt_id` in the accompanying
-   Conductor spawn event. This makes the conditional `MODEL-OVERRIDE:` record above match that
+   Conductor spawn event, emitted with `scripts/emit-event.sh spawn-event … --status started`
+   (the status vocabulary is the closed set `scripts/account-run.sh` accepts: started, complete,
+   no-handoff, failed, terminated; `emit-event.sh` refuses anything else). This makes the conditional `MODEL-OVERRIDE:` record above match that
    spawn exactly; do not mint a second attempt id for the same spawn.
 
    These literal lines remain the Conductor's run and role identity on every host.
@@ -361,16 +363,26 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 1. Update `delegate-state.json` (`active_checkpoint`, `conductor_agent_id`), appending the current
    id to `conductor_agent_ids` if absent.
+1b. Append a ledger record for the fork BEFORE asking Robin, so his call has a line to land on:
+   ```sh
+   scripts/ledger-append.sh "$RUN_DIR/delegate-decisions.md" "<NN>.F<k>" escalate \
+     "<artifact path>" "<artifact-hash>" "<escalation-reason>" "<question>" no none
+   ```
+   `<NN>.F<k>` (e.g. `01.F1`) is the fork record label; `k` increments per fork at that checkpoint.
+   No cold reviewer ran, so the record's uncertainties/rationale carry the Conductor's
+   `escalation-reason` and `question` verbatim.
 2. Present the fork to Robin. Claude may use top-level `AskUserQuestion`; on Codex persist
    `delegate-state.json`, ask in the top-level final response, and continue on Robin's next turn.
    The `signal-fired` field names which of the 9 escalation signals triggered it — surface that,
    do not re-decide it.
 3. On Robin's answer, record it verbatim:
    ```sh
-   scripts/ledger-set-robins-call.sh NN "<Robin's literal answer>"
+   scripts/ledger-set-robins-call.sh <NN | NN.A | NN.Fk> "<Robin's literal answer>"
    ```
-   It fills only the blank `Robin's call:` line for record NN, touching nothing else (W6 — the
-   model never hand-edits the append-only ledger, AC14).
+   It fills only the blank `Robin's call:` line of the named record (a bare `NN` resolves to the one
+   escalation record at that checkpoint whose line is still blank; name the record, `01.2` or
+   `01.F1`, when more than one is blank), touching nothing else (W6 — the model never hand-edits the
+   append-only ledger, AC14).
 4. Resume the Conductor with Robin's answer using `SendMessage` (Claude) or
    `multi_agent_v1.send_input` (Codex).
 

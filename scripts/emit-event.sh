@@ -119,6 +119,12 @@ case "$event_type" in
     [ -n "$attempt" ]          || missing "attempt"
     [ -n "$attempt_id" ]       || missing "attempt_id"
     [ -n "$status" ]           || missing "status"
+    # Status vocabulary — the SAME closed set scripts/account-run.sh accepts (line "illegal status
+    # value"): a spawn-event with any other status is silently dropped by accounting, so refuse it here.
+    case "$status" in
+      started|complete|no-handoff|failed|terminated) ;;
+      *) echo "emit-event: illegal spawn-event status '$status' (allowed: started complete no-handoff failed terminated)" >&2; exit 1 ;;
+    esac
     # Numeric validation — must happen before jq composition
     validate_numeric "--attempt" "$attempt"
     # Compose JSON with jq — no hand-typed JSON (EC rule: shell computes, jq composes)

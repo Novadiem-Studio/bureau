@@ -40,7 +40,7 @@
 # Deps: POSIX sh + python3. Callers: the v2 Delegate (manager mode), on resolution.
 
 if [ "$#" -ne 2 ]; then
-  echo "Usage: ledger-set-robins-call.sh <NN> \"<literal value>\"" >&2
+  echo "Usage: ledger-set-robins-call.sh <NN | NN.A | NN.Fk> \"<literal value>\"" >&2
   exit 1
 fi
 
@@ -75,7 +75,12 @@ lines = text.split("\n")
 # Header `## NN.<attempt> — …` is the canonical record locator (the `decision:` field
 # picks the right verdict among NN's records). No `checkpoint:` matcher: real records
 # carry no such field, and a body cross-reference to another NN must not over-select.
-header_re    = re.compile(r'^##\s+' + re.escape(nn) + r'[.\s]')
+# A bare NN ("01") matches every record for that checkpoint ("01.1", "01.2", "01.F1"); an explicit
+# label ("01.2", "01.F1") matches that record only.
+if re.fullmatch(r'\d+', nn):
+    header_re = re.compile(r'^##\s+' + re.escape(nn) + r'[.\s]')
+else:
+    header_re = re.compile(r'^##\s+' + re.escape(nn) + r'\s')
 decision_re  = re.compile(r'^decision:\s*(\S+)')
 robins_any   = re.compile(r"^Robin's call:")
 robins_blank = re.compile(r"^Robin's call:\s*$")
@@ -106,8 +111,16 @@ if len(escalate_blocks) == 0:
     sys.stderr.write("ledger-set-robins-call: no unresolved escalation record for checkpoint %s\n" % nn)
     sys.exit(1)
 if len(escalate_blocks) > 1:
-    sys.stderr.write("ledger-set-robins-call: multiple escalation records for %s — refusing (defensive)\n" % nn)
-    sys.exit(1)
+    # Prefer the record(s) whose Robin's call line is still blank; refuse only if that is ambiguous.
+    blank = []
+    for (start, end) in escalate_blocks:
+        if any(robins_blank.match(lines[j]) for j in range(start, end)):
+            blank.append((start, end))
+    if len(blank) == 1:
+        escalate_blocks = blank
+    else:
+        sys.stderr.write("ledger-set-robins-call: multiple escalation records for %s with %d blank Robin's call lines — name the record (e.g. %s.2)\n" % (nn, len(blank), nn))
+        sys.exit(1)
 
 # Locate that record's single Robin's call line.
 start, end = escalate_blocks[0]
