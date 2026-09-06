@@ -58,9 +58,10 @@ After the verdict is written, `watcher.sh` removes the staging dir:
 The canonical artifacts remain in `$RUN_DIR`; the staged copies are throwaway.
 
 The helper's task prompt names the staged files by their isolated absolute context paths
-(`$CTX/bureau-agents.md`, `$CTX/<artifact>`, `$CTX/log-slice.md`, `$CTX/state.json`, `$CTX/conventions.md`,
-`$CTX/conventions/`, `$CTX/delegate-reviewer.md`, and `$CTX/integration-results.json` at integration
-checkpoints) — bare relative names are looked up at the git/workspace root, not the
+(`$CTX/bureau-agents.md`, `$CTX/<artifact>`, `$CTX/artifact.sha256` (the artifact digest the helper
+computes and stages itself, for the reviewer to copy into `Artifact-hash`), `$CTX/log-slice.md`,
+`$CTX/state.json`, `$CTX/conventions.md`, `$CTX/conventions/`, `$CTX/delegate-reviewer.md`, and
+`$CTX/integration-results.json` at integration checkpoints) — bare relative names are looked up at the git/workspace root, not the
 spawn CWD, and are DENIED by `--add-dir "$CTX"`. Every named path is INSIDE `$CTX`. It
 cannot name `log.md` because `log.md` is not in scope.
 

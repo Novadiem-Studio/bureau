@@ -48,6 +48,8 @@ violation — see the three-role contrast table in CLAUDE.md.
     log-slice.md (this checkpoint's log slice only; the full log.md is intentionally absent),
     state.json (the scope projection),
     the artifact under review,
+    artifact.sha256 (the artifact's SHA-256, computed and staged by run-cold-reviewer.sh —
+      copy it verbatim into Artifact-hash; a Read-only reviewer cannot compute a digest),
     integration-results.json (integration checkpoints only).
   Does NOT receive: the full log.md, the dual-mode delegate.md (only the sliced section is
     staged), prior checkpoint verdicts, the manager's relay context.
@@ -287,6 +289,9 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
        "$ROOT/agents/delegate.md" > "$CTX/delegate-reviewer.md"
      ```
    - `integration-results.json` — integration checkpoints only.
+   - `artifact.sha256` — do NOT write this yourself; `run-cold-reviewer.sh` computes the staged
+     artifact's digest and writes it into `$CTX` at spawn time (bridge v2 §9), and reports
+     `artifact_sha256` + `hash_match` in its result JSON for step 7.
    NEVER stage: the full `log.md`, any prior `NN-verdict.md`, or the full dual-mode
    `agents/delegate.md` (it grants manager Bash/Write/spawn capabilities a read-only reviewer
    must not read as its own — W7 capability-contamination guard).
@@ -331,8 +336,10 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      tokens). Emit it independent of the verdict routing below — a `revise` or `escalate` verdict
      still cost reviewer tokens.
 7. Verify the artifact-hash binding (FR9): the verdict's `Artifact-hash` must equal the
-   artifact's sha256. On mismatch, DISCARD the verdict and re-spawn the reviewer — never resume
-   the Conductor with a mismatched verdict.
+   artifact's sha256. `run-cold-reviewer.sh` pre-checks this and returns `hash_match` plus
+   `artifact_sha256` in its result JSON (and logs a warning line on mismatch); confirm it
+   yourself against the artifact. On mismatch, DISCARD the verdict and re-spawn the reviewer —
+   never resume the Conductor with a mismatched verdict.
 8. On a `revise` verdict, call the deterministic cap:
    ```sh
    scripts/revise-cap.sh "$RUN_DIR/delegate-state.json" NN "<revision_cap>"
@@ -467,8 +474,10 @@ Emit structured JSON conforming to `config/delegate-verdict.schema.json`. The ma
 contract is in that file; do not re-specify field types here. Required fields:
 
 - `Decision`: `proceed` | `revise` | `escalate`
-- `Artifact-hash`: SHA-256 of the artifact reviewed (must match the request file's hash or
-  the bridge will discard this verdict — see EC2 in docs/delegate-bridge.md)
+- `Artifact-hash`: SHA-256 of the artifact reviewed. **Copy it verbatim from the staged
+  `artifact.sha256` file** (the harness computed it; you have Read only and cannot hash a file).
+  Never compute, guess, or use a placeholder: a value that does not match the staged digest is
+  discarded by the harness and the checkpoint is re-reviewed (FR9; EC2 in docs/delegate-bridge.md).
 - `Uncertainties`: free text — name anything you could not verify from the staged files
 - `Rationale`: 1–2 sentences — the single most important reason for the decision
 - `Required-changes`: tagged by root — `requirements` | `architecture` | `prompts` | `none`

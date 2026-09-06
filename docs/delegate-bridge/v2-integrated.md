@@ -118,8 +118,11 @@ REVIEWER_ENVELOPE_PATH="$(printf '%s' "$REVIEW_META" | jq -r .envelope_path)"
 
 `$CTX = RUN_DIR/checkpoints/NN-context/` is the staged input packet (v2 §9). The helper rejects
 symlinks, a full `log.md`, and transcript-like files, reads the host runtime and Delegate model
-from `model-routing.json`, logs the exact task prompt before the provider call, and emits
-deterministic verdict/envelope/event/stderr paths.
+from `model-routing.json`, computes the staged artifact's SHA-256 and writes it to
+`$CTX/artifact.sha256` (v2 §9), logs the exact task prompt before the provider call, and emits
+deterministic verdict/envelope/event/stderr paths plus `artifact_sha256` and `hash_match` (the
+FR9 binding pre-check; a `false` also appends a warning line to `RUN_DIR/log.md`). The Delegate
+remains the authority: on `hash_match: false` it discards the verdict and re-spawns.
 
 - **Claude adapter:** preserves the proven CWD=`$CTX`, `--setting-sources ""`,
   `--system-prompt`, `--tools "Read"`, `--add-dir "$CTX"`, inline-schema, no-session-persistence
@@ -259,6 +262,11 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
   slice (v2 §4);
 - **`integration-results.json`** — integration checkpoints only, written by `integration-gate.sh`
   into `$CTX`.
+- **`artifact.sha256`** — the artifact's SHA-256 in `sha256sum` text format, written into `$CTX` by
+  `run-cold-reviewer.sh` itself (not by the stager) immediately before the spawn. The reviewer is
+  Read-only and cannot compute a digest; the task prompt tells it to copy this value verbatim into
+  `Artifact-hash`. Added 2026-09-05 after a routine verdict returned an all-zeros placeholder hash
+  and had to be discarded (FR9).
 
 **NEVER staged:** the full `log.md`, the full dual-mode `agents/delegate.md`, any prior
 `NN-verdict.md`. `$CTX` is the cold reviewer's only read root (v2 §3), so the manifest IS its world;

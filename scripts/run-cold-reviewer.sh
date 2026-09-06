@@ -4,7 +4,9 @@
 # Usage:
 #   run-cold-reviewer.sh <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>
 #
-# The caller stages CTX. This script selects the host from model-routing.json
+# The caller stages CTX (bridge v2 §9). This script adds ONE file to it itself —
+# $CTX/artifact.sha256, the staged artifact's digest — so a Read-only reviewer can bind its
+# verdict (FR9) by copying instead of guessing. It selects the host from model-routing.json
 # (`claude` or `openai`/`codex`), runs one fresh reviewer, and writes:
 #   checkpoints/<spawn-id>-reviewer-verdict.json
 #   checkpoints/<spawn-id>-reviewer-envelope.json
@@ -3463,6 +3465,30 @@ if find "$CTX" -type f \( -name 'log.md' -o -iname '*transcript*' \) -print -qui
   fail "staged context contains a forbidden full-log or transcript-like file"
 fi
 
+# Artifact digest (FR9 hash binding). The reviewer is Read-only and cannot compute a
+# SHA-256, so the harness computes it here from the STAGED artifact and stages it as
+# $CTX/artifact.sha256 (sha256sum text format: "<hex>  <basename>"). The task prompt
+# names the file and tells the reviewer to copy the digest verbatim into Artifact-hash;
+# the Delegate still verifies the binding after the verdict returns. Without this file
+# the reviewer could only guess, and a placeholder hash forces a discard + re-spawn
+# (observed 2026-09-05, devweb glossary run, checkpoint 01).
+sha256_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -c1-64
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -c1-64
+  else
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+  fi
+}
+ARTIFACT_SHA256="$(sha256_file "$CTX/$ARTIFACT_BASE")" || fail "cannot hash staged artifact"
+case "$ARTIFACT_SHA256" in
+  *[!a-f0-9]*|'') fail "artifact digest is not 64 hex chars: '$ARTIFACT_SHA256'" ;;
+esac
+[ "${#ARTIFACT_SHA256}" -eq 64 ] || fail "artifact digest length is not 64: '$ARTIFACT_SHA256'"
+printf '%s  %s\n' "$ARTIFACT_SHA256" "$ARTIFACT_BASE" > "$CTX/artifact.sha256" \
+  || fail "cannot stage artifact.sha256 into CTX"
+
 RUNTIME="${BUREAU_REVIEWER_HOST:-}"
 if [ -z "$RUNTIME" ] && [ -f "$ROUTING" ]; then
   RUNTIME="$(jq -r '.runtime // empty' "$ROUTING" 2>/dev/null)"
@@ -3498,9 +3524,9 @@ build_task_prompt() {
   prompt_ctx="$1"
   prompt_artifact="$2"
   if [ "$REVIEW_MODE" = "integration" ]; then
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), ${prompt_ctx}/artifact.sha256 (the artifact's SHA-256, computed by the harness: copy its 64-hex digest verbatim into Artifact-hash; you cannot compute a digest yourself and must never guess or use a placeholder), and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   else
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), and ${prompt_ctx}/${prompt_artifact} (the artifact). Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), and ${prompt_ctx}/artifact.sha256 (the artifact's SHA-256, computed by the harness: copy its 64-hex digest verbatim into Artifact-hash; you cannot compute a digest yourself and must never guess or use a placeholder). Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   fi
 }
 
@@ -3675,6 +3701,19 @@ fi
 validate_verdict_shape "$VERDICT_PATH" \
   || fail "reviewer verdict does not satisfy the required common shape"
 
+# FR9 pre-check: does the verdict bind to the staged artifact? The Delegate is the
+# authority (it discards on mismatch and re-spawns); this only makes the outcome
+# visible in the result JSON and the run log so a mismatch is never silent.
+VERDICT_HASH="$(jq -r '."Artifact-hash"' "$VERDICT_PATH")"
+if [ "$VERDICT_HASH" = "$ARTIFACT_SHA256" ]; then
+  HASH_MATCH=true
+else
+  HASH_MATCH=false
+  bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+    "Cold reviewer verdict $SPAWN_ID: Artifact-hash $VERDICT_HASH does NOT match the staged artifact digest $ARTIFACT_SHA256 — the Delegate must discard this verdict (FR9) and re-spawn" \
+    >/dev/null 2>&1 || true
+fi
+
 jq -cn \
   --arg runtime "$RUNTIME" \
   --arg model "$MODEL" \
@@ -3683,6 +3722,8 @@ jq -cn \
   --arg envelope_path "$ENVELOPE_PATH" \
   --arg events_path "$EVENTS_PATH" \
   --arg stderr_path "$STDERR_PATH" \
+  --arg artifact_sha256 "$ARTIFACT_SHA256" \
+  --argjson hash_match "$HASH_MATCH" \
   '{
     runtime: $runtime,
     model: $model,
@@ -3690,5 +3731,7 @@ jq -cn \
     verdict_path: $verdict_path,
     envelope_path: $envelope_path,
     events_path: $events_path,
-    stderr_path: $stderr_path
+    stderr_path: $stderr_path,
+    artifact_sha256: $artifact_sha256,
+    hash_match: $hash_match
   }'
