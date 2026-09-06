@@ -95,10 +95,16 @@ def main():
             t = leg_tokens(leg)
             c = leg.get('confidence') or conf(leg.get('tokens')) or 'unknown'
             captured = c == 'exact' and all(v is not None for v in t.values())
+            # A leg is RECORDED when the accounting holds any evidence it ran (a confidence of exact or
+            # partial, a token value, or turns). A placeholder block with confidence "unavailable" and
+            # nothing else (e.g. Delegate / cold-reviewer legs on runs that predate the Delegate) is NOT
+            # recorded: it is excluded from the legs denominator and listed in coverage.md as such.
+            turns = leg.get('turns') or 0
+            recorded = c in ('exact', 'partial') or any((v or 0) > 0 for v in t.values()) or (isinstance(turns, (int, float)) and turns > 0)
             price = prices.get(model_alias)
             cost, formula = usd(t, price) if (captured and price) else (None, None)
             legs.append({'leg': name, 'agent': name, 'model': model_alias, 'tokens': t, 'turns': leg.get('turns'),
-                         'confidence': c, 'captured': captured, 'usd_equiv': cost, 'formula': formula})
+                         'confidence': c, 'recorded': recorded, 'captured': captured, 'usd_equiv': cost, 'formula': formula})
         # Conductor / Delegate / reviewer legs: model comes from model-routing / delegate roles
         routing = {}
         mr = os.path.join(rd, 'model-routing.json')
@@ -116,7 +122,7 @@ def main():
             price = prices.get(model)
             cost, formula = usd(t, price) if (captured and price) else (None, None)
             legs.append({'leg': 'specialist', 'agent': agent, 'model': model, 'tokens': t, 'turns': val(sp.get('turns')),
-                         'confidence': 'exact' if captured else 'unavailable', 'captured': captured,
+                         'confidence': 'exact' if captured else 'unavailable', 'recorded': True, 'captured': captured,
                          'usd_equiv': cost, 'formula': formula})
 
         # Grok passes from the audit lines
@@ -132,18 +138,24 @@ def main():
                                        'usd': cost, 'formula': f"({bi}/{bpt})/1e6 x ${grok['input']} + ({bo}/{bpt})/1e6 x ${grok['output']} = ${cost:.4f}"})
         grok_usd = round(sum(g['usd'] for g in grok_calls), 4)
 
+        recorded_legs = [l for l in legs if l['recorded']]
         captured_legs = [l for l in legs if l['captured']]
         claude_usd = round(sum(l['usd_equiv'] for l in captured_legs), 2) if captured_legs else None
         tok_total = sum(sum(v for v in l['tokens'].values() if v) for l in captured_legs)
         out_total = sum((l['tokens'].get('output') or 0) for l in captured_legs)
         cache_read = sum((l['tokens'].get('cache_read') or 0) for l in captured_legs)
-        has_specialists = any(l['leg'] == 'specialist' and l['captured'] for l in legs)
+        specialists_recorded = [l for l in legs if l['leg'] == 'specialist']
+        has_specialists = len(specialists_recorded) > 0
         has_conductor = any(l['agent'] == 'The Conductor' and l['captured'] for l in legs)
-        coverage = 'complete' if (has_specialists and has_conductor) else ('partial' if captured_legs else 'none')
+        all_recorded_captured = len(recorded_legs) > 0 and all(l['captured'] for l in recorded_legs)
+        # complete: the Conductor and at least one specialist spawn are recorded AND every recorded leg has
+        # exact counts (so captured/recorded == N/N); partial: some recorded leg has counts; none: no counts.
+        coverage = 'complete' if (has_specialists and has_conductor and all_recorded_captured) else ('partial' if captured_legs else 'none')
         runs.append({'run': slug, 'date': run_date, 'workflow': wf, 'produced': produced, 'schema_version': d.get('schema_version'),
                      'legs': legs, 'grok_calls': grok_calls, 'coverage': coverage,
                      'totals': {'tokens_processed_captured': tok_total, 'output_tokens_captured': out_total,
-                                'cache_read_tokens_captured': cache_read, 'legs_captured': len(captured_legs), 'legs_total': len(legs),
+                                'cache_read_tokens_captured': cache_read, 'legs_captured': len(captured_legs), 'legs_total': len(recorded_legs),
+                                'legs_not_recorded': len(legs) - len(recorded_legs), 'specialists_recorded': len(specialists_recorded),
                                 'claude_usd_equiv': claude_usd, 'grok_usd': grok_usd,
                                 'total_usd_equiv': (round(claude_usd + grok_usd, 2) if claude_usd is not None else None)}})
 
@@ -181,13 +193,14 @@ def main():
     L.append(f"| grok (OpenRouter) | x-ai/grok-4.3 | {grok['input']} | n/a | {grok.get('cache_read','n/a')} | {grok['output']} | {grok['source']} | {grok['fetched']} |")
     L.append(f"\nGrok token estimate: bytes / {bpt}. Claude legs ran on a subscription; USD is the API list-price equivalent.\n")
     L.append("## Runs\n")
-    L.append("| Run | Date | Workflow | Produced | Coverage | Legs captured | Tokens processed (captured) | Output tokens | Cache-read share | Grok calls | Grok USD | Claude USD equiv | Total USD equiv |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L.append("Coverage: complete = the Conductor and at least one specialist spawn are recorded and every recorded leg has exact token counts; partial = some recorded legs have counts; none = no leg has counts. Legs captured/recorded counts only legs the accounting recorded; a leg the run never recorded (for example the Delegate and cold reviewer on runs that predate the Delegate) is excluded from the denominator and listed in the coverage table as not recorded. Specialists recorded = spawn records present in the accounting; a run whose accounting recorded no specialist spawns still ran them, so its totals are an undercount.\n")
+    L.append("| Run | Date | Workflow | Produced | Coverage | Legs captured/recorded | Specialists recorded | Tokens processed (captured) | Output tokens | Cache-read share | Grok calls | Grok USD | Claude USD equiv | Total USD equiv |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in runs:
         t = r['totals']; pr = r['produced']
         prod = pr.get('slug') or (f"{pr.get('count')} {pr.get('kind')}" if pr else '?')
         share = f"{t['cache_read_tokens_captured']/t['tokens_processed_captured']:.0%}" if t['tokens_processed_captured'] else 'n/a'
-        L.append(f"| {r['run']} | {r['date']} | {r['workflow']} | {prod} | {r['coverage']} | {t['legs_captured']}/{t['legs_total']} | {t['tokens_processed_captured']:,} | {t['output_tokens_captured']:,} | {share} | {len(r['grok_calls'])} | {t['grok_usd']:.4f} | {t['claude_usd_equiv'] if t['claude_usd_equiv'] is not None else 'n/a'} | {t['total_usd_equiv'] if t['total_usd_equiv'] is not None else 'n/a'} |")
+        L.append(f"| {r['run']} | {r['date']} | {r['workflow']} | {prod} | {r['coverage']} | {t['legs_captured']}/{t['legs_total']} | {t['specialists_recorded']} | {t['tokens_processed_captured']:,} | {t['output_tokens_captured']:,} | {share} | {len(r['grok_calls'])} | {t['grok_usd']:.4f} | {t['claude_usd_equiv'] if t['claude_usd_equiv'] is not None else 'n/a'} | {t['total_usd_equiv'] if t['total_usd_equiv'] is not None else 'n/a'} |")
     L.append("\n## Leg breakdown (complete-coverage essay runs)\n")
     for r in complete_essays:
         L.append(f"### {r['run']} → /articles/{r['produced']['slug']} ({r['date']})\n")
@@ -206,11 +219,13 @@ def main():
     open(os.path.join(a.out, 'tables.md'), 'w').write("\n".join(L) + "\n")
 
     # coverage.md
-    C = ["# Coverage\n", "| Run | Schema | Coverage | Conductor | Delegate | Reviewer | Specialists captured / recorded | Grok calls |", "|---|---|---|---|---|---|---|---|"]
+    C = ["# Coverage\n", "Per leg: exact = token counts recorded exactly; partial = counts recorded incompletely; not recorded = the accounting holds no record that the leg ran (excluded from the legs denominator); absent = the run's schema had no field for it.\n",
+         "| Run | Schema | Coverage | Conductor | Delegate | Reviewer | Specialists captured / recorded | Grok calls |", "|---|---|---|---|---|---|---|---|"]
     for r in runs:
         def st(name):
             for l in r['legs']:
-                if l['agent'] == name: return l['confidence']
+                if l['agent'] == name:
+                    return l['confidence'] if l['recorded'] else 'not recorded'
             return 'absent'
         sp_all = [l for l in r['legs'] if l['leg'] == 'specialist']; sp_cap = [l for l in sp_all if l['captured']]
         C.append(f"| {r['run']} | v{r['schema_version']} | {r['coverage']} | {st('The Conductor')} | {st('The Delegate (manager)')} | {st('Cold reviewer')} | {len(sp_cap)}/{len(sp_all)} | {len(r['grok_calls'])} |")
