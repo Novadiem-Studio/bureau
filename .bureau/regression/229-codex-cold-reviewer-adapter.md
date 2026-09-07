@@ -9,6 +9,7 @@ command: |
   CTX="$RD/checkpoints/01-context"
   mkdir -p "$CTX/conventions"
   printf '# reviewer\n' > "$CTX/delegate-reviewer.md"
+  cp "$ROOT/AGENTS.md" "$CTX/bureau-agents.md"
   printf '# conventions\n' > "$CTX/conventions.md"
   printf '# module\n' > "$CTX/conventions/agent-contracts.md"
   printf '# slice\n' > "$CTX/log-slice.md"
