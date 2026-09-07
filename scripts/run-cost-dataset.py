@@ -140,7 +140,11 @@ def main():
 
         recorded_legs = [l for l in legs if l['recorded']]
         captured_legs = [l for l in legs if l['captured']]
-        claude_usd = round(sum(l['usd_equiv'] for l in captured_legs), 2) if captured_legs else None
+        # Token capture and price availability are independent. If any captured leg is unpriced,
+        # retain its token coverage but keep the modeled run total unavailable rather than treating
+        # the leg as free or substituting another model's price.
+        all_captured_priced = captured_legs and all(l['usd_equiv'] is not None for l in captured_legs)
+        claude_usd = round(sum(l['usd_equiv'] for l in captured_legs), 2) if all_captured_priced else None
         tok_total = sum(sum(v for v in l['tokens'].values() if v) for l in captured_legs)
         out_total = sum((l['tokens'].get('output') or 0) for l in captured_legs)
         cache_read = sum((l['tokens'].get('cache_read') or 0) for l in captured_legs)
@@ -164,8 +168,11 @@ def main():
     rollup = {}
     if complete_essays:
         costs = [r['totals']['total_usd_equiv'] for r in complete_essays]
-        rollup = {'complete_essay_runs': len(complete_essays), 'median_usd_equiv_per_essay': round(statistics.median(costs), 2),
-                  'min_usd_equiv': min(costs), 'max_usd_equiv': max(costs),
+        all_costs_available = all(cost is not None for cost in costs)
+        rollup = {'complete_essay_runs': len(complete_essays),
+                  'median_usd_equiv_per_essay': round(statistics.median(costs), 2) if all_costs_available else None,
+                  'min_usd_equiv': min(costs) if all_costs_available else None,
+                  'max_usd_equiv': max(costs) if all_costs_available else None,
                   'median_tokens_processed': int(statistics.median([r['totals']['tokens_processed_captured'] for r in complete_essays])),
                   'cache_read_share': round(sum(r['totals']['cache_read_tokens_captured'] for r in complete_essays) /
                                             max(1, sum(r['totals']['tokens_processed_captured'] for r in complete_essays)), 3)}
@@ -173,9 +180,14 @@ def main():
         for r in complete_essays:
             for l in r['legs']:
                 if l['captured']:
-                    by_role[l['agent']] = round(by_role.get(l['agent'], 0) + l['usd_equiv'], 2)
-        rollup['usd_equiv_by_agent_across_complete_essay_runs'] = dict(sorted(by_role.items(), key=lambda kv: -kv[1]))
-    dataset = {'as_of': a.as_of, 'target_repo': a.target_repo, 'pricing_basis': pricing, 'runs': runs, 'rollup': rollup,
+                    prior = by_role.get(l['agent'], 0)
+                    by_role[l['agent']] = None if prior is None or l['usd_equiv'] is None else round(prior + l['usd_equiv'], 2)
+        if all(value is not None for value in by_role.values()):
+            by_role = dict(sorted(by_role.items(), key=lambda kv: -kv[1]))
+        else:
+            by_role = dict(sorted(by_role.items(), key=lambda kv: (kv[1] is None, -(kv[1] or 0), kv[0])))
+        rollup['usd_equiv_by_agent_across_complete_essay_runs'] = by_role
+    dataset = {'as_of': a.as_of, 'pricing_basis': pricing, 'runs': runs, 'rollup': rollup,
                'notes': ['USD figures are API list-price equivalents: Claude legs ran on a Claude Code subscription, not metered per token.',
                          f'Grok tokens are estimated from audit-line byte counts at {bpt} bytes per token; Grok was the only metered spend.',
                          'A leg whose tokens were not captured (confidence unavailable/partial, or schema v1) is excluded from totals and shown as such.',
@@ -209,10 +221,13 @@ def main():
         for l in r['legs']:
             if l['captured']:
                 t = l['tokens']
-                L.append(f"| {l['agent']} | {l['model']} | {t['input']:,} | {t['cache_creation']:,} | {t['cache_read']:,} | {t['output']:,} | {l['usd_equiv']:.2f} | {l['formula']} |")
+                leg_usd = f"{l['usd_equiv']:.2f}" if l['usd_equiv'] is not None else 'n/a'
+                L.append(f"| {l['agent']} | {l['model']} | {t['input']:,} | {t['cache_creation']:,} | {t['cache_read']:,} | {t['output']:,} | {leg_usd} | {l['formula'] or 'n/a'} |")
         for i, g in enumerate(r['grok_calls'], 1):
             L.append(f"| Grok pass {i} | grok-4.3 | ~{g['tokens_in_est']:,} (est) | n/a | n/a | ~{g['tokens_out_est']:,} (est) | {g['usd']:.4f} | {g['formula']} |")
-        L.append(f"| **Total** | | | | | | **{r['totals']['total_usd_equiv']:.2f}** | Claude {r['totals']['claude_usd_equiv']:.2f} + Grok {r['totals']['grok_usd']:.4f} |\n")
+        total_usd = f"{r['totals']['total_usd_equiv']:.2f}" if r['totals']['total_usd_equiv'] is not None else 'n/a'
+        claude_usd = f"{r['totals']['claude_usd_equiv']:.2f}" if r['totals']['claude_usd_equiv'] is not None else 'n/a'
+        L.append(f"| **Total** | | | | | | **{total_usd}** | Claude {claude_usd} + Grok {r['totals']['grok_usd']:.4f} |\n")
     L.append("## Rollup (complete-coverage essay runs only)\n")
     for k, v in rollup.items():
         L.append(f"- {k}: {json.dumps(v)}")
@@ -242,7 +257,7 @@ def main():
             rows.append({'stage': f'Grok improve pass {i}', 'model': 'grok-4.3 (OpenRouter)', 'tokens': g['tokens_in_est'] + g['tokens_out_est'], 'cost': g['usd']})
         y = ["run:", "  rows:"]
         for row in rows:
-            y.append(f'    - {{ stage: "{row["stage"]}", model: "{row["model"]}", tokens: {row["tokens"]}, cost: {row["cost"]} }}')
+            y.append(f'    - {{ stage: "{row["stage"]}", model: "{row["model"]}", tokens: {row["tokens"]}, cost: {json.dumps(row["cost"])} }}')
         open(os.path.join(fmdir, f"{r['produced']['slug']}.yaml"), 'w').write("\n".join(y) + "\n")
     print(f"runs: {len(runs)}  complete essay runs: {len(complete_essays)}  -> {a.out}")
 
