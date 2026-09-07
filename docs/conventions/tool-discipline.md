@@ -4,7 +4,7 @@
 > `docs/conventions/tool-discipline.md`, or when the work involves choosing
 > between Edit/Write/Read/Grep and Bash for file operations.
 >
-> **Why this matters (eval ledger 2026-09-03):** In the nutrifax-zine run, 74%
+> **Why this matters:** In a recent large design-build run, 74%
 > of all tool calls were Bash and ~47% of run-scoped Bash was sed-editing +
 > cat/grep-inspecting that Edit/Read/Grep collapse into far fewer turns. Cost
 > equals turns × accumulated context, so each shell round-trip re-reads
