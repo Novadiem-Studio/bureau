@@ -39,8 +39,10 @@ no native Bureau host transport, so they cannot drive a run yet. `grok` is a fir
 
 ### Host policy - Codex
 
-Codex maps `cheap`/`standard` to **gpt-5.6-terra** and
-`strong`/`frontier`/`escalated` to **gpt-5.6-sol**, increasing reasoning effort by tier.
+Codex maps `cheap`/`standard` to **gpt-5.6-terra**, `strong`/`frontier` to
+**gpt-5.6-sol**, and `escalated` to **gpt-6-astra**, increasing reasoning effort by tier.
+Keep Astra escalation-only: use it after evidence of trouble or an explicit human request, not
+as a first-pass default.
 Every native Codex spawn uses the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with
 `fork_context: false` in the current host), explicit `model`, and explicit `reasoning_effort`.
 Resume retained agents with `multi_agent_v1.send_input`.
