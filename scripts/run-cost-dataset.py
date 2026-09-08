@@ -22,6 +22,7 @@ ESTIMATED from the audit line's byte counts at the stated bytes-per-token ratio.
 """
 import argparse, glob, json, os, re, statistics, sys
 from datetime import date
+from decimal import Decimal, ROUND_HALF_EVEN
 
 def val(x):
     """accounting.json wraps most fields as {value, confidence}; unwrap either shape."""
@@ -169,8 +170,15 @@ def main():
     if complete_essays:
         costs = [r['totals']['total_usd_equiv'] for r in complete_essays]
         all_costs_available = all(cost is not None for cost in costs)
+        median_cost = None
+        if all_costs_available:
+            decimal_costs = sorted(Decimal(str(cost)) for cost in costs)
+            midpoint = len(decimal_costs) // 2
+            median_decimal = (decimal_costs[midpoint] if len(decimal_costs) % 2 else
+                              (decimal_costs[midpoint - 1] + decimal_costs[midpoint]) / Decimal('2'))
+            median_cost = float(median_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_EVEN))
         rollup = {'complete_essay_runs': len(complete_essays),
-                  'median_usd_equiv_per_essay': round(statistics.median(costs), 2) if all_costs_available else None,
+                  'median_usd_equiv_per_essay': median_cost,
                   'min_usd_equiv': min(costs) if all_costs_available else None,
                   'max_usd_equiv': max(costs) if all_costs_available else None,
                   'median_tokens_processed': int(statistics.median([r['totals']['tokens_processed_captured'] for r in complete_essays])),
