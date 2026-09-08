@@ -18,13 +18,14 @@
     "openai": {
       "allowed_spawn_models": [
         "gpt-5.6-terra",
-        "gpt-5.6-sol"
+        "gpt-5.6-sol",
+        "gpt-6-astra"
       ],
       "allowed_exec_models": [
         "gpt-5.3-codex-spark"
       ],
       "forbidden": [],
-      "note": "Codex host: native subagent spawns use gpt-5.6-terra or gpt-5.6-sol. gpt-5.3-codex-spark is allowed only through the granular-ui-fast one-shot exec profile. Pass model and reasoning effort explicitly on every launch."
+      "note": "Codex host: native subagent spawns use gpt-5.6-terra or gpt-5.6-sol by default; gpt-6-astra is reserved for the escalated tier. gpt-5.3-codex-spark is allowed only through the granular-ui-fast one-shot exec profile. Pass model and reasoning effort explicitly on every launch."
     },
     "grok": {
       "allowed_spawn_models": [

@@ -227,13 +227,13 @@ if [[ -f config/model-policy.v2.json ]]; then
   ' config/model-policy.v2.json 2>/dev/null || true)
   if ! jq -e '
     .host_policy.openai.allowed_spawn_models
-    | index("gpt-5.6-terra") and index("gpt-5.6-sol")
+    | index("gpt-5.6-terra") and index("gpt-5.6-sol") and index("gpt-6-astra")
   ' config/model-policy.v2.json >/dev/null; then
     err "config/model-policy.v2.json missing current Codex host policy"
   fi
   if ! jq -e '
     (.host_policy.openai.allowed_spawn_models
-      | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol"))
+      | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol" or . == "gpt-6-astra"))
     and ((.host_policy.openai.allowed_spawn_models
       | index("gpt-5.3-codex-spark")) == null)
     and ((.host_policy.openai.allowed_exec_models
@@ -268,10 +268,13 @@ for adapter in config/runtimes/*.json; do
   fi
 done
 if ! jq -e '
-  [.tiers[]?.model] as $models
-  | ($models | all(. == "gpt-5.6-terra" or . == "gpt-5.6-sol"))
+  .tiers.cheap.model == "gpt-5.6-terra"
+  and .tiers.standard.model == "gpt-5.6-terra"
+  and .tiers.strong.model == "gpt-5.6-sol"
+  and .tiers.frontier.model == "gpt-5.6-sol"
+  and .tiers.escalated.model == "gpt-6-astra"
 ' config/runtimes/openai.json >/dev/null; then
-  err "config/runtimes/openai.json should map every tier to gpt-5.6-terra or gpt-5.6-sol"
+  err "config/runtimes/openai.json should map cheap/standard to Terra, strong/frontier to Sol, and escalated to Astra"
 fi
 if ! jq -e '
   .capabilities.supports_one_shot_exec_profiles == true

@@ -47,10 +47,10 @@ Every native spawn uses `RUN_DIR/model-routing.json#roles.<role>`:
 
 ### Codex Spark execution profile
 
-The Codex host's native collaboration endpoint currently accepts the configured Terra/Sol
-child-agent set but rejects Spark as an unknown spawn model. The Codex CLI can start Spark, so
-the Bureau exposes it as a separate, explicit execution profile rather than weakening the native
-spawn allowlist:
+The Codex host's native collaboration endpoint currently accepts the configured
+Terra/Sol/Astra child-agent set but rejects Spark as an unknown spawn model. Astra remains
+escalation-only. The Codex CLI can start Spark, so the Bureau exposes it as a separate, explicit
+execution profile rather than weakening the native spawn allowlist:
 
 - policy: `model-policy.v2.json#execution_profiles.granular-ui-fast`;
 - resolved route: `model-routing.json#roles.mage.executionProfiles.granular-ui-fast`;
