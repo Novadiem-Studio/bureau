@@ -1,0 +1,14 @@
+{
+  "id": "fable-first-architect",
+  "description": "Manual: Architect runs frontier on the FIRST pass (strongest model produces the design), Challenger stays at its strong default for interim reviews, final gates still escalate per role policy. Hypothesis (Robin, 2026-09-09): frontier-first production yields fewer Challenger rejections than strong-first production with escalate-on-bounce, at net-equal or lower cost once bounce cycles are priced in.",
+  "activate_when": {
+    "manual_only": true
+  },
+  "overrides": {
+    "architect": "frontier"
+  },
+  "conductor_notes": [
+    "fable-first-architect active: Architect first pass runs frontier; interim Challenger reviews stay strong; final gates escalate to frontier as usual.",
+    "Log every Challenger rejection count per work item in the run log so bureau-run-eval can compare rejection rates against non-experiment runs."
+  ]
+}
