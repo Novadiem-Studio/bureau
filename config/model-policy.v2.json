@@ -255,7 +255,9 @@
       "default_tier": "standard",
       "allowed": [
         "standard",
-        "strong"
+        "strong",
+        "frontier",
+        "escalated"
       ],
       "fresh_context_required": false,
       "lock": false,
@@ -408,7 +410,9 @@
       "default_tier": "strong",
       "allowed": [
         "standard",
-        "strong"
+        "strong",
+        "frontier",
+        "escalated"
       ],
       "fresh_context_required": true,
       "lock": false,
