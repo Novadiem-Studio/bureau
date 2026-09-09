@@ -13,7 +13,7 @@
       "forbidden": [
         "premium"
       ],
-      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
+      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only — re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
     },
     "openai": {
       "allowed_spawn_models": [
@@ -130,9 +130,10 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "novel_architecture",
+        "critic_finds_design_gap",
         "irreversible_data_model",
-        "critic_finds_design_gap"
+        "novel_architecture",
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "small_plan_revision",
@@ -154,10 +155,11 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
+        "animation_or_layout_bug",
         "complex_state",
         "design_fidelity_failure",
         "mobile_web_split",
-        "animation_or_layout_bug"
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "small_component_patch",
@@ -177,9 +179,10 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "huge_scope",
         "fuzzy_product_boundary",
-        "regulated_domain"
+        "huge_scope",
+        "regulated_domain",
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "narrow_existing_plan",
@@ -201,6 +204,7 @@
       "escalate_when": [
         "ambiguous_design_handoff",
         "manifest_extraction_failed",
+        "second_challenger_rejection",
         "subtle_visual_drift"
       ],
       "deescalate_when": [
@@ -222,7 +226,8 @@
       "lock": false,
       "escalate_when": [
         "incoherent_after_one_fix",
-        "many_cross_repo_dependencies"
+        "many_cross_repo_dependencies",
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "approved_single_repo_plan",
@@ -242,8 +247,9 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "sensitive_audience",
-        "legal_medical_political_copy"
+        "legal_medical_political_copy",
+        "second_challenger_rejection",
+        "sensitive_audience"
       ],
       "deescalate_when": [
         "routine_copy_review",
@@ -255,14 +261,17 @@
       "default_tier": "standard",
       "allowed": [
         "standard",
-        "strong"
+        "strong",
+        "frontier",
+        "escalated"
       ],
       "fresh_context_required": false,
       "lock": false,
       "escalate_when": [
-        "long_draft",
         "complex_revision",
-        "promotion_authority_step"
+        "long_draft",
+        "promotion_authority_step",
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "outline_only",
@@ -282,11 +291,12 @@
       "lock": false,
       "escalate_when": [
         "auth",
-        "migrations",
+        "data_integrity",
         "idempotency",
+        "migrations",
         "money_or_credit",
         "permissions",
-        "data_integrity"
+        "second_challenger_rejection"
       ],
       "deescalate_when": [
         "read_only_contract_audit",
@@ -307,10 +317,11 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "prod_deploy",
+        "database_restore_or_migration",
         "irreversible_infra",
-        "secret_handling",
-        "database_restore_or_migration"
+        "prod_deploy",
+        "second_challenger_rejection",
+        "secret_handling"
       ],
       "deescalate_when": [
         "local_build_or_smoke_test",
@@ -376,8 +387,9 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "security_critical_seam",
-        "repro_failure_needs_deep_trace"
+        "repro_failure_needs_deep_trace",
+        "second_challenger_rejection",
+        "security_critical_seam"
       ],
       "deescalate_when": [
         "routine_ui_api_smoke",
@@ -408,7 +420,9 @@
       "default_tier": "strong",
       "allowed": [
         "standard",
-        "strong"
+        "strong",
+        "frontier",
+        "escalated"
       ],
       "fresh_context_required": true,
       "lock": false,
