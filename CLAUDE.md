@@ -21,7 +21,8 @@ Two rules:
 
 ## What this does
 
-For new Bureau runs, the **default main session is The Delegate**. The Delegate runs in
+For new **build** runs, the **default main session is The Delegate**; planning/spec runs
+conduct directly (see Default entrypoint). The Delegate runs in
 attended manager/relay mode, spawns **The Conductor** as a resumable subagent, and handles
 per-checkpoint flow/gating until a genuine fork needs Robin. The Conductor then spawns the
 specialist subagents — the cast below — each in its own fresh context. They take a raw project
@@ -37,7 +38,7 @@ argued, so its objections are real instead of agreeable.
 | Role | One-line job | When it runs | Status |
 |------|-------------|--------------|--------|
 | **The Notary** | External cold attestation on a sealed artifact packet | On-demand, when an artifact is high-stakes and sealed | Live (Bundle 05) |
-| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for new Bureau runs | Live |
+| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for build runs; planning/spec runs conduct directly | Live |
 | **The Principal** | Robin's preference model — models what Robin would choose and acts on his behalf | Explicitly deferred; no placeholder, hook, or in-code comment in this bundle | Deferred (future) |
 
 The Delegate is a flow-and-gating role only (FR 44). It does not model Robin's preferences.
@@ -46,12 +47,22 @@ this table is the canonical guard. The Principal is explicitly not in scope for 
 
 ## Default entrypoint
 
-When Robin says "get the bureau on this," "start the agent framework," "run the bureau," or
-similar, start with **The Delegate** by default. Do not require Robin to ask for the Delegate
-explicitly. Read `agents/delegate.md` and run in manager/relay mode; the Delegate is the
-top-level session and spawns the Conductor underneath it with `topology: integrated`.
+Topology is chosen by **run type** (Robin, 2026-09-09, after the rheo-stream S1/S2 spec runs):
 
-Use direct Conductor mode only when Robin explicitly asks to bypass the Delegate, or when resuming
+- **Planning/spec/doc runs** — the deliverable is documents, there is a single terminal
+  human gate (Robin's review of an open PR), and nothing irreversible executes — run as
+  **direct Conductor** at top level: read `agents/orchestrator.md` and conduct, spawning
+  specialists (including cold critics) as fresh-context subagents. No Delegate layer;
+  Robin's terminal review is the gate. Log the mode in `RUN_DIR/log.md` as a run-type
+  decision, not a fallback.
+- **Build/implementation runs** — code or durable-state changes, mid-run checkpoints,
+  migrations, deploys, or any irreversible action — start with **The Delegate** by
+  default. Do not require Robin to ask for the Delegate explicitly. Read
+  `agents/delegate.md` and run in manager/relay mode; the Delegate is the top-level
+  session and spawns the Conductor underneath it with `topology: integrated`.
+- A mixed run (documents plus any irreversible action) counts as a build run.
+
+For build runs, use direct Conductor mode only when Robin explicitly asks to bypass the Delegate, or when resuming
 a legacy/non-integrated run. On Claude Code, nested subagent spawning **is** supported — the
 Delegate→Conductor→specialist chain runs here (see the many `delegate-state.json` build runs across
 installs) — so do **not** pre-emptively judge the integrated topology "unavailable." Host
