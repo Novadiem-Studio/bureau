@@ -10,8 +10,9 @@
 #   pr-delivery.sh merge   --run-dir RUN_DIR [--merge-method merge|squash|rebase]
 #   pr-delivery.sh status  --run-dir RUN_DIR
 #
-# Public repositories resolve auto delivery to GitHub. Private/internal repositories use
-# state.json#git.private_delivery (local by default). Explicit github delivery fails closed.
+# Public AND private repositories resolve auto delivery to GitHub (private default flipped
+# to github 2026-09-09 per Robin: full issue/PR record everywhere). A repo opts back to local
+# via state.json#git.private_delivery. Explicit github delivery fails closed.
 
 set -euo pipefail
 
@@ -96,7 +97,7 @@ resolve_delivery() {
   require_worktree
   local policy private_policy metadata visibility fallback origin_url github_remote
   policy="$(jq -r '.delivery_policy // "auto"' <<<"$git_state")"
-  private_policy="$(jq -r '.private_delivery // "local"' <<<"$git_state")"
+  private_policy="$(jq -r '.private_delivery // "github"' <<<"$git_state")"
   if [[ "$policy" == "local" ]]; then
     update_state "$(jq '.delivery_mode = "local" | .delivery_fallback_reason = "explicit local delivery policy"' <<<"$git_state")"
     return 1

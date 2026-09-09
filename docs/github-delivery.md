@@ -1,9 +1,12 @@
 # GitHub delivery
 
 Code-changing Bureau runs use an issue, isolated branch/worktree, early draft pull request,
-cold-review evidence, and a GitHub merge. This is the default for public GitHub repositories.
-Private and internal repositories default to local delivery unless `project-context.md` opts in.
-Non-GitHub repositories retain an explicit local fallback.
+cold-review evidence, and a GitHub merge. This is the default for public AND private GitHub
+repositories (the private default flipped to GitHub on 2026-09-09: Robin wants the full
+issue/PR/merge record everywhere his work lands, so features and bug fixes always open a
+tracking issue and a draft PR without being told). A project opts a private repo back to local
+delivery with `git.private_delivery: local` in `project-context.md`. Non-GitHub repositories
+retain an explicit local fallback.
 
 The purpose is a truthful collaboration record. Do not split coherent work into junk pull
 requests, create throwaway issues, fabricate reviewers, or attribute agents as co-authors.
@@ -12,7 +15,7 @@ requests, create throwaway issues, fabricate reviewers, or attribute agents as c
 
 | `git.delivery_policy` | Public GitHub repo | Private/internal GitHub repo | GitHub unavailable |
 |---|---|---|---|
-| `auto` (default) | GitHub | `git.private_delivery` (`local` by default) | Non-GitHub remote: local; unresolved GitHub remote: fail closed |
+| `auto` (default) | GitHub | `git.private_delivery` (`github` by default since 2026-09-09) | Non-GitHub remote: local; unresolved GitHub remote: fail closed |
 | `github` | GitHub or fail closed | GitHub or fail closed | Fail closed |
 | `local` | Local | Local | Local |
 
@@ -29,8 +32,10 @@ if the eventual PR can safely be public.
 1. Write an issue body in `RUN_DIR/github/issue.md`:
    - bug: reproduction criteria, expected/actual behavior, and affected version;
    - feature: acceptance criteria and explicit out-of-scope boundaries.
-2. Obtain external-action authorization unless the user's request or project policy already
-   authorizes issue/PR creation.
+2. Obtain external-action authorization unless already covered. Standing authorization
+   (Robin, 2026-09-09): on Robin's own repositories (`rheos/*`, `Novadiem-Studio/*`),
+   issue and pull-request creation under this protocol is pre-authorized — do not ask
+   per run. Repos owned by clients or third parties still require authorization.
 3. Create the worktree with `--delivery auto` (the default).
 4. Open or link the issue and open the draft PR before implementation:
 
