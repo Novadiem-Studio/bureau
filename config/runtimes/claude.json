@@ -1,7 +1,12 @@
 {
   "runtime": "claude",
   "description": "Claude Code adapter — haiku, sonnet, opus; fable for escalation tiers only.",
-  "spawn_models": ["haiku", "sonnet", "opus", "fable"],
+  "spawn_models": [
+    "haiku",
+    "sonnet",
+    "opus",
+    "fable"
+  ],
   "forbidden_models": [],
   "capabilities": {
     "supports_fresh_context_subagents": true,
@@ -25,11 +30,11 @@
     },
     "frontier": {
       "model": "fable",
-      "notes": "Fable re-enabled for escalation (Jul 2026). Final gates, subtle state/design, high-risk reviews."
+      "notes": "Fable re-enabled for escalation (Jul 2026). Final gates, subtle state/design, high-risk reviews. No effort parameter on this runtime: request extended thinking in the spawn prompt (e.g. think hard) for gate reviews."
     },
     "escalated": {
       "model": "fable",
-      "notes": "Fable + highest reasoning budget — repeated failure, hard adjudication, human-requested escalation."
+      "notes": "Fable — repeated failure, hard adjudication, human-requested escalation. No effort parameter on this runtime: the conductor MUST raise effort via the spawn prompt (ultrathink / extended-thinking directive) and allow a larger revision budget; that is the highest-reasoning mechanism on Claude."
     }
   }
 }
