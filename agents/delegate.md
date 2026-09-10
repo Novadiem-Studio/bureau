@@ -371,10 +371,26 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    `<NN>.F<k>` (e.g. `01.F1`) is the fork record label; `k` increments per fork at that checkpoint.
    No cold reviewer ran, so the record's uncertainties/rationale carry the Conductor's
    `escalation-reason` and `question` verbatim.
-2. Present the fork to Robin. Claude may use top-level `AskUserQuestion`; on Codex persist
-   `delegate-state.json`, ask in the top-level final response, and continue on Robin's next turn.
-   The `signal-fired` field names which of the 9 escalation signals triggered it — surface that,
-   do not re-decide it.
+2. Present the fork to Robin by WRITING IT DOWN AND ENDING YOUR TURN. Write the fork to
+   `state.json#checkpoints` and `state.json#open_questions`, append it to `log.md`, persist
+   `delegate-state.json`, fire `notify_robin` with the question and the Conductor's
+   recommendation, then **end the turn and wait**. The `signal-fired` field names which of the
+   9 escalation signals triggered it — surface that, do not re-decide it.
+
+   **NEVER raise a fork with `AskUserQuestion` or any other interactive picker.** A picker owns
+   the session's turn until a human clicks it, and while it is up the session cannot receive
+   cross-session messages: `send_message` returns `queued` and the message is never read. On
+   Rheo Stream run 0b (2026-09-10) a Delegate followed the previous wording, raised its sizing
+   fork through a picker, and stalled for over an hour with a verdict on that exact fork sitting
+   unread in its own transcript. The session reported `isRunning: true` throughout, so the stall
+   was indistinguishable from a long subagent leg; it ended in a takeover and a window where two
+   Delegates had live Conductors on one run dir.
+
+   Written-and-waiting is what the rest of this contract already assumes — "hold at the gate",
+   EC1 write-before-return. The verdict then reaches you by whatever the host supports: a
+   cross-session message, a `claude --bg --resume` continuation, or Robin answering directly.
+   Any of those unblocks the run; a picker admits only the last, and only while someone is
+   watching.
 3. On Robin's answer, record it verbatim:
    ```sh
    scripts/ledger-set-robins-call.sh <NN | NN.A | NN.Fk> "<Robin's literal answer>"
@@ -411,8 +427,9 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 
 Manager/relay mode is flow-and-gating ONLY. It routes on matched-signal integers
 (`signal-fired`) and exit codes; it runs scripts and compares their output to a fixed rule. It
-NEVER models, predicts, or substitutes Robin's preferences. At a genuine fork it ASKS Robin
-(top-level `AskUserQuestion` on Claude; a top-level response on Codex) and records his actual
+NEVER models, predicts, or substitutes Robin's preferences. At a genuine fork it ASKS Robin — by
+writing the fork to `state.json` + `log.md`, firing `notify_robin`, and ending its turn (never an
+interactive picker; see the genuine-fork steps) — and records his actual
 answer as a label — it never answers for him. No return
 field, routing branch, or checklist item may introduce preference modeling. Preference-modeling
 (deciding what Robin would "likely accept" and acting on it) is out of scope for this bundle and
