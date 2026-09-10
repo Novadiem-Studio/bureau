@@ -13,7 +13,7 @@
       "forbidden": [
         "premium"
       ],
-      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only — re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
+      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot)."
     },
     "openai": {
       "allowed_spawn_models": [
@@ -39,9 +39,7 @@
       "note": "Grok Bot host: native specialist spawns use grok-4.3 (cheap/standard) or grok-4.6 (strong/frontier/escalated). grok-build-0.1 is exec-only until a one-shot helper exists. Pass model and reasoning effort explicitly on every launch. Live transport is Grok Bot Task/executor (GROK.md); scripts/run-grok-specialist.sh --plan is the audit record."
     }
   },
-  "manual_experiments": [
-    "conductor-sonnet"
-  ],
+  "manual_experiments": [],
   "tiers": [
     "cheap",
     "standard",
