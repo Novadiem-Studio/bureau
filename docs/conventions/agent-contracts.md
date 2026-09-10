@@ -206,5 +206,6 @@ typed error shape"), never a quality judgment ("Error handling is robust").
 | `scoot.md` | Scoot (shop droid) — EXEMPT |
 | `scribe.md` | The Scribe |
 | `tally.md` | Tally (shop droid) — EXEMPT |
+| `envoy.md` | The Envoy (Run-Series Supervisor), XVIII The Moon |
 
 ---
