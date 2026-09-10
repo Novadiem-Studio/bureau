@@ -55,9 +55,11 @@ escalation table, plus two the Envoy owns regardless of campaign:
   at or over 80%: launch nothing more, bring the current run to a clean boundary, ping Robin with
   runs-remaining and the weekly reset, and end the loop to wait for guidance. The session (5h)
   limit is a separate hard stop. Full bands in the `run-series` workflow's token-governance step.
-- **Self-handoff** — when context runs high or after the campaign's tick cap, write HANDOFF and
-  hand off to a fresh Envoy session that re-adopts the charter, rather than loop forever on one
-  session.
+- **Self-handoff (per run)** — drive ONE run per Envoy session; at that run's clean completion,
+  spawn a fresh Envoy (`claude --bg`, re-adopting the charter) to take the next run, confirm it
+  adopted, then exit. Never leave zero or two Envoys live. If a fresh Envoy cannot be spawned,
+  continue in this session and note the degraded mode. Every run also gets a fresh Conductor.
+  Full contract in the `run-series` workflow step 7.
 
 Batch non-urgent items into at most one digest per day.
 

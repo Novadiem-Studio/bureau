@@ -19,6 +19,11 @@ a fresh cold reviewer.
 verifying each close-out and relaying verdicts, keeping Robin out of routine advancement and
 stopping cleanly at the token budget.
 
+**Invariant:** every run gets a fresh Delegate/Conductor (one run per `claude --bg` session, no
+context shared with the prior run), and the Envoy itself is fresh per run where possible — it
+hands off to a new Envoy session at each run boundary, with all state on disk so the cold pickup
+is lossless.
+
 **Inputs:** the run-series INDEX (runs + deps + status); the campaign charter (authority +
 escalation + external-action gates); the ratified spec/plan the runs build against; write access
 to INDEX/HANDOFF and the run cards. The session adopting this workflow becomes **The Envoy**
@@ -52,9 +57,10 @@ snapshot).
    gates on Robin, parks and pings per the escalation table.
 5. **The Envoy** — advance: when a run merges and the next run's dependencies are satisfied in the
    INDEX, launch it in a fresh session with `claude --bg --permission-mode auto --add-dir=`
-   (mechanics doc), confirm it actually read its prompt, hand Robin its `claude.ai/code` link →
-   updated INDEX/HANDOFF + the next run launched. One run at a time unless the INDEX marks
-   parallelism.
+   (mechanics doc) — a fresh session is a fresh Delegate/Conductor for every run, no context
+   shared with the prior one — confirm it actually read its prompt, hand Robin its
+   `claude.ai/code` link → updated INDEX/HANDOFF + the next run launched. One run at a time unless
+   the INDEX marks parallelism.
 6. **The Envoy** — token governance, every tick BEFORE launching: read weekly + session usage
    (`~/.novadiem/usage-snapshot.json`; fallback `codexbar usage` / the `claude-usage-local-api`
    skill). Throttle on WEEKLY usage in three bands:
@@ -68,9 +74,16 @@ snapshot).
 
    The session (5h) limit is a separate hard stop: if it is hit, park and note it regardless of
    the weekly band. Optionally schedule a resume wake for after a reset.
-7. **The Envoy** — self-handoff: after the campaign's tick cap or when context runs high, write
-   HANDOFF, then hand off to a fresh Envoy session that re-adopts this workflow and the charter →
-   HANDOFF + a fresh Envoy leg. Do not loop forever on one session.
+7. **The Envoy** — hand off PER RUN (default): each Envoy session drives ONE run (adopt, launch,
+   monitor, verify, relay), and at that run's clean completion it spawns a FRESH Envoy session
+   (`claude --bg`, re-adopting this workflow + the charter) to take the next run, writes HANDOFF,
+   and exits → HANDOFF + a fresh Envoy leg. So the Envoy holds only one run's context, and each
+   run also gets a fresh Conductor. Confirm the fresh Envoy actually adopted (its `claude.ai/code`
+   link, loop started) BEFORE exiting, and never leave zero or two Envoys live — Envoy-level
+   mutual exclusion, same fork hazard as runs (mechanics doc § 3). Fallback (the "where possible"):
+   if a fresh Envoy cannot be spawned, continue to the next run in THIS session rather than drop
+   the chain, and note the degraded mode. The token bands in step 6 gate the handoff: at >=80%
+   weekly, do not spawn the next Envoy/run — park and wait.
 
 **Gate** — every run this workflow launches MUST raise its gates by write-and-stop (`state.json`
 checkpoints + `open_questions` + `notify_robin` + end the turn), NEVER `AskUserQuestion`; the run
