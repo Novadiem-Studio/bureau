@@ -55,11 +55,19 @@ snapshot).
    (mechanics doc), confirm it actually read its prompt, hand Robin its `claude.ai/code` link →
    updated INDEX/HANDOFF + the next run launched. One run at a time unless the INDEX marks
    parallelism.
-6. **The Envoy** — token governance, every tick BEFORE launching: read session + weekly usage
+6. **The Envoy** — token governance, every tick BEFORE launching: read weekly + session usage
    (`~/.novadiem/usage-snapshot.json`; fallback `codexbar usage` / the `claude-usage-local-api`
-   skill). At >=80% of EITHER, do not launch a new run; let the active run reach its next
-   write-and-stop gate, `notify_robin` with runs-remaining and the reset time, and end the loop.
-   Optionally schedule a resume wake for after the reset.
+   skill). Throttle on WEEKLY usage in three bands:
+   - **under 50%** — launch runs back to back, no pause between them;
+   - **50% to 80%** — keep advancing but one run at a time, re-checking weekly usage at each run
+     boundary before launching the next; no parallel or speculative launches; drive each run to a
+     clean end;
+   - **at or over 80%** — launch nothing further, bring the current run to a clean boundary (its
+     merge or a write-and-stop gate), `notify_robin` with runs-remaining and the weekly reset
+     time, and end the loop to wait for guidance.
+
+   The session (5h) limit is a separate hard stop: if it is hit, park and note it regardless of
+   the weekly band. Optionally schedule a resume wake for after a reset.
 7. **The Envoy** — self-handoff: after the campaign's tick cap or when context runs high, write
    HANDOFF, then hand off to a fresh Envoy session that re-adopts this workflow and the charter →
    HANDOFF + a fresh Envoy leg. Do not loop forever on one session.

@@ -50,9 +50,11 @@ Reads (handed at adoption, or from the campaign dir):
 Ping Robin (`notify_robin`; fallback `PushNotification`) and WAIT per the campaign charter's
 escalation table, plus two the Envoy owns regardless of campaign:
 
-- **Token budget** — at >=80% of session OR weekly usage, stop launching, let the active run
-  park at its next write-and-stop gate, ping Robin with runs-remaining and the reset time, and
-  end the loop; optionally schedule a resume wake for after the reset.
+- **Token budget (graduated, on WEEKLY usage)** — under 50%: run to run without pausing; 50% to
+  80%: advance one run at a time, re-checking usage at each run boundary, no speculative launches;
+  at or over 80%: launch nothing more, bring the current run to a clean boundary, ping Robin with
+  runs-remaining and the weekly reset, and end the loop to wait for guidance. The session (5h)
+  limit is a separate hard stop. Full bands in the `run-series` workflow's token-governance step.
 - **Self-handoff** — when context runs high or after the campaign's tick cap, write HANDOFF and
   hand off to a fresh Envoy session that re-adopts the charter, rather than loop forever on one
   session.
