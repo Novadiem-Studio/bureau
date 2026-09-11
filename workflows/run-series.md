@@ -61,19 +61,20 @@ snapshot).
    shared with the prior one — confirm it actually read its prompt, hand Robin its
    `claude.ai/code` link → updated INDEX/HANDOFF + the next run launched. One run at a time unless
    the INDEX marks parallelism.
-6. **The Envoy** — token governance, every tick BEFORE launching: read weekly + session usage
+6. **The Envoy** — token governance: read WEEKLY and SESSION (5h) usage
    (`~/.novadiem/usage-snapshot.json`; fallback `codexbar usage` / the `claude-usage-local-api`
-   skill). Throttle on WEEKLY usage in three bands:
-   - **under 50%** — launch runs back to back, no pause between them;
-   - **50% to 80%** — keep advancing but one run at a time, re-checking weekly usage at each run
-     boundary before launching the next; no parallel or speculative launches; drive each run to a
-     clean end;
-   - **at or over 80%** — launch nothing further, bring the current run to a clean boundary (its
-     merge or a write-and-stop gate), `notify_robin` with runs-remaining and the weekly reset
-     time, and end the loop to wait for guidance.
+   skill) both before launching each run AND on monitoring ticks (so a mid-run crossing is
+   caught). Weekly-usage bands set the cadence:
+   - **weekly under 50%** — full speed: run from run to run without stopping;
+   - **weekly 50% to 80%** — go to the end of the run: keep completing and advancing runs, no stop
+     or slowdown at 50%.
 
-   The session (5h) limit is a separate hard stop: if it is hit, park and note it regardless of
-   the weekly band. Optionally schedule a resume wake for after a reset.
+   **Pause trigger — WEEKLY or SESSION at or over 80%, even mid-run:** look for a good place to
+   pause (a clean checkpoint boundary, or the run's end), pause there, `notify_robin` with
+   runs-remaining and which limit was hit, and wait for Robin's guidance.
+
+   About two days of full-speed running exhausts the weekly quota; that is the expected ceiling,
+   not a failure.
 7. **The Envoy** — hand off PER RUN (default): each Envoy session drives ONE run (adopt, launch,
    monitor, verify, relay), and at that run's clean completion it spawns a FRESH Envoy session
    (`claude --bg`, re-adopting this workflow + the charter) to take the next run, writes HANDOFF,

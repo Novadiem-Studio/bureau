@@ -50,11 +50,12 @@ Reads (handed at adoption, or from the campaign dir):
 Ping Robin (`notify_robin`; fallback `PushNotification`) and WAIT per the campaign charter's
 escalation table, plus two the Envoy owns regardless of campaign:
 
-- **Token budget (graduated, on WEEKLY usage)** — under 50%: run to run without pausing; 50% to
-  80%: advance one run at a time, re-checking usage at each run boundary, no speculative launches;
-  at or over 80%: launch nothing more, bring the current run to a clean boundary, ping Robin with
-  runs-remaining and the weekly reset, and end the loop to wait for guidance. The session (5h)
-  limit is a separate hard stop. Full bands in the `run-series` workflow's token-governance step.
+- **Token budget** — WEEKLY bands set cadence: under 50% full speed (run to run without stopping);
+  50-80% go to the end of the run, keep advancing (no stop or slowdown at 50%). **Pause trigger:
+  WEEKLY or SESSION (5h) at or over 80%, even mid-run** — look for a good place to pause (a clean
+  checkpoint or the run's end) and wait for Robin's guidance. About two days of full-speed running
+  exhausts the weekly quota; that is the expected ceiling. Full bands in the `run-series`
+  workflow's token step.
 - **Self-handoff (per run)** — drive ONE run per Envoy session; at that run's clean completion,
   spawn a fresh Envoy (`claude --bg`, re-adopting the charter) to take the next run, confirm it
   adopted, then exit. Never leave zero or two Envoys live. If a fresh Envoy cannot be spawned,
