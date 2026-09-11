@@ -780,7 +780,7 @@ utility roles may claim open seats below when summoned.)
 | XII | The Hanged Man | *(open)* | suspension, voluntary pause — candidate for Delegate fork-holds |
 | XIII | Death | *(open)* | transformation end-cycle — not literal; use carefully |
 | XVI | The Tower | *(open)* | sudden structural break — failure-signature / regression moment? |
-| XVIII | The Moon | The Envoy *(reserved)* | crossing boundaries in partial light |
+| XVIII | The Moon | The Envoy (defined, `agents/envoy.md`) | crossing boundaries in partial light: the run-series supervisor |
 | XX | Judgement | The Delegate (Bundle 09) | checkpoint reckoning; proceed / revise / escalate |
 
 The Archive has **no** tarot card by design (it is furniture, not a member).
