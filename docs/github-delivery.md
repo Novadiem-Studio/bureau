@@ -174,6 +174,22 @@ to the repo root and commit it. The script deliberately does not write the file 
 it would dirty the worktree that `merge` requires clean, and add a path outside the run's
 declared scope.
 
+**On `bureau` itself, use the CLI, not the PR path (Robin, 2026-09-13).** CodeRabbit
+organizations are scoped per GitHub owner, each with its own plan, credits and API keys.
+`Novadiem-Studio` is a separate CodeRabbit org from `rheos`, and its repos do not auto-review
+under the `rheos` plan — a second subscription for one repo one person works on is not worth it.
+Until that is resolved, review `bureau` changes locally instead:
+
+```bash
+coderabbit review --committed --base-commit <base> --agent
+```
+
+The CLI reviews **local git changes with no PR required** and, unlike `coderabbit pullrequest`,
+it works regardless of which owner the repo sits under — it is bound to the key's org, not the
+repo's. Verified 2026-09-13: a review of `bureau` ran clean against a `rheos`-bound key. So a
+self-run on `bureau` should either set the opt-out below or gate on a local CLI review; the
+GitHub-comment path will never produce a verdict there.
+
 **Opting out.** Set `state.json#git.coderabbit_gate` to `"skip"` for a repo where CodeRabbit is
 not installed, and log the reason. The gate fails closed by design: an absent bot blocks the
 merge rather than passing it, because silence and approval are indistinguishable otherwise.
