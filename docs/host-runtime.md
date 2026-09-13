@@ -30,7 +30,7 @@ matching column below, and keep that transport for the run.
 | Resume an idle agent | `SendMessage` to retained id | `multi_agent_v1.send_input` to retained id | Task `resume` or `MessageSubagent` |
 | Pass a note to a running agent | `SendMessage` | `multi_agent_v1.send_input` | `MessageSubagent` |
 | Wait for liveness/completion | host Agent/SendMessage result | `multi_agent_v1.wait_agent` | background completion; `CheckSubagent` if stuck |
-| Genuine human fork | top-level `AskUserQuestion` | Delegate persists state and asks Robin in its top-level final response; after Robin replies, `multi_agent_v1.send_input` resumes the Conductor | Delegate persists, asks Robin in this chat, then resumes the Conductor |
+| Genuine human fork | Delegate writes the fork to `state.json#checkpoints` + `open_questions`, appends to `log.md`, persists `delegate-state.json`, fires `notify_robin`, and ENDS THE TURN; the answer arrives by `SendMessage`, a `--bg --resume` continuation, or Robin directly. **Never `AskUserQuestion`** (`agents/delegate.md` § genuine fork) | Delegate persists state and asks Robin in its top-level final response; after Robin replies, `multi_agent_v1.send_input` resumes the Conductor | Delegate persists, asks Robin in this chat, then resumes the Conductor |
 
 Codex fresh-context spawns MUST pass no parent transcript. In the current tool
 surface that means `fork_context: false`; in older/future surfaces this may be
