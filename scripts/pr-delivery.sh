@@ -212,6 +212,16 @@ cmd_open() {
   else
     head_ref="$(printf '%s' "$origin_repo" | cut -d/ -f1):$BRANCH"
   fi
+  # Bureau opens every PR as a draft, and CodeRabbit does not auto-review drafts, so a
+  # target repo with no config gets its review silently skipped. WARN here rather than
+  # writing the file: seeding it would dirty the worktree (cmd_merge requires it clean)
+  # and land a path outside the run's declared scope. The merge gate fails closed on the
+  # same condition, so this is an early notice, not the enforcement.
+  if [[ -n "${WORKTREE:-}" && ! -f "$WORKTREE/.coderabbit.yaml" && ! -f "$WORKTREE/.coderabbit.yml" ]]; then
+    echo "pr-delivery: WARNING $target_repo has no .coderabbit.yaml — CodeRabbit will SKIP this draft PR." >&2
+    echo "pr-delivery:          Copy templates/coderabbit.yaml to the repo root and commit it," >&2
+    echo "pr-delivery:          or coderabbit-gate.sh will block the merge." >&2
+  fi
   pr_url="$(gh pr create --repo "$target_repo" --draft --base "$BASE" --head "$head_ref" --title "$PR_TITLE" --body-file "$body")" \
     || die "draft pull request creation failed"
   pr_json="$(gh pr view "$pr_url" --repo "$(jq -r '.github_repo' <<<"$git_state")" --json number,url,isDraft)"
@@ -348,6 +358,18 @@ cmd_merge() {
   [[ "$(jq -r '.state' <<<"$pr_json")" == "OPEN" ]] || die "PR #$pr is not open"
   [[ "$(jq -r '.isDraft' <<<"$pr_json")" == "false" ]] || die "PR #$pr is still a draft"
   [[ "$(jq -r '.reviewDecision // ""' <<<"$pr_json")" != "CHANGES_REQUESTED" ]] || die "PR #$pr has unresolved requested changes"
+  # CodeRabbit posts as an issue comment, never a formal review, so the
+  # reviewDecision check above is structurally blind to it. Gate separately.
+  # Opt a repo out with state.json#git.coderabbit_gate = "skip" (record why).
+  if [[ "$(jq -r '.coderabbit_gate // ""' <<<"$git_state")" != "skip" ]]; then
+    local cr_out cr_rc
+    cr_out="$(bash "$(dirname "${BASH_SOURCE[0]}")/coderabbit-gate.sh" "$RUN_DIR" 2>&1)"; cr_rc=$?
+    if [[ $cr_rc -ne 0 ]]; then
+      printf '%s\n' "$cr_out" >&2
+      die "CodeRabbit gate failed for PR #$pr — resolve the defects above, or set state.json#git.coderabbit_gate=\"skip\" with a logged reason"
+    fi
+    printf '%s\n' "$cr_out"
+  fi
   flag="--$MERGE_METHOD"
   gh pr merge "$pr" --repo "$(jq -r '.github_repo' <<<"$git_state")" "$flag"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -133,6 +133,55 @@ holds at that gate regardless of `merge_gate`. Set `git.merge_gate: human` in `p
 for any repo whose merge you want to hand-approve. A shared/multi-maintainer install may prefer
 `human` as its default.
 
+### CodeRabbit
+
+CodeRabbit is a **hard precondition of `pr-delivery.sh merge`**, enforced by
+`scripts/coderabbit-gate.sh` and not by the `reviewDecision` check above.
+
+**Why it needs its own gate.** CodeRabbit posts as an *issue comment* from
+`coderabbitai[bot]`, never as a formal review. On a reviewed PR, `gh pr view --json reviews`
+returns `[]` and `reviewDecision` is `""` — so the `reviewDecision != CHANGES_REQUESTED`
+precondition is structurally blind to it and cannot fail on a CodeRabbit finding, ever.
+
+**The trap the gate exists for: the bot comments even when it has not reviewed.** Two states
+produce a `coderabbitai[bot]` comment with no review behind it, so "did the bot comment?" is
+not a usable test:
+
+| State | Marker in the comment | Why it happens |
+|---|---|---|
+| Draft skipped | `skip review by coderabbit.ai` | CodeRabbit does not auto-review drafts, and `pr-delivery.sh open` opens **every** PR with `--draft` |
+| Rate limited | `rate limited by coderabbit.ai` | Plan limit or exhausted credits |
+
+Only the reviewed **commit range** is evidence. A real review reports
+`Reviewing files that changed ... between <base> and <head>`; the gate compares that head
+against the PR's current head, so a review of an earlier commit fails as stale rather than
+passing.
+
+**What the gate requires to pass:** a review whose reported head equals the PR's current head,
+and either zero actionable findings or a disposition recorded in `log.md` for that exact head:
+
+```
+CODERABBIT-EVENT: {"head":"<sha>","findings":<n>,"disposition":"addressed|overruled","note":"<why>"}
+```
+
+A disposition keyed to a different head does not clear findings on this one — same discipline as
+the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.
+
+**Target-repo config is required.** Because Bureau always opens drafts, a repo with no
+`.coderabbit.yaml` gets its review silently skipped. `pr-delivery.sh open` WARNS when the target
+repo has none; copy `templates/coderabbit.yaml` (which sets `reviews.auto_review.drafts: true`)
+to the repo root and commit it. The script deliberately does not write the file itself: seeding
+it would dirty the worktree that `merge` requires clean, and add a path outside the run's
+declared scope.
+
+**Opting out.** Set `state.json#git.coderabbit_gate` to `"skip"` for a repo where CodeRabbit is
+not installed, and log the reason. The gate fails closed by design: an absent bot blocks the
+merge rather than passing it, because silence and approval are indistinguishable otherwise.
+
+Observed failure this guards against: `rheos/rheo-stream` PR #25 reached `main` on 2026-09-12
+with **zero** CodeRabbit review comments — the bot had posted "Draft PR not reviewed" eight
+seconds after the PR opened, and the run merged nine hours later without reading it.
+
 ## Genuine co-authorship
 
 When another human materially contributes code, design, tests, or the solution itself, record

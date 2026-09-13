@@ -1,0 +1,38 @@
+# CodeRabbit configuration — Bureau target-repo template.
+#
+# Copy to the TARGET REPO ROOT as `.coderabbit.yaml` (not into the Bureau install).
+# Schema: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+#
+# WHY THIS FILE IS NOT OPTIONAL FOR A BUREAU REPO.
+# `scripts/pr-delivery.sh open` creates every pull request with `--draft`, and
+# CodeRabbit does NOT auto-review draft PRs by default. Without the setting below
+# the bot posts "Draft PR not reviewed" and the run merges having never been
+# reviewed — observed on rheos/rheo-stream PR #25 (2026-09-12), which reached
+# `main` with zero CodeRabbit review comments.
+#
+# `scripts/coderabbit-gate.sh` fails closed on that state, so a repo missing this
+# file will block at merge rather than ship unreviewed.
+
+version: 2
+
+reviews:
+  # The load-bearing line: review Bureau's draft PRs.
+  auto_review:
+    enabled: true
+    drafts: true
+
+  # CHILL keeps the bot to substantive findings rather than style nits; the
+  # Bureau's own Challenger already covers house conventions.
+  profile: chill
+
+  # A finding should be actionable at the merge gate, so ask for the summary
+  # the gate counts against.
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+
+  path_filters:
+    # Run artifacts are a record of what happened, not code under review.
+    - "!.bureau/runs/**"
+    - "!.bureau/archive/**"
+    - "!output/archive/**"

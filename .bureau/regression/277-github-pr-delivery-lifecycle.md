@@ -126,6 +126,12 @@ command: |
     --run-dir "$RUN" --review-summary "$RUN/github/cold-review.md" \
     --verdict accepted >/dev/null || exit 1
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" ready --run-dir "$RUN" >/dev/null || exit 1
+  # This fixture exercises delivery lifecycle mechanics against a stubbed gh, not the
+  # CodeRabbit gate (fixture 291 owns that). Take the documented opt-out so the merge
+  # precondition under test here is the delivery state, not a bot review the stub has
+  # no way to produce — and so the opt-out path itself stays covered.
+  jq '.git.coderabbit_gate = "skip"' "$RUN/state.json" > "$RUN/state.tmp" \
+    && mv "$RUN/state.tmp" "$RUN/state.json"
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" merge \
     --run-dir "$RUN" >/dev/null || exit 1
   "$ROOT/scripts/run-worktree.sh" remove --run-dir "$RUN" >/dev/null || exit 1
@@ -151,4 +157,4 @@ command: |
   if git -C "$REPO" show-ref --verify --quiet refs/heads/bureau/run; then exit 1; fi
   PATH="$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" status --run-dir "$RUN" >/dev/null || exit 1
   echo PASS
-expected: exit 0; stdout "PASS"; explicit GitHub delivery cannot local-merge, issue/early draft PR evidence is recorded, self cold review stays a comment while a separate collaborator can approve, genuine co-author provenance is verified, and the default regular merge goes through GitHub while preserving branch commits
+expected: exit 0; stdout "PASS"; the CodeRabbit merge gate is opted out via git.coderabbit_gate="skip" (fixture 291 covers the gate itself); explicit GitHub delivery cannot local-merge, issue/early draft PR evidence is recorded, self cold review stays a comment while a separate collaborator can approve, genuine co-author provenance is verified, and the default regular merge goes through GitHub while preserving branch commits
