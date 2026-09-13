@@ -14,10 +14,23 @@ command: |
 
   # B — draft skip. The bot DID comment; it did NOT review. This is the Bureau's
   # default outcome, since pr-delivery.sh open always passes --draft.
-  printf '<!-- This is an auto-generated comment: skip review by coderabbit.ai -->\nDraft PR not reviewed\n' > "$TMPF/draft.txt"
+  printf '<!-- This is an auto-generated comment: skip review by coderabbit.ai -->\nDraft PRs are not automatically reviewed by default.\n' > "$TMPF/draft.txt"
   out=$(run "$TMPF/draft.txt" 0); rc=$?
   [ $rc -eq 1 ] || { echo "FAIL: B (draft skip) must fail, rc=$rc"; rm -rf "$TMPF"; exit 1; }
   printf '%s' "$out" | grep -q 'SKIPPED' || { echo "FAIL: B should name the skip: $out"; rm -rf "$TMPF"; exit 1; }
+  printf '%s' "$out" | grep -q 'Draft PRs are not automatically reviewed' || { echo "FAIL: B should quote the draft reason: $out"; rm -rf "$TMPF"; exit 1; }
+
+  # B2 — the SAME skip marker, a DIFFERENT cause: repo under the free tier's
+  # star threshold. The marker is overloaded, so the gate must quote CodeRabbit's
+  # own reason rather than assert one. An earlier version said "draft PR" here
+  # and was wrong on a non-draft PR (bureau #35, 2026-09-13).
+  printf '<!-- This is an auto-generated comment: skip review by coderabbit.ai -->\nThis repository does not receive automatic reviews because it has fewer than 10 stars.\n' > "$TMPF/stars.txt"
+  out=$(run "$TMPF/stars.txt" 0); rc=$?
+  [ $rc -eq 1 ] || { echo "FAIL: B2 (star threshold) must fail, rc=$rc"; rm -rf "$TMPF"; exit 1; }
+  printf '%s' "$out" | grep -q 'fewer than 10 stars' \
+    || { echo "FAIL: B2 must quote the real reason, got: $out"; rm -rf "$TMPF"; exit 1; }
+  printf '%s' "$out" | grep -q 'draft' \
+    && { echo "FAIL: B2 must NOT claim draft; marker is overloaded: $out"; rm -rf "$TMPF"; exit 1; }
 
   # C — rate limit / exhausted credits. Also comments, also did not review.
   printf '<!-- This is an auto-generated comment: rate limited by coderabbit.ai -->\nReview limit reached\n' > "$TMPF/rl.txt"
