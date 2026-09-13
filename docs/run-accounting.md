@@ -100,6 +100,18 @@ with the same `attempt_id`. `no-handoff` and `terminated` exist so a spawn that 
 no usable handoff does not vanish from accounting; those spawns still cost tokens and must
 be recorded, not dropped.
 
+**A terminal with no `started` is discarded, and the gate now catches it.** The pairing is
+directional: `account-run.sh` indexes by started event, so a terminal whose `attempt_id` never
+had a `status:started` is dropped from `specialist_spawns[]` entirely ("orphan terminal for
+<id> — no started event, skipped"). The attempt's duration, its tokens, and its `rework` flag —
+which lives on the started line only — all vanish with it, which is how a run with real rework
+reports `rework_ratio: 0.0`. Re-dispatching a fix pass under a NEW `attempt_id` therefore needs
+its own `status:started` line before the dispatch, not just a completion afterwards.
+`scripts/preflight-artifacts.sh <RUN_DIR> --phase final` fails with a `spawn-pairing` defect per
+orphan terminal (eval ledger 2026-09-12: rheo-stream 0b1 lost 4 of 22 specialist attempts, every
+one of its build fix-passes). Conductor legs are exempt — the Conductor is never a specialist
+spawn and its legs legitimately end without a terminal.
+
 If a spawn logs `status:started` but no terminal event ever follows — the run died or was
 interrupted before that specialist returned — the script keeps the attempt in
 `specialist_spawns[]` with `reported_status: started`. It is **not** dropped. That is
