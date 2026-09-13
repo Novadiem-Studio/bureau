@@ -81,6 +81,7 @@ fi
 SPEC="$RUN_DIR/spec.md"
 PLAN="$RUN_DIR/plan.md"
 PROMPTS="$RUN_DIR/prompts.md"
+LOG="$RUN_DIR/log.md"
 
 # Temp work area — never inside RUN_DIR (read-only guarantee)
 WORK="$(mktemp -d)"
@@ -701,7 +702,70 @@ if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
   check_seam_declarations "$PROMPTS"
 fi
 
-# ── Output ────────────────────────────────────────────────────────────────────
+# ── Check: spawn-pairing ──────────────────────────────────────────────────────
+#
+# Every terminal SPAWN-EVENT (complete/no-handoff/failed/terminated) must have a
+# matching status:started line carrying the same attempt_id. A terminal with no
+# start is discarded outright by account-run.sh STEP 6.5 ("orphan terminal for
+# <id> — no started event, skipped"), so that attempt's duration, rework flag and
+# token attribution never reach accounting.json#specialist_spawns[].
+#
+# Conductor events are excluded, matching account-run.sh: the Conductor is never a
+# specialist spawn, and its legs legitimately end without a terminal event.
+#
+# Eval ledger 2026-09-12 (eight-run eval): rheo-stream run 0b1 lost 4 of its 22
+# specialist attempts this way — every one of its build fix-passes
+# (systemsmith-c2-2, systemsmith-c3-2, systemsmith-c4-2, mechanic-c5-2) emitted a
+# completion with no start, so the recovered accounting reported 18 spawns.
+check_spawn_pairing() {
+  sp_log="$1"
+  [ -f "$sp_log" ] || return 0
+
+  sp_raw="$WORK/sp_raw.txt"
+  sp_started="$WORK/sp_started.txt"
+  sp_terminal="$WORK/sp_terminal.txt"
+  : > "$sp_started"
+  : > "$sp_terminal"
+
+  grep -n '^SPAWN-EVENT:' "$sp_log" 2>/dev/null > "$sp_raw"
+  [ -s "$sp_raw" ] || return 0
+
+  # Pass 1 — bucket each event by status, skipping conductor legs and any line
+  # whose JSON will not parse (malformed lines are already reported by
+  # account-run.sh's own parse-error notes; this gate does not double-report).
+  while IFS= read -r sp_numbered; do
+    sp_lineno=${sp_numbered%%:*}
+    sp_json=${sp_numbered#*:}
+    sp_json=${sp_json#SPAWN-EVENT:}
+    sp_role=$(printf '%s' "$sp_json" | jq -r '.role // ""' 2>/dev/null) || continue
+    [ "$sp_role" = "conductor" ] && continue
+    sp_aid=$(printf '%s' "$sp_json" | jq -r '.attempt_id // ""' 2>/dev/null)
+    sp_status=$(printf '%s' "$sp_json" | jq -r '.status // ""' 2>/dev/null)
+    [ -n "$sp_aid" ] || continue
+    case "$sp_status" in
+      started)
+        printf '%s\n' "$sp_aid" >> "$sp_started" ;;
+      complete|no-handoff|failed|terminated)
+        printf '%s\t%s\t%s\n' "$sp_lineno" "$sp_aid" "$sp_status" >> "$sp_terminal" ;;
+    esac
+  done < "$sp_raw"
+
+  [ -s "$sp_terminal" ] || return 0
+
+  # Pass 2 — every terminal must find its start. grep -Fxq is the script's
+  # set-membership idiom: attempt_ids may contain BRE metacharacters.
+  while IFS="$(printf '\t')" read -r sp_lineno sp_aid sp_status; do
+    if ! grep -Fxq "$sp_aid" "$sp_started" 2>/dev/null; then
+      add_defect "log.md:$sp_lineno — spawn-pairing — terminal SPAWN-EVENT '$sp_status' for attempt_id '$sp_aid' has no matching status:started; account-run.sh discards it as an orphan terminal, so this attempt's duration, rework flag and tokens never reach specialist_spawns[]"
+    fi
+  done < "$sp_terminal"
+}
+
+if [ "$PHASE" = "final" ]; then
+  check_spawn_pairing "$LOG"
+fi
+
+# ââ Output ────────────────────────────────────────────────────────────────────
 
 if [ -s "$DEFECTS" ]; then
   cat "$DEFECTS"
