@@ -222,6 +222,12 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **Scoot** (shop droid) | `agents/scoot.md` | cheap - **haiku, locked** | The fast one. One-breath read-only fetches: path exists?, grep one pattern, fetch a value, confirm a command. Spawn with `model: haiku`. |
 | **The Notary** | `agents/notary.md` | strong | External cold attestation on a sealed packet; advisory, fresh-context |
 
+**Run-series supervision:**
+
+| Agent | File | Tier | Why |
+|-------|------|------|-----|
+| **The Envoy** | `agents/envoy.md` | strong | Cross-run supervisor; top-level when pointed at a plan with `INDEX.md`; launches each run as a Delegate; spend escalated only on the PR-gate Challenger |
+
 **Delegated checkpoint gating:**
 
 | Agent | File | Tier | Why |

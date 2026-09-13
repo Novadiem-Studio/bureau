@@ -29,7 +29,7 @@ The model is one component. The routing, boundaries, evidence, and paper trail a
 
 ## How a run moves
 
-The default topology has two coordination layers. The Delegate manages routine flow and gates. It keeps one resumable Conductor, which dispatches fresh specialists and adjudicates their findings.
+The default topology has two coordination layers on a single run. The Delegate manages routine flow and gates. It keeps one resumable Conductor, which dispatches fresh specialists and adjudicates their findings. A mapped series of runs adds a layer above that: The Envoy, pointed at a plan (`INDEX.md`), launches each run as its own Delegate and holds one run's watch at a time.
 
 ```mermaid
 flowchart LR
@@ -111,7 +111,8 @@ The names give the system a memorable working language. The responsibilities rem
 
 | Role | Responsibility |
 |---|---|
-| [The Delegate](agents/delegate.md) | Routine flow and checkpoint gating at the top level |
+| [The Envoy](agents/envoy.md) | Cross-run supervisor when pointed at a plan; launches each run as a Delegate |
+| [The Delegate](agents/delegate.md) | Routine flow and checkpoint gating for a single run |
 | [The Conductor](agents/orchestrator.md) | Triage, dispatch, adjudication, state, and close-out |
 | [Analizer 2000](agents/analyst.md) | Requirements, assumptions, edge cases, and acceptance criteria |
 | [The Architect](agents/architect.md) | Architecture, dependency mapping, and phased plans |

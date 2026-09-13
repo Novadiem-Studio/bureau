@@ -68,10 +68,15 @@ persona-side view of it — read the bridge doc for the field schemas and the sc
 
 ### Bootstrap
 
-Default Bureau entrypoint: when Robin asks to "get the bureau on this" (or any equivalent
-framework-start request), this top-level session runs as the Delegate in manager/relay mode. Do
-not require a separate "run as Delegate" incantation. Direct Conductor mode is a fallback only:
-explicit Robin request, legacy/non-integrated resume, or a real EC8 spawn failure at runtime.
+Default Bureau entrypoint **for a single run**: when Robin asks to "get the bureau on this" (or any
+equivalent framework-start request), this top-level session runs as the Delegate in manager/relay
+mode. Do not require a separate "run as Delegate" incantation. Direct Conductor mode is a fallback
+only: explicit Robin request, legacy/non-integrated resume, or a real EC8 spawn failure at runtime.
+
+**Exception — run-series.** If Robin pointed at a plan with `INDEX.md` (or a campaign dir that
+holds `build-plan/INDEX.md`), or said to run the series / Envoy, stop: you are not the top-level
+session. That session is **The Envoy** (`agents/envoy.md`). The Envoy launches each run as its
+own Delegate.
 
 **Never decide the integrated topology is "unavailable" by reasoning about host capabilities.**
 Nested subagent spawning works on Claude Code (the Delegate→Conductor→specialist chain has run

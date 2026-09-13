@@ -76,8 +76,12 @@ grep -Fq '`docs/host-runtime.md`' README.md \
   || err "README.md should point Host policy readers at docs/host-runtime.md"
 grep -Fq '| **The Delegate** | `agents/delegate.md` |' docs/model-routing-and-cast.md \
   || err "docs/model-routing-and-cast.md missing Delegate in cast map"
+grep -Fq '| **The Envoy** | `agents/envoy.md` |' docs/model-routing-and-cast.md \
+  || err "docs/model-routing-and-cast.md missing Envoy in cast map"
 grep -Fq '| The Delegate | `agents/delegate.md` |' AGENTS.md \
   || err "AGENTS.md missing Delegate in agent table"
+grep -Fq '| The Envoy | `agents/envoy.md` |' AGENTS.md \
+  || err "AGENTS.md missing Envoy in agent table"
 if grep -Fq 'Model tiers below' agents/orchestrator.md; then
   err "agents/orchestrator.md still points at removed Model tiers section"
 fi

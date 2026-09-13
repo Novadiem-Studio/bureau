@@ -6,6 +6,13 @@ host). They do not change Claude Code or Codex Bureau runs.
 For ordinary inspection of Bureau artifacts, do not start a run. Read
 `state.json`, `log.md`, and the specialist files, and report in plain language.
 
+## Grok sidebar Bureau host (parallel)
+
+Standing sidebar desks and rooms are a **separate** host from this Task-executor
+path. See `docs/host-grok-sidebar.md`. That host uses CreateAgent / CreateChannel
+for warm roles; Challenger and Notary graded reviews still use blank Task
+executors. Do not mix the two hosts in one run without an explicit Robin call.
+
 ## Native Grok Bot Bureau run
 
 When Robin says "run the Bureau," "get the Bureau on this," "start the agent

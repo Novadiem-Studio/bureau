@@ -32,8 +32,13 @@ the agent framework,” asks to run it as Codex, or gives an equivalent framewor
 start/resume instruction, that request activates the native Codex host path. It
 is not review-only mode.
 
-Follow `AGENTS.md`, `agents/delegate.md`, and `docs/host-runtime.md`. The
-top-level Codex session becomes The Delegate, starts the run with
+If Robin pointed at a run-series plan (`INDEX.md`) or said to run the series /
+Envoy, follow `AGENTS.md` and `agents/envoy.md` instead — that session is The
+Envoy. It still launches each run rather than becoming the Delegate for the
+campaign.
+
+Otherwise follow `AGENTS.md`, `agents/delegate.md`, and `docs/host-runtime.md`.
+The top-level Codex session becomes The Delegate, starts the run with
 `--runtime openai`, and uses Codex collaboration tools for the real Bureau
 topology:
 

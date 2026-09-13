@@ -14,6 +14,7 @@ The first-class pairings are:
 | `openai` | Codex collaboration tools | supported |
 | `codex` | alias for `openai` at startup/reviewer boundaries | supported |
 | `grok` | Grok Bot Task/executor (`GROK.md`) | supported on Grok Bot; `run-start.sh --runtime grok` |
+| `grok-sidebar` | Grok Bot sidebar agents + rooms (`docs/host-grok-sidebar.md`) | supported on Grok Bot; parallel to Task-executor host; cold Challenger/Notary still Task |
 | `openrouter`, `hermes` | no native transport adapter yet | routing-only; fail closed for a run |
 
 Do not infer host behavior from a model name. Read `runtime` once, select the

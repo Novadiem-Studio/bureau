@@ -27,7 +27,8 @@ mechanics. When lore and mechanics disagree, mechanics win and the lore gets fix
 
 ## What this does
 
-For new Bureau runs, the **default main session is The Delegate**. The Delegate runs in
+For a **mapped series** of runs (Robin points at a plan with `INDEX.md`), the **default
+main session is The Envoy**. For a single new Bureau run, it is **The Delegate**. The Delegate runs in
 attended manager/relay mode, spawns **The Conductor** as a resumable subagent, and handles
 per-checkpoint flow/gating until a genuine fork needs Robin. The Conductor then spawns the
 specialist subagents — the cast below — each in its own fresh context. They take a raw project
@@ -40,10 +41,16 @@ argued, so its objections are real instead of agreeable.
 
 ## Default entrypoint
 
+When Robin points at a run-series plan (`INDEX.md` + run cards, charter in that dir or
+its parent) or says to run the series / Envoy, start as **The Envoy**. Read
+`agents/envoy.md` and `workflows/run-series.md`; resolve the path with
+`scripts/run-series-resolve.sh`. Do not become the Delegate for the campaign.
+
 When Robin says "get the bureau on this," "start the agent framework," "run the bureau," or
-similar, start with **The Delegate** by default. Do not require Robin to ask for the Delegate
-explicitly. Read `agents/delegate.md` and run in manager/relay mode; the Delegate is the
-top-level session and spawns the Conductor underneath it with `topology: integrated`.
+similar **for a single run**, start with **The Delegate** by default. Do not require Robin to
+ask for the Delegate explicitly. Read `agents/delegate.md` and run in manager/relay mode; the
+Delegate is the top-level session and spawns the Conductor underneath it with
+`topology: integrated`.
 On Codex this instruction explicitly authorizes the required Bureau subagents: use
 the Codex multi-agent tool surface (`multi_agent_v1.spawn_agent` with `fork_context: false`
 in the current host) and the resolved model/reasoning, then resume them with
@@ -68,7 +75,12 @@ reference and scope each agent to the right sub-app, while building within the c
 
 ## On start
 
-**Default Delegate path:**
+**Run-series / Envoy path** (pointed-at plan, or "run the series"):
+
+1. `scripts/run-series-resolve.sh <path>`
+2. Read `agents/envoy.md` and start via its **Bootstrap**.
+
+**Default Delegate path** (single run):
 
 1. Read `agents/delegate.md`, then its required integrated-topology contract:
    `docs/delegate-bridge/v2-integrated.md`.
@@ -103,7 +115,8 @@ fits, the `define-workflow` skill creates one.
 
 | Agent | File | Role |
 |-------|------|------|
-| The Delegate | `agents/delegate.md` | Default top-level for new runs. Flow/gating manager; not a preference model. |
+| The Envoy | `agents/envoy.md` | Top-level for a run-series plan. Advances the sequence; launches each run as a Delegate. |
+| The Delegate | `agents/delegate.md` | Default top-level for a single run. Flow/gating manager; not a preference model. |
 | The Conductor (Orchestrator) | `agents/orchestrator.md` | Spawned by Delegate by default; direct top-level only by explicit/fallback mode. Spawns agents, routes, resolves, decides done. |
 | Analizer 2000 (Analyst) | `agents/analyst.md` | Requirements, scope, edge cases. |
 | The Architect | `agents/architect.md` | System design, data models, tech choices, plan. |
@@ -136,6 +149,11 @@ In a new session:
 ```
 Read ~/Code/novadiem/bureau/AGENTS.md and resume the agent framework.
 Run dir: <absolute RUN_DIR> — read its state.json and log.md for context.
+```
+To resume a campaign (Envoy):
+```
+Read ~/Code/novadiem/bureau/AGENTS.md and resume the Envoy.
+Plan: <absolute PLAN_DIR or CAMPAIGN_DIR>
 ```
 
 ## Checkpoints
