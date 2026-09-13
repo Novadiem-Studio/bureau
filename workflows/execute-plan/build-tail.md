@@ -330,12 +330,20 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
    If a conflicting `.bureau/` exists, `[CHECKPOINT]` before proceeding (EC 3,
    `docs/conventions/regression-fixtures.md § Regression fixture file format`).
 
-   **Run accounting last.** As the *final* close-out action — after the GitHub/local merge, package install,
-   summary, and the final `state.json`/`log.md` updates above — run `scripts/account-run.sh <RUN_DIR>`
-   so `accounting.json` reflects the run's terminal state (not a mid-close-out snapshot), then set
-   `state.json#accounting.status` and `.path` per `docs/run-accounting.md`
-   (on failure: `status: unavailable`, `path: null`). On an abnormal/interrupted exit,
-   attempt accounting anyway per that convention.
+   **Run accounting last — and never past the point an agent is still here.** Run
+   `scripts/account-run.sh <RUN_DIR>` as the *final* close-out action of **this session**: after
+   package install, the summary, and the final `state.json`/`log.md` updates above, and after the
+   draft PR is opened or the local merge is done. Then set `state.json#accounting.status` and
+   `.path` per `docs/run-accounting.md` (on failure: `status: unavailable`, `path: null`). On an
+   abnormal/interrupted exit, attempt accounting anyway per that convention.
+
+   **Do NOT defer accounting to a human merge on GitHub.** When the PR is merged by a human
+   out of session, that merge is an event no agent observes, so a run that waits for it never
+   accounts at all — the Conductor and Delegate token legs are then permanently unrecoverable.
+   Accounting at draft-PR acceptance is the rule; `accounting.json` records the run's terminal
+   *agent* state, and post-merge commits are out of its scope by design. If a later session does
+   re-enter the run dir after the merge, re-running the script is safe and supersedes the earlier
+   file.
 
    **Close-out gates (Conductor-owned, not Challenger checks).** Before accepting the run, the
    Conductor runs both of these itself — neither is delegated to The Challenger or `critic.md`:

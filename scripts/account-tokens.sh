@@ -352,8 +352,11 @@ def zero_tokens: {input:0,cache_creation:0,cache_read:0,processed:0,output:0};
       }
   )) as $cps
 | ($cps | map(select(.wait_conf == "exact")) | map(.wait_value) | add // 0) as $human_wait
+| ($cps | length == 0) as $cp_none_recorded
 | ($cps | map(.wait_conf == "exact") | all) as $cp_all_resolved
-| (if $cp_all_resolved then "exact" else "partial" end) as $hw_conf
+| (if $cp_none_recorded then "unavailable"
+   elif $cp_all_resolved then "exact"
+   else "partial" end) as $hw_conf
 | ($resolved | length) as $resolved_cp_n
 | (if $delegate_topology == "integrated" and $rev_conf == "unavailable" and $resolved_cp_n > 0
    then "v2-integrated topology with \($resolved_cp_n) resolved checkpoint(s) but zero REVIEWER-TOKEN-EVENT captured — reviewer share is a real gap, not a clean zero"
@@ -373,7 +376,7 @@ def zero_tokens: {input:0,cache_creation:0,cache_read:0,processed:0,output:0};
    then {value:null,confidence:"unavailable",_note:"total critic_loops is 0"}
    else {value:($active_time / 60 / $total_loops),confidence:$active_conf} end) as $minutes_per_loop
 | (if $human_wait == 0
-   then {value:null,confidence:"unavailable",_note:"human_wait_total_s is 0 — no resolved checkpoints"}
+   then {value:null,confidence:"unavailable",_note:(if $cp_none_recorded then "human_wait_total_s is unmeasured — no checkpoint entries recorded" else "human_wait_total_s is 0 — no resolved checkpoints" end)}
    else {value:($active_time / $human_wait),confidence:(if $active_conf == "exact" and $hw_conf == "exact" then "exact" else "partial" end)} end) as $avb
 | (if $posthoc == null then [] else [($posthoc.specialists // [])[] | select(.confidence == "inferred" or .attempt_id == null)] end) as $unattributed
 | (reduce ($pairs[] | select((.attempt_id | startswith("__malformed__")) | not)) as $sp ({};
@@ -405,7 +408,10 @@ def zero_tokens: {input:0,cache_creation:0,cache_read:0,processed:0,output:0};
     },
     checkpoints:{
       entries:($cps | map({id,raised_at,resolved_at,wait_s:({value:.wait_value,confidence:.wait_conf} + (if .wait_note != null then {_note:.wait_note} else {} end)),decision})),
-      human_wait_total_s:({value:$human_wait,confidence:$hw_conf} + (if $hw_conf == "partial" then {_note:"one or more checkpoints were raised but never resolved — excluded from human_wait_total_s"} else {} end)),
+      human_wait_total_s:({value:(if $cp_none_recorded then null else $human_wait end),confidence:$hw_conf}
+        + (if $cp_none_recorded then {_note:"no checkpoint entries recorded — human wait is UNMEASURED, not zero; a run with no recorded checkpoints may still have blocked on a human (see log.md timestamp gaps)"}
+           elif $hw_conf == "partial" then {_note:"one or more checkpoints were raised but never resolved — excluded from human_wait_total_s"}
+           else {} end)),
       active_vs_blocked_ratio:$avb
     },
     spawn_tokens:$spawn_tokens_map
