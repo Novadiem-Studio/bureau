@@ -20,6 +20,28 @@ from a fresh cold reviewer (The Challenger on the escalated tier); merges and an
 the authority the charter grants. Anything outside that grant, or anything the plan gates on
 Robin, parks and pings.
 
+**If this Envoy spawns Delegates as subagents rather than `claude --bg` sessions**, two things
+change and both should be weighed as a recorded trade, not discovered mid-campaign.
+
+**Gained: peer identity, by construction.** A `--bg` run cannot authenticate a relay from a name
+alone — `set_session_title` changes the desktop title but NOT the `ListAgents`/`SendMessage` peer
+name. Run 0b2 correctly **held a merge** over exactly this: it could not verify that "Rheo Stream
+Supervisor" was a real peer. A subagent knows its parent by construction, so that failure mode is
+deleted rather than worked around.
+
+**Lost: `claude attach` as a direct human channel into a running run.** A subagent has no terminal.
+This campaign used `attach` at real decision points — 0b2's merge was confirmed by Robin typing
+into the run's own terminal — so verdicts would instead arrive through the Envoy. Note the two are
+causally linked: 0b2 needed `attach` *because* the relay was unverifiable, so fixing identity
+removes much of the demand for it. Smaller loss than it first appears, but not zero.
+
+**Cost: unchanged, and do not let the depth probe be read otherwise.** The 2026-09-13 probe cost
+~103k tokens for three levels, which calibrates an agent boot at roughly 34k (system prompt, tools,
+instructions). That is NOT an increment for this switch: the Delegate boots either way, as a `--bg`
+session or as a subagent, so the **agent count is identical** and only nesting depth changes (2 to
+3). The real delta is that blocking on a subagent removes the Envoy's polling turns, which is a
+saving, not a cost.
+
 The operating mechanics (how to launch, relay, and see runs) are NOT restated here. They are
 load-bearing and live in `docs/supervisor-spawned-runs.md`: launch with `claude --bg` never
 `-p`; the two inventories (`claude agents --json` for what you launched, `list_sessions` only for
