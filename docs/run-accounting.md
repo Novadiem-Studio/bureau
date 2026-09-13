@@ -135,9 +135,13 @@ exits:
 - (c) an abandoned run
 - (d) a run terminated before the final Challenger pass
 
-**Run accounting LAST.** On a normal close-out, accounting is the final metric-producing
-action — run it after the merge, package install, summary, and terminal `state.json`/`log.md`
-updates, so `accounting.json` reflects the terminal run rather than a mid-close-out snapshot.
+**Run accounting LAST — within this session.** On a normal close-out, accounting is the final
+metric-producing action: run it after the draft PR is opened (or the local merge is done),
+package install, summary, and terminal `state.json`/`log.md` updates, so `accounting.json`
+reflects the terminal run rather than a mid-close-out snapshot. **Never wait on a human merge
+performed on GitHub** — that is an event no agent observes, so a run that defers to it never
+accounts at all and its Conductor and Delegate token legs become unrecoverable. `accounting.json`
+records the run's terminal *agent* state; post-merge commits are out of scope by design.
 After it returns, only record the accounting attempt's status/path and command outcome; do not
 add work that should have entered the aggregation basis. (On an abnormal exit — b, c, d — you
 still attempt it; the partial state it captures is the point.)
