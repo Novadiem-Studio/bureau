@@ -80,7 +80,8 @@ Topology is chosen by **run type** (Robin, 2026-09-09, after the rheo-stream S1/
 For build runs, use direct Conductor mode only when Robin explicitly asks to bypass the Delegate, or when resuming
 a legacy/non-integrated run. On Claude Code, nested subagent spawning **is** supported — the
 Delegate→Conductor→specialist chain runs here (see the many `delegate-state.json` build runs across
-installs) — so do **not** pre-emptively judge the integrated topology "unavailable." Host
+installs), and a further level (Envoy→Delegate→Conductor→specialist) was **measured working
+2026-09-13** — so do **not** pre-emptively judge the integrated topology "unavailable." Host
 unavailability is established **only** by an actual failed Conductor spawn at runtime
 (`agents/delegate.md` EC8): attempt the Delegate first, and fall back only if the spawn literally
 errors. A pre-emptive "topology unavailable" determination with no failed-spawn evidence is a

@@ -3,6 +3,45 @@
 The role that uses this file is **The Envoy** (`agents/envoy.md`): point it at a
 plan, it launches and relays. This doc is the mechanics, not the persona.
 
+> **Scope.** Everything here is the mechanics of launching a run as a separate
+> `claude --bg` **session**. If the Envoy spawns its Delegate as a **subagent**
+> instead (Agent tool, the way the Delegate spawns the Conductor), most of this
+> stops applying to that path: the two inventories, the three `--resume` fork
+> cases, the `--add-dir` variadic trap and prompt-landing verification are all
+> session-launch concerns a subagent does not have. The parts that stay true
+> either way are the gate discipline — runs raise gates by write-and-stop, never
+> `AskUserQuestion` — and the resume-from-disk contract. This file remains
+> authoritative for anything still launched with `--bg`.
+>
+> **Where `--bg` came from — full provenance, 2026-09-13.** The 2026-09-02 Codex
+> report described one command that got a session reading files and two that
+> failed. `--bg` was carried forward from a *failed* one, which is a confusing
+> route to the right answer, so the record is worth stating precisely.
+>
+> Codex's `--bg` attempt failed with `--add-dir /path` in the **space form**, and
+> its own diagnosis was that variadic handling "consumed the prompt, leaving the
+> session idle." That is the trap documented in §1, and the equals form fixes it.
+> So the command prescribed here is not the failed one: it is the failed one with
+> its actual defect corrected, and it has since launched the entire Rheo Stream
+> campaign (S1, 0a, 0b1, 0b2, 0v) successfully. **`--bg` works.**
+>
+> What Codex got *working* was plain `claude "<prompt>"` in an interactive PTY,
+> and its report lists three costs that disqualify it for unattended supervision:
+> a workspace-trust screen that needs an interactive answer; a positional prompt
+> that **did not survive that screen** and had to be typed into the PTY a second
+> time; and a session that **died when the PTY terminated**. Visible, but mortal
+> and hand-held.
+>
+> | mode | Robin can see it | supervisor can relay into it | survives unattended |
+> |---|---|---|---|
+> | Terminal / PTY `claude "…"` | yes, a window | unestablished (0b1 suggests no) | **no — died with the PTY** |
+> | `claude --bg` | no | yes, measured | yes, measured |
+> | subagent (Agent tool) | yes, in the parent transcript | yes, by construction | yes |
+>
+> So neither existing launch mode is good: `--bg` survives but is invisible, PTY
+> is visible but fragile and mortal. That is the real case for the subagent path,
+> and it does not rest on `--bg` having been a mistake.
+
 An agent supervising Bureau runs needs two things from every run it starts: to
 **see** it, and to **get a verdict into it**. Everything below was established
 empirically on 2026-09-10 while supervising the Rheo Stream build, plus the
@@ -10,7 +49,10 @@ empirically on 2026-09-10 while supervising the Rheo Stream build, plus the
 marked as measured or inferred; the measured ones cost several hours to learn.
 
 The short version: **launch with `claude --bg`, never `-p`, never a Terminal
-window, and make runs raise gates by writing state and ending the turn.**
+window, and make runs raise gates by writing state and ending the turn.** The
+provenance note above explains how `--bg` was arrived at by a confusing route;
+the rule itself stands, and "never a Terminal window" is earned — Codex's PTY
+session died with its terminal.
 
 ---
 

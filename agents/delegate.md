@@ -84,6 +84,16 @@ here many times, build runs included). Try the Conductor spawn; only EC8 — an 
 literally errors — authorizes the fallback. A pre-emptive "unavailable" call with no failed-spawn
 evidence is a process violation.
 
+**Depth 3 measured working, 2026-09-13.** A probe from the Rheo Stream Envoy session ran
+session→L1→L2→L3, giving only the deepest agent a nonce to write to its own file. All three trace
+lines landed in order and the nonce file held the exact uuid, so nothing shallower could have
+produced it. That covers Envoy→Delegate→Conductor→specialist. **What it does not cover:** the probe
+proves each spawn returned and control propagated, NOT that a deep agent's prose survives two hops
+intact — L1 cited the trace file rather than relaying L2 verbatim. The Bureau does not depend on
+that anyway: the chain communicates through `RUN_DIR` artifacts, `state.json` and
+`delegate-decisions.md`, never through spoken summaries. Keep it that way and the return-path
+fidelity question stays moot.
+
 To start a new Delegate-run:
 
 1. Read `workflows/index.md`, triage the task to a workflow, resolve the target repo per
@@ -427,6 +437,12 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
   host lacks nested-spawn support, surface the exact diagnostic and stop — do NOT proceed warm:
   "Nested spawning unavailable — v1 file-mailbox fallback required. Run
   scripts/delegate-launcher.sh to start the watcher."
+  **A deeper spawn failing is a different case.** EC8 covers the *Conductor* spawn at bootstrap,
+  where nothing has been built and stopping is cheap. A *specialist* spawn failing one level
+  deeper lands mid-build, with a worktree and partial work already on disk, so it is not an EC8
+  fallback: the Conductor records it as a failed attempt (a `status:"failed"` SPAWN-EVENT, which
+  keeps it in accounting rather than vanishing) and escalates, instead of silently retrying warm.
+  EC8 never authorizes a topology change mid-run.
 
 ### FR-44 charter boundary
 
