@@ -329,6 +329,26 @@ def zero_tokens: {input:0,cache_creation:0,cache_read:0,processed:0,output:0};
 | (if ($critic_loops | type) == "object"
    then ([$critic_loops[]] | map(select(type == "number")) | add // 0)
    else 0 end) as $total_loops
+# Orphan terminals — a terminal SPAWN-EVENT whose attempt_id never had a started
+# event. The rework flag lives on the STARTED line only, so a dropped start takes
+# its rework:true with it. Malformed ids are excluded: they are already reported
+# separately and would otherwise show up as phantom orphans.
+| ($started | map(.attempt_id)) as $started_ids
+| ([ $terminals[] | .attempt_id ]
+   | map(select(startswith("__malformed__") | not))
+   | unique
+   | map(select(. as $a | ($started_ids | index($a)) == null))) as $orphan_terminal_ids
+# Evidence that a rework flag was LOST rather than absent. Only an orphan terminal
+# qualifies: we know that spawn's started line is missing, and we know the rework
+# flag lives on the started line, so its numerator contribution is unknowable.
+#
+# critic_loops is deliberately NOT used as a signal. A Challenger round can be
+# adjudicated "note + proceed" (workflows/execute-plan.md step 2) without ever
+# re-spawning the producer, so a non-zero loop count is entirely consistent with
+# zero rework — the contract fixture 80 pins.
+| ([ (if ($orphan_terminal_ids | length) > 0
+      then "\($orphan_terminal_ids | length) orphan terminal(s) whose started event carried the flag: \($orphan_terminal_ids | join(", "))"
+      else empty end) ]) as $rework_gap_reasons
 
 | ($checkpoints | to_entries | map(
     .key as $ord | .value
@@ -365,8 +385,12 @@ def zero_tokens: {input:0,cache_creation:0,cache_read:0,processed:0,output:0};
 
 | (if $processed_total == 0
    then {value:null,confidence:"unavailable",_note:"processed_total is 0 — rework_ratio undefined"}
-   elif ($rework_ids | length) == 0 then {value:0.0,confidence:$pt_conf}
-   else {value:($rework_processed / $processed_total),confidence:$pt_conf} end) as $rework_ratio
+   elif ($rework_ids | length) > 0
+   then {value:($rework_processed / $processed_total),confidence:$pt_conf}
+   elif ($rework_gap_reasons | length) > 0
+   then {value:null,confidence:"unavailable",
+         _note:("no spawn carries rework:true, but " + ($rework_gap_reasons | join("; ")) + " — rework occurred and its flag is missing; the ratio is undeterminable, NOT zero")}
+   else {value:0.0,confidence:$pt_conf} end) as $rework_ratio
 | (if $posthoc == null
    then {value:null,confidence:"unavailable",_note:"no post-hoc aggregator fragment — tokens_per_loop unavailable"}
    elif $total_loops == 0
