@@ -111,7 +111,17 @@ fi
 
 # Non-review states. The bot DOES comment in both; neither is a review.
 if grep -q 'skip review by coderabbit.ai' "$bodies" 2>/dev/null; then
-  defect "CodeRabbit SKIPPED the review (draft PR). Bureau opens every PR with --draft (pr-delivery.sh open), so this is the default outcome without config: set reviews.auto_review.drafts: true in the target repo's .coderabbit.yaml (templates/coderabbit.yaml)."
+  # The skip marker is OVERLOADED — CodeRabbit emits it for several unrelated
+  # causes (draft PR; repo under the free tier's 10-star threshold; auto-review
+  # disabled). Quote its own stated reason rather than guessing one: an earlier
+  # version of this gate asserted "draft PR" and was wrong on a non-draft PR that
+  # had simply fallen under the star threshold.
+  skip_reason=$(grep -oE 'This repository does not receive automatic reviews[^<]*|Draft PRs are not automatically reviewed[^<]*|Review limit reached[^<]*' "$bodies" 2>/dev/null | head -1 | sed 's/[[:space:]]*$//')
+  if [ -n "$skip_reason" ]; then
+    defect "CodeRabbit SKIPPED the review. Its stated reason: \"$skip_reason\" Nothing was reviewed, so this PR has no CodeRabbit verdict. Re-trigger with an '@coderabbitai review' PR comment, or remove the cause."
+  else
+    defect "CodeRabbit SKIPPED the review and gave no parseable reason — read its comment on the PR. Nothing was reviewed. Common causes: a draft PR (Bureau opens every PR with --draft, so set reviews.auto_review.drafts: true in the target repo's .coderabbit.yaml), or the repo falling under the free tier's automatic-review threshold."
+  fi
 fi
 if grep -q 'rate limited by coderabbit.ai' "$bodies" 2>/dev/null; then
   defect "CodeRabbit was RATE LIMITED and did not review (plan limit or exhausted credits). Re-trigger with an '@coderabbitai review' PR comment once capacity returns; do not merge on the assumption it passed."
