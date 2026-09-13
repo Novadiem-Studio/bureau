@@ -1,5 +1,8 @@
 # Supervisor-spawned Bureau runs — what actually works
 
+The role that uses this file is **The Envoy** (`agents/envoy.md`): point it at a
+plan, it launches and relays. This doc is the mechanics, not the persona.
+
 An agent supervising Bureau runs needs two things from every run it starts: to
 **see** it, and to **get a verdict into it**. Everything below was established
 empirically on 2026-09-10 while supervising the Rheo Stream build, plus the

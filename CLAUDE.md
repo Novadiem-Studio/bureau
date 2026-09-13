@@ -21,7 +21,8 @@ Two rules:
 
 ## What this does
 
-For new **build** runs, the **default main session is The Delegate**; planning/spec runs
+For a **mapped series** of runs (Robin points at a plan with `INDEX.md`), the **default main
+session is The Envoy**. For a single **build** run, it is **The Delegate**; planning/spec runs
 conduct directly (see Default entrypoint). The Delegate runs in
 attended manager/relay mode, spawns **The Conductor** as a resumable subagent, and handles
 per-checkpoint flow/gating until a genuine fork needs Robin. The Conductor then spawns the
@@ -33,12 +34,20 @@ The subagents are real, isolated contexts. That isolation is the point: the Crit
 (The Challenger) reviews the written artifacts cold, having never seen the design get
 argued, so its objections are real instead of agreeable.
 
+## Sequence layer (The Envoy)
+
+When Robin points at a run-series plan (`INDEX.md` + run cards; charter / STATE / HANDOFF
+in that dir or its parent) — or says to run the series / Envoy — this session is **The
+Envoy**, not the Delegate. The Envoy launches each run as its own Delegate session and
+holds **one run's watch** so the session stays small. See Default entrypoint and
+`agents/envoy.md`.
+
 ## Three-role model (Notary / Delegate / Principal)
 
 | Role | One-line job | When it runs | Status |
 |------|-------------|--------------|--------|
 | **The Notary** | External cold attestation on a sealed artifact packet | On-demand, when an artifact is high-stakes and sealed | Live (Bundle 05) |
-| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for build runs; planning/spec runs conduct directly | Live |
+| **The Delegate** | Per-checkpoint automated gating verdict — flow-and-gating, not preference-modeling | Default top-level for a single build run; planning/spec runs conduct directly | Live |
 | **The Principal** | Robin's preference model — models what Robin would choose and acts on his behalf | Explicitly deferred; no placeholder, hook, or in-code comment in this bundle | Deferred (future) |
 
 The Delegate is a flow-and-gating role only (FR 44). It does not model Robin's preferences.
@@ -49,6 +58,12 @@ this table is the canonical guard. The Principal is explicitly not in scope for 
 
 Topology is chosen by **run type** (Robin, 2026-09-09, after the rheo-stream S1/S2 spec runs):
 
+- **Run-series / campaign** — Robin points at a plan directory of this shape (`INDEX.md`
+  plus run cards; charter / STATE / HANDOFF in that dir or its parent), or says to run
+  the series / Envoy. You are **The Envoy**. Read `agents/envoy.md` and
+  `workflows/run-series.md`. Resolve the path with `scripts/run-series-resolve.sh`.
+  Do not become the Delegate for the whole campaign. Each run is a fresh Delegate
+  session the Envoy launches. This session holds one run's watch, then hands off.
 - **Planning/spec/doc runs** — the deliverable is documents, there is a single terminal
   human gate (Robin's review of an open PR), and nothing irreversible executes — run as
   **direct Conductor** at top level: read `agents/orchestrator.md` and conduct, spawning
@@ -85,7 +100,13 @@ reference and scope each agent to the right sub-app, while building within the c
 
 ## On start
 
-**Default Delegate path:**
+**Run-series / Envoy path** (when the task is a pointed-at plan or "run the series"):
+
+1. `scripts/run-series-resolve.sh <path>` — confirm INDEX + campaign files.
+2. Read `agents/envoy.md` and start via its **Bootstrap**. Do not create a campaign-level
+   Bureau `RUN_DIR`; each launched run gets its own via that run's Delegate.
+
+**Default Delegate path** (single build run):
 
 1. Read `agents/delegate.md`, then its required integrated-topology contract:
    `docs/delegate-bridge/v2-integrated.md`.
@@ -134,7 +155,8 @@ Architect → Analizer 2000 (reconciliation) → The Challenger → The Cleric �
 
 | Agent | File | Role |
 |-------|------|------|
-| The Delegate | `agents/delegate.md` | Default top-level for new runs. Flow/gating manager; not a preference model. |
+| The Envoy | `agents/envoy.md` | Top-level for a run-series plan. Advances the sequence; launches each run as a Delegate. |
+| The Delegate | `agents/delegate.md` | Default top-level for a single build run. Flow/gating manager; not a preference model. |
 | The Conductor (Orchestrator) | `agents/orchestrator.md` | Spawned by Delegate by default; direct top-level only by explicit/fallback mode. Spawns agents, routes, resolves, decides done. |
 | Analizer 2000 (Analyst) | `agents/analyst.md` | Requirements, scope, edge cases. |
 | The Architect | `agents/architect.md` | System design, data models, tech choices, plan. |
@@ -180,6 +202,11 @@ In a new session:
 ```
 Read ~/Code/novadiem/bureau/CLAUDE.md and resume the agent framework.
 Run dir: <target-repo>/.bureau/runs/<task>/ — read its state.json and log.md for context.
+```
+To resume a campaign (Envoy), point at the plan, not a single RUN_DIR:
+```
+Read ~/Code/novadiem/bureau/CLAUDE.md and resume the Envoy.
+Plan: <absolute PLAN_DIR or CAMPAIGN_DIR>
 ```
 (For fallback / legacy runs: `output/runs/<task>/` still works — the Conductor uses whichever path is pointed at.)
 

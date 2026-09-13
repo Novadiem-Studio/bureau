@@ -1,17 +1,16 @@
 # Workflow: run-series
 
-**When to use:** you have a mapped-out SERIES of Bureau runs — a run-series INDEX with runs,
-dependencies, and status, plus a campaign charter (an authority table of what the supervisor
-decides vs escalates, and the external-action gates) — and you want it driven to completion
-autonomously: launched once and left to run for as long as the token budget allows, with Robin
-pinged only at real gates. The first instance is the Rheo Stream build
-(`rheo-stream-workspace/private/agent-context/SUPERVISOR.md` + `build-plan/INDEX.md`).
+**When to use:** Robin points at a run-series plan (a directory with `INDEX.md`, or a
+campaign dir that holds `build-plan/INDEX.md`) and wants it driven run to run — launched
+once and left to run as long as the token budget allows, Robin pinged only at real gates.
+Also when he says to run the series / Envoy. The first instance is the Rheo Stream build
+(`rheo-stream-workspace/private/agent-context/build-plan/`).
 
-**When NOT to use:** a single run (just run it, or use `feature` / `execute-plan`). No INDEX and
-no charter yet — author those first (the charter follows the SUPERVISOR.md pattern; the INDEX is
-the run map). Anything that would have the supervisor build or grade on its own authority: it
-launches, verifies, relays, and advances, it does not implement, and every PR verdict comes from
-a fresh cold reviewer.
+**When NOT to use:** a single run (just run it, or use `feature` / `execute-plan`). No INDEX
+yet — author the plan first. No charter — copy `templates/run-series/SUPERVISOR.md` into the
+campaign dir and fill the authority table. Anything that would have the supervisor build or
+grade on its own authority: it launches, verifies, relays, and advances, it does not
+implement, and every PR verdict comes from a fresh cold reviewer.
 
 **Type:** execute
 
@@ -24,10 +23,12 @@ context shared with the prior run), and the Envoy itself is fresh per run where 
 hands off to a new Envoy session at each run boundary, with all state on disk so the cold pickup
 is lossless.
 
-**Inputs:** the run-series INDEX (runs + deps + status); the campaign charter (authority +
-escalation + external-action gates); the ratified spec/plan the runs build against; write access
-to INDEX/HANDOFF and the run cards. The session adopting this workflow becomes **The Envoy**
-(`agents/envoy.md`).
+**Inputs:** a pointed-at plan or campaign path (resolved by `scripts/run-series-resolve.sh`);
+the INDEX; the campaign charter (authority + escalation + external-action gates); write
+access to INDEX / HANDOFF / STATE and the **active** run card. Seed missing charter/state/
+handoff from `templates/run-series/`. The session adopting this workflow becomes **The Envoy**
+(`agents/envoy.md`). Session size: one run's watch — see `agents/envoy.md` § Startup read
+scope. Do not load the rest of the plan.
 
 **Outputs:** merged runs advancing the INDEX toward done; updated INDEX/HANDOFF/run-card logs; a
 per-launch report carrying the run's `claude.ai/code` link; `notify_robin` pings only at charter
@@ -39,11 +40,12 @@ snapshot).
 
 ## Steps
 
-1. **The Envoy** (**strong**) — adopt: set the session title, read the charter, the INDEX,
-   `docs/supervisor-spawned-runs.md`, and HANDOFF; record adoption in HANDOFF with this session's
-   title so runs and Robin know who supervises → HANDOFF adoption entry.
+1. **The Envoy** (**strong**) — adopt: run `scripts/run-series-resolve.sh` on the pointed-at
+   path, set the session title, then read **only** the startup scope in `agents/envoy.md`
+   (charter, INDEX, STATE current block, last HANDOFF section, mechanics, the one active/next
+   run card). Record adoption in HANDOFF with this session's title → HANDOFF adoption entry.
 2. **The Envoy** — monitor cycle, self-scheduled (default 30m via `/loop`, quiet no-op ticks):
-   locate the active run and read its RUN_DIR (`state.json`, `log.md`, SPAWN-EVENT lines) and PR
+   tick every RUN_DIR in the watch set (`state.json`, `log.md`, SPAWN-EVENT lines) and PR
    state. The run DIRECTORY is authoritative, never the session's `isRunning`. Nothing changed,
    quiet tick. Cadence is not guaranteed; re-verify fully after a long gap.
 3. **The Challenger** (second-pass, **escalated**) — at a run's terminal PR gate, AFTER the Envoy
@@ -55,12 +57,19 @@ snapshot).
    revise notes to the run with `claude --bg --resume <full-uuid>` (mechanics doc); the run
    merges through its own delivery flow. A verdict or question outside the grant, or one the plan
    gates on Robin, parks and pings per the escalation table.
-5. **The Envoy** — advance: when a run merges and the next run's dependencies are satisfied in the
-   INDEX, launch it in a fresh session with `claude --bg --permission-mode auto --add-dir=`
-   (mechanics doc) — a fresh session is a fresh Delegate/Conductor for every run, no context
-   shared with the prior one — confirm it actually read its prompt, hand Robin its
-   `claude.ai/code` link → updated INDEX/HANDOFF + the next run launched. One run at a time unless
-   the INDEX marks parallelism.
+5. **The Envoy** — advance: when a run merges and the next **product** run's dependencies
+   are satisfied in INDEX, launch it in a fresh session with `claude --bg --permission-mode
+   auto --add-dir=` (mechanics doc) — a fresh session is a fresh Delegate/Conductor for
+   every run, no context shared with the prior one — confirm it actually read its prompt,
+   hand Robin its `claude.ai/code` link → updated INDEX/HANDOFF + the next run launched.
+   One product run at a time unless INDEX marks **product** parallelism (on rheo-stream:
+   5a ∥ 5b). The eval / A/B table stays on the books and does **not** launch from this
+   step — not prep (E0a/E0b), not freeze (E0c), not scored trials — until Robin says
+   tokens can be spared. That work may run later from a pinned SHA or
+   `eval/<gate>-base` marker branch, same task, isolated checkout — the product
+   Bureau run is already the story. On product close-out, mark `eval_base` when
+   a later contest would have started from that SHA; do not launch the contest.
+   See `agents/envoy.md` § Evaluation / A/B track.
 6. **The Envoy** — token governance: read WEEKLY and SESSION (5h) usage
    (`~/.novadiem/usage-snapshot.json`; fallback `codexbar usage` / the `claude-usage-local-api`
    skill) both before launching each run AND on monitoring ticks (so a mid-run crossing is
@@ -75,16 +84,16 @@ snapshot).
 
    About two days of full-speed running exhausts the weekly quota; that is the expected ceiling,
    not a failure.
-7. **The Envoy** — hand off PER RUN (default): each Envoy session drives ONE run (adopt, launch,
-   monitor, verify, relay), and at that run's clean completion it spawns a FRESH Envoy session
-   (`claude --bg`, re-adopting this workflow + the charter) to take the next run, writes HANDOFF,
-   and exits → HANDOFF + a fresh Envoy leg. So the Envoy holds only one run's context, and each
-   run also gets a fresh Conductor. Confirm the fresh Envoy actually adopted (its `claude.ai/code`
-   link, loop started) BEFORE exiting, and never leave zero or two Envoys live — Envoy-level
-   mutual exclusion, same fork hazard as runs (mechanics doc § 3). Fallback (the "where possible"):
-   if a fresh Envoy cannot be spawned, continue to the next run in THIS session rather than drop
-   the chain, and note the degraded mode. The token bands in step 6 gate the handoff: at >=80%
-   weekly, do not spawn the next Envoy/run — park and wait.
+7. **The Envoy** — hand off PER PRODUCT RUN (default): each Envoy session drives one
+   product run. At that product
+   run's clean completion it spawns a FRESH Envoy session (`claude --bg`, re-adopting this
+   workflow + the charter) to take the next watch set, writes HANDOFF, and exits → HANDOFF +
+   a fresh Envoy leg. Confirm the fresh Envoy actually adopted (its `claude.ai/code` link,
+   loop started) BEFORE exiting, and never leave zero or two Envoys live — Envoy-level
+   mutual exclusion, same fork hazard as runs (mechanics doc § 3). Fallback (the "where
+   possible"): if a fresh Envoy cannot be spawned, continue in THIS session rather than
+   drop the chain, and note the degraded mode. The token bands in step 6 gate the handoff:
+   at >=80% weekly, do not spawn the next Envoy/run — park and wait.
 
 **Gate** — every run this workflow launches MUST raise its gates by write-and-stop (`state.json`
 checkpoints + `open_questions` + `notify_robin` + end the turn), NEVER `AskUserQuestion`; the run

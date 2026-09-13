@@ -805,6 +805,7 @@ above are the lore-level routing signals behind it:
 | Two build halves must compound (UI ↔ API, cross-coder seam) | The Coupler |
 | External cold attestation on a sealed artifact packet (advisory) | The Notary |
 | A gate, a product call, a change of course | The Visionary |
+| A mapped series of Bureau runs, pointed at a plan | The Envoy |
 
 ## The mission
 
