@@ -160,7 +160,8 @@ data = {
     "under_declaration": [],
     "scope": {
         "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "scope_diff_clean": None
+        "cut_symbol_hits": [], "cut_symbol_context_hits": [], "cut_symbol_detail": {},
+    "scope_diff_clean": None
     },
     "fast_forward_ok": False,
     "conflicts_clean": False,
@@ -394,7 +395,8 @@ import json, subprocess, sys
 # "indeterminate" scope object (scope_diff_clean: null), never nothing.
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_context_hits": [], "cut_symbol_detail": {},
+    "scope_diff_clean": None
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -426,18 +428,68 @@ try:
             if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
                 violations.append(f)
 
-    # grep the full diff for each cut symbol
+    # Scan the diff for each cut symbol, ATTRIBUTED BY FILE and by line kind.
+    #
+    # Two properties this must have, both learned the hard way (issue #43):
+    #
+    #   1. A bare "symbol X appears somewhere" verdict cannot distinguish a token
+    #      CONFINED to a file entitled to name it from one that has LEAKED into
+    #      implementation. That distinction is the whole assertion a benchmark
+    #      boundary needs, so the hit carries its file.
+    #   2. Only ADDED lines decide the verdict. A removed line is the opposite of
+    #      a crossing, a context line was already in the base, and an @@ header
+    #      carries the enclosing declaration from the base. Scanning raw diff text
+    #      fires on all three and produces false positives that are guaranteed by
+    #      the criteria rather than caused by the work — which forces exemptions,
+    #      and exemptions are where a real crossing hides.
     r2 = subprocess.run(
         ["git", "diff", "%s...HEAD" % base_ref],
         cwd=worktree, capture_output=True, text=True
     )
-    full_diff = r2.stdout
-    cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
+
+    # symbol -> path -> {"added": n, "removed": n, "context": n}
+    detail = {}
+    current = None
+    for line in r2.stdout.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            # "+++ b/path", or /dev/null for a deletion
+            current = None if path == "/dev/null" else path[2:] if path.startswith("b/") else path
+            continue
+        if line.startswith("--- ") or line.startswith("diff --git "):
+            continue
+        if line.startswith("@@"):
+            kind = "context"          # the trailing text is base content
+        elif line.startswith("+"):
+            kind, line = "added", line[1:]
+        elif line.startswith("-"):
+            kind, line = "removed", line[1:]
+        else:
+            kind = "context"
+        for sym in cut_symbols:
+            if sym in line:
+                where = detail.setdefault(sym, {}).setdefault(current or "(unknown)",
+                                                              {"added": 0, "removed": 0, "context": 0})
+                where[kind] += 1
+
+    # Backward-compatible: a flat list of symbols, but only those genuinely
+    # introduced by this diff. Existing consumers keep working.
+    cut_symbol_hits = sorted(
+        sym for sym, files in detail.items()
+        if any(c["added"] for c in files.values())
+    )
+    # Reported, never fatal — a reviewer can see these without the gate failing.
+    cut_symbol_context_hits = sorted(
+        sym for sym, files in detail.items()
+        if sym not in cut_symbol_hits
+    )
 
     scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
     print(json.dumps({
         "diff_files": diff_files, "allowed_paths": allowed_paths,
         "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+        "cut_symbol_context_hits": cut_symbol_context_hits,
+        "cut_symbol_detail": detail,
         "scope_diff_clean": scope_diff_clean
     }))
 except Exception:
@@ -597,7 +649,8 @@ import json, sys
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_context_hits": [], "cut_symbol_detail": {},
+    "scope_diff_clean": None
 }
 
 
