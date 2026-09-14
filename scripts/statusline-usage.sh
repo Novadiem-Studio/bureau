@@ -5,7 +5,10 @@
 # Max/Pro it includes `rate_limits` (5-hour + 7-day windows). We do two things:
 #   1. Write ~/.novadiem/usage-snapshot.json (the shape the bureau already reads)
 #      so the Conductor can route models by real subscription usage.
-#   2. Print a compact status line so the numbers are visible.
+#   2. Print a compact status line so the numbers are visible, led by a badge
+#      showing WHICH ACCOUNT this session is spending (see statusline-account.sh
+#      — the payload does not carry it, and on a multi-account machine the
+#      numbers below are meaningless without knowing whose they are).
 #
 # This REPLACES the retired codexbar poller. No keychain, no third-party app:
 # Claude Code itself (the token owner) hands us the numbers, so it never prompts.
@@ -21,6 +24,18 @@ input="$(cat)"
 if ! command -v jq >/dev/null 2>&1; then
   printf '%s' "[usage: jq missing]"
   exit 0
+fi
+
+# Account identity. Sourced, not forked, so the badge costs no extra process.
+# Failure is silent by contract: the status line renders exactly as before.
+_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+account=""
+if [ -r "$_here/statusline-account.sh" ]; then
+  # shellcheck source=scripts/statusline-account.sh
+  . "$_here/statusline-account.sh" || true
+  if declare -F statusline_account >/dev/null 2>&1; then
+    account="$(statusline_account "$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)")" || account=""
+  fi
 fi
 
 model="$(printf '%s' "$input"      | jq -r '.model.display_name // .model.id // "?"')"
@@ -46,6 +61,17 @@ if [ -n "$five_used" ] || [ -n "$week_used" ]; then
   week_used_r="$(printf '%.0f' "${week_used:-0}" 2>/dev/null || echo 0)"
   sess_left=$(( 100 - sess_used ))
   week_left=$(( 100 - week_used_r ))
+  # jq-encode rather than hand-quote: `${account:+...}${account:-null}` looked
+  # like an inline ternary but is not one — when account is SET, `:-` yields the
+  # value, so both halves expand and the field lands as `"x"x`, invalid JSON.
+  # This file feeds the bureau's model routing, so a malformed write is a real
+  # regression, not a cosmetic one.
+  if [ -n "$account" ]; then
+    account_json="$(printf '%s' "$account" | jq -R . 2>/dev/null)" || account_json=null
+    [ -n "$account_json" ] || account_json=null
+  else
+    account_json=null
+  fi
   sess_resets_in="$(resets_in "${five_reset:-}")"
   week_resets_in="$(resets_in "${week_reset:-}")"
 
@@ -54,6 +80,7 @@ if [ -n "$five_used" ] || [ -n "$week_used" ]; then
 {
   "polledAt": "$iso",
   "source": "claude-code-statusline",
+  "account": $account_json,
   "ok": true,
   "providersRequested": "claude",
   "providers": [],
@@ -84,7 +111,12 @@ JSON
   mv -f "$tmp" "$SNAPSHOT" 2>/dev/null
 fi
 
-# Compact, visible status line
+# Compact, visible status line — account badge first, because on a
+# multi-account machine the percentages below mean nothing without it.
+if declare -F statusline_account_badge >/dev/null 2>&1; then
+  badge="$(statusline_account_badge "$account")" || badge=""
+  [ -n "$badge" ] && printf '%s  ·  ' "$badge"
+fi
 printf '%s' "$model"
 [ -n "$five_used" ] && printf '  ·  5h %s%%' "$(printf '%.0f' "$five_used" 2>/dev/null)"
 [ -n "$week_used" ] && printf '  ·  wk %s%%' "$(printf '%.0f' "$week_used" 2>/dev/null)"
