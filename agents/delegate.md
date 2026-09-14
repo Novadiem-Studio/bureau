@@ -434,9 +434,40 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
   manager emit a verdict from its own reasoning — every gating verdict comes from a cold reviewer
   spawn.
 - **Nested spawning unavailable (EC8 / AC12):** if the first Conductor spawn fails because the
-  host lacks nested-spawn support, surface the exact diagnostic and stop — do NOT proceed warm:
-  "Nested spawning unavailable — v1 file-mailbox fallback required. Run
-  scripts/delegate-launcher.sh to start the watcher."
+  host lacks nested-spawn support, surface the exact spawn diagnostic and do NOT proceed warm.
+  Recovery is a **ladder, tried in order** — each rung removes one level of nesting, so try the
+  shallowest change that could work before the largest one. This is the single authoritative
+  EC8 procedure; `CLAUDE.md` references it rather than restating it.
+
+  1. **Direct Conductor** (`agents/orchestrator.md`). Delegate→Conductor→specialist is two levels
+     of nesting; direct Conductor→specialist is one. If the host refused the deeper chain it may
+     still allow the shallower one, and this path is exercised continuously by planning runs.
+     **What it costs, and what it must NOT cost:** the Delegate's per-checkpoint relay goes away,
+     so the Conductor MUST run the cold reviewer itself at each checkpoint it would otherwise
+     have returned on. **Cold review stays mandatory — there is no substitute, Robin included.**
+     It is correctness machinery, not a Robin-facing gate, and a build run must never proceed on
+     a Conductor's self-assessment.
+
+     This costs nothing extra, because the cold reviewer does not depend on the thing that
+     failed: `scripts/run-cold-reviewer.sh` invokes `claude -p` as a **subprocess**, not a
+     subagent spawn, so a nested-spawn failure cannot block it. The review content is likewise
+     topology-independent (`docs/delegate-bridge/v2-integrated.md`: "only the topology and the
+     invocation mechanism change"). If `claude -p` itself is unavailable then nothing can review
+     anything — halt and escalate; do not downgrade the gate.
+  2. **v1 file-mailbox watcher**, only if the direct-Conductor attempt ALSO fails **at its first
+     specialist spawn, at bootstrap, for the same unsupported-nesting reason** — i.e. the host
+     supports no nested spawning at any depth and nothing has been built yet. **This rung is not
+     available mid-build.** A specialist spawn that fails *after* work has started is the
+     separate case below: a recorded `status:"failed"` attempt plus escalation, never a topology
+     change with a worktree and partial state already on disk. This makes the Conductor top-level and relays
+     the Delegate through a watcher process, so it needs zero subagent nesting:
+     "Nested spawning unavailable at any depth — v1 file-mailbox fallback required. Run
+     scripts/delegate-launcher.sh to start the watcher." See `docs/delegate-bridge/watcher-v1.md`.
+     Treat this as legacy: it has never fired in a real run, and nothing in the regression suite
+     exercises it, so expect to debug it.
+
+  Log which rung you took and the diagnostic that forced it. Depth-3 nesting was measured working
+  2026-09-13, so an EC8 on this host is a genuine anomaly worth recording, not a routine fallback.
   **A deeper spawn failing is a different case.** EC8 covers the *Conductor* spawn at bootstrap,
   where nothing has been built and stopping is cheap. A *specialist* spawn failing one level
   deeper lands mid-build, with a worktree and partial work already on disk, so it is not an EC8
