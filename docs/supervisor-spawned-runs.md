@@ -113,17 +113,50 @@ hurry and skipping a flag. Do not send the command until all five hold:
 
 ## 2. Visibility: two separate inventories
 
-| launched as | `list_sessions` / `send_message` | `claude agents` | human can watch |
+| launched as | in the app / `list_sessions` | `claude agents` | human can watch |
 |---|---|---|---|
 | desktop app | **yes** | no | yes (app) |
-| `claude --bg` | no | **yes, short id** | claude.ai link |
-| Terminal `claude "…"` | no | yes (`kind: interactive`) | the window |
-| headless `claude -p` | no | yes (`kind: interactive`) | claude.ai link |
+| `claude --bg` | **no** | yes, short id | claude.ai link |
+| Terminal / PTY `claude "…"` | **YES — adopted** | yes (`kind: interactive`) | the window AND the app |
+| headless `claude -p` | not established | yes (`kind: interactive`) | claude.ai link |
 
-**Session-management MCP tools only see desktop-app sessions.** A CLI session
-of any kind is invisible to them — `send_message` fails on both the
-`local_<uuid>` and bare `<uuid>` forms with "session not found". `--name` makes
-no difference. Measured on all three CLI launch modes.
+**CORRECTED 2026-09-13.** This table previously said no CLI launch mode reaches
+the app. That is wrong, and it is the assumption that put the Envoy on `--bg`
+and made its runs invisible to Robin.
+
+**App sessions are wrappers around CLI sessions.** Each app record at
+`~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`
+carries a `cliSessionId` pointing at an ordinary transcript under
+`~/.claude/projects/`. **107 of 111 app records** on this machine reference a CLI
+transcript — i.e. nearly every session in the sidebar is a wrapped CLI session.
+Note the direction: that is a property of app records, **not** an adoption rate.
+It does not say what fraction of CLI launches get adopted, which nobody has
+measured.
+
+Measured on the 2026-09-02 Codex handoff, whose three sessions split cleanly:
+
+| session | launch | app record |
+|---|---|---|
+| `be22c754` | `--bg` | none |
+| `b475d6a5` | `--resume … --bg` | none |
+| `f4fa384a` | **PTY** | `local_9346adbe` ✓ |
+
+So a PTY-launched `claude` is adopted and appears in the sidebar; `--bg` is not.
+`--resume <id> --bg` does **not** promote an existing background session either —
+it forks a copy, which is what `b475d6a5` was, and that copy blocked.
+
+**What is NOT established:** whether `claude attach <id>` promotes a running
+`--bg` session into an adopted one. The mechanism is plausible (`attach` opens a
+background session in a terminal, and terminal-attached sessions are the ones
+that get adopted) and it would give both durability and visibility, but nobody
+has run it. Test before relying on it.
+
+**`--name` does not control the app title, and is not stored in the app record.**
+Codex passed `--name '🏛️ Bureau Phase 1'`; the stored title is "Bureau Phase 1
+checkpoint resume" with `titleSource: "auto"`, and the record's 29 fields contain
+no name, alias or label field holding the flag's value. Zero of 111 app records
+carry an emoji title. So the emoji-prefix convention below is useful only in
+`claude agents` output — do not expect it in the sidebar.
 
 So a supervisor keeps **two** inventories: the session-management tool for the
 human's own app sessions, and `claude agents --json` for everything it launched
