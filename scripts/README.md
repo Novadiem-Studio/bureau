@@ -47,6 +47,47 @@ Override with `NOVADIEM_USAGE_SNAPSHOT_PATH`. The Conductor read rules are in
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `NOVADIEM_USAGE_SNAPSHOT_PATH` | `~/.novadiem/usage-snapshot.json` | Where to write the snapshot |
+| `NOVADIEM_ACCOUNT_BADGES` | `~/.novadiem/account-badges.json` | Per-account emoji/colour map (see below) |
+| `NOVADIEM_SESSION_ACCOUNTS_DIR` | `~/.novadiem/session-accounts` | Per-session account cache |
+| `NOVADIEM_SESSION_ACCOUNTS_TTL_DAYS` | `14` | Age at which cache entries are swept |
+
+## Which account is this session spending?
+
+On a machine with several Claude accounts, the percentages above are unreadable without
+knowing whose they are. `scripts/statusline-account.sh` resolves that and the status line
+leads with a badge: `🟢 rheo · Opus 5 · 5h 88% · wk 67%`.
+
+Claude Code's statusLine payload carries **no account field** (checked against the payload
+constructor in the 2.1.257 bundle), so the account is resolved from the config profile:
+
+- **`CLAUDE_CONFIG_DIR` set** — the session runs in an isolated per-account profile. That
+  directory is the binding and cannot change under a running session, so it is read live.
+  The search stays confined to it: on a miss the badge is omitted rather than falling back
+  to `$HOME` and naming the wrong account.
+- **Unset** — the shared profile. Resolved **once per `session_id` and cached**, because
+  switching accounts rewrites `~/.claude.json` while already-running sessions keep the
+  credentials they started on. A live read would relabel every older session to the new
+  account and point at the wrong quota bar.
+
+The badge map is a **local** file, never checked in here — this repo is public and account
+addresses are not ours to publish. Accounts with no entry get a stable hash-derived
+emoji and colour, so they still read consistently.
+
+```json
+{
+  "accounts": {
+    "someone@example.com": { "emoji": "🔵", "label": "work", "color": 39 }
+  }
+}
+```
+
+`color` is a 256-colour code; `label` defaults to the address's local part. Both optional.
+
+The resolved account is also stamped into the snapshot as `account`, since every session
+writes that one file and a consumer otherwise cannot tell whose usage it describes.
+
+Everything fails safe: no `jq`, no config, no helper script, unresolvable account — the
+status line renders exactly as it did before.
 
 ## Snapshot schema
 
@@ -58,6 +99,7 @@ source and are always `null`; `sonnetBurnMode` is always `false`.
 {
   "polledAt": "2026-06-12T05:31:23Z",
   "source": "claude-code-statusline",
+  "account": "someone@example.com",
   "ok": true,
   "providersRequested": "claude",
   "providers": [],
