@@ -88,6 +88,10 @@ errors. A pre-emptive "topology unavailable" determination with no failed-spawn 
 process violation. If you do fall back (Robin's bypass, a legacy resume, or a real EC8 spawn
 failure), say why in one line, log the fallback in `RUN_DIR/log.md` when a run dir exists (with the
 exact spawn-failure diagnostic on EC8), then follow `agents/orchestrator.md` as the Conductor.
+On a real EC8 spawn failure the authoritative recovery is the ladder in `agents/delegate.md` § EC8
+(direct Conductor first; the v1 file-mailbox watcher only if nothing can spawn at all) — including
+its requirement that a build run falling back to direct Conductor still gets a cold reviewer at
+every checkpoint. Do not improvise a different recovery here.
 
 The Conductor remains the **dispatcher** inside the run: each task is triaged against the
 workflow registry (`workflows/index.md`) and routed to the right-sized workflow, not always
