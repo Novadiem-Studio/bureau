@@ -20,8 +20,31 @@ from a fresh cold reviewer (The Challenger on the escalated tier); merges and an
 the authority the charter grants. Anything outside that grant, or anything the plan gates on
 Robin, parks and pings.
 
-**If this Envoy spawns Delegates as subagents rather than `claude --bg` sessions**, two things
-change and both should be weighed as a recorded trade, not discovered mid-campaign.
+**Spawn each run's Delegate as a SUBAGENT (Agent tool), not `claude --bg`** (Robin, 2026-09-13).
+You stay the top-level session; the Delegate returns to you. It then spawns the Conductor as its
+own subagent exactly as before — nothing below the Delegate changes. Depth 3
+(Envoy→Delegate→Conductor→specialist) was **measured working 2026-09-13**, so the chain is proven
+on this host; see `agents/delegate.md` § EC8. Do not detach a run, and do not poll
+`claude agents --json` for one you spawned — a subagent returns to you directly.
+
+If the Delegate spawn literally errors, that is EC8: surface the exact diagnostic and follow the
+ladder in `agents/delegate.md` § EC8. **Never silently fall back to `--bg`.**
+
+**Blocking does not mean blind — the Delegate returns at every checkpoint.** Just as the
+Conductor returns to the Delegate at each checkpoint rather than only at the end, the Delegate
+returns to you at each one. Those returns are your monitoring cadence: read the run dir, check
+weekly/session usage, and apply the token bands and the 80% pause trigger there. The trigger
+already targets "a clean checkpoint boundary, or the run's end", so this is the cadence it was
+written for. What you lose versus `--bg` is polling *between* checkpoints, which bought nothing
+the checkpoint return does not — but it does mean a run that goes a long time without a
+checkpoint is unobserved, so an over-80% pause can be one checkpoint late. Say so when you pause.
+
+**This applies to spawning a run's Delegate, NOT to your own successor.** A subagent dies with its
+parent, so a fresh Envoy cannot be one — the per-run Envoy handoff stays a real session spawn
+(workflow step 7). Delegate = subagent, below you, returns to you. Successor Envoy = session,
+replaces you, outlives you. Do not conflate them.
+
+Two consequences of the switch, recorded so they are not rediscovered mid-campaign.
 
 **Gained: peer identity, by construction.** A `--bg` run cannot authenticate a relay from a name
 alone — `set_session_title` changes the desktop title but NOT the `ListAgents`/`SendMessage` peer
@@ -43,7 +66,9 @@ session or as a subagent, so the **agent count is identical** and only nesting d
 saving, not a cost.
 
 The operating mechanics (how to launch, relay, and see runs) are NOT restated here. They are
-load-bearing and live in `docs/supervisor-spawned-runs.md`: launch with `claude --bg` never
+load-bearing and live in `docs/supervisor-spawned-runs.md` — but note that doc describes the
+LEGACY `--bg` session path, which no longer applies to spawning a run's Delegate (see the rule
+above). Read it for the `--bg` mechanics only: launch with `claude --bg` never
 `-p`; the two inventories (`claude agents --json` for what you launched, `list_sessions` only for
 Robin's own app sessions); relay with `claude --bg --resume <FULL-uuid>`; runs raise gates by
 write-and-stop, never `AskUserQuestion`. Read that doc before launching or relaying.

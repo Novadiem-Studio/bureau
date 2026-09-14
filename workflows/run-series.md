@@ -18,7 +18,7 @@ implement, and every PR verdict comes from a fresh cold reviewer.
 verifying each close-out and relaying verdicts, keeping Robin out of routine advancement and
 stopping cleanly at the token budget.
 
-**Invariant:** every run gets a fresh Delegate/Conductor (one run per `claude --bg` session, no
+**Invariant:** every run gets a fresh Delegate/Conductor (the Envoy spawns each run's Delegate as a **subagent** via the Agent tool — NOT `claude --bg`; see `agents/envoy.md`), no
 context shared with the prior run), and the Envoy itself is fresh per run where possible — it
 hands off to a new Envoy session at each run boundary, with all state on disk so the cold pickup
 is lossless.
@@ -58,7 +58,13 @@ snapshot).
    merges through its own delivery flow. A verdict or question outside the grant, or one the plan
    gates on Robin, parks and pings per the escalation table.
 5. **The Envoy** — advance: when a run merges and the next **product** run's dependencies
-   are satisfied in INDEX, launch it in a fresh session with `claude --bg --permission-mode
+   are satisfied in INDEX, spawn its Delegate as a **subagent** (Agent tool) from this Envoy
+   session — not a detached `--bg` session. **The Envoy that spawns a Delegate is the one that
+   waits for it**: you spawn it, take its checkpoint returns, and see it to completion before
+   step 7's handoff. Never spawn a Delegate and then hand off — a subagent dies with its parent,
+   so the successor Envoy spawns the NEXT run's Delegate, not this one.
+   Legacy `--bg` form, for reference only:
+   `claude --bg --permission-mode
    auto --add-dir=` (mechanics doc) — a fresh session is a fresh Delegate/Conductor for
    every run, no context shared with the prior one — confirm it actually read its prompt,
    hand Robin its `claude.ai/code` link → updated INDEX/HANDOFF + the next run launched.
