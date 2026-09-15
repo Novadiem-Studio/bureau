@@ -18,6 +18,12 @@ on:
   push:
     branches: [main]
 
+# Nothing here writes anything back: checkout, install, run checks. The repo
+# default is already read-only, but declaring it means an org- or repo-level
+# default changing later cannot silently widen this workflow's token.
+permissions:
+  contents: read
+
 concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
