@@ -682,7 +682,14 @@ fi
 # parsing (ugrep-immune — EC 10). The statusLine block above uses bare grep only for an
 # advisory warn; this gate hard-fails so it must NOT use bare grep.
 if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
-  err "$CLAUDE_SETTINGS not found — retired SubagentStop and Stop hook absence cannot be verified"
+  # No settings file means no Claude install on this host (CI runners, a fresh
+  # box), which is not the defect this gate exists to catch. The gate hard-fails
+  # on a retired hook that is still WIRED; nothing is wired if there is nothing
+  # to wire it in. Erroring here also conflated "cannot verify" with "found a
+  # problem" and made the whole script unrunnable in CI, which is why it sat
+  # un-enforced. Warn, in line with the statusLine block above and the
+  # "environment concern, not a repo defect" rule this section already states.
+  warn "$CLAUDE_SETTINGS not found — retired SubagentStop and Stop hook absence cannot be verified"
 else
   # Read SubagentStop hook commands using jq (ugrep-immune):
   subagent_cmd=$(jq -r '[.hooks.SubagentStop[]?.hooks[]?.command] | join("\n")' "$CLAUDE_SETTINGS" 2>/dev/null || echo "")
