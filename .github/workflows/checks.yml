@@ -1,0 +1,80 @@
+# The bureau is 434 markdown files, 47 shell scripts and 36 JSON configs that
+# agents read and execute. Nothing here compiles, so the failures that matter
+# are the quiet ones: a workflow that stops being registered in the index, a
+# model-routing JSON that stops parsing, a helper script with a syntax error
+# that only shows up mid-run.
+#
+# check-framework.sh already catches the first class and has since it was
+# written. It just never ran unless somebody remembered to run it. This makes
+# it a gate.
+#
+# check-drift.sh is deliberately absent: it takes install paths as arguments
+# and there are no per-project copies to compare against (retired 2026-06-13),
+# so in CI it would check nothing and always pass.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nothing here writes anything back: checkout, install, run checks. The repo
+# default is already read-only, but declaring it means an org- or repo-level
+# default changing later cannot silently widen this workflow's token.
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The framework's own mechanical lint: workflow registry, worktree docs,
+      # the orchestrator.md line budget, name lint. Exit 0 = pass. It prints
+      # WARN lines without failing, and those are worth reading in the log.
+      - name: Framework lint
+        run: ./check-framework.sh
+
+      # A syntax error in a helper only surfaces when an agent runs it, which
+      # can be deep into a run. `bash -n` parses without executing.
+      - name: Shell scripts parse
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "::error file=$f::bash -n failed"; fail=1; }
+          done < <(git ls-files '*.sh')
+          exit $fail
+
+      # Model routing and policy live in JSON. Malformed config fails at
+      # dispatch time, in the middle of a run, which is the worst place to
+      # find out.
+      - name: JSON configs parse
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f" \
+              || { echo "::error file=$f::invalid JSON"; fail=1; }
+          done < <(git ls-files '*.json')
+          exit $fail
+
+      - name: YAML parses
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$f" \
+              || { echo "::error file=$f::invalid YAML"; fail=1; }
+          done < <(git ls-files '*.yaml' '*.yml')
+          exit $fail
+
+      # No requirements.txt and no test suite for these, so compiling them is
+      # the honest limit of what can be checked: it proves they parse on the
+      # Python CI runs, nothing about whether they work.
+      - name: Python scripts compile
+        run: python3 -m compileall -q $(git ls-files '*.py')
