@@ -503,6 +503,34 @@ scripts/integration-gate.sh \
 
 ---
 
+# CodeRabbit chunk pass (`coderabbit-pass.sh`)
+
+Runs one coder chunk through CodeRabbit **before** the Challenger sees it (issue #65). A
+pre-filter, not a gate: it clears the mechanical-robustness class cheaply (no Claude quota) so
+the cold read spends on scope, contract and design, and fewer chunks bounce.
+
+```bash
+scripts/coderabbit-pass.sh run "$WORKTREE" <base-commit> "$RUN_DIR/coderabbit/<prompt-id>-findings.json" \
+  --run-dir "$RUN_DIR" --prompt-id <prompt-id> [--light]
+scripts/coderabbit-pass.sh dispositions "$RUN_DIR/coderabbit/<prompt-id>-findings.json" <dispositions.tsv> --run-dir "$RUN_DIR"
+```
+
+- `run` executes `coderabbit review --agent --committed --base <current branch> --base-commit <base>`
+  in the worktree, keeps only findings on files the chunk changed, normalizes them (id, file,
+  severity, line range, instruction, suggestions) with counts into the findings JSON, saves the
+  raw event stream beside it, and appends one `CODERABBIT-PASS:` line to `log.md`.
+- `dispositions` records the coder's table (`<id>\t<fixed|skipped>\t<reason>`) into the same file
+  and sets `status: dispositioned`; unknown ids, missing ids, or a skipped finding without a
+  reason are refused, so the Challenger always gets a complete table.
+- **Exit codes:** `0` ran / recorded; `1` bad arguments or refused dispositions; `3` CodeRabbit
+  unavailable (binary, key, network, service error, malformed stream) — the findings file says
+  `status: unavailable` and the chunk goes straight to the Challenger.
+- `CODERABBIT_BIN` points fixtures at a stub. Requires `--base` support in the CLI (0.7.x).
+- Observed 2026-09-16: a second review over a range CodeRabbit has already reviewed can return
+  zero findings (the service deduplicates what it already reported). Run the pass once per
+  chunk commit and keep the first findings file; a re-run is not a second opinion.
+- **Callers:** the Conductor in `workflows/execute-plan/build-tail.md` step 6.
+
 # Cold reviewer dispatcher (`run-cold-reviewer.sh`)
 
 The six-position dispatcher retains its existing `routine` and `integration` calls. On the

@@ -135,7 +135,16 @@ for any repo whose merge you want to hand-approve. A shared/multi-maintainer ins
 
 ### CodeRabbit
 
-CodeRabbit is a **hard precondition of `pr-delivery.sh merge`**, enforced by
+CodeRabbit sits in the flow twice. **Per chunk, before the Challenger** (issue #65):
+`scripts/coderabbit-pass.sh` runs the CLI on the coder's committed diff, the coder dispositions
+every finding, and the Challenger reads the table as evidence. That pass is a pre-filter and
+degrades to "unavailable" without blocking. It also uses the CLI, which reviews local changes
+bound to the key's org regardless of repo owner, so it works on `Novadiem-Studio/bureau` under
+the `rheos` key where PR review does not (`memory: coderabbit-org-scoping`). Note that run PRs
+are opened as drafts and CodeRabbit does not review drafts, so for a run the chunk pass is
+usually the only CodeRabbit read before merge.
+
+**At merge**, CodeRabbit is a **hard precondition of `pr-delivery.sh merge`**, enforced by
 `scripts/coderabbit-gate.sh` and not by the `reviewDecision` check above.
 
 **Why it needs its own gate.** CodeRabbit posts as an *issue comment* from

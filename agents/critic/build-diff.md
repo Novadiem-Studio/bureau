@@ -44,6 +44,16 @@ Check for:
   "looks good" claims.
 - Fowler-floor smells that create real maintenance risk in the changed hunks.
 
+### CodeRabbit findings file (when the Conductor names one)
+
+`RUN_DIR/coderabbit/<prompt-id>-findings.json` is the chunk's CodeRabbit pass with the coder's
+dispositions (`fixed` or `skipped` with a reason). It is evidence, not argument: nothing in it
+came from the run log or the coder's reasoning beyond the disposition line. Use it two ways.
+Do not re-find items marked `fixed` unless the diff shows the fix is wrong or incomplete; and
+treat every `skipped` item as a claim to test, not a decision to respect: if the skip reason
+does not hold against the code, report the finding yourself under the right axis. A file with
+`status: "unavailable"` means CodeRabbit did not run; review as if it never existed.
+
 ### Reporting contract
 
 Write the build-diff review under these headings, in this order:
