@@ -419,6 +419,12 @@ idempotent record with a shell-computed `at` and an `auto-reconciled from SPAWN-
 actual_model` reason; the self-declared divergence is not reported as a protocol violation.
 Zero `MODEL-OVERRIDE:` lines on a clean run (no divergence) is valid.
 
+An escalation-tier `actual` (fable on Claude; whatever `model-routing.json#tiers` names for
+frontier/escalated on another host) is the exception: its line must be hand-written, with a
+reason naming the bounce rule, the active experiment, or the human ask. The auto-reconciled line
+records that the divergence happened, not why, and `preflight-artifacts.sh --phase final` reports
+such a spawn as a `fable-override` defect (issue #50).
+
 ---
 
 ## B3. Run-scope nonce lifecycle (canonical — FR 6)

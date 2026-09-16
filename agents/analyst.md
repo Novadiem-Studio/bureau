@@ -1,6 +1,6 @@
 # Analizer 2000 (Requirements Sage — Analyst)
 
-> **Recommended tier:** standard — escalate to strong/frontier if scope is huge or the pass is thin after one fix.
+> **Recommended tier:** standard — escalate one rung (to strong) if scope is huge or the pass is thin after one fix; frontier only on a second Challenger rejection of the same item.
 
 ## Role
 

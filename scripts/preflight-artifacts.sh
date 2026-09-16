@@ -765,6 +765,74 @@ if [ "$PHASE" = "final" ]; then
   check_spawn_pairing "$LOG"
 fi
 
+# ── Check: fable-override ─────────────────────────────────────────────────────
+#
+# Every specialist SPAWN-EVENT whose actual_model is an escalation-tier model
+# (frontier/escalated — fable on Claude) while its configured_model is not must
+# carry a HAND-WRITTEN MODEL-OVERRIDE for the same attempt_id. The line that
+# account-run.sh auto-emits ("auto-reconciled from SPAWN-EVENT actual_model; no
+# hand-written override") does not count: it records that a divergence happened,
+# not why. Fable is reserved for the bounce rule's second rung, an active
+# experiment (then configured_model is already fable and this check is silent),
+# or an explicit human ask — and each of those has a reason worth one line.
+#
+# Robin, 2026-09-16 (issue #50): rheo-stream 0b ran seven fable spawns (three
+# Systemsmith build chunks, 33M tokens) whose only override is the auto line.
+# Cold reviewers run on the tier that differs from the author, not on fable.
+check_fable_override() {
+  fo_log="$1"
+  [ -f "$fo_log" ] || return 0
+
+  fo_models="$WORK/fo_models.txt"
+  fo_overrides="$WORK/fo_overrides.txt"
+  : > "$fo_models"
+  : > "$fo_overrides"
+
+  # Escalation-tier model names: from the run's resolved routing when it carries
+  # a tiers map; "fable" otherwise (the Claude runtime's frontier/escalated model).
+  if [ -f "$RUN_DIR/model-routing.json" ]; then
+    jq -r '[.tiers.frontier.model?, .tiers.escalated.model?] | map(select(type == "string" and length > 0)) | unique | .[]' \
+      "$RUN_DIR/model-routing.json" 2>/dev/null > "$fo_models"
+  fi
+  [ -s "$fo_models" ] || printf 'fable\n' > "$fo_models"
+
+  # Hand-written overrides, keyed "<attempt_id>\t<actual>" — the auto-reconciled
+  # line is excluded here so it cannot satisfy the check.
+  grep '^MODEL-OVERRIDE:' "$fo_log" 2>/dev/null | while IFS= read -r fo_line; do
+    fo_json=${fo_line#MODEL-OVERRIDE:}
+    printf '%s' "$fo_json" | jq -r '
+      select(type == "object")
+      | select((.reason // "") | startswith("auto-reconciled") | not)
+      | "\(.attempt_id // "")\t\(.actual // "")"' 2>/dev/null
+  done > "$fo_overrides"
+
+  grep -n '^SPAWN-EVENT:' "$fo_log" 2>/dev/null | while IFS= read -r fo_numbered; do
+    fo_lineno=${fo_numbered%%:*}
+    fo_json=${fo_numbered#*:}
+    fo_json=${fo_json#SPAWN-EVENT:}
+    fo_fields=$(printf '%s' "$fo_json" | jq -r '
+      select(type == "object")
+      | select(.status == "started")
+      | select((.role // "") != "conductor")
+      | "\(.attempt_id // "")\t\(.configured_model // "")\t\(.actual_model // "")"' 2>/dev/null)
+    [ -n "$fo_fields" ] || continue
+    fo_aid=${fo_fields%%	*}
+    fo_rest=${fo_fields#*	}
+    fo_cfg=${fo_rest%%	*}
+    fo_act=${fo_rest#*	}
+    [ -n "$fo_aid" ] || continue
+    grep -Fxq "$fo_act" "$fo_models" 2>/dev/null || continue
+    [ "$fo_act" != "$fo_cfg" ] || continue
+    if ! grep -Fxq "$(printf '%s\t%s' "$fo_aid" "$fo_act")" "$fo_overrides" 2>/dev/null; then
+      add_defect "log.md:$fo_lineno — fable-override — SPAWN-EVENT '$fo_aid' ran on '$fo_act' (configured '$fo_cfg') with no hand-written MODEL-OVERRIDE reason; the escalation tier is reserved for the bounce rule's second rung, an active experiment, or an explicit human ask — cold reviewers run on the tier that differs from the author (docs/model-routing-and-cast.md § Escalation ladder)"
+    fi
+  done
+}
+
+if [ "$PHASE" = "final" ]; then
+  check_fable_override "$LOG"
+fi
+
 # ââ Output ────────────────────────────────────────────────────────────────────
 
 if [ -s "$DEFECTS" ]; then
