@@ -3832,15 +3832,18 @@ if [ "$RUNTIME" = "cursor" ]; then
   # pid is dead and whose response is this same response takes it over atomically
   # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
   # one for a different response, is refused with the recovery hint.
-  claim_pid_alive() {
-    case "$1" in ''|*[!0-9]*|0|1) return 1 ;; esac
-    kill -0 "$1" 2>/dev/null
+  # A claim is taken over only on CONFIRMED death: a numeric pid that `ps` cannot find.
+  # Anything unprobeable (empty, non-numeric, 0) or still present (including pid 1, or a
+  # process owned by another user, where kill -0 would mislead) counts as alive.
+  claim_pid_dead() {
+    case "$1" in ''|*[!0-9]*|0) return 1 ;; esac
+    ! ps -p "$1" >/dev/null 2>&1
   }
   if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
     claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
     claim_pid="$(jq -r '.pid // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
     claim_sha="$(jq -r '.responseSha256 // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
-    if [ "$RESUME_REPLAY" -eq 1 ] && [ "$claim_sha" = "$RESPONSE_SHA256" ] && ! claim_pid_alive "$claim_pid"; then
+    if [ "$RESUME_REPLAY" -eq 1 ] && [ "$claim_sha" = "$RESPONSE_SHA256" ] && claim_pid_dead "$claim_pid"; then
       takeover="$CLAIM_DIR.takeover.$$"
       mv "$CLAIM_DIR" "$takeover" 2>/dev/null \
         || fail "spawn $SPAWN_ID: another replay took over the dead claim first; retry"
