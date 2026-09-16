@@ -132,6 +132,13 @@ remains the authority: on `hash_match: false` it discards the verdict and re-spa
   read-only, and explicitly denies the live run, target repository, framework checkout, home
   directory, and Codex/Claude session stores. `--output-schema` binds the verdict. The task
   prompt names snapshot paths only.
+- **Cursor adapter (two phases):** the recipe above exits 2 with a Task plan
+  (`<spawn>-reviewer-task-plan.json`, `CURSOR-REVIEWER-HOST-TASK-REQUIRED`); the Delegate issues
+  the local blank read-only Task, saves its final message, and runs the same recipe with
+  `--resume <response-file>` prefixed. The resume binds the response to the plan (spawn, checkpoint,
+  staged artifact digest), validates the verdict against `config/delegate-verdict.schema.json`,
+  writes verdict and envelope atomically, marks the plan resumed, and returns the same
+  `REVIEW_META`. See `docs/host-cursor.md § Cold reviewer`.
 
 In both adapters the reviewer physically cannot read `RUN_DIR/log.md` or a prior verdict. The
 leak is prevented, not caught (AC13). The normalized envelope lets the existing

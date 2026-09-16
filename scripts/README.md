@@ -505,7 +505,11 @@ scripts/integration-gate.sh \
 
 # Cold reviewer dispatcher (`run-cold-reviewer.sh`)
 
-The six-position dispatcher retains its existing `routine` and `integration` calls. An audited
+The six-position dispatcher retains its existing `routine` and `integration` calls. On the
+Cursor host it is two-phase: the plain call exits 2 with a Task plan the Delegate issues by
+hand, and `run-cold-reviewer.sh --resume <task-response-file> <same six args>` turns the Task's
+final message into the verdict, the envelope, and the usual metadata JSON (schema-validated,
+plan-bound, atomic; `docs/host-cursor.md § Cold reviewer`). An audited
 Codebase Readiness Audit uses the same launcher with the closed staged packet as `CTX`:
 
 ```bash
