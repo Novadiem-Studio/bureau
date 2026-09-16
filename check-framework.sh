@@ -216,6 +216,11 @@ grep -Fq '/bureau-agents.md (the immutable copy of the applicable canonical Bure
   || err "scripts/run-cold-reviewer.sh prompt should require canonical Bureau instructions first"
 [[ -x scripts/run-codex-spark-specialist.sh ]] || err "scripts/run-codex-spark-specialist.sh missing or not executable"
 [[ -x scripts/run-grok-specialist.sh ]] || err "scripts/run-grok-specialist.sh missing or not executable"
+[[ -x scripts/run-cursor-specialist.sh ]] || err "scripts/run-cursor-specialist.sh missing or not executable"
+[[ -f CURSOR.md ]] || err "CURSOR.md missing"
+[[ -f docs/host-cursor.md ]] || err "docs/host-cursor.md missing"
+grep -Fq 'Cursor Agent entrypoint' README.md \
+  || err "README.md should list the Cursor Agent entrypoint"
 if [[ -f config/model-policy.v2.json ]]; then
   if ! jq -e '.version == 2 and (.tiers | index("standard")) and (.tiers | index("strong")) and (.tiers | index("frontier"))' config/model-policy.v2.json >/dev/null; then
     err "config/model-policy.v2.json missing required v2 tiers"
@@ -264,6 +269,21 @@ if ! jq -e '
 ' config/model-policy.v2.json >/dev/null; then
   err "config/model-policy.v2.json Grok Build must be exec-only, not a spawn model"
 fi
+if ! jq -e '
+  .host_policy.cursor.allowed_spawn_models
+  | index("composer-2.5-fast") and index("gpt-5.6-sol-medium")
+    and index("cursor-grok-4.6-high-fast") and index("claude-opus-5-thinking-high")
+' config/model-policy.v2.json >/dev/null; then
+  err "config/model-policy.v2.json missing current Cursor host policy"
+fi
+if ! jq -e '
+  (.host_policy.cursor.allowed_spawn_models
+    | all(. == "composer-2.5-fast" or . == "gpt-5.6-sol-medium"
+          or . == "cursor-grok-4.6-high-fast" or . == "claude-opus-5-thinking-high"))
+  and ((.host_policy.cursor.forbidden | index("inherit")) != null)
+' config/model-policy.v2.json >/dev/null; then
+  err "config/model-policy.v2.json Cursor inherit must be forbidden, and spawn models must be Task slugs"
+fi
 fi
 for adapter in config/runtimes/*.json; do
   [[ -e "$adapter" ]] || continue
@@ -295,6 +315,16 @@ if ! jq -e '
   | ($models | all(. == "grok-4.3" or . == "grok-4.6"))
 ' config/runtimes/grok.json >/dev/null; then
   err "config/runtimes/grok.json should map every tier to grok-4.3 or grok-4.6"
+fi
+if ! jq -e '
+  .tiers.cheap.model == "composer-2.5-fast"
+  and .tiers.standard.model == "composer-2.5-fast"
+  and .tiers.strong.model == "gpt-5.6-sol-medium"
+  and .tiers.frontier.model == "cursor-grok-4.6-high-fast"
+  and .tiers.escalated.model == "claude-opus-5-thinking-high"
+  and .capabilities.supports_cloud_subagents == true
+' config/runtimes/cursor.json >/dev/null; then
+  err "config/runtimes/cursor.json should map tiers to current Cursor Task slugs"
 fi
 for exp in config/model-experiments/*.json; do
   [[ -e "$exp" ]] || continue
@@ -644,6 +674,11 @@ CHECK_RUNTIME="${NOVADIEM_MODEL_RUNTIME:-claude}"
 if [[ "$CHECK_RUNTIME" == "grok" ]]; then
   echo "== Grok Bot host wiring"
   warn "Grok Bot Task subagents currently use host model sand-default; resolved grok-4.3/grok-4.6 stay in model-routing.json"
+elif [[ "$CHECK_RUNTIME" == "cursor" ]]; then
+  echo "== Cursor Agent host wiring"
+  [[ -f CURSOR.md ]] || err "CURSOR.md missing"
+  [[ -f docs/host-cursor.md ]] || err "docs/host-cursor.md missing"
+  warn "Cursor cold reviewer is host-task (helper stages CTX then exits 2); readiness-audit has no Cursor adapter; cloud Task clones this workspace only"
 elif [[ "$CHECK_RUNTIME" == "openai" ]]; then
   echo "== Codex host wiring"
   if ! command -v codex >/dev/null 2>&1; then

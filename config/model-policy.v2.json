@@ -37,6 +37,18 @@
       ],
       "forbidden": [],
       "note": "Grok Bot host: native specialist spawns use grok-4.3 (cheap/standard) or grok-4.6 (strong/frontier/escalated). grok-build-0.1 is exec-only until a one-shot helper exists. Pass model and reasoning effort explicitly on every launch. Live transport is Grok Bot Task/executor (GROK.md); scripts/run-grok-specialist.sh --plan is the audit record."
+    },
+    "cursor": {
+      "allowed_spawn_models": [
+        "composer-2.5-fast",
+        "gpt-5.6-sol-medium",
+        "cursor-grok-4.6-high-fast",
+        "claude-opus-5-thinking-high"
+      ],
+      "forbidden": [
+        "inherit"
+      ],
+      "note": "Cursor Agent host: native specialist spawns use Task-tool slugs from config/runtimes/cursor.json. inherit is forbidden. Live transport is Cursor Task (CURSOR.md); scripts/run-cursor-specialist.sh --plan is the audit record. Cloud Task is opt-in and does not replace local cold review."
     }
   },
   "manual_experiments": [],

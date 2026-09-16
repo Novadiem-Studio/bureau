@@ -1,6 +1,6 @@
 {
   "runtime": "openrouter",
-  "description": "Placeholder adapter for OpenRouter-backed dispatch. Replace aliases in Mission Control or a local overlay.",
+  "description": "OpenRouter is metered API for cheap or specialized non-build passes (article/topic/data via model-pass.sh). It is not a Bureau build host. Do not start execute-plan or other code runs with --runtime openrouter. Replace aliases in Mission Control or a local overlay only for those non-build passes.",
   "capabilities": {
     "supports_fresh_context_subagents": "runtime-dependent",
     "supports_parallel_subagents": "runtime-dependent",

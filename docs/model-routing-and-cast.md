@@ -34,8 +34,7 @@ Per-role routing resolves from provider-neutral policy plus a runtime adapter:
 
 **Runtime selection:** default `claude`. New Codex runs use
 `scripts/run-start.sh ... --runtime openai`; the lower-level resolver also accepts
-`NOVADIEM_MODEL_RUNTIME=openai`. `openrouter` and `hermes` currently have routing adapters but
-no native Bureau host transport, so they cannot drive a run yet. `grok` is a first-class Grok Bot host (`GROK.md`, `--runtime grok`). See `docs/host-runtime.md`.
+`NOVADIEM_MODEL_RUNTIME=openai`. `grok` is a first-class Grok Bot host (`GROK.md`, `--runtime grok`). `cursor` is a first-class Cursor Agent host (`CURSOR.md`, `--runtime cursor`). Build and code work stays on those subscription hosts. `openrouter` and `hermes` have routing adapters but are **not** Bureau build transports — metered API is for cheap or specialized non-build passes only (`docs/host-runtime.md` § Subscription vs metered API). See `docs/host-runtime.md`.
 
 ### Host policy - Codex
 
@@ -73,6 +72,18 @@ so do not dispatch Build through that profile until a helper exists.
 Grok Bot is a first-class host. Start with `--runtime grok`. The spawn helper
 `scripts/run-grok-specialist.sh --plan` is the audit record; live spawn is the
 Grok Bot Task executor (`GROK.md`). `openrouter` / `hermes` remain routing-only.
+
+### Host policy - Cursor
+
+Cursor maps `cheap`/`standard` to **composer-2.5-fast**, `strong` to
+**gpt-5.6-sol-medium**, `frontier` to **cursor-grok-4.6-high-fast**, and
+`escalated` to **claude-opus-5-thinking-high**. These are Cursor Task slugs as
+of 2026-09-14, not provider API names. `inherit` is forbidden.
+
+Cursor Agent is a first-class host. Start with `--runtime cursor`. The spawn
+helper `scripts/run-cursor-specialist.sh --plan` is the audit record; live spawn
+is Cursor Task (`CURSOR.md`, `docs/host-cursor.md`). Cloud Task is opt-in for
+producers; cold review stays local.
 
 ### Host policy - Claude Code
 

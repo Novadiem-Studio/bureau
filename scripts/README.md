@@ -162,6 +162,13 @@ Thresholds (from `agents/orchestrator.md`):
 - `sessionUsedPercent` ≥ 90 — session cap risk.
 - `weeklyUsedPercent` ≥ 85 — defer non-critical frontier/escalated work.
 
+### Cursor Task spawn audit
+
+`scripts/run-cursor-specialist.sh [--plan] [--environment local|cloud] <RUN_DIR> <ROLE> <PROMPT_FILE> <ATTEMPT_ID>`
+is the spawn audit helper for `runtime=cursor`. It never launches a model. `--plan` prints the
+Task payload and exits 2 with `CURSOR-TRANSPORT-HOST-TASK-REQUIRED`; the Delegate or Conductor
+then issues a blank Cursor Task. See `CURSOR.md` and `docs/host-cursor.md`.
+
 ---
 
 ## Post-hoc run accounting
@@ -410,7 +417,9 @@ sh scripts/promote-fixtures.sh \
 
 One deterministic "improve this draft" call to a non-Claude model, for the
 `write-article` workflow's cross-model stage. Routes by a provider-prefixed
-`<model-spec>` (v1 ships the `openrouter:` arm only). The caller supplies everything;
+`<model-spec>` (v1 ships the `openrouter:` arm only). This is the intended
+metered-API use: cheap or specialized **non-build** work. It is not a Bureau
+host and must not be used to build code. The caller supplies everything;
 the script makes no routing decisions and promotes nothing — it writes a **candidate**
 out-file that the workflow's Scribe step reconciles. Full design: `plan-write-article-workflow.md §1`.
 
