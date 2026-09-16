@@ -103,7 +103,7 @@ Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` 
 
 ### Escalation ladder (Claude)
 
-**Cold reviewers run on the tier that differs from the author, not on the costlier one**
+**Cold reviewers run on a capable tier in a fresh context, and escalate only on demonstrated need**
 (Robin, 2026-09-16, superseding "spend Fable at review gates"). This covers the Challenger's
 per-chunk and planning reviews, the Delegate's per-checkpoint cold reviewer, and the Envoy's
 PR-gate second pass:
@@ -245,7 +245,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 |-------|------|------|-----|
 | **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Requirements + scope - Challenger catches gaps; escalate if scope is enormous |
 | **The Architect** | `agents/architect.md` | strong | Highest-leverage design - escalate one rung on a Challenger bounce; frontier only through an active experiment |
-| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required; runs on the tier that differs from the author (opus author -> sonnet reviewer); frontier only on an explicit human ask |
+| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier (opus author -> sonnet reviewer); frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | standard | Brief-writing, manifest extraction, design review |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
@@ -275,13 +275,13 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Envoy** | `agents/envoy.md` | strong | Cross-run supervisor; top-level when pointed at a plan with `INDEX.md`; launches each run as a Delegate; the PR-gate Challenger runs on the tier that differs from the run's coders |
+| **The Envoy** | `agents/envoy.md` | strong | Cross-run supervisor; top-level when pointed at a plan with `INDEX.md`; launches each run as a Delegate; the PR-gate Challenger runs cold, on a capable tier, never having seen the design argued |
 
 **Delegated checkpoint gating:**
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears; its cold reviewer runs on the tier that differs from the checkpoint author |
+| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears; its cold reviewer runs on a fixed capable tier in a fresh context, independent of the author's model |
 
 Together they're the reason an odd job no longer falls through to the inherited session model.
 

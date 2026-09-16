@@ -124,10 +124,9 @@
         "prior_review_missed_issue"
       ],
       "deescalate_when": [
-        "author_ran_strong",
         "low_risk_docs_review_with_frontier_followup"
       ],
-      "note": "standard is permitted so a cold reviewer can differ from an opus coder without spending the escalated tier (Robin, 2026-09-16). The property that matters is that the reviewer differs from the author, not that it costs more. default_tier is unchanged at strong. author_ran_strong routes the reviewer to standard when the artifact's author ran strong. final_gate and high_stakes_backend_or_security were removed as escalation triggers: a final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier model. What remains escalates one rung only when a review demonstrably missed something."
+      "note": "Cold review is bought by FRESH CONTEXT, not by model identity (Robin, 2026-09-16). A reviewer that has not seen the design argued gives real objections whether or not it shares a model with the author; rheo-stream measured a same-model reviewer finding 9 blockers where the differing-tier one found 1 at the same cost. What matters is that QA runs on a sufficiently capable tier and escalates on demonstrated need. fresh_context_required stays true and is the real invariant."
     },
     "architect": {
       "agent": "The Architect",
@@ -291,7 +290,7 @@
     },
     "systemsmith": {
       "agent": "The Systemsmith",
-      "default_tier": "strong",
+      "default_tier": "standard",
       "allowed": [
         "standard",
         "strong",
@@ -313,7 +312,8 @@
         "read_only_contract_audit",
         "small_controller_patch",
         "budget_pressure"
-      ]
+      ],
+      "note": "standard takes first crack at build work (Robin, 2026-09-16); second_challenger_rejection escalates the FIXER, because a bounce is evidence the chunk is harder than assumed and the coder is where that difficulty lives."
     },
     "mechanic": {
       "agent": "The Mechanic",
@@ -448,17 +448,14 @@
         "unexpected_scope_expansion",
         "spec_compliant_but_doctrine_violating"
       ],
-      "deescalate_when": [
-        "author_ran_strong"
-      ],
       "cold_reviewer": {
-        "rule": "differs_from_author",
-        "author_cheap": "standard",
-        "author_standard": "strong",
-        "author_strong": "standard",
-        "author_frontier": "strong",
-        "author_escalated": "strong",
-        "note": "The per-checkpoint cold reviewer runs on the tier that differs from the checkpoint artifact's author; a cheap author gets standard (cheap is too weak to review), a frontier or escalated author gets strong (differs without spending the escalation tier again) (Robin, 2026-09-16, rheo-stream 0c2: an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost). The former bundle04_benchmark_replay_clean gate on a standard-tier reviewer is retired; this is switch-and-watch, not a trial. The Delegate passes the derived model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
+        "rule": "capable_tier_fresh_context",
+        "tier": "strong",
+        "escalate_on": [
+          "prior_review_missed_issue",
+          "second_critic_loop"
+        ],
+        "note": "The per-checkpoint cold reviewer runs on a capable tier in a FRESH CONTEXT and does not vary with the author's model (Robin, 2026-09-16). Independence is bought by isolation: a reviewer that has never seen the design argued gives real objections whether or not it shares a model with the coder. rheo-stream 0c2 measured it \u2014 an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost, so routing by difference was buying nothing. What matters is that QA is sufficiently capable and that escalation follows a demonstrated miss rather than identity. The Delegate passes the tier's model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
       }
     }
   }

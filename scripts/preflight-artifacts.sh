@@ -778,7 +778,7 @@ fi
 #
 # Robin, 2026-09-16 (issue #50): rheo-stream 0b ran seven fable spawns (three
 # Systemsmith build chunks, 33M tokens) whose only override is the auto line.
-# Cold reviewers run on the tier that differs from the author, not on fable.
+# Cold reviewers run on a capable tier in a fresh context, not on fable by default.
 check_fable_override() {
   fo_log="$1"
   [ -f "$fo_log" ] || return 0

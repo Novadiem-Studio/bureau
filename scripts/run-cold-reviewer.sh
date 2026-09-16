@@ -3501,7 +3501,7 @@ case "$RUNTIME" in
 esac
 
 # Reviewer model: BUREAU_REVIEWER_MODEL wins (the Delegate derives it from the checkpoint
-# artifact's author — reviewer differs from author, roles.delegate.coldReviewer), else
+# artifact's author — configured cold-reviewer tier, roles.delegate.coldReviewer), else
 # roles.delegate.model, else the host default. Whatever is chosen is recorded in the
 # review-meta JSON so the override is auditable.
 MODEL="${BUREAU_REVIEWER_MODEL:-}"
