@@ -12,6 +12,14 @@
 #   --env-file <path>  check key PRESENCE in this file instead of the host shell
 #                      (secret-safe: only key names on the LHS of = are read, never values)
 #
+# .env.example convention:
+#   A key whose correct value is the empty string (e.g. a module list nothing has
+#   populated yet) is declared, not silently tolerated: put a comment line reading
+#   exactly "# preflight: allow-empty" directly above that key, no blank line between.
+#   Without it, "present but empty" always fails (host-shell mode only — --env-file
+#   mode never reads values, so this marker has no effect there). This is per-key: a
+#   non-empty value on an allow-empty key is still checked for placeholder text.
+#
 # Exit codes:
 #   0  all keys pass (or nothing to validate)
 #   1  one or more keys are missing / empty / placeholder, or bad arguments
@@ -108,20 +116,54 @@ fi
 
 # ── parse keys from .env.example ─────────────────────────────────────────────
 
-# Read non-comment, non-blank lines; strip optional leading "export "; take LHS of first =
+# Read non-comment, non-blank lines; strip optional leading "export "; take LHS of first =.
+# A comment line reading "# preflight: allow-empty" immediately above a key (no blank line
+# between) declares that key's correct value CAN be the empty string — e.g. a module list
+# that is deliberately empty until a phase ships. It is per-key, not a way to skip a key
+# entirely: a non-empty value on an allow-empty key is still checked for placeholder text.
 keys=()
+ALLOW_EMPTY_KEYS=""
+_pf_allow_empty_pending=0
 while IFS= read -r line; do
-  # skip blank / whitespace-only lines
-  [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-  # skip comment lines (# may be preceded by whitespace)
-  [[ "$line" =~ ^[[:space:]]*# ]] && continue
+  # skip blank / whitespace-only lines — also clears a pending marker, so it cannot leak
+  # across an unrelated gap onto a later key.
+  if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+    _pf_allow_empty_pending=0
+    continue
+  fi
+  # comment lines (# may be preceded by whitespace): check for the marker, then skip
+  if [[ "$line" =~ ^[[:space:]]*# ]]; then
+    if [[ "$line" =~ ^[[:space:]]*#[[:space:]]*preflight:[[:space:]]*allow-empty[[:space:]]*$ ]]; then
+      _pf_allow_empty_pending=1
+    fi
+    continue
+  fi
   # strip optional leading "export "
   line="${line#export }"
   # extract key name: everything up to (but not including) the first =
   key="${line%%=*}"
   # skip if key is empty (malformed line with no =)
-  [[ -n "$key" ]] && keys+=("$key")
+  if [[ -n "$key" ]]; then
+    keys+=("$key")
+    if [[ "$_pf_allow_empty_pending" -eq 1 ]]; then
+      ALLOW_EMPTY_KEYS="${ALLOW_EMPTY_KEYS}${key}"$'\n'
+    fi
+  fi
+  _pf_allow_empty_pending=0
 done <"$EXAMPLE_FILE"
+
+# key_is_allow_empty <KEY> — same shape as env_file_has_key below (Bash 3.2, no
+# associative arrays): exact-line match against the pre-parsed newline-delimited list.
+key_is_allow_empty() {
+  local want="$1"
+  local k
+  while IFS= read -r k; do
+    [[ "$k" == "$want" ]] && return 0
+  done <<EOF
+$ALLOW_EMPTY_KEYS
+EOF
+  return 1
+}
 
 # ── case: file present but zero keys ─────────────────────────────────────────
 
@@ -145,6 +187,7 @@ fi
 fail_keys=()
 fail_reasons=()
 fail_values=()  # will hold display value (masked or empty) per failed key
+allow_empty_used=()  # keys that passed BECAUSE of an allow-empty declaration, for the report
 pass_count=0
 
 is_placeholder() {
@@ -225,11 +268,21 @@ for key in "${keys[@]}"; do
     fail_values+=("")
     echo "preflight: FAIL  $key  missing"
   elif [[ -z "$val" ]]; then
-    # Key is present but set to empty string
-    fail_keys+=("$key")
-    fail_reasons+=("empty")
-    fail_values+=("")
-    echo "preflight: FAIL  $key  empty"
+    # Key is present but set to empty string. A declared allow-empty key (marked in
+    # .env.example) treats this as its correct value, not a failure — the check couldn't
+    # otherwise tell "deliberately empty" from "forgotten" (rheo-stream 0c3, 2026-09-16:
+    # RHEO_MODULES' correct phase-1 value is empty, and the gate had no way to pass a
+    # correct configuration — the only value that passed it was a fabricated module name).
+    if key_is_allow_empty "$key"; then
+      allow_empty_used+=("$key")
+      (( pass_count++ )) || true
+      echo "preflight: OK    $key  empty (declared allow-empty)"
+    else
+      fail_keys+=("$key")
+      fail_reasons+=("empty")
+      fail_values+=("")
+      echo "preflight: FAIL  $key  empty"
+    fi
   elif is_placeholder "$val"; then
     # Key is present, non-empty, but matches a placeholder pattern
     fail_keys+=("$key")
@@ -260,6 +313,13 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/preflight.XXXXXX")"
     echo "|-----|--------|-------|"
     for i in "${!fail_keys[@]}"; do
       echo "| ${fail_keys[$i]} | ${fail_reasons[$i]} | ${fail_values[$i]} |"
+    done
+  fi
+  if [[ ${#allow_empty_used[@]} -gt 0 ]]; then
+    echo ""
+    echo "Declared allow-empty (passed empty by .env.example's own \`# preflight: allow-empty\`):"
+    for k in "${allow_empty_used[@]}"; do
+      echo "- $k"
     done
   fi
 } >"$tmp"
