@@ -226,6 +226,41 @@ command: |
   [ -f "$CP/01-1-8-reviewer-envelope.json" ] && [ "$(jq -r .status "$CP/01-1-8-reviewer-task-plan.json")" = "resumed" ] && [ ! -e "$CP/01-1-8-reviewer-task-plan.claim" ] \
     || { echo "FAIL: replay did not complete the obstructed publish"; exit 1; }
 
+  # two concurrent same-response replays (raw already published, plan not yet marked):
+  # exactly one audit line of record, plan marked, no claim left (issue #62)
+  set +e
+  run "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>&1
+  set -e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>&1 || { echo "FAIL: 01-1-9 resume"; exit 1; }
+  P9="$CP/01-1-9-reviewer-task-plan.json"
+  jq '.status = "host-task-required" | del(.resumedAt, .responseFile, .responseSha256)' "$P9" > "$TMPF/p9" && mv "$TMPF/p9" "$P9"
+  grep -v 'Cold reviewer resume — spawn: 01-1-9,' "$RD/log.md" > "$TMPF/log9" && mv "$TMPF/log9" "$RD/log.md"
+  set +e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>"$TMPF/r1.err" & Q1=$!
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>"$TMPF/r2.err" & Q2=$!
+  wait "$Q1"; S1=$?
+  wait "$Q2"; S2=$?
+  set -e
+  [ $((S1 + S2)) -le 1 ] || { echo "FAIL: concurrent replays: rc $S1 and $S2"; cat "$TMPF/r1.err" "$TMPF/r2.err"; exit 1; }
+  [ "$(grep -c 'Cold reviewer resume — spawn: 01-1-9,' "$RD/log.md")" = "1" ] || { echo "FAIL: concurrent replays wrote the audit line $(grep -c 'Cold reviewer resume — spawn: 01-1-9,' "$RD/log.md") times"; exit 1; }
+  [ "$(jq -r .status "$P9")" = "resumed" ] || { echo "FAIL: concurrent replays did not mark the plan"; exit 1; }
+  [ ! -e "$CP/01-1-9-reviewer-task-plan.claim" ] || { echo "FAIL: concurrent replays left a claim"; exit 1; }
+  # a dead claim for the SAME response is taken over by a replay; for a DIFFERENT response it is refused
+  jq '.status = "host-task-required" | del(.resumedAt, .responseFile, .responseSha256)' "$P9" > "$TMPF/p9" && mv "$TMPF/p9" "$P9"
+  RSHA=$(jq '.' "$TMPF/resp.json" | shasum -a 256 | awk '{print $1}')
+  mkdir "$CP/01-1-9-reviewer-task-plan.claim"
+  printf '{"pid":"999999","at":"2026-09-15T00:00:00Z","responseSha256":"%s"}\n' "$RSHA" > "$CP/01-1-9-reviewer-task-plan.claim/claim.json"
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>"$TMPF/err" || { echo "FAIL: replay did not take over a dead same-response claim"; cat "$TMPF/err"; exit 1; }
+  [ ! -e "$CP/01-1-9-reviewer-task-plan.claim" ] && [ "$(jq -r .status "$P9")" = "resumed" ] || { echo "FAIL: takeover did not complete"; exit 1; }
+  jq '.status = "host-task-required" | del(.resumedAt, .responseFile, .responseSha256)' "$P9" > "$TMPF/p9" && mv "$TMPF/p9" "$P9"
+  mkdir "$CP/01-1-9-reviewer-task-plan.claim"
+  printf '{"pid":"999999","at":"2026-09-15T00:00:00Z","responseSha256":"0000000000000000000000000000000000000000000000000000000000000000"}\n' > "$CP/01-1-9-reviewer-task-plan.claim/claim.json"
+  set +e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-9 artifact.md routine >/dev/null 2>"$TMPF/err"; r=$?
+  set -e
+  [ "$r" -eq 1 ] && grep -q 'already claimed' "$TMPF/err" || { echo "FAIL: dead claim for a different response was not refused"; cat "$TMPF/err"; exit 1; }
+  rm -rf "$CP/01-1-9-reviewer-task-plan.claim"
+
   # output with no raw response behind it cannot be bound: refused
   set +e
   run "$RD" "$CTX" 01 01-1-7 artifact.md routine >/dev/null 2>&1
@@ -248,4 +283,4 @@ command: |
     || { echo "FAIL: absent usage was fabricated"; exit 1; }
   grep -q 'does NOT match the staged artifact digest' "$RD/log.md" || { echo "FAIL: FR9 warning not logged"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". Phase 1 exits 2, prints the plan, stages artifact.sha256, writes no verdict. --resume refuses (exit 1, nothing durable, plan unconsumed, no temp files) a verdict missing a field, carrying an extra key, a bad Decision, a malformed hash, non-JSON, a spawn with no plan, a staged artifact whose digest no longer matches the plan, and any non-cursor host. A good response yields exit 0, the same meta JSON as other hosts plus plan_path, a schema-normalized verdict (null Integration-evidence dropped), a Claude-shaped envelope with normalized usage, events/raw files, the plan marked resumed with the response digest, an audit line, and an envelope append-reviewer-tokens.sh accepts. A second resume of the same spawn is refused, as is re-planning a resumed spawn (its outputs untouched). Of two concurrent resumes of one plan exactly one publishes and the loser leaves no claim. A stale claim is refused with a recovery hint and clears on removal. An interrupted resume completes on replay with the same response whatever link it died after (raw is published first; missing outputs are republished, existing ones verified byte-for-byte, the audit line of record written once), is refused with a different response, never replaces a published output that no longer matches, and refuses output that has no raw response behind it. A bare verdict without usage yields an envelope with a _note and no usage block; a wrong Artifact-hash is reported as hash_match false and logged, as on other hosts. Mutation: delete the plan-status check → double resume passes; delete the mkdir claim → the stale-claim case publishes instead of being refused; publish the raw last instead of first → the obstructed-envelope case leaves no raw behind and its replay is refused; drop the cmp in publish_exclusive → the tampered-output case passes; replace the plan's `ln` with `mv -f` → re-planning a resumed spawn passes; delete validate_verdict_against_schema → extra-key passes; drop the artifactSha256 binding → the changed-artifact case passes; drop the `+ (if $usage == null …)` branch → the bare-verdict envelope gains fabricated zeros.
+expected: exit 0; stdout "PASS". Phase 1 exits 2, prints the plan, stages artifact.sha256, writes no verdict. --resume refuses (exit 1, nothing durable, plan unconsumed, no temp files) a verdict missing a field, carrying an extra key, a bad Decision, a malformed hash, non-JSON, a spawn with no plan, a staged artifact whose digest no longer matches the plan, and any non-cursor host. A good response yields exit 0, the same meta JSON as other hosts plus plan_path, a schema-normalized verdict (null Integration-evidence dropped), a Claude-shaped envelope with normalized usage, events/raw files, the plan marked resumed with the response digest, an audit line, and an envelope append-reviewer-tokens.sh accepts. A second resume of the same spawn is refused, as is re-planning a resumed spawn (its outputs untouched). Of two concurrent resumes of one plan exactly one publishes and the loser leaves no claim. A stale claim is refused with a recovery hint and clears on removal. An interrupted resume completes on replay with the same response whatever link it died after (raw is published first; missing outputs are republished, existing ones verified byte-for-byte, the audit line of record written once), is refused with a different response, never replaces a published output that no longer matches, and refuses output that has no raw response behind it. Two concurrent same-response replays append the audit line of record exactly once; a replay takes over a dead claim for the same response and refuses one for a different response (issue #62). A bare verdict without usage yields an envelope with a _note and no usage block; a wrong Artifact-hash is reported as hash_match false and logged, as on other hosts. Mutation: delete the plan-status check → double resume passes; delete the mkdir claim → the stale-claim case publishes instead of being refused; publish the raw last instead of first → the obstructed-envelope case leaves no raw behind and its replay is refused; drop the cmp in publish_exclusive → the tampered-output case passes; drop the replay claim/takeover → the dead-claim takeover case is refused and concurrent replays usually double-append; replace the plan's `ln` with `mv -f` → re-planning a resumed spawn passes; delete validate_verdict_against_schema → extra-key passes; drop the artifactSha256 binding → the changed-artifact case passes; drop the `+ (if $usage == null …)` branch → the bare-verdict envelope gains fabricated zeros.

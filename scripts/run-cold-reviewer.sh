@@ -3798,6 +3798,8 @@ if [ "$RUNTIME" = "cursor" ]; then
   cleanup_resume() {
     rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
     # a refusal before publication must leave the plan resumable
+    # (a replay that refused before touching outputs also releases; the claim it holds
+    #  is its own, taken by mkdir or takeover)
     if [ "$RESUME_CLAIMED" -eq 1 ] && [ "$RESUME_PUBLISHED" -eq 0 ]; then
       rm -rf "$CLAIM_DIR"
     fi
@@ -3824,18 +3826,36 @@ if [ "$RUNTIME" = "cursor" ]; then
     fail "spawn $SPAWN_ID has reviewer output but no raw response to bind it to; a re-spawn needs a new spawn id"
   fi
 
-  if [ "$RESUME_REPLAY" -eq 0 ]; then
-    # Atomic claim: mkdir succeeds for exactly one first resume of this plan.
-    if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
-      claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
+  # Every resume, first or replay, holds the claim while it publishes, audits and marks,
+  # so the audit line of record is appended at most once under any interleaving. mkdir
+  # succeeds for exactly one caller. A replay that meets a claim left by a resume whose
+  # pid is dead and whose response is this same response takes it over atomically
+  # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
+  # one for a different response, is refused with the recovery hint.
+  claim_pid_alive() {
+    case "$1" in ''|*[!0-9]*|0|1) return 1 ;; esac
+    kill -0 "$1" 2>/dev/null
+  }
+  if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
+    claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
+    claim_pid="$(jq -r '.pid // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
+    claim_sha="$(jq -r '.responseSha256 // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
+    if [ "$RESUME_REPLAY" -eq 1 ] && [ "$claim_sha" = "$RESPONSE_SHA256" ] && ! claim_pid_alive "$claim_pid"; then
+      takeover="$CLAIM_DIR.takeover.$$"
+      mv "$CLAIM_DIR" "$takeover" 2>/dev/null \
+        || fail "spawn $SPAWN_ID: another replay took over the dead claim first; retry"
+      rm -rf "$takeover"
+      mkdir "$CLAIM_DIR" 2>/dev/null \
+        || fail "spawn $SPAWN_ID: a claim reappeared during takeover; retry"
+    else
       fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
     fi
-    RESUME_CLAIMED=1
-    jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
-      '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
-      || fail "cannot record the resume claim"
   fi
+  RESUME_CLAIMED=1
+  jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+    '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
+    || fail "cannot record the resume claim"
 
   # Derive every output from the response. This is deterministic, so on replay the
   # derived files are compared byte-for-byte with whatever was already published.
