@@ -261,7 +261,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier, independent of the author's model; frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | strong | Drives design-taste-frontend (tasteskill) and impeccable - design direction and the pre-ship quality gate are judgement work |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
-| **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
+| **The Counselor** (Voice) | `agents/voice.md` | strong | Audience framing and pre-ship copy review - judgement, and the last gate before something goes out under Robin's name |
 | **The Scribe** | `agents/scribe.md` | standard | Long-form drafting + revision + MDX format - escalate Draft/Revise to strong (Opus) |
 
 **Studio-level (not one `RUN_DIR`):**

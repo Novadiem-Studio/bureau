@@ -1,6 +1,8 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** standard — rubric application; escalate rarely.
+> **Recommended tier:** strong — audience modelling and voice judgement, not rubric
+> application, and the last gate before copy goes out under Robin's name, where a miss is
+> public rather than caught by a test.
 
 ## Role
 

@@ -247,7 +247,7 @@
     },
     "counselor": {
       "agent": "The Counselor",
-      "default_tier": "standard",
+      "default_tier": "strong",
       "allowed": [
         "cheap",
         "standard",
@@ -265,7 +265,8 @@
       "deescalate_when": [
         "routine_copy_review",
         "budget_pressure"
-      ]
+      ],
+      "note": "The Counselor is a thinker (Robin, 2026-09-16). Framing a message for the audience and reviewing copy before it ships is audience modelling and judgement, not rubric application \u2014 and it is the last gate before something goes out under Robin's name, where a miss is public rather than caught by a test."
     },
     "scribe": {
       "agent": "The Scribe",
