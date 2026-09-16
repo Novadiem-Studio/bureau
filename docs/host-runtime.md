@@ -219,8 +219,12 @@ part of the reviewer packet.
   `config/delegate-verdict.codex.schema.json`, a closed structured-output
   projection of the unchanged Claude verdict contract.
 - Cursor stages the same packet, writes a local Task plan, and exits 2 with
-  `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. The Delegate issues a blank local Task
-  against that CTX. Readiness-audit has no Cursor adapter yet.
+  `CURSOR-REVIEWER-HOST-TASK-REQUIRED` (a host action, not a failure). The
+  Delegate issues a blank local Task against that CTX, saves its final message,
+  and re-runs the helper with `--resume <response-file>`; that second call binds
+  the response to the plan, schema-validates the verdict, writes the verdict and
+  envelope atomically, and returns the same metadata JSON as the other hosts
+  (`docs/host-cursor.md § Cold reviewer`). Readiness-audit has no Cursor adapter.
 
 Both paths emit a normalized verdict file and a Claude-shaped one-shot usage
 envelope. Callers append exactly one `REVIEWER-TOKEN-EVENT` per returned

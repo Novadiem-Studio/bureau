@@ -44,16 +44,70 @@ closed.
 Cold graded review stays on **local** Task even when producers run in cloud:
 the reviewer packet is staged on the Delegate machine.
 
-## Cold reviewer
+## Cold reviewer (two phases)
 
-`scripts/run-cold-reviewer.sh` stages the bounded CTX, writes
-`$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.json`, and exits 2 with
-`CURSOR-REVIEWER-HOST-TASK-REQUIRED`. The Delegate then issues a local blank
-Task whose prompt is that plan's `taskPrompt` and whose world is the staged
-CTX. The manager never grades.
+Bash cannot issue a Cursor Task, so the cold review is two calls around one
+Task. The manager never grades.
 
-Readiness-audit has no Cursor reviewer adapter yet. Fail that checkpoint
-closed.
+1. **Plan.** `scripts/run-cold-reviewer.sh <RUN_DIR> <CTX> NN <spawn-id> <artifact> <routine|integration>`
+   stages the bounded CTX and `artifact.sha256`, writes
+   `$CHECKPOINTS_DIR/<spawn-id>-reviewer-task-plan.json` (also printed on stdout),
+   logs the exact task prompt, and exits **2** with
+   `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. Exit 2 is a host action, not a failure.
+2. **Task.** The Delegate issues a local blank read-only Task with the plan's
+   `model` and `taskPrompt`, world = the staged CTX, and saves the Task's final
+   message as a file, by convention the plan's `responsePath`
+   (`<spawn-id>-reviewer-task-response.json`). The message is the verdict JSON,
+   or a JSON object carrying it in `.result` or `.structured_output`, optionally
+   with `.usage` and `.num_turns`.
+3. **Resume.** `scripts/run-cold-reviewer.sh --resume <response-file> <same six args>`
+   binds the response to the plan (same spawn id, checkpoint, artifact and staged
+   digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
+   id), extracts the verdict, validates it against
+   `config/delegate-verdict.schema.json`, writes
+   `<spawn-id>-reviewer-verdict.json` and a Claude-shaped
+   `<spawn-id>-reviewer-envelope.json` atomically, marks the plan `resumed` with
+   the response digest, appends an audit line, and returns the same metadata
+   JSON the Claude and Codex adapters return (`verdict_path`, `envelope_path`,
+   `artifact_sha256`, `hash_match`, plus `plan_path`). Exit **0**. A rejected
+   response exits 1 and writes nothing durable.
+
+Usage the Task did not report stays absent from the envelope (a `_note` says
+so); `append-reviewer-tokens.sh` then records a zero-token event with its own
+note rather than a fabricated count.
+
+### Lifecycle and recovery
+
+A spawn id plans once and publishes once. The plan, verdict, envelope and raw
+response are created with hard links (atomic, fail if the target exists), never
+by replacement; a resume first claims the plan atomically
+(`<spawn-id>-reviewer-task-plan.claim/`), publishes, then marks the plan
+`resumed` and drops the claim. Of two concurrent resumes exactly one wins.
+
+| You see | What happened | Do |
+|---|---|---|
+| `already 'resumed'` / `already exists for spawn` | that spawn is done | re-spawn with a new spawn id |
+| `already claimed by another resume (pid …)` | a resume is running, or died before publishing | if the pid is gone and `<spawn-id>-reviewer-verdict.json` is absent, remove the claim dir and retry |
+| `published … could not append the resume audit line` / `could not mark the plan resumed` | crash or write failure after publication began | re-run `--resume` with the same response file; the raw response is published first, so replay verifies what exists, publishes what is missing, writes the audit line once, and marks the plan |
+| `published reviewer output from a different response` | a different message was offered for a spawn that already published | keep the published verdict, or re-spawn with a new spawn id |
+| `differs from what this response derives` | a published output was altered after publication | it is never replaced; re-spawn with a new spawn id |
+| `reviewer output but no raw response to bind it to` | output exists without the response that produced it | re-spawn with a new spawn id |
+
+A refusal before publication (bad JSON, schema violation, plan mismatch) writes
+nothing durable and releases the claim, so the same spawn id can be resumed
+again with a corrected response.
+
+### The v1 watcher
+
+`scripts/watcher.sh` has no Task transport. When the helper exits 2 under it,
+the watcher escalates once (`notify-escalation.sh`), poison-marks the request
+(`NN.failed`), releases its lock, and keeps the staged packet and plan in
+place. The attended Delegate completes the two phases above and then runs
+`verdict-write.sh` on the resumed verdict; the `NN-verdict.md` it writes is what
+completes the request.
+
+Readiness-audit has no Cursor reviewer adapter (`--resume` is refused there).
+Fail that checkpoint closed.
 
 ## Starting a Cursor run
 

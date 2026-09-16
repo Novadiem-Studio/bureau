@@ -342,10 +342,16 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    REVIEWER_VERDICT_PATH="$(printf '%s' "$REVIEW_META" | jq -r .verdict_path)"
    REVIEWER_ENVELOPE_PATH="$(printf '%s' "$REVIEW_META" | jq -r .envelope_path)"
    ```
-   The helper reads `model-routing.json#runtime`, chooses Claude or Codex, builds the cold prompt
-   from snapshot paths, and returns deterministic artifact paths. The prompt carries no live-tree
-   path, warm narrative, prior-verdict summary, or relay context. Both host adapters physically
-   deny `RUN_DIR/log.md`; see `docs/host-runtime.md`.
+   The helper reads `model-routing.json#runtime`, chooses Claude, Codex or Cursor, builds the cold
+   prompt from snapshot paths, and returns deterministic artifact paths. The prompt carries no
+   live-tree path, warm narrative, prior-verdict summary, or relay context. The host adapters
+   physically deny `RUN_DIR/log.md`; see `docs/host-runtime.md`.
+   **Cursor host:** the first call exits 2 with `CURSOR-REVIEWER-HOST-TASK-REQUIRED` and a Task plan
+   (printed on stdout, saved as `<spawn>-reviewer-task-plan.json`). Issue the local blank read-only
+   Task from the plan's `model` and `taskPrompt`, save its final message to the plan's
+   `responsePath`, then run the same command again with `--resume <that file>` prefixed; that call
+   returns `REVIEW_META` exactly as above. A re-spawn needs a new `NN-<k>`; a resumed plan is
+   refused a second time. Details: `docs/host-cursor.md § Cold reviewer`.
 6. Parse the JSON verdict at `$REVIEWER_VERDICT_PATH`.
 6.5. **Capture the cold reviewer's tokens (#26b).** The normalized envelope at
    `$REVIEWER_ENVELOPE_PATH` carries a `.usage` sibling (`input_tokens`,

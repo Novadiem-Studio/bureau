@@ -2,12 +2,13 @@
 # run-cold-reviewer.sh — provider-neutral cold-reviewer dispatcher.
 #
 # Usage:
-#   run-cold-reviewer.sh <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>
+#   run-cold-reviewer.sh [--resume <task-response-file>] \
+#     <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>
 #
 # The caller stages CTX (bridge v2 §9). This script adds ONE file to it itself —
 # $CTX/artifact.sha256, the staged artifact's digest — so a Read-only reviewer can bind its
 # verdict (FR9) by copying instead of guessing. It selects the host from model-routing.json
-# (`claude` or `openai`/`codex`), runs one fresh reviewer, and writes:
+# (`claude`, `openai`/`codex`, or `cursor`), runs one fresh reviewer, and writes:
 #   checkpoints/<spawn-id>-reviewer-verdict.json
 #   checkpoints/<spawn-id>-reviewer-envelope.json
 #   checkpoints/<spawn-id>-reviewer-events.jsonl
@@ -17,11 +18,34 @@
 # stderr. The script never appends token events; callers do that exactly once
 # after a real spawn by passing reviewer-envelope.json to
 # append-reviewer-tokens.sh.
+#
+# Cursor host (two phases — Bash cannot issue a Cursor Task):
+#   phase 1  run-cold-reviewer.sh <6 args>            stages CTX, writes
+#            checkpoints/<spawn-id>-reviewer-task-plan.json, prints the plan on stdout,
+#            exits 2 with CURSOR-REVIEWER-HOST-TASK-REQUIRED. The Delegate issues the local
+#            blank read-only Task from the plan and saves its final message as a file.
+#   phase 2  run-cold-reviewer.sh --resume <that file> <same 6 args>
+#            binds the response to the plan (same spawn, checkpoint, artifact digest), extracts
+#            and schema-validates the verdict, writes verdict + envelope atomically, marks the
+#            plan resumed, and returns the same metadata JSON the other hosts return (exit 0).
+#
+# Exit codes: 0 verdict written; 1 refused or failed (nothing durable written);
+#             2 host Task required (Cursor phase 1 only).
 
 set -u
 
+RESUME_RESPONSE=""
+if [ "${1:-}" = "--resume" ]; then
+  if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+    echo "run-cold-reviewer: --resume requires a Task response file" >&2
+    exit 1
+  fi
+  RESUME_RESPONSE="$2"
+  shift 2
+fi
+
 if [ "$#" -ne 6 ]; then
-  echo "run-cold-reviewer: usage: <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>" >&2
+  echo "run-cold-reviewer: usage: [--resume <task-response-file>] <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>" >&2
   exit 1
 fi
 
@@ -3408,6 +3432,7 @@ PY
 # any Delegate-only schema, argument, required-file, model, cleanup, prompt, or
 # verdict assumption below.
 if [ "$REVIEW_MODE" = "readiness-audit" ]; then
+  [ -z "$RESUME_RESPONSE" ] || fail "--resume is not supported for readiness-audit (no Cursor readiness adapter; fail closed)"
   run_readiness_audit
   exit $?
 fi
@@ -3532,7 +3557,9 @@ ENVELOPE_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-envelope.json"
 EVENTS_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-events.jsonl"
 STDERR_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-stderr.log"
 
-rm -f "$VERDICT_PATH" "$ENVELOPE_PATH" "$EVENTS_PATH" "$STDERR_PATH"
+# Cursor is exclusive by spawn id (plan and outputs are created, never replaced);
+# every other host runs one fresh reviewer per call and starts from a clean slate.
+[ "$RUNTIME" = "cursor" ] || rm -f "$VERDICT_PATH" "$ENVELOPE_PATH" "$EVENTS_PATH" "$STDERR_PATH"
 
 build_task_prompt() {
   prompt_ctx="$1"
@@ -3583,50 +3610,313 @@ validate_verdict_shape() {
   ' "$1" >/dev/null 2>&1
 }
 
+# Validate a verdict against the JSON schema file without a jsonschema dependency
+# (python3 is always present; the module is not). Covers what the Delegate schema
+# uses: type, enum, pattern, minLength, required, properties, additionalProperties,
+# items, and type arrays. A null Integration-evidence (the routine prompt tells the
+# reviewer to set it to null) is dropped before validation, matching what the
+# schema-enforcing hosts end up storing. Writes the normalized verdict to $2.
+validate_verdict_against_schema() {
+  python3 - "$SCHEMA" "$1" "$2" <<'PY'
+import json, re, sys
+schema_path, verdict_path, out_path = sys.argv[1:4]
+with open(schema_path) as fh:
+    schema = json.load(fh)
+try:
+    with open(verdict_path) as fh:
+        data = json.load(fh)
+except Exception as exc:
+    sys.stderr.write("verdict is not JSON: %s\n" % exc)
+    sys.exit(1)
+if isinstance(data, dict) and "Integration-evidence" in data and data["Integration-evidence"] is None:
+    del data["Integration-evidence"]
+TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "null": type(None)}
+def type_ok(value, t):
+    if t == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if t == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    py = TYPES.get(t)
+    return py is not None and isinstance(value, py)
+def check(value, sch, path):
+    t = sch.get("type")
+    if t is not None:
+        allowed = t if isinstance(t, list) else [t]
+        if not any(type_ok(value, x) for x in allowed):
+            return "%s: expected %s" % (path, "/".join(allowed))
+    if "enum" in sch and value not in sch["enum"]:
+        return "%s: not one of %s" % (path, sch["enum"])
+    if isinstance(value, str):
+        if "pattern" in sch and not re.search(sch["pattern"], value):
+            return "%s: does not match %s" % (path, sch["pattern"])
+        if "minLength" in sch and len(value) < sch["minLength"]:
+            return "%s: shorter than minLength %d" % (path, sch["minLength"])
+    if isinstance(value, dict):
+        props = sch.get("properties", {})
+        for key in sch.get("required", []):
+            if key not in value:
+                return "%s: missing required %s" % (path, key)
+        if sch.get("additionalProperties", True) is False:
+            extra = [k for k in value if k not in props]
+            if extra:
+                return "%s: unexpected keys %s" % (path, extra)
+        for key, sub in props.items():
+            if key in value:
+                err = check(value[key], sub, "%s.%s" % (path, key))
+                if err:
+                    return err
+    if isinstance(value, list) and "items" in sch:
+        for i, item in enumerate(value):
+            err = check(item, sch["items"], "%s[%d]" % (path, i))
+            if err:
+                return err
+    return None
+err = check(data, schema, "verdict")
+if err:
+    sys.stderr.write("verdict violates schema: %s\n" % err)
+    sys.exit(1)
+with open(out_path, "w") as fh:
+    json.dump(data, fh, indent=2, sort_keys=False)
+    fh.write("\n")
+PY
+}
+
 if [ "$RUNTIME" = "cursor" ]; then
-  TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
-  audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
   PLAN_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.json"
+  CLAIM_DIR="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.claim"
+  RAW_CURSOR="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-cursor-raw.json"
+
+  if [ -z "$RESUME_RESPONSE" ]; then
+    # ── phase 1: plan. A spawn id plans exactly once: the plan is published with a
+    # hard link (atomic, fails if the target exists), never with a replacing mv, and a
+    # spawn id that already carries a plan, a claim, or published output is refused.
+    if [ -e "$PLAN_PATH" ]; then
+      fail "a Cursor reviewer Task plan already exists for spawn $SPAWN_ID (status '$(jq -r '.status // "unknown"' "$PLAN_PATH" 2>/dev/null)'); a re-spawn needs a new spawn id"
+    fi
+    for existing in "$CLAIM_DIR" "$VERDICT_PATH" "$ENVELOPE_PATH" "$RAW_CURSOR"; do
+      [ ! -e "$existing" ] || fail "spawn $SPAWN_ID already has $(basename "$existing"); a re-spawn needs a new spawn id"
+    done
+    TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
+    audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
+    PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
+    jq -n \
+      --arg runtime "$RUNTIME" \
+      --arg model "$MODEL" \
+      --arg ctx "$CTX" \
+      --arg spawnId "$SPAWN_ID" \
+      --arg checkpoint "$CHECKPOINT" \
+      --arg artifact "$ARTIFACT_BASE" \
+      --arg artifactSha256 "$ARTIFACT_SHA256" \
+      --arg taskPrompt "$TASK_PROMPT" \
+      --arg verdictPath "$VERDICT_PATH" \
+      --arg envelopePath "$ENVELOPE_PATH" \
+      --arg schema "$SCHEMA" \
+      --arg responsePath "$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-response.json" \
+      '{
+        transport: "cursor-task",
+        status: "host-task-required",
+        runtime: $runtime,
+        environment: "local",
+        fork_context: false,
+        readonly: true,
+        sticky_cursor_agents_forbidden: true,
+        model: $model,
+        ctx: $ctx,
+        spawnId: $spawnId,
+        checkpoint: $checkpoint,
+        artifact: $artifact,
+        artifactSha256: $artifactSha256,
+        taskPrompt: $taskPrompt,
+        verdictPath: $verdictPath,
+        envelopePath: $envelopePath,
+        schema: $schema,
+        responsePath: $responsePath,
+        resume: "save the Task final message (the verdict JSON, or a JSON object carrying it in .result / .structured_output, optionally with .usage and .num_turns) to responsePath, then re-run run-cold-reviewer.sh --resume <responsePath> with the same six arguments",
+        isolation: {
+          ok: true,
+          reason: "Cursor Task starts blank; reviewer must stay local against this staged CTX"
+        }
+      }' > "$PLAN_TMP" || { rm -f "$PLAN_TMP"; fail "cannot write Cursor reviewer Task plan"; }
+    if ! ln "$PLAN_TMP" "$PLAN_PATH" 2>/dev/null; then
+      rm -f "$PLAN_TMP"
+      fail "cannot place Cursor reviewer Task plan for spawn $SPAWN_ID: one appeared meanwhile; a re-spawn needs a new spawn id"
+    fi
+    rm -f "$PLAN_TMP"
+    cat "$PLAN_PATH"
+    echo "CURSOR-REVIEWER-HOST-TASK-REQUIRED: staged CTX at $CTX; plan at $PLAN_PATH; issue a local blank readonly Task with model $MODEL; save its final message to $CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-response.json and re-run with --resume; do not grade in the manager session." >&2
+    exit 2
+  fi
+
+  # ── phase 2: resume with the Task's final message. Lifecycle: the plan is bound
+  # (spawn, checkpoint, artifact, staged digest), the resume is CLAIMED atomically
+  # (mkdir), the verdict/envelope/raw are PUBLISHED exclusively (hard links), and only
+  # then is the plan marked resumed. A refusal before publication releases the claim
+  # and leaves nothing durable; an interrupted resume that published but never marked
+  # completes idempotently when re-run with the same response file.
+  [ -f "$PLAN_PATH" ] || fail "no Cursor reviewer Task plan for spawn $SPAWN_ID at $PLAN_PATH; run the plan phase first"
+  [ ! -L "$PLAN_PATH" ] || fail "Cursor reviewer Task plan must not be a symlink: $PLAN_PATH"
+  jq -e '
+    type == "object"
+    and .transport == "cursor-task"
+    and .runtime == "cursor"
+  ' "$PLAN_PATH" >/dev/null 2>&1 || fail "Cursor reviewer Task plan is malformed: $PLAN_PATH"
+  PLAN_STATUS="$(jq -r '.status // empty' "$PLAN_PATH")"
+  if [ "$PLAN_STATUS" != "host-task-required" ]; then
+    [ "$PLAN_STATUS" = "resumed" ] && rm -rf "$CLAIM_DIR"   # a claim left after a completed resume is clutter
+    fail "Cursor reviewer Task plan for spawn $SPAWN_ID is already '$PLAN_STATUS'; a re-spawn needs a new spawn id"
+  fi
+  for pair in \
+    "spawnId=$SPAWN_ID" \
+    "checkpoint=$CHECKPOINT" \
+    "artifact=$ARTIFACT_BASE" \
+    "ctx=$CTX" \
+    "artifactSha256=$ARTIFACT_SHA256"
+  do
+    plan_key="${pair%%=*}"
+    plan_expect="${pair#*=}"
+    plan_have="$(jq -r --arg k "$plan_key" '.[$k] // empty' "$PLAN_PATH")"
+    [ "$plan_have" = "$plan_expect" ] \
+      || fail "Cursor reviewer Task plan $plan_key mismatch: plan has '$plan_have', resume has '$plan_expect' (the staged packet changed since the plan, or the wrong plan)"
+  done
+  PLAN_MODEL="$(jq -r '.model // empty' "$PLAN_PATH")"
+  if [ -n "${BUREAU_REVIEWER_MODEL:-}" ] && [ "$BUREAU_REVIEWER_MODEL" != "$PLAN_MODEL" ]; then
+    fail "BUREAU_REVIEWER_MODEL '$BUREAU_REVIEWER_MODEL' differs from the model the Task was planned with ('$PLAN_MODEL')"
+  fi
+  MODEL="$PLAN_MODEL"
+
+  [ -f "$RESUME_RESPONSE" ] || fail "Task response file does not exist: $RESUME_RESPONSE"
+  [ ! -L "$RESUME_RESPONSE" ] || fail "Task response file must not be a symlink: $RESUME_RESPONSE"
+  [ -s "$RESUME_RESPONSE" ] || fail "Task response file is empty: $RESUME_RESPONSE"
+
+  RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-cursor-raw.json.$$.tmp"
+  VERDICT_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.json.$$.tmp"
+  VERDICT_RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.raw.$$.tmp"
+  ENVELOPE_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-envelope.json.$$.tmp"
+  # Temp names carry $$: a concurrent loser's cleanup must never remove the winner's files.
+  RESUME_CLAIMED=0
+  RESUME_PUBLISHED=0
+  cleanup_resume() {
+    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
+    # a refusal before publication must leave the plan resumable
+    if [ "$RESUME_CLAIMED" -eq 1 ] && [ "$RESUME_PUBLISHED" -eq 0 ]; then
+      rm -rf "$CLAIM_DIR"
+    fi
+  }
+  trap cleanup_resume EXIT
+
+  jq '.' "$RESUME_RESPONSE" > "$RAW_TMP" 2>/dev/null \
+    || fail "Task response is not JSON: $RESUME_RESPONSE"
+  RESPONSE_SHA256="$(sha256_file "$RAW_TMP")" || fail "cannot hash Task response"
+
+  # Same response already published, fully or partially? The raw response is published
+  # FIRST, so any interrupted resume leaves behind the one file that identifies it, and a
+  # replay with the same response completes it: existing outputs are verified, missing
+  # ones published, the audit line written once, then the plan marked. Output without a
+  # raw to bind it to, or a raw from a different response, needs a new spawn id.
+  RESUME_REPLAY=0
+  if [ -e "$RAW_CURSOR" ]; then
+    if [ -f "$RAW_CURSOR" ] && [ "$(sha256_file "$RAW_CURSOR")" = "$RESPONSE_SHA256" ]; then
+      RESUME_REPLAY=1
+    else
+      fail "spawn $SPAWN_ID already has published reviewer output from a different response; a re-spawn needs a new spawn id"
+    fi
+  elif [ -e "$VERDICT_PATH" ] || [ -e "$ENVELOPE_PATH" ]; then
+    fail "spawn $SPAWN_ID has reviewer output but no raw response to bind it to; a re-spawn needs a new spawn id"
+  fi
+
+  if [ "$RESUME_REPLAY" -eq 0 ]; then
+    # Atomic claim: mkdir succeeds for exactly one first resume of this plan.
+    if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
+      claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
+      fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
+    fi
+    RESUME_CLAIMED=1
+    jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+      '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
+      || fail "cannot record the resume claim"
+  fi
+
+  # Derive every output from the response. This is deterministic, so on replay the
+  # derived files are compared byte-for-byte with whatever was already published.
+  extract_claude_verdict "$RAW_TMP" "$VERDICT_RAW_TMP" \
+    || fail "Task response carries no structured verdict (expected the verdict object, or .structured_output / .result holding it)"
+  validate_verdict_against_schema "$VERDICT_RAW_TMP" "$VERDICT_TMP" \
+    || fail "Task response verdict rejected against $SCHEMA (nothing written)"
+
+  # Claude-shaped one-shot envelope. A Cursor Task does not report usage unless the
+  # host adds it to the response; when absent it stays absent (append-reviewer-tokens.sh
+  # then records a zero-token event with a _note), never a fabricated zero.
   jq -n \
-    --arg runtime "$RUNTIME" \
     --arg model "$MODEL" \
-    --arg ctx "$CTX" \
-    --arg spawnId "$SPAWN_ID" \
-    --arg checkpoint "$CHECKPOINT" \
-    --arg artifact "$ARTIFACT_BASE" \
-    --arg artifactSha256 "$ARTIFACT_SHA256" \
-    --arg taskPrompt "$TASK_PROMPT" \
-    --arg verdictPath "$VERDICT_PATH" \
-    --arg envelopePath "$ENVELOPE_PATH" \
-    --arg schema "$SCHEMA" \
-    '{
-      transport: "cursor-task",
-      status: "host-task-required",
-      runtime: $runtime,
-      environment: "local",
-      fork_context: false,
-      readonly: true,
-      sticky_cursor_agents_forbidden: true,
-      model: $model,
-      ctx: $ctx,
-      spawnId: $spawnId,
-      checkpoint: $checkpoint,
-      artifact: $artifact,
-      artifactSha256: $artifactSha256,
-      taskPrompt: $taskPrompt,
-      verdictPath: $verdictPath,
-      envelopePath: $envelopePath,
-      schema: $schema,
-      isolation: {
-        ok: true,
-        reason: "Cursor Task starts blank; reviewer must stay local against this staged CTX"
+    --slurpfile raw "$RAW_TMP" \
+    --slurpfile verdict "$VERDICT_TMP" \
+    '
+    ($raw[0]) as $r
+    | (($r.usage // null) | if type == "object" then . else null end) as $u
+    | (if $u == null then null else {
+        input_tokens: (($u.input_tokens // 0) | if type == "number" then . else 0 end),
+        cache_creation_input_tokens: (($u.cache_creation_input_tokens // $u.cache_write_input_tokens // 0) | if type == "number" then . else 0 end),
+        cache_read_input_tokens: (($u.cache_read_input_tokens // $u.cached_input_tokens // 0) | if type == "number" then . else 0 end),
+        output_tokens: (($u.output_tokens // 0) | if type == "number" then . else 0 end)
+      } end) as $usage
+    | {
+        type: "bureau-cold-review-result",
+        runtime: "cursor",
+        model: $model,
+        result: $verdict[0],
+        num_turns: (($r.num_turns // 1) | if type == "number" then . else 1 end)
       }
-    }' > "$PLAN_PATH" || fail "cannot write Cursor reviewer Task plan"
-  echo "CURSOR-REVIEWER-HOST-TASK-REQUIRED: staged CTX at $CTX; plan at $PLAN_PATH; issue a local blank readonly Task with model $MODEL; do not grade in the manager session." >&2
-  exit 2
+      + (if $usage == null
+         then {_note: "Cursor Task response carried no usage block; reviewer tokens unavailable"}
+         else {usage: $usage} end)
+    ' > "$ENVELOPE_TMP" || fail "cannot build Cursor reviewer envelope"
+
+  # Exclusive, idempotent publication: a hard link fails if the target exists; an
+  # existing target is accepted only when it is byte-identical to what this response
+  # derives, and never replaced.
+  publish_exclusive() {
+    pub_tmp="$1"; pub_target="$2"; pub_label="$3"
+    if [ -e "$pub_target" ] || ! ln "$pub_tmp" "$pub_target" 2>/dev/null; then
+      cmp -s "$pub_tmp" "$pub_target" \
+        || fail "published $pub_label for spawn $SPAWN_ID ($pub_target) differs from what this response derives; refusing to replace it — a re-spawn needs a new spawn id"
+    fi
+  }
+  publish_exclusive "$RAW_TMP" "$RAW_CURSOR" "raw response"
+  RESUME_PUBLISHED=1
+  publish_exclusive "$VERDICT_TMP" "$VERDICT_PATH" "verdict"
+  publish_exclusive "$ENVELOPE_TMP" "$ENVELOPE_PATH" "envelope"
+  [ -e "$EVENTS_PATH" ] || : > "$EVENTS_PATH"
+  [ -e "$STDERR_PATH" ] || : > "$STDERR_PATH"
+
+  # Audit BEFORE marking, keyed on the spawn id so a replay never writes it twice.
+  AUDIT_KEY="Cold reviewer resume — spawn: $SPAWN_ID,"
+  if ! grep -Fq "$AUDIT_KEY" "$RUN_DIR/log.md" 2>/dev/null; then
+    bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+      "$AUDIT_KEY runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH" \
+      >/dev/null || fail "published $VERDICT_PATH but could not append the resume audit line; re-run --resume with the same response file to complete"
+  fi
+  if [ "$RESUME_REPLAY" -eq 1 ]; then
+    bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+      "Cold reviewer resume replay — spawn: $SPAWN_ID completed an interrupted resume from response sha256 $RESPONSE_SHA256" \
+      >/dev/null || true
+  fi
+  RESUMED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
+  jq --arg at "$RESUMED_AT" --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+    '.status = "resumed" | .resumedAt = $at | .responseFile = $response | .responseSha256 = $sha' \
+    "$PLAN_PATH" > "$PLAN_TMP" && mv -f "$PLAN_TMP" "$PLAN_PATH" \
+    || fail "published and audited $VERDICT_PATH but could not mark the plan resumed; re-run --resume with the same response file to complete"
+  trap - EXIT
+  cleanup_resume
+  rm -rf "$CLAIM_DIR"
+elif [ -n "$RESUME_RESPONSE" ]; then
+  fail "--resume applies only to the cursor host; runtime '$RUNTIME' runs its reviewer directly"
 fi
 
-if [ "$RUNTIME" = "claude" ]; then
+if [ "$RUNTIME" = "cursor" ]; then
+  : # verdict and envelope already written by the resume phase above
+elif [ "$RUNTIME" = "claude" ]; then
   CLAUDE_BIN="${CLAUDE_BIN:-claude}"
   command -v "$CLAUDE_BIN" >/dev/null 2>&1 || fail "Claude CLI not found: $CLAUDE_BIN"
   TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
@@ -3781,6 +4071,7 @@ jq -cn \
   --arg stderr_path "$STDERR_PATH" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --argjson hash_match "$HASH_MATCH" \
+  --arg plan_path "${PLAN_PATH:-}" \
   '{
     runtime: $runtime,
     model: $model,
@@ -3791,4 +4082,5 @@ jq -cn \
     stderr_path: $stderr_path,
     artifact_sha256: $artifact_sha256,
     hash_match: $hash_match
-  }'
+  }
+  + (if $plan_path == "" then {} else {plan_path: $plan_path} end)'

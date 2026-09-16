@@ -42,7 +42,7 @@ desk and not `scripts/run-cursor-specialist.sh` executing a model.
 | Resume / note | `Task` with `resume` to a still-running or idle id. |
 | Wait | background completion; poll only if the next step is blocked on that agent. |
 | Genuine fork | persist Delegate state, ask Robin in this chat, then resume the Conductor. |
-| Cold reviewer | `scripts/run-cold-reviewer.sh` stages the packet then exits 2 with `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. Issue a **local** blank Task against that staged CTX. Never grade in the manager session. |
+| Cold reviewer | Two phases. `scripts/run-cold-reviewer.sh` stages the packet, writes the Task plan, and exits 2 with `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. Issue a **local** blank Task against that staged CTX, save its final message to the plan's `responsePath`, then re-run with `--resume <that file>` to get the verdict, envelope and metadata JSON. Never grade in the manager session. |
 
 Before each specialist Task, run:
 
