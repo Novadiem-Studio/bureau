@@ -364,11 +364,22 @@ process_request() {
       fi
     fi
   elif [ "$review_rc" -eq 2 ]; then
-    # Cursor host: the helper planned a local Task it cannot issue from Bash. The v1
-    # watcher has no Task transport, so this checkpoint needs the Delegate's two-phase
-    # flow (plan, issue the Task, --resume <response>; docs/host-cursor.md). Held, not
-    # retried: re-spawning the same plan would only re-plan it.
-    echo "watcher: cold reviewer for $NN (spawn $spawn_id) requires a host Task (exit 2) — the v1 watcher cannot drive the Cursor host; use the Delegate two-phase flow: run-cold-reviewer.sh, issue the local Task, then --resume <response-file>" >&2
+    # Cursor host: the helper planned a local Task it cannot issue from Bash, and the
+    # v1 watcher has no Task transport. This is not a failed spawn: do not run
+    # verdict-write.sh, do not bump the failcount, and do NOT tear down $CTX — the
+    # plan points at it. Escalate once, poison-mark the request so later polls skip
+    # it, release the lock, and leave the packet for the attended Delegate, who
+    # issues the Task, runs --resume, then verdict-write.sh on the resumed verdict
+    # (docs/host-cursor.md § Cold reviewer). The verdict file it writes is what
+    # makes this request complete.
+    plan_path="$CHECKPOINTS_DIR/${spawn_id}-reviewer-task-plan.json"
+    echo "watcher: cold reviewer for $NN (spawn $spawn_id) requires a host Task (exit 2) — the v1 watcher has no Task transport; escalating, poison-marking $NN, keeping the staged packet at $CTX (plan: $plan_path)" >&2
+    sh "$SCRIPT_DIR/notify-escalation.sh" "$NN" "$RUN_DIR" \
+      "cold review for checkpoint $NN needs a host Task the v1 watcher cannot issue (Cursor host). Attended recovery: issue the local Task from $plan_path, save its final message, run run-cold-reviewer.sh --resume <that file> with the same arguments, then verdict-write.sh on the resumed verdict (docs/host-cursor.md § Cold reviewer). Staged packet kept at $CTX." \
+      || true
+    : > "$failed_marker"
+    rm -rf "$lock_dir"
+    return
   else
     echo "watcher: cold-reviewer adapter failed for $NN (spawn $spawn_id)" >&2
   fi

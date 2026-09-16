@@ -138,6 +138,11 @@ a real `revise` re-issue (where `revise-count + 1`) counts toward the cap.
   `RUN_DIR/checkpoints/NN.failed` so later poll passes skip the request, and stops
   re-spawning. Attended intervention is then required. A successful verdict clears the
   failcount.
+- **Host Task required (exit 2 from `run-cold-reviewer.sh`, Cursor host):** not a failed spawn.
+  The watcher escalates once, writes the `NN.failed` poison marker, releases the lock, and
+  keeps the staged packet and Task plan in place (no failcount, no `verdict-write.sh`). The
+  attended Delegate issues the Task, runs `--resume`, then `verdict-write.sh`
+  (`docs/host-cursor.md § The v1 watcher`).
 
 ## Section 8: Escalation channel (FR 7 / EC4 / A2)
 

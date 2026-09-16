@@ -76,6 +76,34 @@ Usage the Task did not report stays absent from the envelope (a `_note` says
 so); `append-reviewer-tokens.sh` then records a zero-token event with its own
 note rather than a fabricated count.
 
+### Lifecycle and recovery
+
+A spawn id plans once and publishes once. The plan, verdict, envelope and raw
+response are created with hard links (atomic, fail if the target exists), never
+by replacement; a resume first claims the plan atomically
+(`<spawn-id>-reviewer-task-plan.claim/`), publishes, then marks the plan
+`resumed` and drops the claim. Of two concurrent resumes exactly one wins.
+
+| You see | What happened | Do |
+|---|---|---|
+| `already 'resumed'` / `already exists for spawn` | that spawn is done | re-spawn with a new spawn id |
+| `already claimed by another resume (pid …)` | a resume is running, or died before publishing | if the pid is gone and `<spawn-id>-reviewer-verdict.json` is absent, remove the claim dir and retry |
+| `published … but could not mark the plan resumed` | crash between publish and mark | re-run `--resume` with the same response file; it completes idempotently |
+| `published reviewer output from a different response` | a different message was offered for a spawn that already published | keep the published verdict, or re-spawn with a new spawn id |
+
+A refusal before publication (bad JSON, schema violation, plan mismatch) writes
+nothing durable and releases the claim, so the same spawn id can be resumed
+again with a corrected response.
+
+### The v1 watcher
+
+`scripts/watcher.sh` has no Task transport. When the helper exits 2 under it,
+the watcher escalates once (`notify-escalation.sh`), poison-marks the request
+(`NN.failed`), releases its lock, and keeps the staged packet and plan in
+place. The attended Delegate completes the two phases above and then runs
+`verdict-write.sh` on the resumed verdict; the `NN-verdict.md` it writes is what
+completes the request.
+
 Readiness-audit has no Cursor reviewer adapter (`--resume` is refused there).
 Fail that checkpoint closed.
 

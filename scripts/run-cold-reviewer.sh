@@ -3557,7 +3557,9 @@ ENVELOPE_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-envelope.json"
 EVENTS_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-events.jsonl"
 STDERR_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-stderr.log"
 
-rm -f "$VERDICT_PATH" "$ENVELOPE_PATH" "$EVENTS_PATH" "$STDERR_PATH"
+# Cursor is exclusive by spawn id (plan and outputs are created, never replaced);
+# every other host runs one fresh reviewer per call and starts from a clean slate.
+[ "$RUNTIME" = "cursor" ] || rm -f "$VERDICT_PATH" "$ENVELOPE_PATH" "$EVENTS_PATH" "$STDERR_PATH"
 
 build_task_prompt() {
   prompt_ctx="$1"
@@ -3681,12 +3683,22 @@ PY
 
 if [ "$RUNTIME" = "cursor" ]; then
   PLAN_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.json"
+  CLAIM_DIR="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.claim"
+  RAW_CURSOR="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-cursor-raw.json"
 
   if [ -z "$RESUME_RESPONSE" ]; then
-    # ── phase 1: plan. Bash cannot issue a Cursor Task; the Delegate does. ────
+    # ── phase 1: plan. A spawn id plans exactly once: the plan is published with a
+    # hard link (atomic, fails if the target exists), never with a replacing mv, and a
+    # spawn id that already carries a plan, a claim, or published output is refused.
+    if [ -e "$PLAN_PATH" ]; then
+      fail "a Cursor reviewer Task plan already exists for spawn $SPAWN_ID (status '$(jq -r '.status // "unknown"' "$PLAN_PATH" 2>/dev/null)'); a re-spawn needs a new spawn id"
+    fi
+    for existing in "$CLAIM_DIR" "$VERDICT_PATH" "$ENVELOPE_PATH" "$RAW_CURSOR"; do
+      [ ! -e "$existing" ] || fail "spawn $SPAWN_ID already has $(basename "$existing"); a re-spawn needs a new spawn id"
+    done
     TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
     audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
-    PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.tmp"
+    PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
     jq -n \
       --arg runtime "$RUNTIME" \
       --arg model "$MODEL" \
@@ -3724,14 +3736,23 @@ if [ "$RUNTIME" = "cursor" ]; then
           ok: true,
           reason: "Cursor Task starts blank; reviewer must stay local against this staged CTX"
         }
-      }' > "$PLAN_TMP" || fail "cannot write Cursor reviewer Task plan"
-    mv -f "$PLAN_TMP" "$PLAN_PATH" || fail "cannot place Cursor reviewer Task plan"
+      }' > "$PLAN_TMP" || { rm -f "$PLAN_TMP"; fail "cannot write Cursor reviewer Task plan"; }
+    if ! ln "$PLAN_TMP" "$PLAN_PATH" 2>/dev/null; then
+      rm -f "$PLAN_TMP"
+      fail "cannot place Cursor reviewer Task plan for spawn $SPAWN_ID: one appeared meanwhile; a re-spawn needs a new spawn id"
+    fi
+    rm -f "$PLAN_TMP"
     cat "$PLAN_PATH"
     echo "CURSOR-REVIEWER-HOST-TASK-REQUIRED: staged CTX at $CTX; plan at $PLAN_PATH; issue a local blank readonly Task with model $MODEL; save its final message to $CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-response.json and re-run with --resume; do not grade in the manager session." >&2
     exit 2
   fi
 
-  # ── phase 2: resume with the Task's final message. ────────────────────────
+  # ── phase 2: resume with the Task's final message. Lifecycle: the plan is bound
+  # (spawn, checkpoint, artifact, staged digest), the resume is CLAIMED atomically
+  # (mkdir), the verdict/envelope/raw are PUBLISHED exclusively (hard links), and only
+  # then is the plan marked resumed. A refusal before publication releases the claim
+  # and leaves nothing durable; an interrupted resume that published but never marked
+  # completes idempotently when re-run with the same response file.
   [ -f "$PLAN_PATH" ] || fail "no Cursor reviewer Task plan for spawn $SPAWN_ID at $PLAN_PATH; run the plan phase first"
   [ ! -L "$PLAN_PATH" ] || fail "Cursor reviewer Task plan must not be a symlink: $PLAN_PATH"
   jq -e '
@@ -3764,67 +3785,111 @@ if [ "$RUNTIME" = "cursor" ]; then
   [ -f "$RESUME_RESPONSE" ] || fail "Task response file does not exist: $RESUME_RESPONSE"
   [ ! -L "$RESUME_RESPONSE" ] || fail "Task response file must not be a symlink: $RESUME_RESPONSE"
   [ -s "$RESUME_RESPONSE" ] || fail "Task response file is empty: $RESUME_RESPONSE"
-  RAW_CURSOR="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-cursor-raw.json"
-  jq '.' "$RESUME_RESPONSE" > "$RAW_CURSOR" 2>/dev/null \
-    || { rm -f "$RAW_CURSOR"; fail "Task response is not JSON: $RESUME_RESPONSE"; }
-  RESPONSE_SHA256="$(sha256_file "$RAW_CURSOR")" || fail "cannot hash Task response"
 
-  VERDICT_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.json.tmp"
-  VERDICT_RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.raw.tmp"
-  ENVELOPE_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-envelope.json.tmp"
-  cleanup_resume_tmp() {
-    rm -f "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
+  RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-cursor-raw.json.$$.tmp"
+  VERDICT_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.json.$$.tmp"
+  VERDICT_RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.raw.$$.tmp"
+  ENVELOPE_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-envelope.json.$$.tmp"
+  # Temp names carry $$: a concurrent loser's cleanup must never remove the winner's files.
+  RESUME_CLAIMED=0
+  RESUME_PUBLISHED=0
+  cleanup_resume() {
+    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
+    # a refusal before publication must leave the plan resumable
+    if [ "$RESUME_CLAIMED" -eq 1 ] && [ "$RESUME_PUBLISHED" -eq 0 ]; then
+      rm -rf "$CLAIM_DIR"
+    fi
   }
-  trap cleanup_resume_tmp EXIT
-  extract_claude_verdict "$RAW_CURSOR" "$VERDICT_RAW_TMP" \
-    || fail "Task response carries no structured verdict (expected the verdict object, or .structured_output / .result holding it)"
-  validate_verdict_against_schema "$VERDICT_RAW_TMP" "$VERDICT_TMP" \
-    || fail "Task response verdict rejected against $SCHEMA (nothing written)"
+  trap cleanup_resume EXIT
 
-  # Claude-shaped one-shot envelope. A Cursor Task does not report usage unless the
-  # host adds it to the response; when absent it stays absent (append-reviewer-tokens.sh
-  # then records a zero-token event with a _note), never a fabricated zero.
-  jq -n \
-    --arg model "$MODEL" \
-    --slurpfile raw "$RAW_CURSOR" \
-    --slurpfile verdict "$VERDICT_TMP" \
-    '
-    ($raw[0]) as $r
-    | (($r.usage // null) | if type == "object" then . else null end) as $u
-    | (if $u == null then null else {
-        input_tokens: (($u.input_tokens // 0) | if type == "number" then . else 0 end),
-        cache_creation_input_tokens: (($u.cache_creation_input_tokens // $u.cache_write_input_tokens // 0) | if type == "number" then . else 0 end),
-        cache_read_input_tokens: (($u.cache_read_input_tokens // $u.cached_input_tokens // 0) | if type == "number" then . else 0 end),
-        output_tokens: (($u.output_tokens // 0) | if type == "number" then . else 0 end)
-      } end) as $usage
-    | {
-        type: "bureau-cold-review-result",
-        runtime: "cursor",
-        model: $model,
-        result: $verdict[0],
-        num_turns: (($r.num_turns // 1) | if type == "number" then . else 1 end)
-      }
-      + (if $usage == null
-         then {_note: "Cursor Task response carried no usage block; reviewer tokens unavailable"}
-         else {usage: $usage} end)
-    ' > "$ENVELOPE_TMP" || fail "cannot build Cursor reviewer envelope"
+  jq '.' "$RESUME_RESPONSE" > "$RAW_TMP" 2>/dev/null \
+    || fail "Task response is not JSON: $RESUME_RESPONSE"
+  RESPONSE_SHA256="$(sha256_file "$RAW_TMP")" || fail "cannot hash Task response"
 
-  mv -f "$VERDICT_TMP" "$VERDICT_PATH" || fail "cannot place Cursor reviewer verdict"
-  mv -f "$ENVELOPE_TMP" "$ENVELOPE_PATH" || fail "cannot place Cursor reviewer envelope"
-  : > "$EVENTS_PATH"
-  : > "$STDERR_PATH"
-  trap - EXIT
-  cleanup_resume_tmp
+  # Published output for this spawn already? Only the same response may complete an
+  # interrupted resume (published, not yet marked); anything else needs a new spawn id.
+  RESUME_REPLAY=0
+  if [ -e "$VERDICT_PATH" ] || [ -e "$ENVELOPE_PATH" ] || [ -e "$RAW_CURSOR" ]; then
+    if [ -f "$VERDICT_PATH" ] && [ -f "$ENVELOPE_PATH" ] && [ -f "$RAW_CURSOR" ] \
+       && [ "$(sha256_file "$RAW_CURSOR")" = "$RESPONSE_SHA256" ]; then
+      RESUME_REPLAY=1
+    else
+      fail "spawn $SPAWN_ID already has published reviewer output from a different response (or a partial set); a re-spawn needs a new spawn id"
+    fi
+  fi
+
+  if [ "$RESUME_REPLAY" -eq 0 ]; then
+    # Atomic claim: mkdir succeeds for exactly one resume of this plan.
+    if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
+      claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
+      fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $VERDICT_PATH does not exist, remove $CLAIM_DIR and retry"
+    fi
+    RESUME_CLAIMED=1
+    jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+      '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
+      || fail "cannot record the resume claim"
+
+    extract_claude_verdict "$RAW_TMP" "$VERDICT_RAW_TMP" \
+      || fail "Task response carries no structured verdict (expected the verdict object, or .structured_output / .result holding it)"
+    validate_verdict_against_schema "$VERDICT_RAW_TMP" "$VERDICT_TMP" \
+      || fail "Task response verdict rejected against $SCHEMA (nothing written)"
+
+    # Claude-shaped one-shot envelope. A Cursor Task does not report usage unless the
+    # host adds it to the response; when absent it stays absent (append-reviewer-tokens.sh
+    # then records a zero-token event with a _note), never a fabricated zero.
+    jq -n \
+      --arg model "$MODEL" \
+      --slurpfile raw "$RAW_TMP" \
+      --slurpfile verdict "$VERDICT_TMP" \
+      '
+      ($raw[0]) as $r
+      | (($r.usage // null) | if type == "object" then . else null end) as $u
+      | (if $u == null then null else {
+          input_tokens: (($u.input_tokens // 0) | if type == "number" then . else 0 end),
+          cache_creation_input_tokens: (($u.cache_creation_input_tokens // $u.cache_write_input_tokens // 0) | if type == "number" then . else 0 end),
+          cache_read_input_tokens: (($u.cache_read_input_tokens // $u.cached_input_tokens // 0) | if type == "number" then . else 0 end),
+          output_tokens: (($u.output_tokens // 0) | if type == "number" then . else 0 end)
+        } end) as $usage
+      | {
+          type: "bureau-cold-review-result",
+          runtime: "cursor",
+          model: $model,
+          result: $verdict[0],
+          num_turns: (($r.num_turns // 1) | if type == "number" then . else 1 end)
+        }
+        + (if $usage == null
+           then {_note: "Cursor Task response carried no usage block; reviewer tokens unavailable"}
+           else {usage: $usage} end)
+      ' > "$ENVELOPE_TMP" || fail "cannot build Cursor reviewer envelope"
+
+    # Exclusive publication: hard links fail if a file appeared meanwhile. A partial
+    # publish under our own claim is rolled back before failing.
+    ln "$VERDICT_TMP" "$VERDICT_PATH" 2>/dev/null \
+      || fail "cannot publish verdict for spawn $SPAWN_ID: $VERDICT_PATH appeared meanwhile; a re-spawn needs a new spawn id"
+    ln "$ENVELOPE_TMP" "$ENVELOPE_PATH" 2>/dev/null \
+      || { rm -f "$VERDICT_PATH"; fail "cannot publish envelope for spawn $SPAWN_ID: $ENVELOPE_PATH appeared meanwhile"; }
+    ln "$RAW_TMP" "$RAW_CURSOR" 2>/dev/null \
+      || { rm -f "$VERDICT_PATH" "$ENVELOPE_PATH"; fail "cannot publish raw response for spawn $SPAWN_ID: $RAW_CURSOR appeared meanwhile"; }
+    RESUME_PUBLISHED=1
+  else
+    RESUME_PUBLISHED=1
+  fi
+  [ -e "$EVENTS_PATH" ] || : > "$EVENTS_PATH"
+  [ -e "$STDERR_PATH" ] || : > "$STDERR_PATH"
 
   RESUMED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.tmp"
+  PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
   jq --arg at "$RESUMED_AT" --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
     '.status = "resumed" | .resumedAt = $at | .responseFile = $response | .responseSha256 = $sha' \
     "$PLAN_PATH" > "$PLAN_TMP" && mv -f "$PLAN_TMP" "$PLAN_PATH" \
-    || fail "cannot mark Cursor reviewer Task plan as resumed"
+    || fail "published $VERDICT_PATH but could not mark the plan resumed; re-run --resume with the same response file to complete"
   bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
-    "Cold reviewer resume — spawn: $SPAWN_ID, runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH" \
+    "Cold reviewer resume — spawn: $SPAWN_ID, runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH$([ "$RESUME_REPLAY" -eq 1 ] && printf ' (replay: completed an interrupted resume)')" \
     >/dev/null || fail "cannot append cold-reviewer resume audit line"
+  trap - EXIT
+  cleanup_resume
+  rm -rf "$CLAIM_DIR"
 elif [ -n "$RESUME_RESPONSE" ]; then
   fail "--resume applies only to the cursor host; runtime '$RUNTIME' runs its reviewer directly"
 fi
