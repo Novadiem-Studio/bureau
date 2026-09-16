@@ -26,6 +26,9 @@ command: |
       # (f) fable with an override whose reason is blank — the defect
       printf 'SPAWN-EVENT: %s\n' '{"role":"mage","agent":"The Mage","configured_model":"opus","actual_model":"fable","attempt":1,"attempt_id":"mage-c4-1","status":"started","at":"2026-09-10T17:00:00Z"}'
       printf 'MODEL-OVERRIDE: %s\n' '{"role":"mage","attempt_id":"mage-c4-1","configured":"opus","actual":"fable","reason":"   ","at":"2026-09-10T17:00:00Z"}'
+      # (g) fable with an override record that has no reason key at all — the defect
+      printf 'SPAWN-EVENT: %s\n' '{"role":"spellwright","agent":"The Spellwright","configured_model":"sonnet","actual_model":"fable","attempt":2,"attempt_id":"spellwright-2","status":"started","rework":true,"at":"2026-09-10T17:30:00Z"}'
+      printf 'MODEL-OVERRIDE: %s\n' '{"role":"spellwright","attempt_id":"spellwright-2","configured":"sonnet","actual":"fable","at":"2026-09-10T17:30:00Z"}'
     } > "$RD/log.md"
   }
   write_log
@@ -33,9 +36,11 @@ command: |
   out=$(bash "$ROOT/scripts/preflight-artifacts.sh" "$RD" --phase final 2>&1)
 
   n=$(printf '%s\n' "$out" | grep -c 'fable-override')
-  [ "$n" = "3" ] || { echo "FAIL: expected 3 fable-override defects, got $n"; printf '%s\n' "$out"; rm -rf "$TMPF"; exit 1; }
+  [ "$n" = "4" ] || { echo "FAIL: expected 4 fable-override defects, got $n"; printf '%s\n' "$out"; rm -rf "$TMPF"; exit 1; }
   printf '%s\n' "$out" | grep 'fable-override' | grep -q "mage-c4-1" \
     || { echo "FAIL: blank-reason override not flagged"; rm -rf "$TMPF"; exit 1; }
+  printf '%s\n' "$out" | grep 'fable-override' | grep -q "spellwright-2" \
+    || { echo "FAIL: override with no reason key not flagged"; rm -rf "$TMPF"; exit 1; }
   printf '%s\n' "$out" | grep 'fable-override' | grep -q "systemsmith-c2-1" \
     || { echo "FAIL: auto-reconciled-only spawn not flagged"; rm -rf "$TMPF"; exit 1; }
   printf '%s\n' "$out" | grep 'fable-override' | grep -q "'challenger-1'" \
@@ -66,9 +71,10 @@ command: |
     && { echo "FAIL: fable still checked when the routing names a different escalation model"; rm -rf "$TMPF"; exit 1; }
   rm -f "$RD/model-routing.json"
 
-  # Negative control: give the three defects a hand-written reason; the check goes quiet.
+  # Negative control: give the four defects a hand-written reason; the check goes quiet.
   write_log
   printf 'MODEL-OVERRIDE: %s\n' '{"role":"mage","attempt_id":"mage-c4-1","configured":"opus","actual":"fable","reason":"bounce rule: second Challenger rejection of chunk 04; strong -> frontier","at":"2026-09-10T17:00:00Z"}' >> "$RD/log.md"
+  printf 'MODEL-OVERRIDE: %s\n' '{"role":"spellwright","attempt_id":"spellwright-2","configured":"sonnet","actual":"fable","reason":"human-requested: Robin asked for fable on the prompt-folder rework","at":"2026-09-10T17:30:00Z"}' >> "$RD/log.md"
   printf 'MODEL-OVERRIDE: %s\n' '{"role":"systemsmith","attempt_id":"systemsmith-c2-1","configured":"opus","actual":"fable","reason":"Robin asked for fable on the secret-store chunk (kickoff brief 2026-09-09)","at":"2026-09-10T16:44:14Z"}' >> "$RD/log.md"
   printf 'MODEL-OVERRIDE: %s\n' '{"role":"challenger","attempt_id":"challenger-1","configured":"opus","actual":"fable","reason":"human-requested: final gate on fable per Robin","at":"2026-09-10T08:52:57Z"}' >> "$RD/log.md"
   out3=$(bash "$ROOT/scripts/preflight-artifacts.sh" "$RD" --phase final 2>&1)
@@ -83,6 +89,6 @@ command: |
 
   rm -rf "$TMPF"
   echo PASS
-expected: exit 0; stdout "PASS". At --phase final, a specialist SPAWN-EVENT whose actual_model is an escalation-tier model (fable, or whatever RUN_DIR/model-routing.json#tiers names for frontier/escalated that does not also serve cheap/standard/strong) while configured_model differs is reported once as a fable-override defect unless a MODEL-OVERRIDE with the same attempt_id and actual carries a non-blank reason that is not the account-run.sh auto-reconcile text. A hand-written override, a conductor leg, a spawn whose routing already configured fable, and non-escalation spawns are not reported; explaining the defects silences the check; --phase round1 does not run it. Mutation: delete the check_fable_override call (or its add_defect line) in scripts/preflight-artifacts.sh → the first assertion sees 0 defects and fails; delete the startswith("auto-reconciled") exclusion → case (b) passes and the count drops to 2; delete the blank-reason exclusion → case (f) passes and the count drops to 2; drop the lower-tier subtraction from the model set → the terra -> sol spawn is flagged.
+expected: exit 0; stdout "PASS". At --phase final, a specialist SPAWN-EVENT whose actual_model is an escalation-tier model (fable, or whatever RUN_DIR/model-routing.json#tiers names for frontier/escalated that does not also serve cheap/standard/strong) while configured_model differs is reported once as a fable-override defect unless a MODEL-OVERRIDE with the same attempt_id and actual carries a non-blank reason that is not the account-run.sh auto-reconcile text. A hand-written override, a conductor leg, a spawn whose routing already configured fable, and non-escalation spawns are not reported; explaining the defects silences the check; --phase round1 does not run it. Mutation: delete the check_fable_override call (or its add_defect line) in scripts/preflight-artifacts.sh → the first assertion sees 0 defects and fails; delete the startswith("auto-reconciled") exclusion → case (b) passes and the count drops to 2; delete the blank-reason exclusion → cases (f) and (g) pass and the count drops to 2; drop the lower-tier subtraction from the model set → the terra -> sol spawn is flagged.
 phase: model policy — reviewer differs from author (issue #50)
 owner: scripts/preflight-artifacts.sh check_fable_override; docs/model-routing-and-cast.md § Escalation ladder
