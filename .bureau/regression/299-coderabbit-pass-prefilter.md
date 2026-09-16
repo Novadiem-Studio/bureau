@@ -33,6 +33,9 @@ command: |
       echo '{"type":"error","errorType":"unknown","message":"Unable to determine base branch.","recoverable":false}'; exit 1 ;;
     nocomplete)
       echo '{"type":"heartbeat","status":"reviewing"}' ;;
+    scalar)
+      echo '"just a string"'
+      echo '{"type":"complete","status":"review_completed","findings":0,"reviewedFiles":["changed.sh"]}' ;;
   esac
   exit 0
   SH
@@ -70,6 +73,9 @@ command: |
   printf 'f1\tfixed\tquoted it\nf2\tskipped\n' > "$TMP/d3.tsv"
   bash "$P" dispositions "$OUT" "$TMP/d3.tsv" >/dev/null 2>"$TMP/err" && { echo "FAIL: skipped without reason accepted"; exit 1; }
   grep -q 'needs a reason' "$TMP/err" || { echo "FAIL: no-reason refusal"; cat "$TMP/err"; exit 1; }
+  printf 'f1\tfixed\tquoted it\nf2\tskipped\tr\nf1\tskipped\tconflicting\n' > "$TMP/d3b.tsv"
+  bash "$P" dispositions "$OUT" "$TMP/d3b.tsv" >/dev/null 2>"$TMP/err" && { echo "FAIL: duplicate id accepted"; exit 1; }
+  grep -q 'duplicate disposition id(s): f1' "$TMP/err" || { echo "FAIL: duplicate refusal reason"; cat "$TMP/err"; exit 1; }
   printf 'f1\tfixed\tquoted it\nf2\tskipped\tempty input is rejected two lines above\n' > "$TMP/d4.tsv"
   bash "$P" dispositions "$OUT" "$TMP/d4.tsv" --run-dir "$RD" > "$TMP/d.out" 2>"$TMP/err" || { echo "FAIL: complete table refused"; cat "$TMP/err"; exit 1; }
   jq -e '.status == "dispositioned" and (.dispositions | length) == 2 and .dispositions[1].status == "skipped" and (.dispositioned_at | length > 0)' "$OUT" >/dev/null \
@@ -82,7 +88,7 @@ command: |
   jq -e '.status == "ran" and .counts.total == 0 and .findings == []' "$RD/coderabbit/04-findings.json" >/dev/null || { echo "FAIL: empty review shape"; exit 1; }
 
   # (d) unavailable: missing binary, error event, stream without complete — exit 3, status unavailable, logged, never fatal
-  for mode in missing error nocomplete; do
+  for mode in missing error nocomplete scalar; do
     if [ "$mode" = "missing" ]; then BIN="$TMP/does-not-exist"; else BIN="$STUB"; fi
     set +e
     CR_STUB_MODE="$mode" CODERABBIT_BIN="$BIN" bash "$P" run "$WT" "$BASE" "$RD/coderabbit/05-$mode.json" --run-dir "$RD" --prompt-id "05-$mode" > "$TMP/u.out" 2>"$TMP/u.err"
@@ -92,8 +98,15 @@ command: |
     jq -e '.status == "unavailable" and (.reason | length > 0) and .findings == []' "$RD/coderabbit/05-$mode.json" >/dev/null || { echo "FAIL: $mode status"; cat "$RD/coderabbit/05-$mode.json"; exit 1; }
     grep -q "CodeRabbit pass — prompt 05-$mode: UNAVAILABLE" "$RD/log.md" || { echo "FAIL: $mode not logged"; exit 1; }
   done
-  # (e) bad base / usage
+  # (e) bad base / usage / a trailing option must exit 1, never loop
   bash "$P" run "$WT" deadbeef "$RD/x.json" >/dev/null 2>&1 && { echo "FAIL: bad base accepted"; exit 1; }
   bash "$P" >/dev/null 2>&1 && { echo "FAIL: no-arg usage accepted"; exit 1; }
+  for trailing in "run $WT $BASE $RD/y.json --prompt-id" "run $WT $BASE $RD/y.json --run-dir" "dispositions $OUT $TMP/d4.tsv --run-dir"; do
+    ( set +e; CODERABBIT_BIN="$STUB" bash "$P" $trailing >/dev/null 2>&1; echo "$?" > "$TMP/trc" ) & tp=$!
+    i=0; while kill -0 "$tp" 2>/dev/null && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$tp" 2>/dev/null; then kill "$tp" 2>/dev/null; echo "FAIL: trailing option looped: $trailing"; exit 1; fi
+    wait "$tp" 2>/dev/null || true   # the probe's own exit code is read from the file, not from wait
+    [ "$(cat "$TMP/trc")" = "1" ] || { echo "FAIL: trailing option rc $(cat "$TMP/trc"): $trailing"; exit 1; }
+  done
   echo PASS
-expected: exit 0; stdout "PASS". `run` invokes the CLI with --agent --committed --base <branch> --base-commit <base>, keeps only findings whose file is in base..HEAD (one dropped and counted), assigns ids, parses "around lines A - B" and "at line N" into a range, strips the untrusted-data boilerplate, keeps suggestions, saves the raw stream, and appends a CODERABBIT-PASS line. `dispositions` refuses an incomplete table (naming the missing id), an unknown id, and a skipped finding without a reason, leaves status untouched on refusal, and records a complete table as status dispositioned with a log line. An empty review is status ran with zero findings. A missing binary, an error event, or a stream without a complete event exits 3 with status unavailable and a log line. Mutation: drop the changed-files filter in the normalizer → counts.total becomes 3 and outside_diff_dropped 0; drop the missing-id check in `dispositions` → the incomplete table is accepted.
+expected: exit 0; stdout "PASS". `run` invokes the CLI with --agent --committed --base <branch> --base-commit <base>, keeps only findings whose file is in base..HEAD (one dropped and counted), assigns ids, parses "around lines A - B" and "at line N" into a range, strips the untrusted-data boilerplate, keeps suggestions, saves the raw stream, and appends a CODERABBIT-PASS line. `dispositions` refuses an incomplete table (naming the missing id), an unknown id, a duplicated id, and a skipped finding without a reason, leaves status untouched on refusal, and records a complete table as status dispositioned with a log line. An empty review is status ran with zero findings. A missing binary, an error event, a stream without a complete event, or a stream containing a non-object record exits 3 with status unavailable and a log line. Mutation: drop the changed-files filter in the normalizer → counts.total becomes 3 and outside_diff_dropped 0; drop the missing-id check in `dispositions` → the incomplete table is accepted.

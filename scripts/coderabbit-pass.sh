@@ -83,7 +83,7 @@ if [ "$MODE" = "dispositions" ]; then
   shift 2
   while [ $# -gt 0 ]; do
     case "$1" in
-      --run-dir) RUN_DIR="${2:-}"; shift 2 ;;
+      --run-dir) [ $# -ge 2 ] || usage; RUN_DIR="$2"; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -108,7 +108,9 @@ if [ "$MODE" = "dispositions" ]; then
     | ($d | map(.id)) as $dids
     | ($dids - $ids) as $unknown
     | ($ids - $dids) as $missing
-    | if ($unknown | length) > 0 then error("unknown finding id(s): " + ($unknown | join(", ")))
+    | ($dids | group_by(.) | map(select(length > 1) | .[0])) as $dupes
+    | if ($dupes | length) > 0 then error("duplicate disposition id(s): " + ($dupes | join(", ")))
+      elif ($unknown | length) > 0 then error("unknown finding id(s): " + ($unknown | join(", ")))
       elif ($missing | length) > 0 then error("undispositioned finding id(s): " + ($missing | join(", ")))
       else . + {dispositions: $d, status: "dispositioned", dispositioned_at: $at}
       end
@@ -126,8 +128,8 @@ WORKTREE="${1:-}"; BASE="${2:-}"; OUT="${3:-}"; RUN_DIR=""; PROMPT_ID=""; LIGHT=
 shift 3
 while [ $# -gt 0 ]; do
   case "$1" in
-    --run-dir)   RUN_DIR="${2:-}";   shift 2 ;;
-    --prompt-id) PROMPT_ID="${2:-}"; shift 2 ;;
+    --run-dir)   [ $# -ge 2 ] || usage; RUN_DIR="$2";   shift 2 ;;
+    --prompt-id) [ $# -ge 2 ] || usage; PROMPT_ID="$2"; shift 2 ;;
     --light)     LIGHT="--light";    shift ;;
     *) usage ;;
   esac
@@ -168,8 +170,8 @@ cr_rc=$?
 
 # The stream is JSON lines. Any `error` event, a missing `complete` event, or a non-zero exit
 # is "unavailable": a partial review is not evidence and must not pretend to be.
-if ! jq -e 'select(type == "object")' "$RAW" >/dev/null 2>&1 && [ -s "$RAW" ]; then
-  emit_unavailable "CodeRabbit emitted a non-JSON stream (exit $cr_rc)"
+if [ -s "$RAW" ] && ! jq -s -e 'all(type == "object")' "$RAW" >/dev/null 2>&1; then
+  emit_unavailable "CodeRabbit emitted a stream with a non-JSON or non-object record (exit $cr_rc)"
 fi
 err_msg="$(jq -r 'select(type == "object" and .type == "error") | .message // "unknown error"' "$RAW" 2>/dev/null | head -1)"
 [ -z "$err_msg" ] || emit_unavailable "CodeRabbit error: $err_msg"
