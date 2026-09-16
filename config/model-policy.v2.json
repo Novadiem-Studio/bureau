@@ -120,15 +120,14 @@
       "fresh_context_required": true,
       "lock": false,
       "escalate_when": [
-        "final_gate",
         "second_critic_loop",
-        "high_stakes_backend_or_security",
         "prior_review_missed_issue"
       ],
       "deescalate_when": [
+        "author_ran_strong",
         "low_risk_docs_review_with_frontier_followup"
       ],
-      "note": "standard is permitted so a cold reviewer can differ from an opus coder without spending the escalated tier (Robin, 2026-09-16). The property that matters is that the reviewer differs from the author, not that it costs more. default_tier is unchanged at strong; this widens what is allowed, it does not change any default."
+      "note": "standard is permitted so a cold reviewer can differ from an opus coder without spending the escalated tier (Robin, 2026-09-16). The property that matters is that the reviewer differs from the author, not that it costs more. default_tier is unchanged at strong. author_ran_strong routes the reviewer to standard when the artifact's author ran strong. final_gate and high_stakes_backend_or_security were removed as escalation triggers: a final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier model. What remains escalates one rung only when a review demonstrably missed something."
     },
     "architect": {
       "agent": "The Architect",
