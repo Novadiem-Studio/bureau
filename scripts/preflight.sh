@@ -190,6 +190,15 @@ fail_values=()  # will hold display value (masked or empty) per failed key
 allow_empty_used=()  # keys that passed BECAUSE of an allow-empty declaration, for the report
 pass_count=0
 
+# all_keys / all_reasons: EVERY key's outcome, not just failures — see the report section
+# below. rheo-stream 0c3, 2026-09-16: a report naming only failures makes "N pass" a bare,
+# unaudited count on a script this run found could be made to pass for the wrong reason —
+# the exact defect class the allow-empty marker itself was added to fix, one level up (a
+# key silenced by the marker with no visible trace of it). Never a value, on either side —
+# same secret-safety rule as fail_values above.
+all_keys=()
+all_reasons=()
+
 is_placeholder() {
   local v="$1"
   # Lowercase the value for case-insensitive matching
@@ -247,10 +256,12 @@ for key in "${keys[@]}"; do
     # read, so "empty"/"placeholder" reasons do not apply in this mode.
     if env_file_has_key "$key"; then
       (( pass_count++ )) || true
+      all_keys+=("$key"); all_reasons+=("pass (present in --env-file)")
     else
       fail_keys+=("$key")
       fail_reasons+=("missing")
       fail_values+=("")
+      all_keys+=("$key"); all_reasons+=("FAIL: missing")
       echo "preflight: FAIL  $key  missing"
     fi
     continue
@@ -266,6 +277,7 @@ for key in "${keys[@]}"; do
     fail_keys+=("$key")
     fail_reasons+=("missing")
     fail_values+=("")
+    all_keys+=("$key"); all_reasons+=("FAIL: missing")
     echo "preflight: FAIL  $key  missing"
   elif [[ -z "$val" ]]; then
     # Key is present but set to empty string. A declared allow-empty key (marked in
@@ -276,11 +288,13 @@ for key in "${keys[@]}"; do
     if key_is_allow_empty "$key"; then
       allow_empty_used+=("$key")
       (( pass_count++ )) || true
+      all_keys+=("$key"); all_reasons+=("pass (declared allow-empty)")
       echo "preflight: OK    $key  empty (declared allow-empty)"
     else
       fail_keys+=("$key")
       fail_reasons+=("empty")
       fail_values+=("")
+      all_keys+=("$key"); all_reasons+=("FAIL: empty")
       echo "preflight: FAIL  $key  empty"
     fi
   elif is_placeholder "$val"; then
@@ -288,9 +302,11 @@ for key in "${keys[@]}"; do
     fail_keys+=("$key")
     fail_reasons+=("placeholder")
     fail_values+=("[placeholder detected]")
+    all_keys+=("$key"); all_reasons+=("FAIL: placeholder")
     echo "preflight: FAIL  $key  placeholder  [placeholder detected]"
   else
     (( pass_count++ )) || true
+    all_keys+=("$key"); all_reasons+=("pass")
   fi
 done
 
@@ -315,11 +331,18 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/preflight.XXXXXX")"
       echo "| ${fail_keys[$i]} | ${fail_reasons[$i]} | ${fail_values[$i]} |"
     done
   fi
-  if [[ ${#allow_empty_used[@]} -gt 0 ]]; then
+  # Every key's outcome, not just failures (rheo-stream 0c3, 2026-09-16): "N pass" as a
+  # bare count is not auditable — a reader can't see WHICH keys, or whether one of them
+  # passed via a declared-allow-empty marker that deserves a second look. Never a value,
+  # same rule as the failures table above.
+  if [[ ${#all_keys[@]} -gt 0 ]]; then
     echo ""
-    echo "Declared allow-empty (passed empty by .env.example's own \`# preflight: allow-empty\`):"
-    for k in "${allow_empty_used[@]}"; do
-      echo "- $k"
+    echo "All keys checked:"
+    echo ""
+    echo "| Key | Outcome |"
+    echo "|-----|---------|"
+    for i in "${!all_keys[@]}"; do
+      echo "| ${all_keys[$i]} | ${all_reasons[$i]} |"
     done
   fi
 } >"$tmp"
