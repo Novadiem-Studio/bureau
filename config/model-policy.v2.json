@@ -13,7 +13,7 @@
       "forbidden": [
         "premium"
       ],
-      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). Fable is not a review-gate default: cold reviewers run on the tier that differs from the author (Robin, 2026-09-16); fable is reached by the bounce rule's second rung, an active experiment, or an explicit human ask, and every fable spawn needs a hand-written MODEL-OVERRIDE reason (preflight-artifacts.sh --phase final, fable-override)."
+      "note": "haiku/sonnet/opus for most defaults; fable reached by escalation, plus the Counselor's standing default \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). **Fable is not a review-gate default:** cold reviewers run on a capable tier in a fresh context (roles.delegate.cold_reviewer.tier, normally strong) and escalate to fable only on prior_review_missed_issue or second_critic_loop. Independence is bought by isolation, not by differing from the author's model \u2014 that routing was retired 2026-09-16."
     },
     "openai": {
       "allowed_spawn_models": [
@@ -247,9 +247,8 @@
     },
     "counselor": {
       "agent": "The Counselor",
-      "default_tier": "strong",
+      "default_tier": "frontier",
       "allowed": [
-        "cheap",
         "standard",
         "strong",
         "frontier",
@@ -266,7 +265,7 @@
         "routine_copy_review",
         "budget_pressure"
       ],
-      "note": "The Counselor is a thinker (Robin, 2026-09-16). Framing a message for the audience and reviewing copy before it ships is audience modelling and judgement, not rubric application \u2014 and it is the last gate before something goes out under Robin's name, where a miss is public rather than caught by a test."
+      "note": "The Counselor runs FABLE by default (Robin, 2026-09-16) \u2014 the one deliberate exception to 'fable for escalation only'. Two reasons it is not an escalation case. Voice, audience framing and persuasion are the work fable is actually better at, unlike code where opus and the gates carry it. And it is the only role in the cast whose miss is not recoverable by a fix round: everywhere else a bad output is caught by a gate, a test, or a bounce that escalates the fixer, but copy that ships under Robin's name has already left when anyone notices. Spawns are rare (pre-send review), so the aggregate cost is small. 'cheap' is removed from allowed: nothing about this role wants haiku."
     },
     "scribe": {
       "agent": "The Scribe",

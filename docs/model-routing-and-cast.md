@@ -87,7 +87,10 @@ producers; cold review stays local.
 
 ### Host policy - Claude Code
 
-**Haiku, sonnet, and opus for defaults; fable for escalation only.** Fable was re-enabled
+**Haiku, sonnet, and opus for defaults; fable for escalation, plus one standing exception.**
+**The Counselor defaults to fable** — voice and audience framing are what fable is genuinely
+better at, and it is the only role whose miss is not recoverable by a fix round, since copy that
+ships under Robin's name has already left when anyone notices. Fable was re-enabled
 Jul 2026 for the `frontier` / `escalated` tiers — do not use it as a first-pass default, and do
 not spawn the legacy `premium` tier. **Always pass `model` explicitly** on every spawn (see
 "How to spawn an agent" in `agents/orchestrator.md`).
@@ -99,7 +102,7 @@ not spawn the legacy `premium` tier. **Always pass `model` explicitly** on every
 | **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
 
 Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` resolve to
-**fable** (re-enabled Jul 2026, escalation only — never a first-pass default).
+**fable** (re-enabled Jul 2026; escalation, or the Counselor's standing default — see above).
 
 ### Escalation ladder (Claude)
 
@@ -166,7 +169,7 @@ Workflows name a tier as documentation; **resolved routing wins** when they diff
 | **cheap** | Fast, low-cost, routine transformation | file surveys, copy cleanup, simple status |
 | **standard** | Good general model, low/medium reasoning | Analyst, Cleric, Spellwright, Counselor, routine Mechanic |
 | **strong** | Prior-frontier / highly capable model | Architect, Challenger first pass, Mage/Systemsmith first pass |
-| **frontier** | Current best practical model | active experiments; explicit human ask (the ladder's second rung targets `escalated`) |
+| **frontier** | Current best practical model | **the Counselor's default**; active experiments; explicit human ask (the ladder's second rung targets `escalated`) |
 | **escalated** | Strongest model plus highest reasoning budget | repeated failure, hard adjudication, human-requested |
 
 Fresh context is tracked separately from model strength. Challenger can run on `strong` for first
@@ -261,7 +264,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 | **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier, independent of the author's model; frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | strong | Drives design-taste-frontend (tasteskill) and impeccable - design direction and the pre-ship quality gate are judgement work |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
-| **The Counselor** (Voice) | `agents/voice.md` | strong | Audience framing and pre-ship copy review - judgement, and the last gate before something goes out under Robin's name |
+| **The Counselor** (Voice) | `agents/voice.md` | frontier | Audience framing and pre-ship copy review - the work fable is genuinely better at, and the only role whose miss is not recoverable by a fix round |
 | **The Scribe** | `agents/scribe.md` | standard | Long-form drafting + revision + MDX format - escalate Draft/Revise to strong (Opus) |
 
 **Studio-level (not one `RUN_DIR`):**

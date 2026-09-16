@@ -1,8 +1,9 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** strong — audience modelling and voice judgement, not rubric
-> application, and the last gate before copy goes out under Robin's name, where a miss is
-> public rather than caught by a test.
+> **Recommended tier:** frontier (fable) — the one standing exception to fable-for-escalation.
+> Voice, audience framing and persuasion are what fable is genuinely better at, and this is the
+> only role whose miss is not recoverable by a fix round: copy that ships under Robin's name has
+> already left when anyone notices.
 
 ## Role
 
