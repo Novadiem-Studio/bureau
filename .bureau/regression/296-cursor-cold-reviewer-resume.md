@@ -207,20 +207,21 @@ command: |
   [ "$r" -eq 1 ] && grep -q 'differs from what this response derives' "$TMPF/err" || { echo "FAIL: tampered output not refused"; cat "$TMPF/err"; exit 1; }
   grep -q tampered "$CP/01-1-6-reviewer-verdict.json" || { echo "FAIL: tampered output was replaced"; exit 1; }
   [ "$(jq -r .status "$P6")" = "host-task-required" ] || { echo "FAIL: refused replay marked the plan"; exit 1; }
-  # a REAL mid-publication failure (a directory squatting on the envelope path): what is
-  # left behind depends on publication order. Raw-first leaves {raw, verdict} and the
-  # claim, so clearing the obstacle and replaying completes it.
+  # a REAL mid-publication failure: a dangling symlink at the envelope path passes the
+  # existence guard (-e is false) but makes the exclusive link fail. What is left behind
+  # depends on publication order: raw-first leaves {raw, verdict} and the claim, so
+  # clearing the obstacle and replaying completes it.
   set +e
   run "$RD" "$CTX" 01 01-1-8 artifact.md routine >/dev/null 2>&1
   set -e
-  mkdir "$CP/01-1-8-reviewer-envelope.json"
+  ln -s "$TMPF/does-not-exist" "$CP/01-1-8-reviewer-envelope.json"
   set +e
   run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-8 artifact.md routine >/dev/null 2>"$TMPF/err"; r=$?
   set -e
   [ "$r" -eq 1 ] || { echo "FAIL: obstructed envelope publish did not fail"; exit 1; }
   [ -f "$CP/01-1-8-reviewer-cursor-raw.json" ] || { echo "FAIL: raw response was not published before the obstructed link (publication order)"; exit 1; }
   [ -d "$CP/01-1-8-reviewer-task-plan.claim" ] || { echo "FAIL: claim released although publication had begun"; exit 1; }
-  rmdir "$CP/01-1-8-reviewer-envelope.json"
+  rm -f "$CP/01-1-8-reviewer-envelope.json"
   run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-8 artifact.md routine >/dev/null 2>"$TMPF/err" || { echo "FAIL: replay after the obstructed publish failed"; cat "$TMPF/err"; exit 1; }
   [ -f "$CP/01-1-8-reviewer-envelope.json" ] && [ "$(jq -r .status "$CP/01-1-8-reviewer-task-plan.json")" = "resumed" ] && [ ! -e "$CP/01-1-8-reviewer-task-plan.claim" ] \
     || { echo "FAIL: replay did not complete the obstructed publish"; exit 1; }
