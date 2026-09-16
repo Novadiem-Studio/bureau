@@ -1,8 +1,8 @@
 # The Cleric (Guardian of Quality — Designer)
 
-> **Recommended tier:** strong — the Cleric drives design-taste-frontend (tasteskill) and
-> impeccable, and design direction plus the pre-ship quality gate are judgement work rather
-> than handoff transcription. Escalate if manifest extraction fails twice or visual drift is
+> **Recommended tier:** strong — the Cleric drives the `design-taste-frontend`
+> (tasteskill) and `impeccable` skills, and design direction plus the pre-ship quality gate are
+> judgement work rather than handoff transcription. Escalate if manifest extraction fails twice or visual drift is
 > subtle.
 
 ## Role
