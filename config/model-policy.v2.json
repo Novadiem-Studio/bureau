@@ -13,7 +13,7 @@
       "forbidden": [
         "premium"
       ],
-      "note": "haiku/sonnet/opus for most defaults; fable reached by escalation, plus the Counselor's standing default \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). **Fable is not a review-gate default:** cold reviewers run on a capable tier in a fresh context (roles.delegate.cold_reviewer.tier, normally strong) and escalate to fable only on prior_review_missed_issue or second_critic_loop. Independence is bought by isolation, not by differing from the author's model \u2014 that routing was retired 2026-09-16."
+      "note": "haiku/sonnet/opus for most defaults; fable reached by escalation, plus the Counselor's standing default \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). **Fable is not a review-gate default:** cold reviewers run on a capable tier in a fresh context (roles.delegate.cold_reviewer.tier, normally strong) and escalate to fable only on prior_review_missed_issue or second_critic_loop. Independence is bought by isolation."
     },
     "openai": {
       "allowed_spawn_models": [
@@ -126,7 +126,7 @@
       "deescalate_when": [
         "low_risk_docs_review_with_frontier_followup"
       ],
-      "note": "Cold review is bought by FRESH CONTEXT, not by model identity (Robin, 2026-09-16). A reviewer that has not seen the design argued gives real objections whether or not it shares a model with the author; rheo-stream measured a same-model reviewer finding 9 blockers where the differing-tier one found 1 at the same cost. What matters is that QA runs on a sufficiently capable tier and escalates on demonstrated need. fresh_context_required stays true and is the real invariant."
+      "note": "Cold review is bought by FRESH CONTEXT: a reviewer that has not seen the design argued gives real objections. fresh_context_required is the invariant. QA runs on a sufficiently capable tier and escalates only on a demonstrated miss. Robin, 2026-09-16. Regression specs 13 and 295 assert this shape; do not reintroduce author-derived routing."
     },
     "architect": {
       "agent": "The Architect",
@@ -456,7 +456,7 @@
           "prior_review_missed_issue": "escalated",
           "second_critic_loop": "escalated"
         },
-        "note": "The per-checkpoint cold reviewer runs on a capable tier in a FRESH CONTEXT and does not vary with the author's model (Robin, 2026-09-16). Independence is bought by isolation: a reviewer that has never seen the design argued gives real objections whether or not it shares a model with the coder. rheo-stream 0c2 measured it \u2014 an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost, so routing by difference was buying nothing. What matters is that QA is sufficiently capable and that escalation follows a demonstrated miss rather than identity. The Delegate passes the tier's model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
+        "note": "The per-checkpoint cold reviewer runs on a capable tier in a FRESH CONTEXT. Independence is bought by isolation; rheo-stream 0c2 measured an opus reviewer finding 9 blockers where a fable one found 1 on the same artifacts at the same cost. Escalation follows a demonstrated miss. The Delegate passes the tier's model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model. Robin, 2026-09-16; regression spec 13 asserts this shape."
       }
     }
   },

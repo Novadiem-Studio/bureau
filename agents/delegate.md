@@ -1,8 +1,8 @@
 # The Delegate — Dual-Mode Gating Agent (Manager/Relay + Cold Reviewer)
 
 > **Recommended tier:** strong for the manager/relay session. The per-checkpoint cold reviewer
-> runs on a capable tier in a fresh context, escalating on demonstrated need, NOT on a tier chosen to differ from the author (author strong -> standard,
-> `roles.delegate.coldReviewer`, a fixed capable tier that does not vary with the author).
+> runs on a capable tier in a fresh context, escalating on a demonstrated miss
+> (`roles.delegate.coldReviewer`).
 > Decided by Robin 2026-09-16 after
 > rheo-stream 0c2; switch and watch, not a trial. The former Bundle 04 replay gate on a
 > standard-tier reviewer is retired (issue #50).
@@ -324,8 +324,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    OS-sandboxed adapter (`docs/delegate-bridge/v2-integrated.md` § v2 §3). **The reviewer's tier
    is fixed and does not depend on the artifact's author** — read
    `roles.delegate.coldReviewer.tier` (normally `strong`) and look the model up in
-   `model-routing.json#tiers`. Independence comes from the fresh context the adapter gives it,
-   not from differing from the coder; that routing was retired 2026-09-16.
+   `model-routing.json#tiers`. Independence comes from the fresh context the adapter gives it.
    Escalate ONLY on a trigger in `roles.delegate.coldReviewer.escalate_on`
    (`prior_review_missed_issue`, `second_critic_loop` -> `escalated`). Never pick the frontier
    or escalated model without one; an unprompted escalation is a human ask, logged as such.

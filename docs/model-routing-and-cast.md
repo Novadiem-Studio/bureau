@@ -117,10 +117,8 @@ PR-gate second pass:
 | `prior_review_missed_issue` | `escalated` | fable |
 | `second_critic_loop` | `escalated` | fable |
 
-**The reviewer's tier does not depend on the author's.** It was routed that way until
-2026-09-16; that rule is retired. A reviewer in a fresh context gives real objections whether or
-not it shares a model with the coder, which was always this framework's stated rationale, and
-`fresh_context_required` is the invariant that carries it.
+**Independence comes from the fresh context**, which was always this framework's stated
+rationale, and `fresh_context_required` is the invariant that carries it.
 
 Independence is what makes a gate real; depth is the Conductor's job at adjudication. In
 rheo-stream 0c2 (2026-09-15) an opus reviewer found 9 blockers on artifacts where the fable
@@ -261,7 +259,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 |-------|------|------|-----|
 | **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Requirements + scope - Challenger catches gaps; escalate if scope is enormous |
 | **The Architect** | `agents/architect.md` | strong | Highest-leverage design - already at strong, so only a second Challenger rejection moves it (ladder rung 2, `escalated`); frontier only through an active experiment |
-| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier, independent of the author's model; frontier only on an explicit human ask |
+| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier; frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | strong | Drives design-taste-frontend (tasteskill) and impeccable - design direction and the pre-ship quality gate are judgement work |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | frontier | Audience framing and pre-ship copy review - the work fable is genuinely better at, and the only role whose miss is not recoverable by a fix round |
@@ -297,7 +295,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears; its cold reviewer runs on a fixed capable tier in a fresh context, independent of the author's model |
+| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears; its cold reviewer runs on a fixed capable tier in a fresh context |
 
 Together they're the reason an odd job no longer falls through to the inherited session model.
 
