@@ -159,10 +159,11 @@ as a hard quality bar:
 ## How to spawn an agent
 
 Read `docs/host-runtime.md` and select transport from `model-routing.json#runtime`. Claude uses the Agent tool; Codex normally uses
-`multi_agent_v1.spawn_agent` with `fork_context: false` and explicit reasoning. The only exception is an eligible first-pass
+`multi_agent_v1.spawn_agent` with `fork_context: false` and explicit reasoning. Cursor uses Task with an explicit model slug and
+`scripts/run-cursor-specialist.sh --plan` first (`CURSOR.md`). The only Codex exception is an eligible first-pass
 `execute-plan` Mage under `roles.mage.executionProfiles.granular-ui-fast`, using `scripts/run-codex-spark-specialist.sh`;
-it is one-shot/non-resumable, and all other roles/retries use role-default. Retain native ids; resume with `SendMessage` (Claude) or
-`multi_agent_v1.send_input` (Codex).
+it is one-shot/non-resumable, and all other roles/retries use role-default. Retain native ids; resume with `SendMessage` (Claude),
+`multi_agent_v1.send_input` (Codex), or Task `resume` (Cursor / Grok Bot).
 
 **Always pass `model` explicitly — never omit it.** An omitted `model` makes the subagent
 **inherit the current session's model** and can waste strong-tier tokens on cheap work. This

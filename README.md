@@ -188,6 +188,7 @@ The public README describes the system. The operational contracts remain in the 
 - Codex entrypoint and repository rules: [`AGENTS.md`](AGENTS.md) and [`CODEX.md`](CODEX.md)
 - Claude Code entrypoint: [`CLAUDE.md`](CLAUDE.md)
 - Grok Bot entrypoint: [`GROK.md`](GROK.md)
+- Cursor Agent entrypoint: [`CURSOR.md`](CURSOR.md)
 - Workflow selection: [`workflows/index.md`](workflows/index.md)
 - Run lifecycle: [`docs/run-protocol.md`](docs/run-protocol.md)
 - Host transport and isolation: [`docs/host-runtime.md`](docs/host-runtime.md)

@@ -3496,7 +3496,7 @@ fi
 [ -n "$RUNTIME" ] || RUNTIME="claude"
 case "$RUNTIME" in
   openai|codex) RUNTIME="openai" ;;
-  claude) ;;
+  claude|cursor) ;;
   *) fail "reviewer host '$RUNTIME' has no cold-reviewer adapter" ;;
 esac
 
@@ -3512,6 +3512,8 @@ if [ -f "$ROUTING" ]; then
 fi
 if [ "$RUNTIME" = "claude" ]; then
   [ -n "$MODEL" ] || MODEL="opus"
+elif [ "$RUNTIME" = "cursor" ]; then
+  [ -n "$MODEL" ] || MODEL="gpt-5.6-sol-medium"
 else
   [ -n "$MODEL" ] || MODEL="gpt-5.6-sol"
   [ -n "$REASONING_EFFORT" ] || REASONING_EFFORT="high"
@@ -3580,6 +3582,49 @@ validate_verdict_shape() {
     and (.Ledger | type == "string" and length > 0)
   ' "$1" >/dev/null 2>&1
 }
+
+if [ "$RUNTIME" = "cursor" ]; then
+  TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
+  audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
+  PLAN_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.json"
+  jq -n \
+    --arg runtime "$RUNTIME" \
+    --arg model "$MODEL" \
+    --arg ctx "$CTX" \
+    --arg spawnId "$SPAWN_ID" \
+    --arg checkpoint "$CHECKPOINT" \
+    --arg artifact "$ARTIFACT_BASE" \
+    --arg artifactSha256 "$ARTIFACT_SHA256" \
+    --arg taskPrompt "$TASK_PROMPT" \
+    --arg verdictPath "$VERDICT_PATH" \
+    --arg envelopePath "$ENVELOPE_PATH" \
+    --arg schema "$SCHEMA" \
+    '{
+      transport: "cursor-task",
+      status: "host-task-required",
+      runtime: $runtime,
+      environment: "local",
+      fork_context: false,
+      readonly: true,
+      sticky_cursor_agents_forbidden: true,
+      model: $model,
+      ctx: $ctx,
+      spawnId: $spawnId,
+      checkpoint: $checkpoint,
+      artifact: $artifact,
+      artifactSha256: $artifactSha256,
+      taskPrompt: $taskPrompt,
+      verdictPath: $verdictPath,
+      envelopePath: $envelopePath,
+      schema: $schema,
+      isolation: {
+        ok: true,
+        reason: "Cursor Task starts blank; reviewer must stay local against this staged CTX"
+      }
+    }' > "$PLAN_PATH" || fail "cannot write Cursor reviewer Task plan"
+  echo "CURSOR-REVIEWER-HOST-TASK-REQUIRED: staged CTX at $CTX; plan at $PLAN_PATH; issue a local blank readonly Task with model $MODEL; do not grade in the manager session." >&2
+  exit 2
+fi
 
 if [ "$RUNTIME" = "claude" ]; then
   CLAUDE_BIN="${CLAUDE_BIN:-claude}"

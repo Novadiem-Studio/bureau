@@ -15,10 +15,28 @@ The first-class pairings are:
 | `codex` | alias for `openai` at startup/reviewer boundaries | supported |
 | `grok` | Grok Bot Task/executor (`GROK.md`) | supported on Grok Bot; `run-start.sh --runtime grok` |
 | `grok-sidebar` | Grok Bot sidebar agents + rooms (`docs/host-grok-sidebar.md`) | supported on Grok Bot; parallel to Task-executor host; cold Challenger/Notary still Task |
-| `openrouter`, `hermes` | no native transport adapter yet | routing-only; fail closed for a run |
+| `cursor` | Cursor Agent Task, local or cloud (`CURSOR.md`, `docs/host-cursor.md`) | supported on Cursor Agent; `run-start.sh --runtime cursor` |
+| `openrouter`, `hermes` | not a Bureau build host | routing-only; fail closed for a run. Metered API is for cheap or specialized **non-build** passes only (see Subscription vs metered API) |
 
 Do not infer host behavior from a model name. Read `runtime` once, select the
 matching column below, and keep that transport for the run.
+
+## Subscription vs metered API
+
+Build and code work (feature, execute-plan, bug-fix, operational-build, and any
+Mage / Systemsmith / Mechanic pass) runs on a **subscription host**: Claude
+Code, Codex, Cursor Agent, or Grok Bot. Do not start those runs with
+`--runtime openrouter`. Do not promote OpenRouter to a specialist transport
+for building.
+
+Metered API (OpenRouter via `scripts/model-pass.sh`, and similar) is for
+**cheap or specialized non-build** work: article / topic / data cross-model
+passes, a one-off critique from a model the subscription host cannot spawn,
+or a cost-down draft when Robin names that explicitly. It is not a second
+Bureau, and it is not how Mistral or other picker models enter a code run.
+
+`run-start.sh` already refuses `openrouter` as a first-class runtime. Keep it
+that way until Robin revises this split.
 
 ## Spawn, resume, wait, and human forks
 
@@ -31,6 +49,8 @@ matching column below, and keep that transport for the run.
 | Pass a note to a running agent | `SendMessage` | `multi_agent_v1.send_input` | `MessageSubagent` |
 | Wait for liveness/completion | host Agent/SendMessage result | `multi_agent_v1.wait_agent` | background completion; `CheckSubagent` if stuck |
 | Genuine human fork | Delegate writes the fork to `state.json#checkpoints` + `open_questions`, appends to `log.md`, persists `delegate-state.json`, fires `notify_robin`, and ENDS THE TURN; the answer arrives by `SendMessage`, a `--bg --resume` continuation, or Robin directly. **Never `AskUserQuestion`** (`agents/delegate.md` § genuine fork) | Delegate persists state and asks Robin in its top-level final response; after Robin replies, `multi_agent_v1.send_input` resumes the Conductor | Delegate persists, asks Robin in this chat, then resumes the Conductor |
+
+Cursor Agent (`runtime=cursor`) is a fourth host, not a fourth column: Task spawn/resume, `--plan` via `scripts/run-cursor-specialist.sh`, optional `environment: cloud` for producers, local Task for cold review. See `docs/host-cursor.md`.
 
 Codex fresh-context spawns MUST pass no parent transcript. In the current tool
 surface that means `fork_context: false`; in older/future surfaces this may be
@@ -109,6 +129,21 @@ scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" \
   --runtime grok --no-pointer-echo
 ```
 
+## Cursor host transport (Cursor Agent)
+
+Cursor Agent is a first-class Bureau host. Entrypoint: `CURSOR.md`. Contract:
+`docs/host-cursor.md`. Start a run with `--runtime cursor`. Claude Code, Codex,
+and Grok Bot do not use this path.
+
+Live specialist spawn is Cursor **Task**. It starts blank. Optional
+`environment: cloud` is for producers when Robin asked for cloud and the
+workspace is the target (or a Bureau self-run). Cold Challenger, Notary, and
+the Delegate reviewer stay on local Task. Sticky `.cursor/agents/` desks are
+forbidden as specialists.
+
+`scripts/run-cursor-specialist.sh --plan` is the audit record; bash never
+launches the model.
+
 ## Codex producer artifact handoff
 
 Codex subagents can complete or stall without leaving the required files on disk.
@@ -142,7 +177,7 @@ is framework execution, not ad-hoc delegation.
 
 ## Integrated Delegate topology
 
-The topology is identical on Claude, Codex, and Grok Bot:
+The topology is identical on Claude, Codex, Grok Bot, and Cursor Agent:
 
 1. The Delegate creates the run and spawns one resumable Conductor.
 2. The Conductor spawns fresh specialists and returns a `CONDUCTOR-RETURN` block
@@ -162,12 +197,13 @@ scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" \
   --runtime openai --no-pointer-echo
 ```
 
-On Grok Bot, use `--runtime grok` (see `GROK.md`). Claude keeps the existing
+On Grok Bot, use `--runtime grok` (see `GROK.md`). On Cursor Agent, use
+`--runtime cursor` (see `CURSOR.md`). Claude keeps the existing
 command without `--runtime` (or with `--runtime claude`).
 
 ## Cold reviewer boundary
 
-`scripts/run-cold-reviewer.sh` is the single entrypoint for both hosts. The
+`scripts/run-cold-reviewer.sh` is the single entrypoint for every host. The
 caller stages only the v2 manifest under `NN-context`; the helper rejects
 symlinks, `log.md`, and transcript-like files. Before each provider call it
 appends the exact task prompt to the warm run log for audit; that log is never
@@ -182,6 +218,9 @@ part of the reviewer packet.
   session stores. The prompt contains snapshot paths only. Codex uses
   `config/delegate-verdict.codex.schema.json`, a closed structured-output
   projection of the unchanged Claude verdict contract.
+- Cursor stages the same packet, writes a local Task plan, and exits 2 with
+  `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. The Delegate issues a blank local Task
+  against that CTX. Readiness-audit has no Cursor adapter yet.
 
 Both paths emit a normalized verdict file and a Claude-shaped one-shot usage
 envelope. Callers append exactly one `REVIEWER-TOKEN-EVENT` per returned

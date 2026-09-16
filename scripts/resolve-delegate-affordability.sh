@@ -8,10 +8,12 @@ snapshot_path="${2:-$HOME/.novadiem/usage-snapshot.json}"
 base_url="${CLAUDE_USAGE_BASE_URL:-http://127.0.0.1:47291}"
 base_url="${base_url%/}"
 
-if [ "$runtime" = "openai" ]; then
-  printf '%s\n' '{"action":"skip","source":"runtime"}'
-  exit 0
-fi
+case "$runtime" in
+  openai|codex|grok|cursor)
+    printf '%s\n' '{"action":"skip","source":"runtime"}'
+    exit 0
+    ;;
+esac
 
 body_file=""
 cleanup() {

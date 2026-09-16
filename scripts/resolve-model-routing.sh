@@ -5,7 +5,7 @@
 # Default output: ~/.novadiem/resolved-model-routing.json
 #
 # Env:
-#   NOVADIEM_MODEL_RUNTIME       runtime name (openai, claude, grok, openrouter, hermes)
+#   NOVADIEM_MODEL_RUNTIME       runtime name (openai, claude, grok, cursor, openrouter, hermes)
 #   NOVADIEM_MODEL_POLICY_V2     path to provider-neutral policy
 #   NOVADIEM_MODEL_RUNTIME_PATH  path to runtime adapter JSON
 #   NOVADIEM_MODEL_EXPERIMENTS   comma-separated provider-neutral experiment ids

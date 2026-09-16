@@ -107,6 +107,10 @@ To start a new Delegate-run:
    scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
      --slug "$SLUG" --runtime openai --no-pointer-echo
 
+   # Cursor Agent host
+   scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
+     --slug "$SLUG" --runtime cursor --no-pointer-echo
+
    # Claude Code host
    scripts/run-start.sh "$RUN_DIR" --target "$TARGET_REPO" --workflow "$WORKFLOW" \
      --slug "$SLUG" --no-pointer-echo
