@@ -123,7 +123,7 @@ per-chunk blocker counts (0c2 baseline: 26 across five chunks); do not re-propos
 A final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier
 model; `final_gate` and `high_stakes_backend_or_security` are no longer Challenger escalation
 triggers. What remains (`second_critic_loop`, `prior_review_missed_issue`) escalates the reviewer
-one rung only when a review demonstrably missed something. Look the model up in `model-routing.json#tiers`
+to `escalated` only when a review demonstrably missed something. Look the model up in `model-routing.json#tiers`
 (`tiers.standard.model`, `tiers.strong.model`). The Delegate exports it as `BUREAU_REVIEWER_MODEL`
 for `run-cold-reviewer.sh` (`roles.delegate.coldReviewer`); the Conductor passes it as the
 Challenger spawn's `model`. Either logs a `MODEL-OVERRIDE:` when it differs from the role's
@@ -253,7 +253,7 @@ parentheses and the persona lives in `agents/<role>.md`.
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
 | **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Requirements + scope - Challenger catches gaps; escalate if scope is enormous |
-| **The Architect** | `agents/architect.md` | strong | Highest-leverage design - escalate one rung on a Challenger bounce; frontier only through an active experiment |
+| **The Architect** | `agents/architect.md` | strong | Highest-leverage design - already at strong, so only a second Challenger rejection moves it (ladder rung 2, `escalated`); frontier only through an active experiment |
 | **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier (opus author -> sonnet reviewer); frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | standard | Brief-writing, manifest extraction, design review |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
