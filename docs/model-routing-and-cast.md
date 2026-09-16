@@ -129,13 +129,22 @@ for `run-cold-reviewer.sh` (`roles.delegate.coldReviewer`); the Conductor passes
 Challenger spawn's `model`. Either logs a `MODEL-OVERRIDE:` when it differs from the role's
 resolved model.
 
-**Producers escalate one rung, on evidence.** Sonnet -> opus when a handoff is thin after one
-routed fix. The **bounce rule**: a second Challenger rejection of the same work item escalates
-the producer one rung (standard -> strong; strong -> frontier), never straight from standard to
-frontier. Assignment-time escalation, when a trigger is visible up front, is also one rung and
-logged with a `MODEL-OVERRIDE:` reason. Frontier at assignment only through an active experiment
-(`frontier-build-party`, `fable-first-architect`), so it shows in `activeExperiments` rather than
-in a per-spawn judgment call.
+**Producers escalate on evidence, to a named tier.** Sonnet -> opus when a handoff is thin
+after one routed fix. **The escalation ladder** (`config/model-policy.v2.json#escalation_ladder`) has two
+rungs with **named target tiers**, and it escalates the **FIXER** — the role that produced the
+rejected work — because a bounce is evidence the item is harder than assumed and that is where the
+difficulty lives:
+
+| on | target |
+|---|---|
+| `first_challenger_rejection` | `strong` |
+| `second_challenger_rejection` | `escalated` |
+
+A role whose default already meets or exceeds a rung's target stays where it is. The Conductor and
+Delegate apply it at specialist retry dispatch and log a `MODEL-OVERRIDE` naming the trigger.
+**This supersedes the older "bounce rule: one rung on the second rejection"**, which named no
+target tier and left "one rung" to be inferred from the tier order — ambiguous for a role already
+at strong.
 
 **Every fable spawn carries a hand-written reason.** A `SPAWN-EVENT` whose `actual_model` is
 the frontier/escalated model while `configured_model` is not needs a `MODEL-OVERRIDE:` for that
@@ -153,7 +162,7 @@ Workflows name a tier as documentation; **resolved routing wins** when they diff
 | **cheap** | Fast, low-cost, routine transformation | file surveys, copy cleanup, simple status |
 | **standard** | Good general model, low/medium reasoning | Analyst, Cleric, Spellwright, Counselor, routine Mechanic |
 | **strong** | Prior-frontier / highly capable model | Architect, Challenger first pass, Mage/Systemsmith first pass |
-| **frontier** | Current best practical model | bounce rule second rung (strong -> frontier); active experiments; explicit human ask |
+| **frontier** | Current best practical model | active experiments; explicit human ask (the ladder's second rung targets `escalated`) |
 | **escalated** | Strongest model plus highest reasoning budget | repeated failure, hard adjudication, human-requested |
 
 Fresh context is tracked separately from model strength. Challenger can run on `strong` for first

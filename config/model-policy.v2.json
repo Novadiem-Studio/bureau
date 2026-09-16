@@ -201,7 +201,7 @@
     },
     "cleric": {
       "agent": "The Cleric",
-      "default_tier": "standard",
+      "default_tier": "strong",
       "allowed": [
         "cheap",
         "standard",
@@ -220,7 +220,8 @@
       "deescalate_when": [
         "straightforward_manifest_ingest",
         "budget_pressure"
-      ]
+      ],
+      "note": "The Cleric drives design-taste-frontend (tasteskill) and impeccable, so it is a thinker on the strong tier (Robin, 2026-09-16). Design direction and the pre-ship quality gate are judgement work, not handoff transcription."
     },
     "spellwright": {
       "agent": "The Spellwright",
@@ -290,7 +291,7 @@
     },
     "systemsmith": {
       "agent": "The Systemsmith",
-      "default_tier": "standard",
+      "default_tier": "strong",
       "allowed": [
         "standard",
         "strong",
@@ -313,7 +314,7 @@
         "small_controller_patch",
         "budget_pressure"
       ],
-      "note": "standard takes first crack at build work (Robin, 2026-09-16); second_challenger_rejection escalates the FIXER, because a bounce is evidence the chunk is harder than assumed and the coder is where that difficulty lives."
+      "note": "The Systemsmith is a thinker, not a grunt: it writes production code over durable state, which is where this campaign's pair-shaped defects are authored (Robin, 2026-09-16). A cheaper coder moves cost sideways into fix rounds \u2014 rheo-stream 0c2 bounced 5 of 5 chunks, 12 coder spawns for five chunks, and each bounce costs a spawn plus a review. second_challenger_rejection escalates it a rung further."
     },
     "mechanic": {
       "agent": "The Mechanic",
@@ -451,12 +452,27 @@
       "cold_reviewer": {
         "rule": "capable_tier_fresh_context",
         "tier": "strong",
-        "escalate_on": [
-          "prior_review_missed_issue",
-          "second_critic_loop"
-        ],
+        "escalate_on": {
+          "prior_review_missed_issue": "escalated",
+          "second_critic_loop": "escalated"
+        },
         "note": "The per-checkpoint cold reviewer runs on a capable tier in a FRESH CONTEXT and does not vary with the author's model (Robin, 2026-09-16). Independence is bought by isolation: a reviewer that has never seen the design argued gives real objections whether or not it shares a model with the coder. rheo-stream 0c2 measured it \u2014 an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost, so routing by difference was buying nothing. What matters is that QA is sufficiently capable and that escalation follows a demonstrated miss rather than identity. The Delegate passes the tier's model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
       }
     }
+  },
+  "escalation_ladder": {
+    "rule": "first_rejection_then_second",
+    "applies_to": "the role that produced the rejected work \u2014 the FIXER, not the reviewer",
+    "rungs": [
+      {
+        "on": "first_challenger_rejection",
+        "target": "strong"
+      },
+      {
+        "on": "second_challenger_rejection",
+        "target": "escalated"
+      }
+    ],
+    "note": "Robin, 2026-09-16. A bounce is evidence the work item is harder than assumed, and the role that produced it is where that difficulty lives \u2014 so the FIXER escalates, not the reviewer. Targets are named rather than expressed as 'one rung up', because 'one rung' has to be inferred from the tier order and a role already at strong then has two possible readings. A role whose default already meets or exceeds a rung's target stays where it is. Declared here AND in docs/model-routing-and-cast.md; the Conductor and Delegate apply it at specialist retry dispatch and log a MODEL-OVERRIDE naming the trigger. This replaces the older 'bounce rule, one rung on the second rejection', which named no target tier."
   }
 }
