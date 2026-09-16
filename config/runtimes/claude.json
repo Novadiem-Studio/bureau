@@ -22,15 +22,15 @@
     },
     "standard": {
       "model": "sonnet",
-      "notes": "Analyst, Cleric, Spellwright, Counselor, Mechanic first pass. Also the Systemsmith's first crack at build work (Robin, 2026-09-16); a bounce escalates the fixer, not the reviewer."
+      "notes": "Analyst, Spellwright, Mechanic first pass. Also the Systemsmith's first crack at build work (Robin, 2026-09-16); a bounce escalates the fixer, not the reviewer."
     },
     "strong": {
       "model": "opus",
-      "notes": "Architecture, critique, frontend/backend first pass. Also the cold reviewer when the author ran standard (sonnet)."
+      "notes": "Architecture, critique, frontend/backend first pass. Also the cold reviewer's tier (roles.delegate.cold_reviewer.tier)."
     },
     "frontier": {
       "model": "fable",
-      "notes": "Fable re-enabled for escalation (Jul 2026). Reached by the bounce rule's second rung (strong -> frontier), an active experiment, or an explicit human ask. Not a review-gate default: cold reviewers run on a capable tier in a fresh context, and escalate only on a demonstrated miss (Robin, 2026-09-16). No effort parameter on this runtime: request extended thinking in the spawn prompt (e.g. think hard)."
+      "notes": "Fable re-enabled for escalation (Jul 2026). Reached by the escalation ladder's second rung (second_challenger_rejection -> escalated), the Counselor's standing default, an active experiment, or an explicit human ask. Not a review-gate default: cold reviewers run on a capable tier in a fresh context, and escalate only on a demonstrated miss (Robin, 2026-09-16). No effort parameter on this runtime: request extended thinking in the spawn prompt (e.g. think hard)."
     },
     "escalated": {
       "model": "fable",

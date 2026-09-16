@@ -98,7 +98,7 @@ not spawn the legacy `premium` tier. **Always pass `model` explicitly** on every
 | Spawn `model` | Roles |
 |---------------|-------|
 | **haiku** | Scoot only (locked) |
-| **sonnet** | Analyst, Cleric, Spellwright, Counselor, Mechanic, Witness, Coupler, Tally (default utility), **Scribe** (default; escalate to opus for Draft/Revise) |
+| **sonnet** | Analyst, Spellwright, Mechanic, Witness, Coupler, Tally (default utility), **Scribe** (default; escalate to opus for Draft/Revise) |
 | **opus** | Conductor, Challenger, Architect, Mage, Systemsmith (default) |
 
 Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` resolve to
@@ -165,7 +165,7 @@ Workflows name a tier as documentation; **resolved routing wins** when they diff
 | Tier | Meaning | Typical use |
 |------|---------|-------------|
 | **cheap** | Fast, low-cost, routine transformation | file surveys, copy cleanup, simple status |
-| **standard** | Good general model, low/medium reasoning | Analyst, Cleric, Spellwright, Counselor, routine Mechanic |
+| **standard** | Good general model, low/medium reasoning | Analyst, Spellwright, routine Mechanic |
 | **strong** | Prior-frontier / highly capable model | Architect, Challenger first pass, Mage/Systemsmith first pass |
 | **frontier** | Current best practical model | **the Counselor's default**; active experiments; explicit human ask (the ladder's second rung targets `escalated`) |
 | **escalated** | Strongest model plus highest reasoning budget | repeated failure, hard adjudication, human-requested |
