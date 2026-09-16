@@ -320,8 +320,11 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    the tier that differs from the checkpoint artifact's author (`roles.delegate.coldReviewer`):
    the author is the last specialist `SPAWN-EVENT` with `status: complete` in this checkpoint's
    log slice, or the Conductor when the slice has none. Map its `actual_model` to a tier through
-   `model-routing.json#tiers`; author strong -> `tiers.standard.model`, author standard ->
-   `tiers.strong.model`. Never pick the frontier model here; that is a human ask, logged as such.
+   `model-routing.json#tiers` and apply `roles.delegate.coldReviewer`: author strong ->
+   `tiers.standard.model`; author standard or cheap -> `tiers.strong.model`; author frontier or
+   escalated -> `tiers.strong.model` (differs without spending the escalation tier again). Every
+   reachable author tier maps; never fall through to `roles.delegate.model` silently. Never pick
+   the frontier model here; that is a human ask, logged as such.
    When the derived model differs from `roles.delegate.model`, append a `MODEL-OVERRIDE:` line
    (`role: delegate`, `attempt_id: NN-<k>`, `configured`, `actual`, reason
    `reviewer differs from author (<author attempt_id>, <author model>)`) before the spawn.

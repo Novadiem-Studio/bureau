@@ -101,6 +101,8 @@ PR-gate second pass:
 |---|---|---|
 | strong | standard | opus author -> **sonnet** reviewer |
 | standard | strong | sonnet author -> **opus** reviewer |
+| cheap | strong | haiku author -> opus reviewer (cheap is too weak to review) |
+| frontier / escalated | strong | fable author -> opus reviewer (differs without spending fable again) |
 
 Independence is what makes a gate real; depth is the Conductor's job at adjudication. In
 rheo-stream 0c2 (2026-09-15) an opus reviewer found 9 blockers on artifacts where the fable

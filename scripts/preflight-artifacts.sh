@@ -790,19 +790,32 @@ check_fable_override() {
 
   # Escalation-tier model names: from the run's resolved routing when it carries
   # a tiers map; "fable" otherwise (the Claude runtime's frontier/escalated model).
+  # A model that also serves a lower tier is NOT an escalation model — Codex maps
+  # gpt-5.6-sol to both strong and frontier, so a terra -> sol step is one rung,
+  # not an escalation, and SPAWN-EVENT carries model names, never tiers.
   if [ -f "$RUN_DIR/model-routing.json" ]; then
-    jq -r '[.tiers.frontier.model?, .tiers.escalated.model?] | map(select(type == "string" and length > 0)) | unique | .[]' \
+    jq -r '
+      def names(ks): [ks[] as $k | .tiers[$k].model?] | map(select(type == "string" and length > 0));
+      (names(["frontier", "escalated"]) - names(["cheap", "standard", "strong"])) | unique | .[]' \
       "$RUN_DIR/model-routing.json" 2>/dev/null > "$fo_models"
+    # A routing with no usable tiers map falls back to the Claude default below;
+    # a routing whose escalation models all double as lower tiers yields none.
+    if [ ! -s "$fo_models" ] && jq -e '.tiers | type == "object" and length > 0' \
+         "$RUN_DIR/model-routing.json" >/dev/null 2>&1; then
+      return 0
+    fi
   fi
   [ -s "$fo_models" ] || printf 'fable\n' > "$fo_models"
 
   # Hand-written overrides, keyed "<attempt_id>\t<actual>" — the auto-reconciled
-  # line is excluded here so it cannot satisfy the check.
+  # line and any blank reason are excluded here so neither can satisfy the check.
   grep '^MODEL-OVERRIDE:' "$fo_log" 2>/dev/null | while IFS= read -r fo_line; do
     fo_json=${fo_line#MODEL-OVERRIDE:}
     printf '%s' "$fo_json" | jq -r '
       select(type == "object")
-      | select((.reason // "") | startswith("auto-reconciled") | not)
+      | ((.reason // "") | if type == "string" then gsub("^[[:space:]]+|[[:space:]]+$"; "") else "" end) as $reason
+      | select($reason != "")
+      | select($reason | startswith("auto-reconciled") | not)
       | "\(.attempt_id // "")\t\(.actual // "")"' 2>/dev/null
   done > "$fo_overrides"
 

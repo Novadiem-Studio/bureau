@@ -442,9 +442,12 @@
       ],
       "cold_reviewer": {
         "rule": "differs_from_author",
-        "author_strong": "standard",
+        "author_cheap": "standard",
         "author_standard": "strong",
-        "note": "The per-checkpoint cold reviewer runs on the tier that differs from the checkpoint artifact's author (Robin, 2026-09-16, rheo-stream 0c2: an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost). The former bundle04_benchmark_replay_clean gate on a standard-tier reviewer is retired; this is switch-and-watch, not a trial. The Delegate passes the derived model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
+        "author_strong": "standard",
+        "author_frontier": "strong",
+        "author_escalated": "strong",
+        "note": "The per-checkpoint cold reviewer runs on the tier that differs from the checkpoint artifact's author; a cheap author gets standard (cheap is too weak to review), a frontier or escalated author gets strong (differs without spending the escalation tier again) (Robin, 2026-09-16, rheo-stream 0c2: an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost). The former bundle04_benchmark_replay_clean gate on a standard-tier reviewer is retired; this is switch-and-watch, not a trial. The Delegate passes the derived model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
       }
     }
   }
