@@ -22,15 +22,15 @@
     },
     "standard": {
       "model": "sonnet",
-      "notes": "Analyst, Cleric, Spellwright, Counselor, Mechanic first pass."
+      "notes": "Analyst, Cleric, Spellwright, Counselor, Mechanic first pass. Also the cold reviewer when the author ran strong (opus): reviewer differs from author (Robin, 2026-09-16)."
     },
     "strong": {
       "model": "opus",
-      "notes": "Architecture, critique, frontend/backend first pass."
+      "notes": "Architecture, critique, frontend/backend first pass. Also the cold reviewer when the author ran standard (sonnet)."
     },
     "frontier": {
       "model": "fable",
-      "notes": "Fable re-enabled for escalation (Jul 2026). Final gates, subtle state/design, high-risk reviews. No effort parameter on this runtime: request extended thinking in the spawn prompt (e.g. think hard) for gate reviews."
+      "notes": "Fable re-enabled for escalation (Jul 2026). Reached by the bounce rule's second rung (strong -> frontier), an active experiment, or an explicit human ask. Not a review-gate default: cold reviewers run on the tier that differs from the author (Robin, 2026-09-16). No effort parameter on this runtime: request extended thinking in the spawn prompt (e.g. think hard)."
     },
     "escalated": {
       "model": "fable",

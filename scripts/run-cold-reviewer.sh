@@ -3500,17 +3500,29 @@ case "$RUNTIME" in
   *) fail "reviewer host '$RUNTIME' has no cold-reviewer adapter" ;;
 esac
 
-MODEL=""
-REASONING_EFFORT=""
+# Reviewer model: BUREAU_REVIEWER_MODEL wins (the Delegate derives it from the checkpoint
+# artifact's author — reviewer differs from author, roles.delegate.coldReviewer), else
+# roles.delegate.model, else the host default. Whatever is chosen is recorded in the
+# review-meta JSON so the override is auditable.
+MODEL="${BUREAU_REVIEWER_MODEL:-}"
+REASONING_EFFORT="${BUREAU_REVIEWER_REASONING_EFFORT:-}"
 if [ -f "$ROUTING" ]; then
-  MODEL="$(jq -r '.roles.delegate.model // empty' "$ROUTING" 2>/dev/null)"
-  REASONING_EFFORT="$(jq -r '.roles.delegate.reasoningEffort // empty' "$ROUTING" 2>/dev/null)"
+  [ -n "$MODEL" ] || MODEL="$(jq -r '.roles.delegate.model // empty' "$ROUTING" 2>/dev/null)"
+  [ -n "$REASONING_EFFORT" ] || REASONING_EFFORT="$(jq -r '.roles.delegate.reasoningEffort // empty' "$ROUTING" 2>/dev/null)"
 fi
 if [ "$RUNTIME" = "claude" ]; then
   [ -n "$MODEL" ] || MODEL="opus"
 else
   [ -n "$MODEL" ] || MODEL="gpt-5.6-sol"
   [ -n "$REASONING_EFFORT" ] || REASONING_EFFORT="high"
+fi
+# An overridden model must still be one the host may spawn.
+if [ -f "$ROUTING" ]; then
+  allowed_models="$(jq -c '.hostPolicy.allowed_spawn_models // []' "$ROUTING" 2>/dev/null)"
+  if [ -n "$allowed_models" ] && [ "$allowed_models" != "[]" ] \
+     && ! printf '%s' "$allowed_models" | jq -e --arg m "$MODEL" 'index($m) != null' >/dev/null 2>&1; then
+    fail "reviewer model '$MODEL' is not in hostPolicy.allowed_spawn_models for runtime '$RUNTIME'"
+  fi
 fi
 
 VERDICT_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-verdict.json"

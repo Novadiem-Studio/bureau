@@ -48,11 +48,13 @@ snapshot).
    tick every RUN_DIR in the watch set (`state.json`, `log.md`, SPAWN-EVENT lines) and PR
    state. The run DIRECTORY is authoritative, never the session's `isRunning`. Nothing changed,
    quiet tick. Cadence is not guaranteed; re-verify fully after a long gap.
-3. **The Challenger** (second-pass, **escalated**) — at a run's terminal PR gate, AFTER the Envoy
-   verifies the close-out itself (`state.json`, required checks via `gh`, main untouched, diff
-   scope, publication safety): spawn a fresh cold reviewer on the escalated tier (Fable) for a
+3. **The Challenger** (second-pass, **differing tier**) — at a run's terminal PR gate, AFTER the
+   Envoy verifies the close-out itself (`state.json`, required checks via `gh`, main untouched,
+   diff scope, publication safety): spawn a fresh cold reviewer on the tier that differs from the
+   run's coders (opus coders -> sonnet; look it up in `model-routing.json#tiers`) for a
    second-pass review of the PR against the ratified requirements/architecture and the run card →
-   a proceed / revise / escalate verdict. The Envoy never grades the PR on its own authority.
+   a proceed / revise / escalate verdict. The escalated tier (Fable) only when the charter or Robin
+   asks for it, logged as a `MODEL-OVERRIDE:`. The Envoy never grades the PR on its own authority.
 4. **The Envoy** — act on the verdict within the charter's grant: relay the go-ahead or the
    revise notes to the run with `claude --bg --resume <full-uuid>` (mechanics doc); the run
    merges through its own delivery flow. A verdict or question outside the grant, or one the plan

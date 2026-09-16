@@ -90,9 +90,45 @@ not spawn the legacy `premium` tier. **Always pass `model` explicitly** on every
 Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` resolve to
 **fable** (re-enabled Jul 2026, escalation only — never a first-pass default).
 
-**Escalate sonnet -> opus** when a handoff is thin after one routed fix; escalate opus -> fable
-only on a real escalation trigger (final gate, second critic loop, repeated failure,
-human-requested).
+### Escalation ladder (Claude)
+
+**Cold reviewers run on the tier that differs from the author, not on the costlier one**
+(Robin, 2026-09-16, superseding "spend Fable at review gates"). This covers the Challenger's
+per-chunk and planning reviews, the Delegate's per-checkpoint cold reviewer, and the Envoy's
+PR-gate second pass:
+
+| Artifact author ran | Cold reviewer runs | On Claude |
+|---|---|---|
+| strong | standard | opus author -> **sonnet** reviewer |
+| standard | strong | sonnet author -> **opus** reviewer |
+| cheap | strong | haiku author -> opus reviewer (cheap is too weak to review) |
+| frontier / escalated | strong | fable author -> opus reviewer (differs without spending fable again) |
+
+Independence is what makes a gate real; depth is the Conductor's job at adjudication. In
+rheo-stream 0c2 (2026-09-15) an opus reviewer found 9 blockers on artifacts where the fable
+reviewer found 1, at the same token cost, and fable was $12.52 of that run's $14.99 in checkpoint
+reviewers. Quota, not dollars, is the binding constraint. Robin chose to switch and watch
+per-chunk blocker counts (0c2 baseline: 26 across five chunks); do not re-propose a trial.
+`final_gate` and `high_stakes_backend_or_security` on the Challenger mean a fresh cold pass on
+the differing tier, not a costlier model. Look the model up in `model-routing.json#tiers`
+(`tiers.standard.model`, `tiers.strong.model`). The Delegate exports it as `BUREAU_REVIEWER_MODEL`
+for `run-cold-reviewer.sh` (`roles.delegate.coldReviewer`); the Conductor passes it as the
+Challenger spawn's `model`. Either logs a `MODEL-OVERRIDE:` when it differs from the role's
+resolved model.
+
+**Producers escalate one rung, on evidence.** Sonnet -> opus when a handoff is thin after one
+routed fix. The **bounce rule**: a second Challenger rejection of the same work item escalates
+the producer one rung (standard -> strong; strong -> frontier), never straight from standard to
+frontier. Assignment-time escalation, when a trigger is visible up front, is also one rung and
+logged with a `MODEL-OVERRIDE:` reason. Frontier at assignment only through an active experiment
+(`frontier-build-party`, `fable-first-architect`), so it shows in `activeExperiments` rather than
+in a per-spawn judgment call.
+
+**Every fable spawn carries a hand-written reason.** A `SPAWN-EVENT` whose `actual_model` is
+the frontier/escalated model while `configured_model` is not needs a `MODEL-OVERRIDE:` for that
+`attempt_id` whose reason names the bounce, the experiment, or the human ask. The
+`account-run.sh` auto-reconcile line does not count; `preflight-artifacts.sh --phase final`
+reports the gap as a `fable-override` defect.
 
 **Try experiments:** `NOVADIEM_MODEL_EXPERIMENTS=budget-pressure-standardize` or add ids to
 `manual_experiments` in `config/model-policy.v2.json`. See `config/model-experiments/README.md`.
@@ -104,7 +140,7 @@ Workflows name a tier as documentation; **resolved routing wins** when they diff
 | **cheap** | Fast, low-cost, routine transformation | file surveys, copy cleanup, simple status |
 | **standard** | Good general model, low/medium reasoning | Analyst, Cleric, Spellwright, Counselor, routine Mechanic |
 | **strong** | Prior-frontier / highly capable model | Architect, Challenger first pass, Mage/Systemsmith first pass |
-| **frontier** | Current best practical model | final gates, subtle state/design, high-risk reviews |
+| **frontier** | Current best practical model | bounce rule second rung (strong -> frontier); active experiments; explicit human ask |
 | **escalated** | Strongest model plus highest reasoning budget | repeated failure, hard adjudication, human-requested |
 
 Fresh context is tracked separately from model strength. Challenger can run on `strong` for first
@@ -195,8 +231,8 @@ parentheses and the persona lives in `agents/<role>.md`.
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
 | **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Requirements + scope - Challenger catches gaps; escalate if scope is enormous |
-| **The Architect** | `agents/architect.md` | strong | Highest-leverage design - escalate for novel architecture or irreversible data choices |
-| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required; escalate for final/high-risk gates |
+| **The Architect** | `agents/architect.md` | strong | Highest-leverage design - escalate one rung on a Challenger bounce; frontier only through an active experiment |
+| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required; runs on the tier that differs from the author (opus author -> sonnet reviewer); frontier only on an explicit human ask |
 | **The Cleric** (Designer) | `agents/designer.md` | standard | Brief-writing, manifest extraction, design review |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
@@ -226,13 +262,13 @@ parentheses and the persona lives in `agents/<role>.md`.
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Envoy** | `agents/envoy.md` | strong | Cross-run supervisor; top-level when pointed at a plan with `INDEX.md`; launches each run as a Delegate; spend escalated only on the PR-gate Challenger |
+| **The Envoy** | `agents/envoy.md` | strong | Cross-run supervisor; top-level when pointed at a plan with `INDEX.md`; launches each run as a Delegate; the PR-gate Challenger runs on the tier that differs from the run's coders |
 
 **Delegated checkpoint gating:**
 
 | Agent | File | Tier | Why |
 |-------|------|------|-----|
-| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears |
+| **The Delegate** | `agents/delegate.md` | strong | Per-checkpoint automated gating verdict; flow-and-gating role, not a preference model; attended until the self-audit gate clears; its cold reviewer runs on the tier that differs from the checkpoint author |
 
 Together they're the reason an odd job no longer falls through to the inherited session model.
 

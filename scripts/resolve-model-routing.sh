@@ -123,6 +123,7 @@ jq -n \
         snapshotPath: $snapshotPath,
         runtime: $runtimeDoc.runtime,
         runtimeDescription: ($runtimeDoc.description // null),
+        tiers: ($runtimeTiers | map_values({model: (.model // null), reasoningEffort: (.reasoning_effort // null)})),
         usage: $usage,
         activeExperiments: $activeIds,
         conductorNotes: $notes,
@@ -161,6 +162,7 @@ jq -n \
                     end
                   ),
                   freshContextRequired: ($cfg.fresh_context_required // false),
+                  coldReviewer: ($cfg.cold_reviewer // null),
                   capabilityWarnings: capability_warning($runtimeCaps; $cfg),
                   allowed: $allowed,
                   executionProfiles: (

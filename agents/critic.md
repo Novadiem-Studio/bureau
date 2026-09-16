@@ -1,6 +1,6 @@
 # The Challenger (Truth Seeker — Critic)
 
-> **Recommended tier:** strong — independent fresh-context review required; escalate to frontier/escalated for final gates or high-risk work.
+> **Recommended tier:** the tier that differs from the artifact's author (author strong -> standard, author standard -> strong; on Claude an opus author gets a sonnet reviewer). Independent fresh-context review required. Frontier/escalated only on an explicit human ask; `final_gate` means a fresh cold pass, not a costlier model (Robin, 2026-09-16; `docs/model-routing-and-cast.md` § Escalation ladder).
 
 ## Role
 
