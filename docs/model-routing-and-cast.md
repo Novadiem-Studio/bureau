@@ -120,8 +120,10 @@ rheo-stream 0c2 (2026-09-15) an opus reviewer found 9 blockers on artifacts wher
 reviewer found 1, at the same token cost, and fable was $12.52 of that run's $14.99 in checkpoint
 reviewers. Quota, not dollars, is the binding constraint. Robin chose to switch and watch
 per-chunk blocker counts (0c2 baseline: 26 across five chunks); do not re-propose a trial.
-`final_gate` and `high_stakes_backend_or_security` on the Challenger mean a fresh cold pass on
-the differing tier, not a costlier model. Look the model up in `model-routing.json#tiers`
+A final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier
+model; `final_gate` and `high_stakes_backend_or_security` are no longer Challenger escalation
+triggers. What remains (`second_critic_loop`, `prior_review_missed_issue`) escalates the reviewer
+one rung only when a review demonstrably missed something. Look the model up in `model-routing.json#tiers`
 (`tiers.standard.model`, `tiers.strong.model`). The Delegate exports it as `BUREAU_REVIEWER_MODEL`
 for `run-cold-reviewer.sh` (`roles.delegate.coldReviewer`); the Conductor passes it as the
 Challenger spawn's `model`. Either logs a `MODEL-OVERRIDE:` when it differs from the role's
