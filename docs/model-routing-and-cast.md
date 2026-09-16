@@ -108,19 +108,23 @@ Provider-neutral tier `strong` resolves to **opus**; `frontier` and `escalated` 
 per-chunk and planning reviews, the Delegate's per-checkpoint cold reviewer, and the Envoy's
 PR-gate second pass:
 
-| Artifact author ran | Cold reviewer runs | On Claude |
+| Pass | Reviewer tier | On Claude |
 |---|---|---|
-| strong | standard | opus author -> **sonnet** reviewer |
-| standard | strong | sonnet author -> **opus** reviewer |
-| cheap | strong | haiku author -> opus reviewer (cheap is too weak to review) |
-| frontier / escalated | strong | fable author -> opus reviewer (differs without spending fable again) |
+| normal cold review | `roles.delegate.cold_reviewer.tier` = **strong** | opus |
+| `prior_review_missed_issue` | `escalated` | fable |
+| `second_critic_loop` | `escalated` | fable |
+
+**The reviewer's tier does not depend on the author's.** It was routed that way until
+2026-09-16; that rule is retired. A reviewer in a fresh context gives real objections whether or
+not it shares a model with the coder, which was always this framework's stated rationale, and
+`fresh_context_required` is the invariant that carries it.
 
 Independence is what makes a gate real; depth is the Conductor's job at adjudication. In
 rheo-stream 0c2 (2026-09-15) an opus reviewer found 9 blockers on artifacts where the fable
 reviewer found 1, at the same token cost, and fable was $12.52 of that run's $14.99 in checkpoint
 reviewers. Quota, not dollars, is the binding constraint. Robin chose to switch and watch
 per-chunk blocker counts (0c2 baseline: 26 across five chunks); do not re-propose a trial.
-A final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier
+A final gate or a high-stakes review is a fresh cold pass on the same capable tier, not a costlier
 model; `final_gate` and `high_stakes_backend_or_security` are no longer Challenger escalation
 triggers. What remains (`second_critic_loop`, `prior_review_missed_issue`) escalates the reviewer
 to `escalated` only when a review demonstrably missed something. Look the model up in `model-routing.json#tiers`
@@ -254,8 +258,8 @@ parentheses and the persona lives in `agents/<role>.md`.
 |-------|------|------|-----|
 | **Analizer 2000** (Analyst) | `agents/analyst.md` | standard | Requirements + scope - Challenger catches gaps; escalate if scope is enormous |
 | **The Architect** | `agents/architect.md` | strong | Highest-leverage design - already at strong, so only a second Challenger rejection moves it (ladder rung 2, `escalated`); frontier only through an active experiment |
-| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier (opus author -> sonnet reviewer); frontier only on an explicit human ask |
-| **The Cleric** (Designer) | `agents/designer.md` | standard | Brief-writing, manifest extraction, design review |
+| **The Challenger** (Critic) | `agents/critic.md` | strong | Independent cold review - fresh context is required and is what buys independence; runs on a capable tier, independent of the author's model; frontier only on an explicit human ask |
+| **The Cleric** (Designer) | `agents/designer.md` | strong | Drives design-taste-frontend (tasteskill) and impeccable - design direction and the pre-ship quality gate are judgement work |
 | **The Spellwright** (Prompt Engineer) | `agents/prompt-engineer.md` | standard | Decomposition of an already-approved plan - translation, not invention |
 | **The Counselor** (Voice) | `agents/voice.md` | standard | Applying known voice and audience rubrics |
 | **The Scribe** | `agents/scribe.md` | standard | Long-form drafting + revision + MDX format - escalate Draft/Revise to strong (Opus) |
