@@ -363,6 +363,12 @@ process_request() {
           || echo "watcher: token accounting append failed for reviewer spawn $spawn_id" >&2
       fi
     fi
+  elif [ "$review_rc" -eq 2 ]; then
+    # Cursor host: the helper planned a local Task it cannot issue from Bash. The v1
+    # watcher has no Task transport, so this checkpoint needs the Delegate's two-phase
+    # flow (plan, issue the Task, --resume <response>; docs/host-cursor.md). Held, not
+    # retried: re-spawning the same plan would only re-plan it.
+    echo "watcher: cold reviewer for $NN (spawn $spawn_id) requires a host Task (exit 2) — the v1 watcher cannot drive the Cursor host; use the Delegate two-phase flow: run-cold-reviewer.sh, issue the local Task, then --resume <response-file>" >&2
   else
     echo "watcher: cold-reviewer adapter failed for $NN (spawn $spawn_id)" >&2
   fi

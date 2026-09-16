@@ -44,16 +44,40 @@ closed.
 Cold graded review stays on **local** Task even when producers run in cloud:
 the reviewer packet is staged on the Delegate machine.
 
-## Cold reviewer
+## Cold reviewer (two phases)
 
-`scripts/run-cold-reviewer.sh` stages the bounded CTX, writes
-`$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-task-plan.json`, and exits 2 with
-`CURSOR-REVIEWER-HOST-TASK-REQUIRED`. The Delegate then issues a local blank
-Task whose prompt is that plan's `taskPrompt` and whose world is the staged
-CTX. The manager never grades.
+Bash cannot issue a Cursor Task, so the cold review is two calls around one
+Task. The manager never grades.
 
-Readiness-audit has no Cursor reviewer adapter yet. Fail that checkpoint
-closed.
+1. **Plan.** `scripts/run-cold-reviewer.sh <RUN_DIR> <CTX> NN <spawn-id> <artifact> <routine|integration>`
+   stages the bounded CTX and `artifact.sha256`, writes
+   `$CHECKPOINTS_DIR/<spawn-id>-reviewer-task-plan.json` (also printed on stdout),
+   logs the exact task prompt, and exits **2** with
+   `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. Exit 2 is a host action, not a failure.
+2. **Task.** The Delegate issues a local blank read-only Task with the plan's
+   `model` and `taskPrompt`, world = the staged CTX, and saves the Task's final
+   message as a file, by convention the plan's `responsePath`
+   (`<spawn-id>-reviewer-task-response.json`). The message is the verdict JSON,
+   or a JSON object carrying it in `.result` or `.structured_output`, optionally
+   with `.usage` and `.num_turns`.
+3. **Resume.** `scripts/run-cold-reviewer.sh --resume <response-file> <same six args>`
+   binds the response to the plan (same spawn id, checkpoint, artifact and staged
+   digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
+   id), extracts the verdict, validates it against
+   `config/delegate-verdict.schema.json`, writes
+   `<spawn-id>-reviewer-verdict.json` and a Claude-shaped
+   `<spawn-id>-reviewer-envelope.json` atomically, marks the plan `resumed` with
+   the response digest, appends an audit line, and returns the same metadata
+   JSON the Claude and Codex adapters return (`verdict_path`, `envelope_path`,
+   `artifact_sha256`, `hash_match`, plus `plan_path`). Exit **0**. A rejected
+   response exits 1 and writes nothing durable.
+
+Usage the Task did not report stays absent from the envelope (a `_note` says
+so); `append-reviewer-tokens.sh` then records a zero-token event with its own
+note rather than a fabricated count.
+
+Readiness-audit has no Cursor reviewer adapter (`--resume` is refused there).
+Fail that checkpoint closed.
 
 ## Starting a Cursor run
 
