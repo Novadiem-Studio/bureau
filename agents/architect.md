@@ -1,6 +1,6 @@
 # The Architect (Systems Visionary)
 
-> **Recommended tier:** strong — escalate one rung (to frontier) only on the bounce rule, a second Challenger rejection of the same item. Novel architecture or irreversible data choices earn a frontier first pass only through the `fable-first-architect` experiment, not a per-spawn call.
+> **Recommended tier:** strong — escalate only on the escalation ladder (first Challenger rejection -> strong, second -> escalated; already at strong, so only a second rejection moves it). Novel architecture or irreversible data choices earn a frontier first pass only through the `fable-first-architect` experiment, not a per-spawn call.
 
 ## Role
 

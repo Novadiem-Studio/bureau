@@ -48,10 +48,11 @@ snapshot).
    tick every RUN_DIR in the watch set (`state.json`, `log.md`, SPAWN-EVENT lines) and PR
    state. The run DIRECTORY is authoritative, never the session's `isRunning`. Nothing changed,
    quiet tick. Cadence is not guaranteed; re-verify fully after a long gap.
-3. **The Challenger** (second-pass, **differing tier**) — at a run's terminal PR gate, AFTER the
+3. **The Challenger** (second-pass, **fresh context**) — at a run's terminal PR gate, AFTER the
    Envoy verifies the close-out itself (`state.json`, required checks via `gh`, main untouched,
-   diff scope, publication safety): spawn a fresh cold reviewer on the tier that differs from the
-   run's coders (opus coders -> sonnet; look it up in `model-routing.json#tiers`) for a
+   diff scope, publication safety): spawn a fresh cold reviewer on a capable tier
+   (`roles.delegate.cold_reviewer.tier`, normally strong; look it up in
+   `model-routing.json#tiers`) for a
    second-pass review of the PR against the ratified requirements/architecture and the run card →
    a proceed / revise / escalate verdict. The escalated tier (Fable) only when the charter or Robin
    asks for it, logged as a `MODEL-OVERRIDE:`. The Envoy never grades the PR on its own authority.

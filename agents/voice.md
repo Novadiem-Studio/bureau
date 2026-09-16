@@ -1,6 +1,9 @@
 # The Counselor (Voice of the Studio)
 
-> **Recommended tier:** standard — rubric application; escalate rarely.
+> **Recommended tier:** frontier (fable) — the one standing exception to fable-for-escalation.
+> Voice, audience framing and persuasion are what fable is genuinely better at, and this is the
+> only role whose miss is not recoverable by a fix round: copy that ships under Robin's name has
+> already left when anyone notices.
 
 ## Role
 

@@ -13,7 +13,7 @@
       "forbidden": [
         "premium"
       ],
-      "note": "haiku/sonnet/opus defaults; fable available for escalation tiers (frontier/escalated) only \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). Fable is not a review-gate default: cold reviewers run on the tier that differs from the author (Robin, 2026-09-16); fable is reached by the bounce rule's second rung, an active experiment, or an explicit human ask, and every fable spawn needs a hand-written MODEL-OVERRIDE reason (preflight-artifacts.sh --phase final, fable-override)."
+      "note": "haiku/sonnet/opus for most defaults; fable reached by escalation, plus the Counselor's standing default \u2014 re-enabled Jul 2026. haiku is the cheap rung (Scoot). **Fable is not a review-gate default:** cold reviewers run on a capable tier in a fresh context (roles.delegate.cold_reviewer.tier, normally strong) and escalate to fable only on prior_review_missed_issue or second_critic_loop. Independence is bought by isolation."
     },
     "openai": {
       "allowed_spawn_models": [
@@ -124,10 +124,9 @@
         "prior_review_missed_issue"
       ],
       "deescalate_when": [
-        "author_ran_strong",
         "low_risk_docs_review_with_frontier_followup"
       ],
-      "note": "standard is permitted so a cold reviewer can differ from an opus coder without spending the escalated tier (Robin, 2026-09-16). The property that matters is that the reviewer differs from the author, not that it costs more. default_tier is unchanged at strong. author_ran_strong routes the reviewer to standard when the artifact's author ran strong. final_gate and high_stakes_backend_or_security were removed as escalation triggers: a final gate or a high-stakes review is a fresh cold pass on the differing tier, not a costlier model. What remains escalates one rung only when a review demonstrably missed something."
+      "note": "Cold review is bought by FRESH CONTEXT: a reviewer that has not seen the design argued gives real objections. fresh_context_required is the invariant. QA runs on a sufficiently capable tier and escalates only on a demonstrated miss. Robin, 2026-09-16. Regression specs 13 and 295 assert this shape; do not reintroduce author-derived routing."
     },
     "architect": {
       "agent": "The Architect",
@@ -202,7 +201,7 @@
     },
     "cleric": {
       "agent": "The Cleric",
-      "default_tier": "standard",
+      "default_tier": "strong",
       "allowed": [
         "cheap",
         "standard",
@@ -221,7 +220,8 @@
       "deescalate_when": [
         "straightforward_manifest_ingest",
         "budget_pressure"
-      ]
+      ],
+      "note": "The Cleric drives design-taste-frontend (tasteskill) and impeccable, so it is a thinker on the strong tier (Robin, 2026-09-16). Design direction and the pre-ship quality gate are judgement work, not handoff transcription."
     },
     "spellwright": {
       "agent": "The Spellwright",
@@ -247,9 +247,8 @@
     },
     "counselor": {
       "agent": "The Counselor",
-      "default_tier": "standard",
+      "default_tier": "frontier",
       "allowed": [
-        "cheap",
         "standard",
         "strong",
         "frontier",
@@ -265,7 +264,8 @@
       "deescalate_when": [
         "routine_copy_review",
         "budget_pressure"
-      ]
+      ],
+      "note": "The Counselor runs FABLE by default (Robin, 2026-09-16) \u2014 the one deliberate exception to 'fable for escalation only'. Two reasons it is not an escalation case. Voice, audience framing and persuasion are the work fable is actually better at, unlike code where opus and the gates carry it. And it is the only role in the cast whose miss is not recoverable by a fix round: everywhere else a bad output is caught by a gate, a test, or a bounce that escalates the fixer, but copy that ships under Robin's name has already left when anyone notices. Spawns are rare (pre-send review), so the aggregate cost is small. 'cheap' is removed from allowed: nothing about this role wants haiku."
     },
     "scribe": {
       "agent": "The Scribe",
@@ -313,7 +313,8 @@
         "read_only_contract_audit",
         "small_controller_patch",
         "budget_pressure"
-      ]
+      ],
+      "note": "The Systemsmith is a thinker, not a grunt: it writes production code over durable state, which is where this campaign's pair-shaped defects are authored (Robin, 2026-09-16). A cheaper coder moves cost sideways into fix rounds \u2014 rheo-stream 0c2 bounced 5 of 5 chunks, 12 coder spawns for five chunks, and each bounce costs a spawn plus a review. second_challenger_rejection escalates it a rung further."
     },
     "mechanic": {
       "agent": "The Mechanic",
@@ -448,18 +449,30 @@
         "unexpected_scope_expansion",
         "spec_compliant_but_doctrine_violating"
       ],
-      "deescalate_when": [
-        "author_ran_strong"
-      ],
       "cold_reviewer": {
-        "rule": "differs_from_author",
-        "author_cheap": "standard",
-        "author_standard": "strong",
-        "author_strong": "standard",
-        "author_frontier": "strong",
-        "author_escalated": "strong",
-        "note": "The per-checkpoint cold reviewer runs on the tier that differs from the checkpoint artifact's author; a cheap author gets standard (cheap is too weak to review), a frontier or escalated author gets strong (differs without spending the escalation tier again) (Robin, 2026-09-16, rheo-stream 0c2: an opus reviewer found 9 blockers where a fable reviewer found 1 on the same artifacts at the same cost). The former bundle04_benchmark_replay_clean gate on a standard-tier reviewer is retired; this is switch-and-watch, not a trial. The Delegate passes the derived model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model."
+        "rule": "capable_tier_fresh_context",
+        "tier": "strong",
+        "escalate_on": {
+          "prior_review_missed_issue": "escalated",
+          "second_critic_loop": "escalated"
+        },
+        "note": "The per-checkpoint cold reviewer runs on a capable tier in a FRESH CONTEXT. Independence is bought by isolation; rheo-stream 0c2 measured an opus reviewer finding 9 blockers where a fable one found 1 on the same artifacts at the same cost. Escalation follows a demonstrated miss. The Delegate passes the tier's model via BUREAU_REVIEWER_MODEL and logs a MODEL-OVERRIDE when it differs from roles.delegate.model. Robin, 2026-09-16; regression spec 13 asserts this shape."
       }
     }
+  },
+  "escalation_ladder": {
+    "rule": "first_rejection_then_second",
+    "applies_to": "the role that produced the rejected work \u2014 the FIXER, not the reviewer",
+    "rungs": [
+      {
+        "on": "first_challenger_rejection",
+        "target": "strong"
+      },
+      {
+        "on": "second_challenger_rejection",
+        "target": "escalated"
+      }
+    ],
+    "note": "Robin, 2026-09-16. A bounce is evidence the work item is harder than assumed, and the role that produced it is where that difficulty lives \u2014 so the FIXER escalates, not the reviewer. Targets are named rather than expressed as 'one rung up', because 'one rung' has to be inferred from the tier order and a role already at strong then has two possible readings. A role whose default already meets or exceeds a rung's target stays where it is. Declared here AND in docs/model-routing-and-cast.md; the Conductor and Delegate apply it at specialist retry dispatch and log a MODEL-OVERRIDE naming the trigger. This replaces the older 'bounce rule, one rung on the second rejection', which named no target tier."
   }
 }
