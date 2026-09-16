@@ -3761,8 +3761,10 @@ if [ "$RUNTIME" = "cursor" ]; then
     and .runtime == "cursor"
   ' "$PLAN_PATH" >/dev/null 2>&1 || fail "Cursor reviewer Task plan is malformed: $PLAN_PATH"
   PLAN_STATUS="$(jq -r '.status // empty' "$PLAN_PATH")"
-  [ "$PLAN_STATUS" = "host-task-required" ] \
-    || fail "Cursor reviewer Task plan for spawn $SPAWN_ID is already '$PLAN_STATUS'; a re-spawn needs a new spawn id"
+  if [ "$PLAN_STATUS" != "host-task-required" ]; then
+    [ "$PLAN_STATUS" = "resumed" ] && rm -rf "$CLAIM_DIR"   # a claim left after a completed resume is clutter
+    fail "Cursor reviewer Task plan for spawn $SPAWN_ID is already '$PLAN_STATUS'; a re-spawn needs a new spawn id"
+  fi
   for pair in \
     "spawnId=$SPAWN_ID" \
     "checkpoint=$CHECKPOINT" \
@@ -3806,87 +3808,105 @@ if [ "$RUNTIME" = "cursor" ]; then
     || fail "Task response is not JSON: $RESUME_RESPONSE"
   RESPONSE_SHA256="$(sha256_file "$RAW_TMP")" || fail "cannot hash Task response"
 
-  # Published output for this spawn already? Only the same response may complete an
-  # interrupted resume (published, not yet marked); anything else needs a new spawn id.
+  # Same response already published, fully or partially? The raw response is published
+  # FIRST, so any interrupted resume leaves behind the one file that identifies it, and a
+  # replay with the same response completes it: existing outputs are verified, missing
+  # ones published, the audit line written once, then the plan marked. Output without a
+  # raw to bind it to, or a raw from a different response, needs a new spawn id.
   RESUME_REPLAY=0
-  if [ -e "$VERDICT_PATH" ] || [ -e "$ENVELOPE_PATH" ] || [ -e "$RAW_CURSOR" ]; then
-    if [ -f "$VERDICT_PATH" ] && [ -f "$ENVELOPE_PATH" ] && [ -f "$RAW_CURSOR" ] \
-       && [ "$(sha256_file "$RAW_CURSOR")" = "$RESPONSE_SHA256" ]; then
+  if [ -e "$RAW_CURSOR" ]; then
+    if [ -f "$RAW_CURSOR" ] && [ "$(sha256_file "$RAW_CURSOR")" = "$RESPONSE_SHA256" ]; then
       RESUME_REPLAY=1
     else
-      fail "spawn $SPAWN_ID already has published reviewer output from a different response (or a partial set); a re-spawn needs a new spawn id"
+      fail "spawn $SPAWN_ID already has published reviewer output from a different response; a re-spawn needs a new spawn id"
     fi
+  elif [ -e "$VERDICT_PATH" ] || [ -e "$ENVELOPE_PATH" ]; then
+    fail "spawn $SPAWN_ID has reviewer output but no raw response to bind it to; a re-spawn needs a new spawn id"
   fi
 
   if [ "$RESUME_REPLAY" -eq 0 ]; then
-    # Atomic claim: mkdir succeeds for exactly one resume of this plan.
+    # Atomic claim: mkdir succeeds for exactly one first resume of this plan.
     if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
       claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
-      fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $VERDICT_PATH does not exist, remove $CLAIM_DIR and retry"
+      fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
     fi
     RESUME_CLAIMED=1
     jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
       '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
       || fail "cannot record the resume claim"
-
-    extract_claude_verdict "$RAW_TMP" "$VERDICT_RAW_TMP" \
-      || fail "Task response carries no structured verdict (expected the verdict object, or .structured_output / .result holding it)"
-    validate_verdict_against_schema "$VERDICT_RAW_TMP" "$VERDICT_TMP" \
-      || fail "Task response verdict rejected against $SCHEMA (nothing written)"
-
-    # Claude-shaped one-shot envelope. A Cursor Task does not report usage unless the
-    # host adds it to the response; when absent it stays absent (append-reviewer-tokens.sh
-    # then records a zero-token event with a _note), never a fabricated zero.
-    jq -n \
-      --arg model "$MODEL" \
-      --slurpfile raw "$RAW_TMP" \
-      --slurpfile verdict "$VERDICT_TMP" \
-      '
-      ($raw[0]) as $r
-      | (($r.usage // null) | if type == "object" then . else null end) as $u
-      | (if $u == null then null else {
-          input_tokens: (($u.input_tokens // 0) | if type == "number" then . else 0 end),
-          cache_creation_input_tokens: (($u.cache_creation_input_tokens // $u.cache_write_input_tokens // 0) | if type == "number" then . else 0 end),
-          cache_read_input_tokens: (($u.cache_read_input_tokens // $u.cached_input_tokens // 0) | if type == "number" then . else 0 end),
-          output_tokens: (($u.output_tokens // 0) | if type == "number" then . else 0 end)
-        } end) as $usage
-      | {
-          type: "bureau-cold-review-result",
-          runtime: "cursor",
-          model: $model,
-          result: $verdict[0],
-          num_turns: (($r.num_turns // 1) | if type == "number" then . else 1 end)
-        }
-        + (if $usage == null
-           then {_note: "Cursor Task response carried no usage block; reviewer tokens unavailable"}
-           else {usage: $usage} end)
-      ' > "$ENVELOPE_TMP" || fail "cannot build Cursor reviewer envelope"
-
-    # Exclusive publication: hard links fail if a file appeared meanwhile. A partial
-    # publish under our own claim is rolled back before failing.
-    ln "$VERDICT_TMP" "$VERDICT_PATH" 2>/dev/null \
-      || fail "cannot publish verdict for spawn $SPAWN_ID: $VERDICT_PATH appeared meanwhile; a re-spawn needs a new spawn id"
-    ln "$ENVELOPE_TMP" "$ENVELOPE_PATH" 2>/dev/null \
-      || { rm -f "$VERDICT_PATH"; fail "cannot publish envelope for spawn $SPAWN_ID: $ENVELOPE_PATH appeared meanwhile"; }
-    ln "$RAW_TMP" "$RAW_CURSOR" 2>/dev/null \
-      || { rm -f "$VERDICT_PATH" "$ENVELOPE_PATH"; fail "cannot publish raw response for spawn $SPAWN_ID: $RAW_CURSOR appeared meanwhile"; }
-    RESUME_PUBLISHED=1
-  else
-    RESUME_PUBLISHED=1
   fi
+
+  # Derive every output from the response. This is deterministic, so on replay the
+  # derived files are compared byte-for-byte with whatever was already published.
+  extract_claude_verdict "$RAW_TMP" "$VERDICT_RAW_TMP" \
+    || fail "Task response carries no structured verdict (expected the verdict object, or .structured_output / .result holding it)"
+  validate_verdict_against_schema "$VERDICT_RAW_TMP" "$VERDICT_TMP" \
+    || fail "Task response verdict rejected against $SCHEMA (nothing written)"
+
+  # Claude-shaped one-shot envelope. A Cursor Task does not report usage unless the
+  # host adds it to the response; when absent it stays absent (append-reviewer-tokens.sh
+  # then records a zero-token event with a _note), never a fabricated zero.
+  jq -n \
+    --arg model "$MODEL" \
+    --slurpfile raw "$RAW_TMP" \
+    --slurpfile verdict "$VERDICT_TMP" \
+    '
+    ($raw[0]) as $r
+    | (($r.usage // null) | if type == "object" then . else null end) as $u
+    | (if $u == null then null else {
+        input_tokens: (($u.input_tokens // 0) | if type == "number" then . else 0 end),
+        cache_creation_input_tokens: (($u.cache_creation_input_tokens // $u.cache_write_input_tokens // 0) | if type == "number" then . else 0 end),
+        cache_read_input_tokens: (($u.cache_read_input_tokens // $u.cached_input_tokens // 0) | if type == "number" then . else 0 end),
+        output_tokens: (($u.output_tokens // 0) | if type == "number" then . else 0 end)
+      } end) as $usage
+    | {
+        type: "bureau-cold-review-result",
+        runtime: "cursor",
+        model: $model,
+        result: $verdict[0],
+        num_turns: (($r.num_turns // 1) | if type == "number" then . else 1 end)
+      }
+      + (if $usage == null
+         then {_note: "Cursor Task response carried no usage block; reviewer tokens unavailable"}
+         else {usage: $usage} end)
+    ' > "$ENVELOPE_TMP" || fail "cannot build Cursor reviewer envelope"
+
+  # Exclusive, idempotent publication: a hard link fails if the target exists; an
+  # existing target is accepted only when it is byte-identical to what this response
+  # derives, and never replaced.
+  publish_exclusive() {
+    pub_tmp="$1"; pub_target="$2"; pub_label="$3"
+    if [ -e "$pub_target" ] || ! ln "$pub_tmp" "$pub_target" 2>/dev/null; then
+      cmp -s "$pub_tmp" "$pub_target" \
+        || fail "published $pub_label for spawn $SPAWN_ID ($pub_target) differs from what this response derives; refusing to replace it — a re-spawn needs a new spawn id"
+    fi
+  }
+  publish_exclusive "$RAW_TMP" "$RAW_CURSOR" "raw response"
+  RESUME_PUBLISHED=1
+  publish_exclusive "$VERDICT_TMP" "$VERDICT_PATH" "verdict"
+  publish_exclusive "$ENVELOPE_TMP" "$ENVELOPE_PATH" "envelope"
   [ -e "$EVENTS_PATH" ] || : > "$EVENTS_PATH"
   [ -e "$STDERR_PATH" ] || : > "$STDERR_PATH"
 
+  # Audit BEFORE marking, keyed on the spawn id so a replay never writes it twice.
+  AUDIT_KEY="Cold reviewer resume — spawn: $SPAWN_ID,"
+  if ! grep -Fq "$AUDIT_KEY" "$RUN_DIR/log.md" 2>/dev/null; then
+    bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+      "$AUDIT_KEY runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH" \
+      >/dev/null || fail "published $VERDICT_PATH but could not append the resume audit line; re-run --resume with the same response file to complete"
+  fi
+  if [ "$RESUME_REPLAY" -eq 1 ]; then
+    bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+      "Cold reviewer resume replay — spawn: $SPAWN_ID completed an interrupted resume from response sha256 $RESPONSE_SHA256" \
+      >/dev/null || true
+  fi
   RESUMED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
   jq --arg at "$RESUMED_AT" --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
     '.status = "resumed" | .resumedAt = $at | .responseFile = $response | .responseSha256 = $sha' \
     "$PLAN_PATH" > "$PLAN_TMP" && mv -f "$PLAN_TMP" "$PLAN_PATH" \
-    || fail "published $VERDICT_PATH but could not mark the plan resumed; re-run --resume with the same response file to complete"
-  bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
-    "Cold reviewer resume — spawn: $SPAWN_ID, runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH$([ "$RESUME_REPLAY" -eq 1 ] && printf ' (replay: completed an interrupted resume)')" \
-    >/dev/null || fail "cannot append cold-reviewer resume audit line"
+    || fail "published and audited $VERDICT_PATH but could not mark the plan resumed; re-run --resume with the same response file to complete"
   trap - EXIT
   cleanup_resume
   rm -rf "$CLAIM_DIR"

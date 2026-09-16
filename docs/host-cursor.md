@@ -88,8 +88,10 @@ by replacement; a resume first claims the plan atomically
 |---|---|---|
 | `already 'resumed'` / `already exists for spawn` | that spawn is done | re-spawn with a new spawn id |
 | `already claimed by another resume (pid …)` | a resume is running, or died before publishing | if the pid is gone and `<spawn-id>-reviewer-verdict.json` is absent, remove the claim dir and retry |
-| `published … but could not mark the plan resumed` | crash between publish and mark | re-run `--resume` with the same response file; it completes idempotently |
+| `published … could not append the resume audit line` / `could not mark the plan resumed` | crash or write failure after publication began | re-run `--resume` with the same response file; the raw response is published first, so replay verifies what exists, publishes what is missing, writes the audit line once, and marks the plan |
 | `published reviewer output from a different response` | a different message was offered for a spawn that already published | keep the published verdict, or re-spawn with a new spawn id |
+| `differs from what this response derives` | a published output was altered after publication | it is never replaced; re-spawn with a new spawn id |
+| `reviewer output but no raw response to bind it to` | output exists without the response that produced it | re-spawn with a new spawn id |
 
 A refusal before publication (bad JSON, schema violation, plan mismatch) writes
 nothing durable and releases the claim, so the same spawn id can be resumed

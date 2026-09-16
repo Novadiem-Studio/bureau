@@ -138,7 +138,8 @@ command: |
   wait "$P1"; R1=$?
   wait "$P2"; R2=$?
   set -e
-  [ $((R1 + R2)) -eq 1 ] || { echo "FAIL: concurrent resumes: rc $R1 and $R2 (expected one 0, one 1)"; cat "$TMPF/c1.err" "$TMPF/c2.err"; exit 1; }
+  # at least one succeeds; the other either lost the claim (rc 1) or arrived after the raw was published and completed as a benign replay (rc 0)
+  [ $((R1 + R2)) -le 1 ] || { echo "FAIL: concurrent resumes: rc $R1 and $R2 (expected at least one success)"; cat "$TMPF/c1.err" "$TMPF/c2.err"; exit 1; }
   [ "$(ls "$CP"/01-1-3-reviewer-verdict.json 2>/dev/null | wc -l | tr -d ' ')" = "1" ] || { echo "FAIL: concurrent resumes did not publish exactly one verdict"; exit 1; }
   [ "$(jq -r .status "$CP/01-1-3-reviewer-task-plan.json")" = "resumed" ] || { echo "FAIL: concurrent winner did not mark the plan"; exit 1; }
   [ ! -e "$CP/01-1-3-reviewer-task-plan.claim" ] || { echo "FAIL: concurrent loser left a claim"; exit 1; }
@@ -173,7 +174,49 @@ command: |
   META5=$(run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-5 artifact.md routine 2>"$TMPF/err") || { echo "FAIL: replay with the same response failed"; cat "$TMPF/err"; exit 1; }
   [ "$(jq -r .status "$P5")" = "resumed" ] || { echo "FAIL: replay did not mark the plan"; exit 1; }
   [ "$(shasum -a 256 "$CP/01-1-5-reviewer-verdict.json" | awk '{print $1}')" = "$V5SHA" ] || { echo "FAIL: replay replaced the published verdict"; exit 1; }
-  grep -q 'replay: completed an interrupted resume' "$RD/log.md" || { echo "FAIL: replay audit line missing"; exit 1; }
+  grep -q 'Cold reviewer resume replay — spawn: 01-1-5' "$RD/log.md" || { echo "FAIL: replay line missing"; exit 1; }
+  [ "$(grep -c 'Cold reviewer resume — spawn: 01-1-5,' "$RD/log.md")" = "1" ] || { echo "FAIL: audit line of record written more than once"; exit 1; }
+
+  # partial publication: raw goes first, so a crash after any link is completed by replay
+  set +e
+  run "$RD" "$CTX" 01 01-1-6 artifact.md routine >/dev/null 2>&1
+  set -e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-6 artifact.md routine >/dev/null 2>&1 || { echo "FAIL: 01-1-6 resume"; exit 1; }
+  P6="$CP/01-1-6-reviewer-task-plan.json"
+  V6SHA=$(shasum -a 256 "$CP/01-1-6-reviewer-verdict.json" | awk '{print $1}')
+  reset6() { jq '.status = "host-task-required" | del(.resumedAt, .responseFile, .responseSha256)' "$P6" > "$TMPF/p6" && mv "$TMPF/p6" "$P6"; }
+  # crashed right after the raw link: verdict and envelope missing
+  reset6; rm -f "$CP/01-1-6-reviewer-verdict.json" "$CP/01-1-6-reviewer-envelope.json"
+  META6=$(run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-6 artifact.md routine 2>"$TMPF/err") || { echo "FAIL: replay after raw-only crash"; cat "$TMPF/err"; exit 1; }
+  [ -f "$CP/01-1-6-reviewer-verdict.json" ] && [ -f "$CP/01-1-6-reviewer-envelope.json" ] || { echo "FAIL: replay did not republish the missing outputs"; exit 1; }
+  [ "$(shasum -a 256 "$CP/01-1-6-reviewer-verdict.json" | awk '{print $1}')" = "$V6SHA" ] || { echo "FAIL: replayed verdict differs from the original"; exit 1; }
+  printf '%s' "$META6" | jq -e '.hash_match == true' >/dev/null || { echo "FAIL: replay meta"; exit 1; }
+  # crashed right after the verdict link: envelope missing
+  reset6; rm -f "$CP/01-1-6-reviewer-envelope.json"
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-6 artifact.md routine >/dev/null 2>"$TMPF/err" || { echo "FAIL: replay after verdict-only crash"; cat "$TMPF/err"; exit 1; }
+  [ -f "$CP/01-1-6-reviewer-envelope.json" ] || { echo "FAIL: envelope not republished"; exit 1; }
+  [ "$(jq -r .status "$P6")" = "resumed" ] || { echo "FAIL: replay did not mark the plan"; exit 1; }
+  [ "$(grep -c 'Cold reviewer resume — spawn: 01-1-6,' "$RD/log.md")" = "1" ] || { echo "FAIL: 01-1-6 audit line not idempotent"; exit 1; }
+  [ ! -e "$CP/01-1-6-reviewer-task-plan.claim" ] || { echo "FAIL: claim left after replay"; exit 1; }
+  # a published output that no longer matches what the response derives is never replaced
+  reset6
+  printf '{"tampered":true}\n' > "$CP/01-1-6-reviewer-verdict.json"
+  set +e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-6 artifact.md routine >/dev/null 2>"$TMPF/err"; r=$?
+  set -e
+  [ "$r" -eq 1 ] && grep -q 'differs from what this response derives' "$TMPF/err" || { echo "FAIL: tampered output not refused"; cat "$TMPF/err"; exit 1; }
+  grep -q tampered "$CP/01-1-6-reviewer-verdict.json" || { echo "FAIL: tampered output was replaced"; exit 1; }
+  [ "$(jq -r .status "$P6")" = "host-task-required" ] || { echo "FAIL: refused replay marked the plan"; exit 1; }
+  # output with no raw response behind it cannot be bound: refused
+  set +e
+  run "$RD" "$CTX" 01 01-1-7 artifact.md routine >/dev/null 2>&1
+  set -e
+  printf '{"orphan":true}\n' > "$CP/01-1-7-reviewer-verdict.json"
+  set +e
+  run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-7 artifact.md routine >/dev/null 2>"$TMPF/err"; r=$?
+  set -e
+  [ "$r" -eq 1 ] && grep -q 'no raw response to bind it to' "$TMPF/err" || { echo "FAIL: orphan output not refused"; cat "$TMPF/err"; exit 1; }
+  [ ! -e "$CP/01-1-7-reviewer-task-plan.claim" ] || { echo "FAIL: orphan refusal left a claim"; exit 1; }
 
   # a bare verdict with no usage: envelope carries a _note, no fabricated zeros; hash mismatch is reported, not refused
   set +e
@@ -186,4 +229,4 @@ command: |
     || { echo "FAIL: absent usage was fabricated"; exit 1; }
   grep -q 'does NOT match the staged artifact digest' "$RD/log.md" || { echo "FAIL: FR9 warning not logged"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". Phase 1 exits 2, prints the plan, stages artifact.sha256, writes no verdict. --resume refuses (exit 1, nothing durable, plan unconsumed, no temp files) a verdict missing a field, carrying an extra key, a bad Decision, a malformed hash, non-JSON, a spawn with no plan, a staged artifact whose digest no longer matches the plan, and any non-cursor host. A good response yields exit 0, the same meta JSON as other hosts plus plan_path, a schema-normalized verdict (null Integration-evidence dropped), a Claude-shaped envelope with normalized usage, events/raw files, the plan marked resumed with the response digest, an audit line, and an envelope append-reviewer-tokens.sh accepts. A second resume of the same spawn is refused, as is re-planning a resumed spawn (its outputs untouched). Of two concurrent resumes of one plan exactly one publishes and the loser leaves no claim. A stale claim is refused with a recovery hint and clears on removal. An interrupted resume that published but never marked its plan completes on replay with the same response and is refused with a different one. A bare verdict without usage yields an envelope with a _note and no usage block; a wrong Artifact-hash is reported as hash_match false and logged, as on other hosts. Mutation: delete the plan-status check → double resume passes; delete the mkdir claim → the stale-claim case publishes instead of being refused; replace the plan's `ln` with `mv -f` → re-planning a resumed spawn passes; delete validate_verdict_against_schema → extra-key passes; drop the artifactSha256 binding → the changed-artifact case passes; drop the `+ (if $usage == null …)` branch → the bare-verdict envelope gains fabricated zeros.
+expected: exit 0; stdout "PASS". Phase 1 exits 2, prints the plan, stages artifact.sha256, writes no verdict. --resume refuses (exit 1, nothing durable, plan unconsumed, no temp files) a verdict missing a field, carrying an extra key, a bad Decision, a malformed hash, non-JSON, a spawn with no plan, a staged artifact whose digest no longer matches the plan, and any non-cursor host. A good response yields exit 0, the same meta JSON as other hosts plus plan_path, a schema-normalized verdict (null Integration-evidence dropped), a Claude-shaped envelope with normalized usage, events/raw files, the plan marked resumed with the response digest, an audit line, and an envelope append-reviewer-tokens.sh accepts. A second resume of the same spawn is refused, as is re-planning a resumed spawn (its outputs untouched). Of two concurrent resumes of one plan exactly one publishes and the loser leaves no claim. A stale claim is refused with a recovery hint and clears on removal. An interrupted resume completes on replay with the same response whatever link it died after (raw is published first; missing outputs are republished, existing ones verified byte-for-byte, the audit line of record written once), is refused with a different response, never replaces a published output that no longer matches, and refuses output that has no raw response behind it. A bare verdict without usage yields an envelope with a _note and no usage block; a wrong Artifact-hash is reported as hash_match false and logged, as on other hosts. Mutation: delete the plan-status check → double resume passes; delete the mkdir claim → the stale-claim case publishes instead of being refused; publish the raw last instead of first → the raw-only-crash replay case is refused; drop the cmp in publish_exclusive → the tampered-output case passes; replace the plan's `ln` with `mv -f` → re-planning a resumed spawn passes; delete validate_verdict_against_schema → extra-key passes; drop the artifactSha256 binding → the changed-artifact case passes; drop the `+ (if $usage == null …)` branch → the bare-verdict envelope gains fabricated zeros.
