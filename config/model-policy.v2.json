@@ -48,7 +48,26 @@
       "forbidden": [
         "inherit"
       ],
-      "note": "Cursor Agent host: native specialist spawns use Task-tool slugs from config/runtimes/cursor.json. inherit is forbidden. Live transport is Cursor Task (CURSOR.md); scripts/run-cursor-specialist.sh --plan is the audit record. Cloud Task is opt-in and does not replace local cold review."
+      "escalation_ladder": {
+        "rule": "first_rejection_then_second_then_third",
+        "applies_to": "the role that produced the rejected work — the FIXER, not the reviewer",
+        "rungs": [
+          {
+            "on": "first_challenger_rejection",
+            "target": "strong"
+          },
+          {
+            "on": "second_challenger_rejection",
+            "target": "frontier"
+          },
+          {
+            "on": "third_challenger_rejection",
+            "target": "escalated"
+          }
+        ],
+        "note": "Robin, 2026-09-16. Cursor-only replacement of the global two-rung ladder. Grok 4.6 (frontier, Cursor Models pool) is cheaper than Opus 5 (escalated, Other Models), so the fixer tries Grok on the second bounce and Opus only on the third. After the third try fails, escalate to Robin — no fourth model. Challenger / Delegate cold reviewer / Notary miss-escalation still uses the global reviewer table (escalated = Opus), not this fixer ladder."
+      },
+      "note": "Cursor Agent host: native specialist spawns use Task-tool slugs from config/runtimes/cursor.json. inherit is forbidden. Live transport is Cursor Task (CURSOR.md); scripts/run-cursor-specialist.sh --plan is the audit record. Cloud Task is opt-in and does not replace local cold review. Fixer bounces use host_policy.cursor.escalation_ladder (Sol → Grok 4.6 → Opus), not the global two-rung jump to escalated."
     }
   },
   "manual_experiments": [],
@@ -473,6 +492,6 @@
         "target": "escalated"
       }
     ],
-    "note": "Robin, 2026-09-16. A bounce is evidence the work item is harder than assumed, and the role that produced it is where that difficulty lives \u2014 so the FIXER escalates, not the reviewer. Targets are named rather than expressed as 'one rung up', because 'one rung' has to be inferred from the tier order and a role already at strong then has two possible readings. A role whose default already meets or exceeds a rung's target stays where it is. Declared here AND in docs/model-routing-and-cast.md; the Conductor and Delegate apply it at specialist retry dispatch and log a MODEL-OVERRIDE naming the trigger. This replaces the older 'bounce rule, one rung on the second rejection', which named no target tier."
+    "note": "Robin, 2026-09-16. A bounce is evidence the work item is harder than assumed, and the role that produced it is where that difficulty lives \u2014 so the FIXER escalates, not the reviewer. Targets are named rather than expressed as 'one rung up', because 'one rung' has to be inferred from the tier order and a role already at strong then has two possible readings. A role whose default already meets or exceeds a rung's target stays where it is. Declared here AND in docs/model-routing-and-cast.md; the Conductor and Delegate apply it at specialist retry dispatch and log a MODEL-OVERRIDE naming the trigger. This replaces the older 'bounce rule, one rung on the second rejection', which named no target tier. Cursor replaces this ladder at resolve time with host_policy.cursor.escalation_ladder (second bounce \u2192 frontier / Grok 4.6, third \u2192 escalated / Opus). Claude and Codex keep these two rungs."
   }
 }

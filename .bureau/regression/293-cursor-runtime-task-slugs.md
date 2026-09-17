@@ -23,6 +23,9 @@ command: |
       "claude-opus-5-thinking-high"
     ]
     and ((.host_policy.cursor.forbidden | index("inherit")) != null)
+    and .host_policy.cursor.escalation_ladder.rungs[1].target == "frontier"
+    and .host_policy.cursor.escalation_ladder.rungs[2].target == "escalated"
+    and .escalation_ladder.rungs[1].target == "escalated"
   ' "$P" >/dev/null || { echo "FAIL: cursor host policy missing"; exit 1; }
 
   TMP=$(mktemp -d "${TMPDIR:-/tmp}/cursor-routing.XXXXXX") || exit 2
@@ -37,6 +40,10 @@ command: |
     and .roles.challenger.model == "gpt-5.6-sol-medium"
     and .roles.analyst.model == "composer-2.5-fast"
     and .roles.scoot.model == "composer-2.5-fast"
+    and .escalationLadder.rungs[1].on == "second_challenger_rejection"
+    and .escalationLadder.rungs[1].target == "frontier"
+    and .escalationLadder.rungs[2].target == "escalated"
+    and (.escalationLadder.rungs | length) == 3
   ' "$TMP/routing.json" >/dev/null \
     || { echo "FAIL: Cursor resolved roles drifted"; exit 1; }
 
@@ -74,4 +81,4 @@ command: |
   [ "$skip" = '{"action":"skip","source":"runtime"}' ] \
     || { echo "FAIL: affordability did not skip cursor"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS"; Cursor adapter maps Task slugs, the helper plans without launching, cloud Challenger is rejected, and affordability skips.
+expected: exit 0; stdout "PASS"; Cursor adapter maps Task slugs, resolved fixer ladder is Sol→Grok→Opus, the helper plans without launching, cloud Challenger is rejected, and affordability skips.

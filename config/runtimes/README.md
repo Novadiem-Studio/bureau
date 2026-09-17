@@ -33,7 +33,9 @@ Start with `--runtime grok`. Live spawn is Task/executor; `scripts/run-grok-spec
 is the pre-spawn audit. `cursor` is the Cursor Agent host adapter
 (`config/runtimes/cursor.json`, `CURSOR.md`). Start with `--runtime cursor`.
 Live spawn is Cursor Task, local or cloud; `scripts/run-cursor-specialist.sh --plan`
-is the pre-spawn audit. `openrouter` and `hermes` remain routing-only: metered
+is the pre-spawn audit. Cursor's fixer bounce order is Sol → Grok 4.6 → Opus
+(`host_policy.cursor.escalation_ladder`); that override does not apply to Claude
+or Codex. `openrouter` and `hermes` remain routing-only: metered
 API for cheap or specialized non-build passes, never a Bureau code/build host.
 
 Base tiers resolve native spawn models. Optional `execution_profiles` resolve narrow alternate

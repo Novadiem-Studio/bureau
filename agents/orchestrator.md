@@ -271,6 +271,16 @@ Resolved routing beats workflow prose when they disagree.
 Use Scoot (`haiku`) and Tally (`sonnet`) for read-only odd jobs so trivial scouting cannot
 silently consume opus.
 
+**Fixer bounce:** after a Challenger rejection of the same work item, read
+`RUN_DIR/model-routing.json#escalationLadder` (already host-resolved) and spawn the
+FIXER at `tiers.<target>.model`. Do not re-derive rungs from the Claude table in
+`docs/model-routing-and-cast.md`. A role already at or above the target stays.
+Log a `MODEL-OVERRIDE` naming the trigger (`first_challenger_rejection`,
+`second_challenger_rejection`, or `third_challenger_rejection`). After the last
+rung fails, escalate to Robin — no fourth model. Reviewer miss-escalation is a
+separate table (`roles.delegate.coldReviewer.escalate_on` / Challenger
+`escalate_when`); do not put the fixer ladder on the critic.
+
 **Budget handling:** read `~/.novadiem/usage-snapshot.json` (statusLine-owned; no external poll),
 at run start and before expensive spawns. The live ClaudeUsage check belongs to the Delegate (the top session picks models); direct-Conductor fallback keeps this snapshot read. Escalate tier only on evidence of weak/contradictory outputs.
 

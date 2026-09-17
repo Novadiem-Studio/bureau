@@ -25,11 +25,11 @@
     },
     "frontier": {
       "model": "cursor-grok-4.6-high-fast",
-      "notes": "Final gates, subtle design/code risk, or high-stakes reviews. Pass this Task slug explicitly; do not inherit."
+      "notes": "Cursor Models pool. Counselor default, and the fixer on second_challenger_rejection (cheaper than Opus). Pass this Task slug explicitly; do not inherit."
     },
     "escalated": {
       "model": "claude-opus-5-thinking-high",
-      "notes": "Repeated failure, hard adjudication, or explicit human request. Highest Task slug this host currently exposes."
+      "notes": "Other Models pool. Fixer third_challenger_rejection, reviewer miss-escalation, hard adjudication, or explicit human request. Highest Task slug this host currently exposes. After this try fails, escalate to Robin."
     }
   }
 }

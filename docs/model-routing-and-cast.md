@@ -80,6 +80,22 @@ Cursor maps `cheap`/`standard` to **composer-2.5-fast**, `strong` to
 `escalated` to **claude-opus-5-thinking-high**. These are Cursor Task slugs as
 of 2026-09-14, not provider API names. `inherit` is forbidden.
 
+**Fixer bounce (Cursor):** Grok 4.6 before Opus, because Grok is the cheaper
+Cursor Models pool and Opus is Other Models. Resolved
+`model-routing.json#escalationLadder` replaces the global two-rung ladder:
+
+| on | target | Cursor slug |
+|---|---|---|
+| `first_challenger_rejection` | `strong` | `gpt-5.6-sol-medium` |
+| `second_challenger_rejection` | `frontier` | `cursor-grok-4.6-high-fast` |
+| `third_challenger_rejection` | `escalated` | `claude-opus-5-thinking-high` |
+
+A role already at or above the target stays. After the third try fails, escalate
+to Robin — no fourth model. Challenger / Delegate cold reviewer / Notary
+miss-escalation still goes to `escalated` (Opus), not Grok. Claude and Codex
+keep the global two-rung ladder (second bounce still `escalated` / Astra or
+Fable).
+
 Cursor Agent is a first-class host. Start with `--runtime cursor`. The spawn
 helper `scripts/run-cursor-specialist.sh --plan` is the audit record; live spawn
 is Cursor Task (`CURSOR.md`, `docs/host-cursor.md`). Cloud Task is opt-in for
@@ -146,10 +162,12 @@ difficulty lives:
 | `second_challenger_rejection` | `escalated` |
 
 A role whose default already meets or exceeds a rung's target stays where it is. The Conductor and
-Delegate apply it at specialist retry dispatch and log a `MODEL-OVERRIDE` naming the trigger.
+Delegate apply it at specialist retry dispatch from `RUN_DIR/model-routing.json#escalationLadder`
+(resolved; Cursor's host override is already merged in) and log a `MODEL-OVERRIDE` naming the trigger.
 **This supersedes the older "bounce rule: one rung on the second rejection"**, which named no
 target tier and left "one rung" to be inferred from the tier order — ambiguous for a role already
-at strong.
+at strong. Cursor's host override inserts Grok 4.6 as the second bounce and keeps Opus for the
+third — see Host policy - Cursor. Do not apply that three-rung order on Claude or Codex.
 
 **Every fable spawn carries a hand-written reason.** A `SPAWN-EVENT` whose `actual_model` is
 the frontier/escalated model while `configured_model` is not needs a `MODEL-OVERRIDE:` for that

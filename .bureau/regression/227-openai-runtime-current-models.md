@@ -49,6 +49,8 @@ command: |
     and .roles.conductor.reasoningEffort == "max"
     and .roles.challenger.model == "gpt-5.6-sol"
     and .roles.analyst.model == "gpt-5.6-terra"
+    and (.escalationLadder.rungs | length) == 2
+    and .escalationLadder.rungs[1].target == "escalated"
   ' "$TMP/routing.json" >/dev/null \
     || { echo "FAIL: Astra did not remain escalation-only in resolved routing"; exit 1; }
   echo PASS
