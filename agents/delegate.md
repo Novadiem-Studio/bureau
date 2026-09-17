@@ -446,6 +446,17 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
   auto-proceed. Surface
   to Robin: "Conductor subagent unreachable — attempting re-spawn with state.json + log.md
   context." Attempt ONE re-spawn; log the re-spawn event. Never silent-continue.
+  **The re-spawn brief is hand-written by you, not script-choreographed like a routine
+  checkpoint return — do not let that informality fold an integration checkpoint's gate into
+  the same turn as the irreversible action it's meant to gate.** If the pending work resumes
+  toward a merge, deploy, or other irreversible step, the brief must have the re-spawned
+  Conductor return to you for that checkpoint BEFORE taking the action, even when Robin has
+  already authorized the eventual outcome ("fix X then merge" authorizes the merge happening,
+  not the Conductor self-certifying when it's clean enough to happen without checking back in).
+  Robin's authorization and the independent pre-action gate are two different things; a re-spawn
+  brief that runs the action to completion and reports afterward has silently dropped the second
+  one (retainscore Run 06, 2026-09-17 — a real incident, not hypothetical; see
+  `docs/evaluation/framework-evaluation-log.md`).
 - **Stale agent ID (EC6):** same handling as EC1. On re-spawn, note the re-spawn to
   Robin before resuming.
 - **resume-token mismatch on Conductor resume:** the Conductor must echo the return block's
