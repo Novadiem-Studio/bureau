@@ -281,8 +281,17 @@ if ! jq -e '
     | all(. == "composer-2.5-fast" or . == "gpt-5.6-sol-medium"
           or . == "cursor-grok-4.6-high-fast" or . == "claude-opus-5-thinking-high"))
   and ((.host_policy.cursor.forbidden | index("inherit")) != null)
+  and .host_policy.cursor.escalation_ladder.rungs == [
+    {"on":"first_challenger_rejection","target":"strong"},
+    {"on":"second_challenger_rejection","target":"frontier"},
+    {"on":"third_challenger_rejection","target":"escalated"}
+  ]
+  and .escalation_ladder.rungs == [
+    {"on":"first_challenger_rejection","target":"strong"},
+    {"on":"second_challenger_rejection","target":"escalated"}
+  ]
 ' config/model-policy.v2.json >/dev/null; then
-  err "config/model-policy.v2.json Cursor inherit must be forbidden, and spawn models must be Task slugs"
+  err "config/model-policy.v2.json Cursor inherit must be forbidden, spawn models must be Task slugs, and Cursor fixer ladder must be Sol→Grok→Opus without changing the global two-rung ladder"
 fi
 fi
 for adapter in config/runtimes/*.json; do

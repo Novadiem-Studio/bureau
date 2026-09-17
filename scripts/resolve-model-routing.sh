@@ -209,6 +209,9 @@ jq -n \
         [.roles[] | .capabilityWarnings[]?] | unique
       )
     | .hostPolicy = ($policyDoc.host_policy[$runtimeName] // null)
+    | .escalationLadder = (
+        .hostPolicy.escalation_ladder // $policyDoc.escalation_ladder // null
+      )
     | .conductorNotes = (
         $notes
         + (if .hostPolicy.note then [.hostPolicy.note] else [] end)

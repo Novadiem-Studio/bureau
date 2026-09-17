@@ -93,7 +93,9 @@ Robin is talking to.
 ### Model IDs
 
 `RUN_DIR/model-routing.json` records the Task slugs from
-`config/runtimes/cursor.json`. Pass those names on every Task.
+`config/runtimes/cursor.json`. Pass those names on every Task. Fixer bounces
+read `escalationLadder` from that file: Sol, then Grok 4.6, then Opus. Do not
+jump to Opus on the second Challenger rejection.
 
 As of 2026-09-14 this host's Task tool accepts:
 
