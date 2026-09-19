@@ -17,7 +17,11 @@
 #   --checkpoint-type   <routine|integration>   routine => no-op, exit 0
 #   --worktree-path     <abs path or "(none)">
 #   --base-ref          <git ref>
-#   --claimed-gates     <single-line inline JSON array>   (cross-check input only)
+#   --claimed-gates     <single-line inline JSON array of {"name","command",...}
+#                        objects>   (cross-check input only). A bare-string element
+#                        is NOT a valid claim: it is dropped (never crashes) and
+#                        recorded in errors[] instead of silently counting toward
+#                        canonical-gate declaration (issue #74).
 #   --known-flaky-gates <single-line inline JSON array>   (optional, default empty)
 #   --state-json        <abs path to RUN_DIR/state.json>  (scope projection source)
 #   --out               <abs path to the output dir = $CTX>
@@ -238,6 +242,18 @@ PY
   # REQ_CLAIMED_GATES_RAW is a single flat line (the caller's req_field head -n 1).
   # Parse it as a JSON array. Unparseable or absent ⇒ empty claimed set +
   # errors[] note (every canonical gate then becomes under-declaration).
+  #
+  # ELEMENT SHAPE (issue #74): every element must be an object with name/command
+  # keys to count as a claim — a bare string is coerced out downstream by the
+  # isinstance(dict) guards in the pre-existing-red validation and the
+  # under-declaration cross-check below (that behavior is pinned by
+  # .bureau/regression/237-integration-gate-string-claimed-gate.md and must not
+  # change). What WAS missing: when every element is a bare string, both guards
+  # silently empty the whole claimed set, every canonical gate lands in
+  # under_declaration, and errors[] stayed [] — a false comprehensive
+  # under-declaration with no diagnostic. Record the shape problem here instead,
+  # so it is visible in integration-results.json rather than masquerading as a
+  # real under-declaration.
   CLAIMED_GATES_JSON="$(python3 - "$REQ_CLAIMED_GATES_RAW" <<'PY'
 import json, sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -245,7 +261,14 @@ try:
     parsed = json.loads(raw) if raw.strip() else []
     if not isinstance(parsed, list):
         raise ValueError("not a list")
-    print(json.dumps({"gates": parsed, "error": ""}))
+    bad = sum(1 for g in parsed if not isinstance(g, dict))
+    if bad:
+        err = ("claimed-gates elements must be objects with name/command; got "
+               "%d bare (non-object) element(s) — they do not count as a "
+               "declared gate" % bad)
+    else:
+        err = ""
+    print(json.dumps({"gates": parsed, "error": err}))
 except Exception as e:
     print(json.dumps({"gates": [], "error": "claimed-gates not parseable as JSON: %s" % e}))
 PY
