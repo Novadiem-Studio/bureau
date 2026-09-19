@@ -2,13 +2,22 @@
 # GitHub-native delivery for Bureau worktree runs.
 #
 # Usage:
-#   pr-delivery.sh open    --run-dir RUN_DIR (--issue NUMBER|URL | --issue-title TITLE --issue-body-file FILE) --title TITLE [--summary TEXT] [--github-repo OWNER/REPO]
+#   pr-delivery.sh open    --run-dir RUN_DIR (--issue NUMBER|URL | --issue-title TITLE --issue-body-file FILE) --title TITLE [--summary TEXT] [--github-repo OWNER/REPO] [--link-only|--closes-issue]
 #   pr-delivery.sh refresh --run-dir RUN_DIR
 #   pr-delivery.sh review  --run-dir RUN_DIR --review-summary FILE --verdict accepted|changes-requested [--inline-comments FILE]
 #   pr-delivery.sh coauthor --run-dir RUN_DIR --name NAME --email EMAIL [--commit SHA] --confirmed-human
 #   pr-delivery.sh ready   --run-dir RUN_DIR
 #   pr-delivery.sh merge   --run-dir RUN_DIR [--merge-method merge|squash|rebase]
 #   pr-delivery.sh status  --run-dir RUN_DIR
+#
+# --link-only renders "Planning artifacts for issue #N" instead of "Fixes #N", so merging the
+# PR does not auto-close its tracking issue; --closes-issue forces the closing keyword. Either
+# choice persists to state.json#git.pr_link_mode and is honored by every later refresh/ready/
+# merge on this run — the caller does not need to remember to repeat it. With neither flag,
+# the helper infers from the branch: zero diff against its base (e.g. only the empty
+# "chore: start Bureau run" commit) means nothing was implemented, so it renders link-only;
+# any real diff renders the closing keyword. The inference re-runs on every render, so a
+# planning run that later gains real commits fixes itself on the next refresh.
 #
 # Public AND private repositories resolve auto delivery to GitHub (private default flipped
 # to github 2026-09-09 per Robin: full issue/PR record everywhere). A repo opts back to local
@@ -34,6 +43,7 @@ VERDICT=""
 INLINE_COMMENTS=""
 MERGE_METHOD="merge"
 TARGET_GITHUB_REPO=""
+LINK_MODE=""
 COAUTHOR_NAME=""
 COAUTHOR_EMAIL=""
 COAUTHOR_COMMIT="HEAD"
@@ -52,12 +62,14 @@ while [[ $# -gt 0 ]]; do
     --inline-comments) INLINE_COMMENTS="$2"; shift 2 ;;
     --merge-method) MERGE_METHOD="$2"; shift 2 ;;
     --github-repo) TARGET_GITHUB_REPO="$2"; shift 2 ;;
+    --link-only) LINK_MODE="link-only"; shift ;;
+    --closes-issue) LINK_MODE="close"; shift ;;
     --name) COAUTHOR_NAME="$2"; shift 2 ;;
     --email) COAUTHOR_EMAIL="$2"; shift 2 ;;
     --commit) COAUTHOR_COMMIT="$2"; shift 2 ;;
     --confirmed-human) CONFIRMED_HUMAN=1; shift ;;
     -h|--help)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -147,10 +159,79 @@ require_github_delivery() {
   need_cmd gh
 }
 
+# True (exit 0) when the branch carries any diff against its base — false for a branch
+# that is empty or holds only the empty "chore: start Bureau run" kickoff commit(s). Diffs
+# against the merge-base rather than the base tip, so a base that has moved on since the
+# branch forked doesn't get misread as "this branch has real changes."
+branch_has_real_changes() {
+  local base_ref merge_base
+  git -C "$WORKTREE" rev-parse --verify "origin/$BASE" >/dev/null 2>&1 \
+    || git -C "$WORKTREE" fetch origin "$BASE" >/dev/null 2>&1 || true
+  if git -C "$WORKTREE" rev-parse --verify "origin/$BASE" >/dev/null 2>&1; then
+    base_ref="origin/$BASE"
+  else
+    base_ref="$BASE"
+  fi
+  merge_base="$(git -C "$WORKTREE" merge-base "$base_ref" HEAD 2>/dev/null)" || merge_base="$base_ref"
+  ! git -C "$WORKTREE" diff --quiet "$merge_base" HEAD -- 2>/dev/null
+}
+
+# Explicit --link-only/--closes-issue (persisted as git_state.pr_link_mode) always wins.
+# Absent that, infer from the branch content itself so a run that never remembers the flag
+# still gets the right answer, and a planning run that later gains real commits self-corrects
+# on its next render instead of staying stuck on whatever was true at `open` time.
+resolve_link_mode() {
+  local mode
+  mode="$(jq -r '.pr_link_mode // "auto"' <<<"$git_state")"
+  case "$mode" in
+    link-only|close) printf '%s' "$mode"; return ;;
+  esac
+  if branch_has_real_changes; then
+    printf 'close'
+  else
+    printf 'link-only'
+  fi
+}
+
+# Read the live GitHub-computed closing-issue count for a PR. This is the only reliable check:
+# `gh pr view --json closingIssuesReferences` has been observed returning a stale count
+# immediately after a body edit, and grepping the rendered body misses GitHub's own
+# keyword parser matching a closing keyword inside unrelated prose (e.g. "must not close #93"
+# still parses as "close #93" — negation is not part of the grammar it matches).
+graphql_closing_count() {
+  local repo="$1" pr="$2" owner name
+  owner="${repo%%/*}"
+  name="${repo#*/}"
+  gh api graphql \
+    -f query='query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){closingIssuesReferences(first:5){totalCount}}}}' \
+    -f owner="$owner" -f name="$name" -F pr="$pr" \
+    --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount'
+}
+
+# Fail loudly, right when the body is written, if link-only mode did not actually keep the
+# PR from closing its issue — rather than trusting the phrasing and finding out at merge time.
+# Fails closed (not open) when the GraphQL check itself can't be answered: an unverifiable
+# safeguard is not a passed one, same discipline as the CodeRabbit gate's own fail-closed
+# design (docs/github-delivery.md § CodeRabbit) — silence and safety are indistinguishable
+# otherwise, and this check exists specifically to catch a silent auto-close.
+verify_link_mode() {
+  local repo="$1" pr="$2" link_mode="$3" count
+  [[ "$link_mode" == "link-only" ]] || return 0
+  count="$(graphql_closing_count "$repo" "$pr" 2>&1)" \
+    || die "could not verify PR #$pr's closing-issue references via GitHub's GraphQL API — cannot confirm --link-only/inferred link-only actually kept the issue open, so refusing rather than assuming it did: $count"
+  [[ "$count" =~ ^[0-9]+$ ]] || die "unexpected response verifying PR #$pr's closing-issue references via GraphQL: $count"
+  [[ "$count" == "0" ]] || die "PR #$pr still has $count closing issue reference(s) per GitHub's GraphQL API despite --link-only/inferred link-only — render_body's phrasing is tripping the closing-keyword parser; fix the wording, don't trust how the body reads"
+}
+
 render_body() {
-  local issue_number="$1" evidence="$2" output="$3"
+  local issue_number="$1" evidence="$2" output="$3" link_mode
+  link_mode="$(resolve_link_mode)"
   {
-    printf 'Fixes #%s\n\n' "$issue_number"
+    if [[ "$link_mode" == "link-only" ]]; then
+      printf 'Planning artifacts for issue #%s\n\n' "$issue_number"
+    else
+      printf 'Fixes #%s\n\n' "$issue_number"
+    fi
     printf '%s\n\n' "Bureau run: \`$RUN_SLUG\`"
     sed -n '1,$p' "$evidence"
   } >"$output"
@@ -180,6 +261,9 @@ cmd_open() {
   issue_url="$(jq -r '.url' <<<"$issue_json")"
   update_state "$(jq --argjson issue "$issue_number" --arg issue_url "$issue_url" \
     '.issue_number = $issue | .issue_url = $issue_url | .status = "issue_linked"' <<<"$git_state")"
+  if [[ -n "$LINK_MODE" ]]; then
+    update_state "$(jq --arg mode "$LINK_MODE" '.pr_link_mode = $mode' <<<"$git_state")"
+  fi
 
   evidence="$RUN_DIR/github/evidence.md"
   body="$RUN_DIR/github/pr-body.md"
@@ -228,11 +312,16 @@ cmd_open() {
   pr_number="$(jq -r '.number' <<<"$pr_json")"
   pr_url="$(jq -r '.url' <<<"$pr_json")"
 
+  # Record the PR before verifying its link mode: the PR already exists on GitHub at this
+  # point, so if verify_link_mode dies below, state.json must still know about it — otherwise
+  # a later `refresh` fails with "run open first" against a PR that is sitting there orphaned.
   update_state "$(jq \
     --argjson issue "$issue_number" --arg issue_url "$issue_url" \
     --argjson pr "$pr_number" --arg pr_url "$pr_url" --arg evidence "$evidence" \
     '.issue_number = $issue | .issue_url = $issue_url | .pr_number = $pr | .pr_url = $pr_url |
      .pr_is_draft = true | .pr_evidence_path = $evidence | .status = "pull_request_open"' <<<"$git_state")"
+  verify_link_mode "$target_repo" "$pr_number" "$(resolve_link_mode)"
+
   echo "Issue: $issue_url"
   echo "Draft PR: $pr_url"
   echo "Evidence: $evidence"
@@ -250,6 +339,7 @@ cmd_refresh() {
   body="$RUN_DIR/github/pr-body.md"
   render_body "$issue" "$evidence" "$body"
   gh pr edit "$pr" --repo "$(jq -r '.github_repo' <<<"$git_state")" --body-file "$body" >/dev/null
+  verify_link_mode "$(jq -r '.github_repo' <<<"$git_state")" "$pr" "$(resolve_link_mode)"
   git -C "$WORKTREE" push origin "$BRANCH"
   echo "Updated PR #$pr and pushed $BRANCH"
 }
@@ -390,6 +480,13 @@ cmd_status() {
   pr="$(jq -r '.pr_number // empty' <<<"$git_state")"
   if [[ "$mode" == "github" && -n "$pr" ]]; then
     gh pr view "$pr" --repo "$(jq -r '.github_repo' <<<"$git_state")" --json number,url,state,isDraft,reviewDecision,mergeStateStatus
+    if [[ -d "$WORKTREE" ]]; then
+      local link_mode closing_count repo_name
+      link_mode="$(resolve_link_mode)"
+      repo_name="$(jq -r '.github_repo' <<<"$git_state")"
+      closing_count="$(graphql_closing_count "$repo_name" "$pr" 2>/dev/null)" || closing_count="unknown"
+      echo "PR link mode: $link_mode (closingIssuesReferences via GraphQL: $closing_count — the authoritative check, not the rendered body)"
+    fi
   fi
 }
 
