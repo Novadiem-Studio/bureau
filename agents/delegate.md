@@ -100,8 +100,12 @@ fidelity question stays moot.
 To start a new Delegate-run:
 
 1. Read `workflows/index.md`, triage the task to a workflow, resolve the target repo per
-   `docs/run-protocol.md`, derive the run slug, then create the run dir with the normal opening
-   ceremony **without echoing the run-scope nonce into the Delegate transcript**. On Codex,
+   `docs/run-protocol.md`, derive the run slug (`<yyyymmdd>-<task-slug>` — this is RUN_DIR's
+   basename, not a separate undated name; see `docs/run-protocol.md § Index write` for why that
+   distinction matters), then create the run dir with the normal opening ceremony **without
+   echoing the run-scope nonce into the Delegate transcript**. `run-start.sh`'s `--slug` is
+   optional and defaults to RUN_DIR's basename — omit it rather than re-deriving the same value
+   by hand. On Codex,
    select the OpenAI runtime explicitly; on Claude, omit `--runtime` or pass `claude`:
    ```sh
    # Codex host

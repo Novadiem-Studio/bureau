@@ -102,8 +102,9 @@ absolute path as **`RUN_DIR`** in every spawn prompt. Legacy in-flight runs with
 top-level `output/state.json` finish in place — see `output/README.md`.
 
 **New run:** direct Conductor mode uses
-`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> --runtime openai`
-on Codex.
+`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --runtime openai`
+on Codex (`--slug <slug>` is optional — it defaults to, and is validated against, RUN_DIR's
+basename; see `docs/run-protocol.md § Index write`).
 Delegate mode uses the same ceremony with `--no-pointer-echo`; see
 `agents/delegate.md § Bootstrap` for the full sequence.
 

@@ -138,8 +138,24 @@ Owned by `scripts/run-start.sh` (step 7). The entry carries the seven-field shap
 (.tmp → mv) and validated with python3 json.load. Call
 `scripts/update-runs-index.sh <RUN_DIR>` after each state.json phase update to mirror
 the current phase into the index (it derives status/phase/last_updated from state.json;
-no entry yet → silent no-op, since creation is run-start.sh's job; the archive step
-still owns the final complete→archived transition).
+no entry yet → warns to stderr and no-ops, since creation is run-start.sh's job; the
+archive step still owns the final complete→archived transition).
+
+**The slug IS `basename(RUN_DIR)` — never a separately-derived value.** Every consumer
+of `output/studio/runs-index/` finds or rebuilds an entry by taking `basename(RUN_DIR)`
+alone: `update-runs-index.sh` (above), `scripts/account-run.sh` (`slug=$(basename
+"$RUN_DIR")`, which even validates the leading 8 chars as a calendar date), and the
+archive step's `R/.bureau/runs/<slug>/` → `R/.bureau/archive/<slug>/` move
+(`docs/run-accounting.md`). None of them know about, or can find, an entry filed under
+any other name. `run-start.sh`'s `--slug` flag is optional for exactly this reason: omit
+it and the entry is filed under RUN_DIR's basename automatically; if you do pass it,
+`run-start.sh` refuses to start when it disagrees with RUN_DIR's basename rather than
+silently filing an entry `update-runs-index.sh` can never find again (the bug that left
+runs like `1a0-module-contract` and `0c4-runtime` stuck at `"not_started"` for their
+entire life — the entry existed, just under the undated task-slug instead of RUN_DIR's
+dated basename). When you "derive the run slug" per `agents/delegate.md § Bootstrap`,
+that derivation already includes the `<yyyymmdd>-` prefix — it IS RUN_DIR's basename,
+not a separate short name you prefix later.
 
 > **Not committed.** `output/studio/runs-index/` and the derived
 > `output/studio/runs-snapshot.json` are **gitignored** local runtime cache — per-run

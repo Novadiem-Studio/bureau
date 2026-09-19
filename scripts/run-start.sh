@@ -16,14 +16,26 @@
 #      enter the Delegate transcript), append nonce-free enrolment log line
 #
 # Usage:
-#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>
+#   run-start.sh <RUN_DIR> --target <repo> --workflow <id> [--slug <slug>]
 #                [--runtime <claude|openai|grok|cursor>] [--no-pointer-echo]
 #
 # Arguments:
 #   <RUN_DIR>          absolute path where the new run dir will be created
 #   --target <repo>    absolute path to the target git repository
 #   --workflow <id>    workflow identifier (e.g. "feature", "execute-plan")
-#   --slug <slug>      run slug (e.g. "20260712-my-task")
+#   --slug <slug>      OPTIONAL. The runs-index slug — docs/run-protocol.md
+#                       § Index write requires this to be exactly RUN_DIR's
+#                       basename (e.g. "20260918-my-task" for a RUN_DIR of
+#                       ".../.bureau/runs/20260918-my-task"), because
+#                       update-runs-index.sh and account-run.sh both derive
+#                       the same value FROM RUN_DIR alone — they have no other
+#                       way to find or validate the entry. Omit this flag and
+#                       it defaults to RUN_DIR's basename automatically. If
+#                       given, it is validated against RUN_DIR's basename and
+#                       the run refuses to start on a mismatch (a mismatch
+#                       here used to create a runs-index entry that
+#                       update-runs-index.sh could never find again — it
+#                       stayed "not_started" for the run's entire life).
 #
 # Exit codes:
 #   0  run dir created, all artifacts written, pointer enrolled
@@ -49,7 +61,7 @@ FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 usage() {
   cat >&2 <<'EOF'
 Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--runtime <id>] [--no-pointer-echo]
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> [--slug <slug>] [--runtime <id>] [--no-pointer-echo]
 EOF
   exit 1
 }
@@ -57,9 +69,13 @@ EOF
 print_help() {
   cat <<'EOF'
 Usage:
-  run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug> [--runtime <id>] [--no-pointer-echo]
+  run-start.sh <RUN_DIR> --target <repo> --workflow <id> [--slug <slug>] [--runtime <id>] [--no-pointer-echo]
 
 Options:
+  --slug <slug>      Optional. Must equal RUN_DIR's basename (the canonical
+                     runs-index key — see docs/run-protocol.md § Index write);
+                     defaults to RUN_DIR's basename when omitted. Passing a
+                     value that disagrees with RUN_DIR's basename is refused.
   --runtime <id>     Resolve this run for an explicit host runtime. Supported
                      first-class hosts: claude, openai, grok, and cursor
                      (codex is an alias for openai). If omitted,
@@ -149,8 +165,23 @@ fi
 if [ -z "$WORKFLOW" ]; then
   echo "run-start: missing argument: --workflow" >&2; exit 1
 fi
+
+# ── Slug/RUN_DIR agreement (closes the runs-index mismatch bug) ───────────────
+# The runs-index entry is keyed by RUN_DIR's basename everywhere else it is read
+# or rebuilt (update-runs-index.sh, account-run.sh, the archive step in
+# docs/run-accounting.md) — none of them know about a caller-chosen --slug that
+# diverges from it. A caller that derived its own "task slug" independently of
+# RUN_DIR (e.g. dropping the "<yyyymmdd>-" prefix RUN_DIR already carries) used
+# to write an index entry under that other name, which update-runs-index.sh
+# could then never find — the entry stayed "not_started" silently for the run's
+# entire life. Default --slug from RUN_DIR when omitted, and refuse to proceed
+# on an explicit mismatch rather than create an orphaned entry.
+SLUG_FROM_RUN_DIR="$(basename "$RUN_DIR")"
 if [ -z "$SLUG" ]; then
-  echo "run-start: missing argument: --slug" >&2; exit 1
+  SLUG="$SLUG_FROM_RUN_DIR"
+elif [ "$SLUG" != "$SLUG_FROM_RUN_DIR" ]; then
+  echo "run-start: --slug '$SLUG' does not match RUN_DIR's basename '$SLUG_FROM_RUN_DIR' — the runs-index slug must equal RUN_DIR's basename (docs/run-protocol.md § Index write), or update-runs-index.sh can never find this entry again. Pass --slug '$SLUG_FROM_RUN_DIR', or omit --slug to derive it automatically." >&2
+  exit 1
 fi
 if [ "$MODEL_RUNTIME" = "codex" ]; then
   MODEL_RUNTIME="openai"
