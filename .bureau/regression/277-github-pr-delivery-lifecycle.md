@@ -56,6 +56,7 @@ command: |
     "pr review") exit 0 ;;
     "pr ready") exit 0 ;;
     "pr merge") exit 0 ;;
+    "api graphql") printf '%s\n' '0' ;;
     "pr view")
       case "$*" in
         *"--jq .author.login"*) printf '%s\n' 'robin' ;;

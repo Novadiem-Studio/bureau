@@ -166,6 +166,7 @@ cmd_create() {
       pr_url: null,
       pr_is_draft: null,
       pr_evidence_path: null,
+      pr_link_mode: null,
       cold_review_status: null,
       cold_review_url: null,
       coauthors: [],

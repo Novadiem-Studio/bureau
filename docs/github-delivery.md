@@ -57,8 +57,53 @@ GitHub cannot open a PR from a branch with no commits. When needed, `open` creat
 and every subsequent branch commit in the target branch's history. Use an explicit squash override
 only when the target repository prefers a collapsed history.
 
-`open` creates `RUN_DIR/github/evidence.md` and `pr-body.md`, links the issue with `Fixes #…`,
-records the Bureau run id, pushes the branch, and stores issue/PR identifiers in `state.json`.
+`open` creates `RUN_DIR/github/evidence.md` and `pr-body.md`, records the Bureau run id, pushes
+the branch, and stores issue/PR identifiers in `state.json`. The issue link is **not**
+unconditionally `Fixes #…`: a planning-only run (spec/plan/prompts, no code) must not silently
+auto-close its tracking issue when the PR merges, so the helper only closes the issue when the
+branch actually implements something.
+
+### Closing the issue vs. only referencing it
+
+By default `open`/`refresh` infer the link from the branch itself: if it carries a real diff
+against its base, the body reads `Fixes #N`; if the branch is empty or holds only the empty
+`chore: start Bureau run …` commit(s) — i.e. nothing was implemented — the body reads
+`Planning artifacts for issue #N` instead, which does not close the issue on merge. This is
+re-evaluated on every `refresh`, so a planning run that later gains real commits fixes itself
+on its next refresh without anyone having to remember a flag.
+
+Override the inference explicitly when needed — e.g. one run of a multi-run build against a
+shared tracking issue, where this run has real commits but should not be the one that closes
+the issue:
+
+```sh
+<FRAMEWORK>/scripts/pr-delivery.sh open --run-dir "$RUN_DIR" ... --link-only
+<FRAMEWORK>/scripts/pr-delivery.sh open --run-dir "$RUN_DIR" ... --closes-issue
+```
+
+Either flag persists to `state.json#git.pr_link_mode` and is honored by every later
+`refresh`/`ready`/`merge` on that run — passed once at `open`, it does not need repeating.
+
+**Verify the actual effect via the API, never by reading the rendered body.** GitHub's
+closing-keyword parser matches a keyword (`close(s|d)`, `fix(es|ed)`, `resolve(s|d)`)
+immediately followed by `#N` anywhere in the body — including inside a sentence explaining
+why the PR must *not* close the issue. "...this run must not close #93..." still reads as a
+closing reference to GitHub; a human proofread of the text will not catch this.
+`gh pr view --json closingIssuesReferences` has also been observed returning a stale count
+immediately after a body edit. The only reliable check is the live GraphQL count:
+
+```sh
+gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){pullRequest(number:N){closingIssuesReferences(first:5){totalCount}}}}'
+```
+
+Expect `0` for a link-only PR. `pr-delivery.sh open`/`refresh` run this same check
+automatically right after writing the body and `die` if a link-only PR still shows a nonzero
+count — and also `die`, rather than silently passing, if the GraphQL call itself fails (rate
+limit, auth, network). An unanswered safeguard is not a satisfied one: this check exists
+specifically to catch a silent auto-close, so failing open on an API error would defeat the
+reason it exists (the same fail-closed discipline as the CodeRabbit gate below).
+`pr-delivery.sh status` prints the live count alongside the resolved link mode for manual
+inspection.
 
 ## Evidence and cold review
 
