@@ -12,6 +12,15 @@
 #   --env-file <path>  check key PRESENCE in this file instead of the host shell
 #                      (secret-safe: only key names on the LHS of = are read, never values)
 #
+# .env.example annotation:
+#   # preflight: allow-empty     a comment line placed DIRECTLY above a KEY=... line
+#                                 declares that key's correct value is legitimately
+#                                 empty — a present-but-empty value then PASSES instead
+#                                 of failing. Host-shell mode only (a key still must be
+#                                 present; "missing" and "placeholder" are unaffected).
+#                                 --env-file mode is presence-only and never reads
+#                                 values, so this annotation has no effect there.
+#
 # Exit codes:
 #   0  all keys pass (or nothing to validate)
 #   1  one or more keys are missing / empty / placeholder, or bad arguments
@@ -108,20 +117,47 @@ fi
 
 # ── parse keys from .env.example ─────────────────────────────────────────────
 
-# Read non-comment, non-blank lines; strip optional leading "export "; take LHS of first =
+# Read non-comment, non-blank lines; strip optional leading "export "; take LHS of first =.
+# Also track ALLOW_EMPTY_KEYS: a key whose immediately preceding non-key line (no blank
+# line in between) is the exact comment `# preflight: allow-empty` opts that key's
+# present-but-empty value into PASS below (a newline-delimited list, Bash-3.2-portable,
+# mirroring the ENV_FILE_KEYS pattern further down).
 keys=()
+ALLOW_EMPTY_KEYS=""
+prev_line=""
 while IFS= read -r line; do
-  # skip blank / whitespace-only lines
-  [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-  # skip comment lines (# may be preceded by whitespace)
-  [[ "$line" =~ ^[[:space:]]*# ]] && continue
-  # strip optional leading "export "
-  line="${line#export }"
-  # extract key name: everything up to (but not including) the first =
-  key="${line%%=*}"
-  # skip if key is empty (malformed line with no =)
-  [[ -n "$key" ]] && keys+=("$key")
+  # blank line breaks "directly above" adjacency, and is not itself a key
+  if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+    prev_line=""
+    continue
+  fi
+  # comment line: not a key, but remember it so the NEXT key line can check adjacency
+  if [[ "$line" =~ ^[[:space:]]*# ]]; then
+    prev_line="$line"
+    continue
+  fi
+  # key line: strip optional leading "export "; extract key name (LHS of first =)
+  stripped="${line#export }"
+  key="${stripped%%=*}"
+  if [[ -n "$key" ]]; then
+    keys+=("$key")
+    marker="$(printf '%s' "$prev_line" | sed -E 's/^[[:space:]]*#[[:space:]]*//')"
+    [[ "$marker" == "preflight: allow-empty" ]] && ALLOW_EMPTY_KEYS="${ALLOW_EMPTY_KEYS}${key}"$'\n'
+  fi
+  prev_line="$line"
 done <"$EXAMPLE_FILE"
+
+# is_allow_empty_key <KEY> — returns 0 if KEY was annotated `# preflight: allow-empty`.
+is_allow_empty_key() {
+  local want="$1"
+  local k
+  while IFS= read -r k; do
+    [[ "$k" == "$want" ]] && return 0
+  done <<EOF
+$ALLOW_EMPTY_KEYS
+EOF
+  return 1
+}
 
 # ── case: file present but zero keys ─────────────────────────────────────────
 
@@ -225,11 +261,16 @@ for key in "${keys[@]}"; do
     fail_values+=("")
     echo "preflight: FAIL  $key  missing"
   elif [[ -z "$val" ]]; then
-    # Key is present but set to empty string
-    fail_keys+=("$key")
-    fail_reasons+=("empty")
-    fail_values+=("")
-    echo "preflight: FAIL  $key  empty"
+    # Key is present but set to empty string. PASS if .env.example annotated this key
+    # `# preflight: allow-empty` (its correct value legitimately IS empty) — otherwise FAIL.
+    if is_allow_empty_key "$key"; then
+      (( pass_count++ )) || true
+    else
+      fail_keys+=("$key")
+      fail_reasons+=("empty")
+      fail_values+=("")
+      echo "preflight: FAIL  $key  empty"
+    fi
   elif is_placeholder "$val"; then
     # Key is present, non-empty, but matches a placeholder pattern
     fail_keys+=("$key")
