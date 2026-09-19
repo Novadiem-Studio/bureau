@@ -146,7 +146,9 @@ new run proceeds to the steps below.
 Write the resolved value to `state.json#target_repo`: an absolute path, or the literal string `"(no-target)"`.
 
 **New run:** direct Conductor mode uses
-`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id> --slug <slug>`.
+`scripts/run-start.sh <RUN_DIR> --target <repo> --workflow <id>` (`--slug <slug>` is
+optional — it defaults to, and is validated against, RUN_DIR's basename; see
+`docs/run-protocol.md § Index write`).
 Delegate mode uses the same ceremony with `--no-pointer-echo`; see
 `agents/delegate.md § Bootstrap` for the full sequence. The script creates the run dir,
 .gitignore protection, `state.json`, `log.md`, runs-index entry, `model-routing.json`, and

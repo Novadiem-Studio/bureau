@@ -13,7 +13,14 @@
 #
 # Arguments:
 #   <RUN_DIR>   absolute path to the run directory (contains state.json). Its
-#               basename is the slug used to locate the runs-index entry.
+#               basename is the slug used to locate the runs-index entry — this
+#               MUST be the same value run-start.sh wrote the entry under
+#               (docs/run-protocol.md § Index write; run-start.sh now defaults
+#               and validates --slug against RUN_DIR's basename for exactly
+#               this reason). A run-start.sh invocation from before that fix
+#               may have written the entry under a different, unrecoverable
+#               slug — see docs/run-protocol.md § Index write for how to spot
+#               and rename one of those.
 #
 # Behavior:
 #   - Derives status from state.json (see the derivation table below).
@@ -21,13 +28,17 @@
 #   - Merges {status, phase, last_updated} into the existing runs-index entry
 #     atomically (.tmp -> mv), preserving the other 4 fields (slug, repo, run_dir,
 #     workflow).
-#   - If the runs-index entry does not exist, exits 0 silently — creating it is
-#     run-start.sh's job (step 7), not this helper's. It never fabricates an entry.
+#   - If the runs-index entry does not exist, exits 0 but warns to stderr —
+#     creating it is run-start.sh's job (step 7), not this helper's, so this is
+#     not an error; it never fabricates an entry. It is expected right after
+#     run-start.sh runs, before step 7 completes; any later call is unexpected
+#     and the warning is the only signal that the entry the caller expects is
+#     missing (or under a different filename — see Arguments above).
 #   - The archive step owns the final complete->archived transition; do NOT call
 #     this helper there.
 #
 # Exit codes:
-#   0  entry updated, OR no entry to update (silent no-op)
+#   0  entry updated, OR no entry to update (warns to stderr; not a failure)
 #   1  error: bad args, RUN_DIR missing, state.json missing/unparseable, write failure
 
 set -euo pipefail
@@ -51,8 +62,16 @@ STATE_JSON="$RUN_DIR/state.json"
 FRAMEWORK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INDEX_ENTRY="$FRAMEWORK_ROOT/output/studio/runs-index/$SLUG.json"
 
-# No entry yet → nothing to mirror. run-start.sh owns creation; exit clean and silent.
-[[ -f "$INDEX_ENTRY" ]] || exit 0
+# No entry yet → nothing to mirror. run-start.sh owns creation, so this is still exit 0,
+# not an error — but warn rather than fail silently: a silent no-op here is exactly what let
+# a slug/RUN_DIR mismatch in run-start.sh's now-fixed --slug handling hide an entry stuck at
+# "not_started" for a run's entire life. If this fires for a run that DOES have a live entry,
+# it is under the wrong filename — check output/studio/runs-index/*.json for one whose run_dir
+# field points at this RUN_DIR (docs/run-protocol.md § Index write).
+if [[ ! -f "$INDEX_ENTRY" ]]; then
+  echo "update-runs-index: no runs-index entry at $INDEX_ENTRY for RUN_DIR $RUN_DIR — nothing to mirror (expected right after run-start.sh, before it writes the entry; unexpected any later)." >&2
+  exit 0
+fi
 
 # Never un-archive: the archive step owns the archived state (and moves the entry to
 # runs-index/archive/). If a mis-timed call lands on an already-archived entry, exit
