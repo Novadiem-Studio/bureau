@@ -60,7 +60,11 @@ question:        <one line>
 checkpoint-subtype: routine | integration
 worktree-path:   <abs> | (none)         # integration subtype only — feeds integration-gate.sh
 base-ref:        <git-ref>              # integration subtype only
-claimed-gates:   [<single-line inline JSON array>]   # integration subtype only (cross-check input)
+# NOTE: each element of claimed-gates below MUST be an object with "name"/
+# "command" keys. A bare-string element is not a valid claim — integration-gate.sh
+# drops it and records the shape problem in errors[] rather than silently
+# counting it (issue #74).
+claimed-gates:   [<single-line inline JSON array of {"name","command",...} objects>]   # integration subtype only (cross-check input)
 # genuine-fork adds:
 escalation-reason: <one line>
 signal-fired:    <one or more of 1..9 — the escalation signals in agents/delegate.md>
