@@ -13,7 +13,10 @@
 #   --slug SLUG            default: basename of RUN_DIR
 #   --merge-policy POLICY  end_of_job | per_prompt | checkpoint (default: end_of_job)
 #   --delivery POLICY      auto | github | local (default: auto)
-#   --private-delivery P   github | local (default: local; used when --delivery auto)
+#   --private-delivery P   github | local (default: github, per the 2026-09-09 policy flip
+#                          in docs/github-delivery.md; used when --delivery auto. Pass
+#                          --private-delivery local only when project-context.md declares
+#                          git.private_delivery: local for this project's own opt-out.)
 #   --worktree-dir PATH    default: $HOME/.bureau/worktrees/REPO_BASENAME/SLUG (override: BUREAU_WORKTREE_ROOT)
 
 set -euo pipefail
@@ -35,7 +38,7 @@ BASE_BRANCH="devel"
 SLUG=""
 MERGE_POLICY="end_of_job"
 DELIVERY_POLICY="auto"
-PRIVATE_DELIVERY="local"
+PRIVATE_DELIVERY="github"
 WORKTREE_DIR=""
 MERGE_MSG=""
 FORCE=0

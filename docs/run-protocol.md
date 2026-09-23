@@ -81,6 +81,7 @@ After each phase, update the run dir's `state.json`:
   "carried_items": ["things to confirm before executing prompts — OQs, caveats, known nits"],
   "checkpoints": [],
   "decisions": {},
+  "prompt_folder": null,
   "accounting": { "status": "pending", "path": null },
   "git": {
     "enabled": true,
@@ -90,7 +91,7 @@ After each phase, update the run dir's `state.json`:
     "worktree_path": "<home>/.bureau/worktrees/target-repo/20260612-task-slug",
     "merge_policy": "end_of_job",
     "delivery_policy": "auto",
-    "private_delivery": "local",
+    "private_delivery": "github",
     "delivery_mode": "github",
     "issue_number": 42,
     "pr_number": 43,
@@ -108,6 +109,16 @@ Independent of the execute-only `git` block (which stays `enabled: false` on pla
 `git` block: set by `scripts/run-worktree.sh create`, then enriched by
 `scripts/pr-delivery.sh`; omit or `enabled: false` for planning-only runs. Full schema:
 `templates/state.json`, `docs/git-worktree.md`, and `docs/github-delivery.md`.
+
+`prompt_folder`: set by the Conductor once the Spellwright writes an `execute-plan` prompt
+folder (`workflows/execute-plan/prompt-folder-format.md`) — a path relative to `target_repo`
+(or absolute), pointing at the folder beside the plan doc (`<dir>/<NN>-<name>/`). Absent/`null`
+otherwise. `design-build`'s prompt folder needs no entry here — it always lives at the fixed
+`RUN_DIR/prompts/` (`workflows/design-build.md`) and `scripts/preflight-artifacts.sh` finds it
+by that path directly. `preflight-artifacts.sh --phase final` reads this field to locate and
+check the prompt folder instead of assuming `RUN_DIR/prompts.md` (which `execute-plan` never
+produces) — see its own header comment for the full resolution order, including the
+`--prompts-dir` override flag.
 
 `accounting` block: part of `templates/state.json`; the close-out step sets its `status`
 and `path` (see `docs/run-accounting.md`). `memory` is an optional Conductor-written key,
