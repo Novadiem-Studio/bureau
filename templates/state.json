@@ -12,6 +12,7 @@
   "carried_items": [],
   "checkpoints": [],
   "decisions": {},
+  "prompt_folder": null,
   "git": {
     "enabled": false,
     "repo": null,
@@ -20,7 +21,7 @@
     "worktree_path": null,
     "merge_policy": "end_of_job",
     "delivery_policy": "auto",
-    "private_delivery": "local",
+    "private_delivery": "github",
     "delivery_mode": "unresolved",
     "delivery_fallback_reason": null,
     "github_repo": null,

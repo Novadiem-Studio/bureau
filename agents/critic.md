@@ -78,6 +78,12 @@ Your spawn prompt tells you which review this is:
 Except in readiness-audit mode, write your full review to `RUN_DIR/log.md`, then return the
 VERDICT block. Readiness-audit writes no live artifact and returns only its adapter candidate.
 
+**Never write the Run nonce from your spawn prompt into `log.md` or your VERDICT block** — not in
+a review header, an "Attempt:" line, or anywhere else. It exists only to scope your transcript for
+the post-hoc aggregator; label your review with the Attempt ID instead if you want a scoping
+label at all. (Incident: retainscore run 11, 2026-09-23 — four Challenger spawns echoed the bare
+nonce into their own review headers; redacted by the Conductor at close-out.)
+
 ## Mode read scope (token discipline)
 
 **Readiness-audit exception:** the isolated provider does not open this live core or any live

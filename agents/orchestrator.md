@@ -191,11 +191,21 @@ Workflow: <selected workflow id>
 Role mode: <mode for this spawn, e.g. feature, execute-plan, design-build, brief, ingest, review>
 Attempt ID: <role>-<attempt>
 Run nonce: <this run's secret nonce — copy verbatim from the run's pointer file>
+
+Do not write the Run nonce anywhere in your own output — not in a review header, a verdict, a
+log line, a handoff, or any file this run produces. It exists only so the post-hoc aggregator
+can scope your transcript to this run; treat it like a credential, not an identity label to
+quote back. If you want to label your output with something scoping-related, use the Attempt ID
+instead — never the nonce.
 ```
 
 `Attempt ID:` and `Run nonce:` are the post-hoc run-scoping identity that
 `aggregate-transcripts.sh` reads from the specialist transcript. Keep both on every host.
-Put the nonce only in specialist first messages; **NEVER write the nonce to `log.md`**.
+Put the nonce only in specialist first messages; **NEVER write the nonce to `log.md`**. This is
+not only the Conductor's obligation: the receiving specialist must never echo it back either —
+four Challenger spawns in retainscore run 11 (2026-09-23) copied the bare nonce from their own
+spawn prompt into their own review headers in `log.md`, which is exactly what the explicit
+in-template instruction above exists to stop.
 
 **Delegate v2 note:** with `topology: integrated`, the Delegate used
 `run-start.sh --no-pointer-echo`; read the bare pointer privately before your first specialist
@@ -644,8 +654,10 @@ the Challenger re-review. If the ledger and the `### Blockers` prose disagree on
 prose count is authoritative and the ledger is corrected (R5 drift mitigation).
 
 **(c) Pre-flight clean:** `scripts/preflight-artifacts.sh <RUN_DIR> --phase final` exits 0
-on the final artifact set (spec.md + plan.md + prompts.md). This is a re-run at close-out
-on the full artifact set — not acceptance of the round-1 result.
+on the final artifact set (spec.md + plan.md + prompts.md, or — for `execute-plan`/
+`design-build` — spec.md + plan.md + the prompt folder, resolved via `state.json#prompt_folder`
+or the fixed `RUN_DIR/prompts/` location; see the script's own header comment). This is a
+re-run at close-out on the full artifact set — not acceptance of the round-1 result.
 
 **(d) Mechanical linter clean:** none of the four forbidden patterns per spec FR 5d survives
 in any fenced code block in any artifact. This is a strict subset of check (c); naming it

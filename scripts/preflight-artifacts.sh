@@ -2,7 +2,12 @@
 # scripts/preflight-artifacts.sh
 # Read-only artifact-consistency checker for bureau run dirs.
 #
-# Usage:  scripts/preflight-artifacts.sh <RUN_DIR> [--phase round1|final]
+# Usage:  scripts/preflight-artifacts.sh <RUN_DIR> [--phase round1|final] [--prompts-dir DIR]
+#
+# --prompts-dir overrides prompts-artifact resolution: DIR is treated as an
+# execute-plan/design-build PROMPT FOLDER (00-index.md + NN-*.md), not a
+# single prompts.md file. Without the flag, resolution is automatic — see
+# "Resolve prompts artifact" below.
 #
 # Exit codes:
 #   0  all checks passed (stdout: "preflight: clean")
@@ -25,6 +30,7 @@ PATH="/usr/bin:$PATH"
 
 PHASE="round1"
 RUN_DIR=""
+PROMPTS_DIR_FLAG=""
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -40,6 +46,14 @@ while [ $# -gt 0 ]; do
         round1|final) PHASE="$1" ;;
         *) echo "preflight: unknown phase '$1'; expected round1 or final" >&2; exit 2 ;;
       esac
+      ;;
+    --prompts-dir)
+      if [ $# -lt 2 ]; then
+        echo "preflight: --prompts-dir requires an argument" >&2
+        exit 2
+      fi
+      shift
+      PROMPTS_DIR_FLAG="$1"
       ;;
     --*)
       echo "preflight: unknown option: $1" >&2
@@ -58,10 +72,12 @@ done
 
 if [ -z "$RUN_DIR" ]; then
   cat >&2 <<'USAGE'
-Usage: scripts/preflight-artifacts.sh <RUN_DIR> [--phase round1|final]
+Usage: scripts/preflight-artifacts.sh <RUN_DIR> [--phase round1|final] [--prompts-dir DIR]
 
-  <RUN_DIR>   absolute path to a bureau run dir (required)
-  --phase     round1 (default, pre-Challenger) or final (close-out)
+  <RUN_DIR>      absolute path to a bureau run dir (required)
+  --phase        round1 (default, pre-Challenger) or final (close-out)
+  --prompts-dir  DIR is an execute-plan/design-build prompt FOLDER
+                 (00-index.md + NN-*.md), not a single prompts.md file
 
 Exit codes:
   0  all checks passed
@@ -109,9 +125,104 @@ if [ -f "$_STATE_JSON" ]; then
     sed 's/.*"workflow"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
 fi
 
+# ── Helper: read target_repo from state.json ──────────────────────────────────
+# Reads RUN_DIR/state.json, returns the absolute path via stdout.
+# Returns empty string if the value is "(no-target)", file is missing, or
+# unreadable. Never exits the script on failure — degrades cleanly.
+# (Defined here, ahead of prompts-artifact resolution below, which needs it.)
+
+read_target_repo() {
+  local json="$RUN_DIR/state.json"
+  [ -f "$json" ] || return
+  local val
+  val=$(grep '"target_repo"' "$json" | sed 's/.*"target_repo"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  [ "$val" = "(no-target)" ] && return
+  printf '%s' "$val"
+}
+
+# ── Resolve prompts artifact — file vs. folder ────────────────────────────────
+# Default (feature-style workflows): RUN_DIR/prompts.md, a single file.
+#
+# execute-plan and design-build instead write a PROMPT FOLDER
+# (workflows/execute-plan/prompt-folder-format.md): 00-index.md + NN-*.md.
+# Assuming RUN_DIR/prompts.md unconditionally made --phase final false-fail
+# every execute-plan run with "prompts.md:0 — presence — required artifact
+# absent" even though a complete, reviewed prompt folder existed (eval ledger
+# 2026-09-23, retainscore run 11: 20260922-search-demand-endpoints).
+#
+# Resolution order:
+#   1. --prompts-dir <path> (explicit override — always a folder)
+#   2. RUN_DIR/prompts.md, when it exists (unchanged single-file behavior)
+#   3. RUN_DIR/prompts/, when it exists as a directory — design-build's fixed
+#      location (workflows/design-build.md), needs no recorded state
+#   4. state.json#prompt_folder, when set — execute-plan's location varies (it
+#      sits beside the plan doc, in the TARGET repo, not under RUN_DIR), so it
+#      cannot be discovered by a fixed path; the Conductor records it once the
+#      Spellwright creates the folder (docs/run-protocol.md). A relative path
+#      resolves against target_repo.
+#   5. fallback: file mode, RUN_DIR/prompts.md (matches pre-fix behavior; a
+#      real absence is still correctly flagged below)
+
+PROMPTS_MODE="file"
+PROMPTS_DIR=""
+
+if [ -n "$PROMPTS_DIR_FLAG" ]; then
+  PROMPTS_MODE="folder"
+  PROMPTS_DIR="$PROMPTS_DIR_FLAG"
+elif [ -f "$PROMPTS" ]; then
+  PROMPTS_MODE="file"
+elif [ -d "$RUN_DIR/prompts" ]; then
+  PROMPTS_MODE="folder"
+  PROMPTS_DIR="$RUN_DIR/prompts"
+else
+  _PROMPT_FOLDER_FIELD=""
+  if [ -f "$_STATE_JSON" ]; then
+    _PROMPT_FOLDER_FIELD=$(grep '"prompt_folder"' "$_STATE_JSON" 2>/dev/null | \
+      sed 's/.*"prompt_folder"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  fi
+  if [ -n "$_PROMPT_FOLDER_FIELD" ]; then
+    case "$_PROMPT_FOLDER_FIELD" in
+      /*) PROMPTS_DIR="$_PROMPT_FOLDER_FIELD" ;;
+      *)
+        _TARGET_REPO_FOR_PROMPTS="$(read_target_repo)"
+        if [ -n "$_TARGET_REPO_FOR_PROMPTS" ]; then
+          PROMPTS_DIR="$_TARGET_REPO_FOR_PROMPTS/$_PROMPT_FOLDER_FIELD"
+        else
+          PROMPTS_DIR="$_PROMPT_FOLDER_FIELD"
+        fi
+        ;;
+    esac
+    PROMPTS_MODE="folder"
+  fi
+fi
+
+# Build the file lists checks iterate: ALL (00-index.md + every NN-*.md, for
+# dangling-ref/snippet/AC-coverage scans) and STEP (NN-*.md only, excluding
+# 00-index.md, for seam-declaration scans — the index has no ## Checkpoint
+# section, so scanning it there would false-flag on every folder-mode run).
+PROMPTS_ALL_LIST="$WORK/prompts_all.txt"
+PROMPTS_STEP_LIST="$WORK/prompts_step.txt"
+> "$PROMPTS_ALL_LIST"
+> "$PROMPTS_STEP_LIST"
+
+if [ "$PROMPTS_MODE" = "folder" ] && [ -d "$PROMPTS_DIR" ]; then
+  for _pf in "$PROMPTS_DIR"/[0-9][0-9]-*.md; do
+    [ -f "$_pf" ] || continue
+    printf '%s\n' "$_pf" >> "$PROMPTS_ALL_LIST"
+    case "$(basename "$_pf")" in
+      00-index.md) : ;;
+      *) printf '%s\n' "$_pf" >> "$PROMPTS_STEP_LIST" ;;
+    esac
+  done
+elif [ "$PROMPTS_MODE" = "file" ] && [ -f "$PROMPTS" ]; then
+  printf '%s\n' "$PROMPTS" >> "$PROMPTS_ALL_LIST"
+  printf '%s\n' "$PROMPTS" >> "$PROMPTS_STEP_LIST"
+fi
+
 # ── (a) Presence ─────────────────────────────────────────────────────────────
-# round1: spec.md + plan.md required; prompts.md absence is expected, not flagged.
-# final:  spec.md + plan.md + prompts.md all required.
+# round1: spec.md + plan.md required; prompts absence is expected, not flagged.
+# final:  spec.md + plan.md + prompts (file OR folder, per resolution above)
+#         all required.
 #
 # Exception: design-build runs produce design/manifest.md instead of spec.md.
 # When workflow == "design-build" the spec.md presence check is skipped; all
@@ -131,8 +242,21 @@ if [ ! -f "$PLAN" ]; then
   add_defect "plan.md:0 — presence — required artifact absent: plan.md"
   MISSING_PLAN=1
 fi
-if [ "$PHASE" = "final" ] && [ ! -f "$PROMPTS" ]; then
-  add_defect "prompts.md:0 — presence — required artifact absent: prompts.md"
+if [ "$PHASE" = "final" ]; then
+  if [ "$PROMPTS_MODE" = "folder" ]; then
+    if [ ! -d "$PROMPTS_DIR" ]; then
+      add_defect "$(basename "$PROMPTS_DIR")/00-index.md:0 — presence — required artifact absent: prompt folder ($PROMPTS_DIR)"
+    elif [ ! -f "$PROMPTS_DIR/00-index.md" ]; then
+      add_defect "$(basename "$PROMPTS_DIR")/00-index.md:0 — presence — required artifact absent: 00-index.md"
+    else
+      _prompt_step_count=$(wc -l < "$PROMPTS_STEP_LIST" | tr -d ' ')
+      if [ "${_prompt_step_count:-0}" -eq 0 ]; then
+        add_defect "$(basename "$PROMPTS_DIR")/00-index.md:0 — presence — prompt folder has no NN-<slug>.md prompt files"
+      fi
+    fi
+  elif [ ! -f "$PROMPTS" ]; then
+    add_defect "prompts.md:0 — presence — required artifact absent: prompts.md"
+  fi
 fi
 
 # Without plan (or spec when not design-build) the remaining checks cannot run
@@ -167,19 +291,7 @@ harvest_defs "$SPEC"
 harvest_defs "$PLAN"
 sort -u "$DEFS" -o "$DEFS"
 
-# ── Helper: read target_repo from state.json ──────────────────────────────────
-# Reads RUN_DIR/state.json, returns the absolute path via stdout.
-# Returns empty string if the value is "(no-target)", file is missing, or
-# unreadable. Never exits the script on failure — degrades cleanly.
-
-read_target_repo() {
-  local json="$RUN_DIR/state.json"
-  [ -f "$json" ] || return
-  local val
-  val=$(grep '"target_repo"' "$json" | sed 's/.*"target_repo"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-  [ "$val" = "(no-target)" ] && return
-  printf '%s' "$val"
-}
+# (read_target_repo is defined earlier, ahead of prompts-artifact resolution.)
 
 # ── (j) ADR record shape ──────────────────────────────────────────────────────
 # Target-repo ADRs are append-only project memory.  The semantic question of
@@ -465,8 +577,11 @@ check_dangling() {
 }
 
 check_dangling "$PLAN"
-if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
-  check_dangling "$PROMPTS"
+if [ "$PHASE" = "final" ]; then
+  while IFS= read -r _pf || [ -n "$_pf" ]; do
+    [ -n "$_pf" ] || continue
+    check_dangling "$_pf"
+  done < "$PROMPTS_ALL_LIST"
 fi
 
 # ── (d) Snippet invariants ────────────────────────────────────────────────────
@@ -552,8 +667,11 @@ check_snippets() {
 # for design-build runs).
 [ -f "$SPEC" ] && check_snippets "$SPEC"
 check_snippets "$PLAN"
-if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
-  check_snippets "$PROMPTS"
+if [ "$PHASE" = "final" ]; then
+  while IFS= read -r _pf || [ -n "$_pf" ]; do
+    [ -n "$_pf" ] || continue
+    check_snippets "$_pf"
+  done < "$PROMPTS_ALL_LIST"
 fi
 
 # ── (h) Convention citations ──────────────────────────────────────────────────
@@ -590,8 +708,14 @@ if [ "$PHASE" = "final" ] && [ -f "$SPEC" ]; then
     if grep -qE "(^|[^[:alnum:]])AC ${ac_num}([^[:alnum:]]|$)" "$PLAN"; then
       plan_ok=1
     fi
-    if [ -f "$PROMPTS" ] && grep -qE "(^|[^[:alnum:]])AC ${ac_num}([^[:alnum:]]|$)" "$PROMPTS"; then
-      prompts_ok=1
+    if [ -s "$PROMPTS_ALL_LIST" ]; then
+      while IFS= read -r _pf || [ -n "$_pf" ]; do
+        [ -n "$_pf" ] || continue
+        if grep -qE "(^|[^[:alnum:]])AC ${ac_num}([^[:alnum:]]|$)" "$_pf"; then
+          prompts_ok=1
+          break
+        fi
+      done < "$PROMPTS_ALL_LIST"
     fi
     if [ "$plan_ok" -eq 0 ] && [ "$prompts_ok" -eq 0 ]; then
       add_defect "spec.md:0 — ac-coverage — ${ac_id} defined in spec.md but not cited by ID in plan.md or prompts.md"
@@ -698,8 +822,11 @@ $awk_out
 EOF
 }
 
-if [ "$PHASE" = "final" ] && [ -f "$PROMPTS" ]; then
-  check_seam_declarations "$PROMPTS"
+if [ "$PHASE" = "final" ]; then
+  while IFS= read -r _pf || [ -n "$_pf" ]; do
+    [ -n "$_pf" ] || continue
+    check_seam_declarations "$_pf"
+  done < "$PROMPTS_STEP_LIST"
 fi
 
 # ── Check: spawn-pairing ──────────────────────────────────────────────────────
@@ -845,6 +972,53 @@ check_fable_override() {
 if [ "$PHASE" = "final" ]; then
   check_fable_override "$LOG"
 fi
+
+# ── Check: nonce-exposure ─────────────────────────────────────────────────────
+#
+# The run-scope nonce (agents/orchestrator.md § Run-scope nonce lifecycle)
+# exists only so aggregate-transcripts.sh can scope a specialist transcript to
+# this run. It must NEVER appear in log.md — any reader of a run dir could
+# otherwise forge that run's transcript-scope identity. Runs both phases: an
+# exposure is worth catching as early as round1, not just at close-out.
+#
+# Incident: retainscore run 11 (2026-09-23) — four Challenger spawns echoed the
+# bare nonce from their own spawn prompt into their own review headers in
+# log.md; caught and redacted by the Conductor only at close-out, by hand.
+#
+# Resolves the same per-run pointer file run-start.sh/spawn-gate.sh/
+# aggregate-transcripts.sh use (docs/host-runtime.md), never the nonce from any
+# OTHER run — a stale or foreign pointer file is silently skipped, not flagged.
+check_nonce_exposure() {
+  local pointer_file pointer_dir ptr_key nonce n
+  if [ -n "${BUREAU_POINTER_FILE:-}" ]; then
+    pointer_file="$BUREAU_POINTER_FILE"
+  else
+    pointer_dir="${BUREAU_POINTER_DIR:-$HOME/.novadiem/active-runs}"
+    ptr_key=$(printf '%s' "$RUN_DIR" | sed 's#[/.]#-#g')
+    pointer_file="$pointer_dir/$ptr_key"
+  fi
+  [ -f "$pointer_file" ] || return 0
+
+  # This pointer file must actually belong to THIS run_dir, or its nonce means
+  # nothing here (e.g. a leftover file from BUREAU_POINTER_FILE test isolation).
+  local ptr_run_dir
+  ptr_run_dir=$(grep -o '"run_dir"[[:space:]]*:[[:space:]]*"[^"]*"' "$pointer_file" 2>/dev/null | \
+    sed 's/.*"run_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  [ -n "$ptr_run_dir" ] || return 0
+  [ "$ptr_run_dir" = "$RUN_DIR" ] || return 0
+
+  nonce=$(grep -o '"nonce"[[:space:]]*:[[:space:]]*"[^"]*"' "$pointer_file" 2>/dev/null | \
+    sed 's/.*"nonce"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  [ -n "$nonce" ] || return 0
+  [ -f "$LOG" ] || return 0
+
+  if grep -qF "$nonce" "$LOG" 2>/dev/null; then
+    n=$(grep -nF "$nonce" "$LOG" 2>/dev/null | head -1 | cut -d: -f1)
+    add_defect "log.md:${n} — nonce-exposure — this run's secret nonce appears verbatim in log.md; redact it and never write it anywhere outside a specialist spawn prompt's own 'Run nonce:' line (agents/orchestrator.md § Run-scope nonce lifecycle)"
+  fi
+}
+
+check_nonce_exposure
 
 # ââ Output ────────────────────────────────────────────────────────────────────
 

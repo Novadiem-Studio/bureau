@@ -74,6 +74,10 @@ builds the vetted prompts part by part only after the human approves the gate (s
    domain/surface, and produce a diff The Challenger can inspect cold. If the plan chunk would
    create a sprawling diff, split it before the build stage; a 10k-line surprise is a planning
    failure, not a productivity win.
+   **Immediately after, the Conductor records `state.json#prompt_folder`** (the folder's path,
+   relative to `target_repo` when possible) — `docs/run-protocol.md`. This is what lets
+   `scripts/preflight-artifacts.sh --phase final` find and check the folder instead of assuming
+   `RUN_DIR/prompts.md`, which this workflow never produces.
 4. **The Challenger** (Critic, round 2, **strong**, fresh context required) — load
    `workflows/execute-plan/prompt-folder-format.md` and cold-review the prompts: is each
    independently executable? correct order? hidden deps between steps? are the workspace gotchas

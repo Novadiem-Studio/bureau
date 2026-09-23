@@ -307,7 +307,7 @@ Isolated checkout per execute build run. Full flow: `docs/git-worktree.md`.
 | `remove` | Drop worktree; delete branch if already merged |
 
 **create flags:** `--base`, `--slug`, `--merge-policy` (`end_of_job` \| `per_prompt` \| `checkpoint`),
-`--delivery` (`auto` \| `github` \| `local`), `--private-delivery` (`local` \| `github`),
+`--delivery` (`auto` \| `github` \| `local`), `--private-delivery` (`github` \| `local`; default `github`),
 `--worktree-dir` (default: `$HOME/.bureau/worktrees/REPO_BASENAME/SLUG`; override with `BUREAU_WORKTREE_ROOT` env var).
 
 Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
@@ -316,9 +316,9 @@ Requires **jq**. Bureau run branches use the `bureau/<slug>` prefix.
 
 # GitHub pull-request delivery (`pr-delivery.sh`)
 
-Issue-first, draft-PR-first delivery for code-changing runs. Public GitHub repositories use it by
-default; private/internal repositories opt in. Full policy and evidence contract:
-`docs/github-delivery.md`.
+Issue-first, draft-PR-first delivery for code-changing runs. Public AND private/internal GitHub
+repositories use it by default since 2026-09-09; a project opts a private repo back to local via
+`project-context.md`. Full policy and evidence contract: `docs/github-delivery.md`.
 
 ```bash
 ./scripts/pr-delivery.sh open \

@@ -40,8 +40,8 @@ In `project-context.md`:
 ## Git integration
 - **Integration branch:** `devel`
 - **Worktree parent:** `$HOME/.bureau/worktrees/<repo-basename>/` (outside the target repo — no `.gitignore` entry needed; override with `BUREAU_WORKTREE_ROOT`)
-- **Delivery policy:** `auto` (public GitHub → PR; private/internal → local), `github`, or `local`
-- **Private-repo delivery:** `local` (default) or `github`
+- **Delivery policy:** `auto` (public AND private/internal GitHub repos → PR by default since 2026-09-09), `github`, or `local`
+- **Private-repo delivery:** `github` (default since 2026-09-09) or `local` (opt out here)
 ```
 
 `integration_branch` defaults to `devel` when omitted.
@@ -49,6 +49,11 @@ In `project-context.md`:
 ## Conductor flow
 
 ### Before build (after step 5 gate)
+
+`run-worktree.sh create`'s `--private-delivery` defaults to `github` (see `docs/github-delivery.md`).
+Check `project-context.md`'s `## Git integration` block first: if it declares
+`Private-repo delivery: local`, pass `--private-delivery local` explicitly below; otherwise omit
+the flag and the default applies.
 
 ```bash
 FRAMEWORK=~/Code/novadiem/bureau
@@ -133,7 +138,7 @@ one worktree. Stagger test DB / docker steps if both hit shared infra.
     "worktree_path": "<home>/.bureau/worktrees/target/20260612-target-auth",
     "merge_policy": "end_of_job",
     "delivery_policy": "auto",
-    "private_delivery": "local",
+    "private_delivery": "github",
     "delivery_mode": "github",
     "github_repo": "owner/target",
     "github_visibility": "PUBLIC",
