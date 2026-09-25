@@ -50,9 +50,11 @@ violation — see the three-role contrast table in CLAUDE.md.
     conventions.md (convention router) + conventions/ modules on demand,
     log-slice.md (this checkpoint's log slice only; the full log.md is intentionally absent),
     state.json (the scope projection),
-    the artifact under review,
+    the artifact under review, plus any supplementary artifacts staged beside it,
     artifact.sha256 (the artifact's SHA-256, computed and staged by run-cold-reviewer.sh —
       copy it verbatim into Artifact-hash; a Read-only reviewer cannot compute a digest),
+    artifacts.sha256 (every artifact's SHA-256, also staged by run-cold-reviewer.sh — copy
+      each artifact read into Artifacts-read),
     integration-results.json (integration checkpoints only).
   Does NOT receive: the full log.md, the dual-mode delegate.md (only the sliced section is
     staged), prior checkpoint verdicts, the manager's relay context.
@@ -301,7 +303,12 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    project's own runners/manifest, never from `claimed-gates` — the verified party does not
    define what gets executed.
 3. Stage `$CTX = RUN_DIR/checkpoints/NN-context/` with EXACTLY the manifest (bridge v2 §9):
-   - the artifact under review (copied by name),
+   - the artifact under review (copied by name), passed as `<artifact-basename>` below,
+   - any supplementary artifacts this checkpoint also reviews (e.g. `spec.md` when the checkpoint
+     is "plan.md (+ spec.md)"), copied by name. Stage every file the reviewer must judge into ONE
+     packet; do not split them across reviewers, which leaves each blind to the other file.
+     Every staged file outside this fixed list counts as an artifact: the helper names each in
+     the prompt with its digest, so stage nothing the reviewer should not read,
    - `log-slice.md` (this checkpoint's slice only),
    - `state.json` (the scope projection the Conductor wrote before returning),
    - `bureau-agents.md` — a byte-identical content-copy of `$ROOT/AGENTS.md`, so the cold
@@ -317,9 +324,10 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
        "$ROOT/agents/delegate.md" > "$CTX/delegate-reviewer.md"
      ```
    - `integration-results.json` — integration checkpoints only.
-   - `artifact.sha256` — do NOT write this yourself; `run-cold-reviewer.sh` computes the staged
-     artifact's digest and writes it into `$CTX` at spawn time (bridge v2 §9), and reports
-     `artifact_sha256` + `hash_match` in its result JSON for step 7.
+   - `artifact.sha256` and `artifacts.sha256` — do NOT write these yourself;
+     `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest
+     and writes both into `$CTX` at spawn time (bridge v2 §9), and reports `artifact_sha256`,
+     `hash_match`, `artifacts_read_complete` and `artifacts_unread` in its result JSON for step 7.
    NEVER stage: the full `log.md`, any prior `NN-verdict.md`, or the full dual-mode
    `agents/delegate.md` (it grants manager Bash/Write/spawn capabilities a read-only reviewer
    must not read as its own — W7 capability-contamination guard).
@@ -383,7 +391,9 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    artifact's sha256. `run-cold-reviewer.sh` pre-checks this and returns `hash_match` plus
    `artifact_sha256` in its result JSON (and logs a warning line on mismatch); confirm it
    yourself against the artifact. On mismatch, DISCARD the verdict and re-spawn the reviewer —
-   never resume the Conductor with a mismatched verdict.
+   never resume the Conductor with a mismatched verdict. Do the same when the result JSON says
+   `artifacts_read_complete: false`: the verdict's `Artifacts-read` skipped a staged artifact
+   (named in `artifacts_unread`), so it judged the checkpoint on part of the evidence (#79).
 8. On a `revise` verdict, call the deterministic cap:
    ```sh
    scripts/revise-cap.sh "$RUN_DIR/delegate-state.json" NN "<revision_cap>"
@@ -530,8 +540,9 @@ dir, write:
     DELEGATE FLAG: received <input> — coldness broken, did not review
 
 and stop immediately without producing a verdict. The "unexpected staged file ⇒ DELEGATE FLAG"
-rule does NOT apply to integration-results.json (an EXPECTED verifying-mode input); all OTHER
-unexpected files still trigger the flag.
+rule does NOT apply to integration-results.json (an EXPECTED verifying-mode input), to
+artifacts.sha256, or to a supplementary artifact the task prompt names; all OTHER unexpected
+files still trigger the flag. Read every artifact the prompt names, in full.
 
 ## Critic checklist
 
@@ -586,6 +597,10 @@ contract is in that file; do not re-specify field types here. Required fields:
   `artifact.sha256` file** (the harness computed it; you have Read only and cannot hash a file).
   Never compute, guess, or use a placeholder: a value that does not match the staged digest is
   discarded by the harness and the checkpoint is re-reviewed (FR9; EC2 in docs/delegate-bridge.md).
+- `Artifacts-read`: one `{path, sha256}` object per artifact you read in full, with both values
+  **copied verbatim from the staged `artifacts.sha256`**. It must cover every artifact the prompt
+  names; a verdict that omits one is discarded and the checkpoint is re-reviewed. Never list an
+  artifact you did not read.
 - `Uncertainties`: free text — name anything you could not verify from the staged files
 - `Rationale`: 1–2 sentences — the single most important reason for the decision
 - `Required-changes`: tagged by root — `requirements` | `architecture` | `prompts` | `none`

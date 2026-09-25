@@ -7,6 +7,7 @@
   "required": [
     "Decision",
     "Artifact-hash",
+    "Artifacts-read",
     "Uncertainties",
     "Rationale",
     "Required-changes",
@@ -22,6 +23,18 @@
     "Artifact-hash": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
+    },
+    "Artifacts-read": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
     },
     "Uncertainties": {
       "type": "string",

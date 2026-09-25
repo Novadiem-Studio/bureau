@@ -123,10 +123,13 @@ REVIEWER_ENVELOPE_PATH="$(printf '%s' "$REVIEW_META" | jq -r .envelope_path)"
 `$CTX = RUN_DIR/checkpoints/NN-context/` is the staged input packet (v2 §9). The helper rejects
 symlinks, a full `log.md`, and transcript-like files, reads the host runtime and Delegate model
 from `model-routing.json`, computes the staged artifact's SHA-256 and writes it to
-`$CTX/artifact.sha256` (v2 §9), logs the exact task prompt before the provider call, and emits
+`$CTX/artifact.sha256` (v2 §9), writes the packet manifest `$CTX/artifacts.sha256` and names every
+artifact in it in the prompt, logs the exact task prompt before the provider call, and emits
 deterministic verdict/envelope/event/stderr paths plus `artifact_sha256` and `hash_match` (the
-FR9 binding pre-check; a `false` also appends a warning line to `RUN_DIR/log.md`). The Delegate
-remains the authority: on `hash_match: false` it discards the verdict and re-spawns.
+FR9 binding pre-check) and `artifacts_read_complete` / `artifacts_unread` (the packet-coverage
+check against the verdict's `Artifacts-read`). A `false` on either appends a warning line to
+`RUN_DIR/log.md`. The Delegate remains the authority: on `hash_match: false` or
+`artifacts_read_complete: false` it discards the verdict and re-spawns.
 
 - **Claude adapter:** preserves the proven CWD=`$CTX`, `--setting-sources ""`,
   `--system-prompt`, `--tools "Read"`, `--add-dir "$CTX"`, inline-schema, no-session-persistence
@@ -267,7 +270,11 @@ every write", AC16).
 
 For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-context/` with exactly:
 
-- **the artifact under review** (copied by name);
+- **the artifact under review** (copied by name), the primary artifact named as
+  `<artifact-basename>`;
+- **any supplementary artifacts** the checkpoint also reviews (e.g. `spec.md` staged beside a primary
+  `plan.md`), copied by name. Every staged file outside the fixed set in this list is an artifact:
+  the helper names each one in the prompt with its digest, and the reviewer must read it;
 - **`log-slice.md`** — this checkpoint's log slice only;
 - **`state.json`** — the scope projection (the Conductor writes this before returning);
 - **`bureau-agents.md`** — an immutable content-copy of canonical `$ROOT/AGENTS.md`, read first so
@@ -283,6 +290,14 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
   Read-only and cannot compute a digest; the task prompt tells it to copy this value verbatim into
   `Artifact-hash`. Added 2026-09-05 after a routine verdict returned an all-zeros placeholder hash
   and had to be discarded (FR9).
+- **`artifacts.sha256`**: the packet manifest, also written by `run-cold-reviewer.sh`. One
+  `sha256sum`-format line per artifact (primary first, then the supplementary artifacts sorted),
+  packet-relative paths. The prompt names every artifact with its digest, and the verdict's
+  `Artifacts-read` must list each one as `{path, sha256}` copied from this file. The helper checks
+  that list against the manifest and returns `artifacts_read_complete` and `artifacts_unread`; the
+  Delegate discards an incomplete verdict and re-spawns, as for `hash_match: false`. Added
+  2026-09-25 (#79): the prompt used to name the primary alone, so a staged `spec.md` went unread and
+  the reviewer accepted spec-side fixes on the plan's evidence (rheo-stream run 0d, checkpoint 02).
 
 **NEVER staged:** the full `log.md`, the full dual-mode `agents/delegate.md`, any prior
 `NN-verdict.md`. `$CTX` is the cold reviewer's only read root (v2 §3), so the manifest IS its world;

@@ -214,6 +214,12 @@ grep -Fq 'cmp -s "$CTX/bureau-agents.md" "$ROOT/AGENTS.md"' scripts/run-cold-rev
   || err "scripts/run-cold-reviewer.sh should bind staged Bureau instructions to canonical bytes"
 grep -Fq '/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions)' scripts/run-cold-reviewer.sh \
   || err "scripts/run-cold-reviewer.sh prompt should require canonical Bureau instructions first"
+[[ -x scripts/check-cold-reviewer-packet.sh ]] || err "scripts/check-cold-reviewer-packet.sh missing or not executable"
+# Behavioural, not a grep: stages a two-artifact packet and runs the reviewer script
+# against stub CLIs. Fails if a staged supplementary artifact goes unnamed (#79).
+cold_packet_out="$(bash scripts/check-cold-reviewer-packet.sh 2>&1)" \
+  || err "scripts/check-cold-reviewer-packet.sh failed: every staged artifact must be named in the cold-reviewer prompt and covered by Artifacts-read
+$cold_packet_out"
 [[ -x scripts/run-codex-spark-specialist.sh ]] || err "scripts/run-codex-spark-specialist.sh missing or not executable"
 [[ -x scripts/run-grok-specialist.sh ]] || err "scripts/run-grok-specialist.sh missing or not executable"
 [[ -x scripts/run-cursor-specialist.sh ]] || err "scripts/run-cursor-specialist.sh missing or not executable"
