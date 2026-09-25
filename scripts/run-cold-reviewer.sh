@@ -5,9 +5,12 @@
 #   run-cold-reviewer.sh [--resume <task-response-file>] \
 #     <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>
 #
-# The caller stages CTX (bridge v2 §9). This script adds ONE file to it itself —
-# $CTX/artifact.sha256, the staged artifact's digest — so a Read-only reviewer can bind its
-# verdict (FR9) by copying instead of guessing. It selects the host from model-routing.json
+# The caller stages CTX (bridge v2 §9). This script adds two files to it itself:
+# $CTX/artifact.sha256, the primary artifact's digest, so a Read-only reviewer can bind its
+# verdict (FR9) by copying instead of guessing; and $CTX/artifacts.sha256, the digest of
+# every artifact in the packet (any staged file outside the fixed infrastructure set),
+# primary first. The prompt names each artifact, and the verdict's Artifacts-read must
+# list every one (#79). It selects the host from model-routing.json
 # (`claude`, `openai`/`codex`, or `cursor`), runs one fresh reviewer, and writes:
 #   checkpoints/<spawn-id>-reviewer-verdict.json
 #   checkpoints/<spawn-id>-reviewer-envelope.json
@@ -3514,6 +3517,44 @@ esac
 printf '%s  %s\n' "$ARTIFACT_SHA256" "$ARTIFACT_BASE" > "$CTX/artifact.sha256" \
   || fail "cannot stage artifact.sha256 into CTX"
 
+# Packet manifest (#79). Every staged file outside the fixed infrastructure set is an
+# artifact under review, and the reviewer reads only what the prompt names. The prompt
+# used to name the primary artifact alone, so a spec.md staged beside plan.md went
+# unread and the reviewer accepted spec-side fixes on the plan's evidence (rheo-stream
+# run 0d, checkpoint 02, 2026-09-25). The harness now writes $CTX/artifacts.sha256
+# (every artifact, primary first, packet-relative paths) and the prompt names each one
+# with its digest. artifact.sha256 still means the primary alone (FR9).
+ARTIFACTS_MANIFEST="$CTX/artifacts.sha256"
+python3 - "$CTX" "$ARTIFACT_BASE" "$ARTIFACTS_MANIFEST" <<'PY' || fail "cannot stage artifacts.sha256 into CTX"
+import hashlib, os, sys
+ctx, primary, out = sys.argv[1:4]
+INFRA_FILES = {"bureau-agents.md", "delegate-reviewer.md", "conventions.md", "log-slice.md",
+               "state.json", "artifact.sha256", "artifacts.sha256", "integration-results.json"}
+found = []
+for root, dirs, files in os.walk(ctx):
+    rel_root = os.path.relpath(root, ctx)
+    if rel_root == ".":
+        dirs[:] = [d for d in dirs if d != "conventions"]
+    for name in files:
+        rel = name if rel_root == "." else os.path.join(rel_root, name)
+        if rel in INFRA_FILES:
+            continue
+        if any(ord(c) < 0x20 or ord(c) == 0x7f for c in rel):
+            sys.stderr.write("run-cold-reviewer: staged file name has a control character: %r\n" % rel)
+            sys.exit(1)
+        found.append(rel)
+if primary not in found:
+    sys.stderr.write("run-cold-reviewer: primary artifact %s is not in the packet\n" % primary)
+    sys.exit(1)
+ordered = [primary] + sorted(p for p in found if p != primary)
+with open(out, "w") as fh:
+    for rel in ordered:
+        with open(os.path.join(ctx, rel), "rb") as src:
+            digest = hashlib.sha256(src.read()).hexdigest()
+        fh.write("%s  %s\n" % (digest, rel))
+PY
+ARTIFACTS_MANIFEST_SHA256="$(sha256_file "$ARTIFACTS_MANIFEST")" || fail "cannot hash artifacts.sha256"
+
 RUNTIME="${BUREAU_REVIEWER_HOST:-}"
 if [ -z "$RUNTIME" ] && [ -f "$ROUTING" ]; then
   RUNTIME="$(jq -r '.runtime // empty' "$ROUTING" 2>/dev/null)"
@@ -3561,13 +3602,31 @@ STDERR_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-stderr.log"
 # every other host runs one fresh reviewer per call and starts from a clean slate.
 [ "$RUNTIME" = "cursor" ] || rm -f "$VERDICT_PATH" "$ENVELOPE_PATH" "$EVENTS_PATH" "$STDERR_PATH"
 
+# Names every artifact in artifacts.sha256 with its digest, primary first, under the
+# prompt's root (the live CTX, or the Codex snapshot copy of it).
+artifact_list_text() {
+  python3 - "$ARTIFACTS_MANIFEST" "$1" <<'PY'
+import sys
+manifest, root = sys.argv[1:3]
+entries = [line.rstrip("\n").split("  ", 1) for line in open(manifest) if line.strip()]
+parts = []
+for i, (digest, rel) in enumerate(entries):
+    role = "the primary artifact" if i == 0 else "a supplementary artifact"
+    parts.append("%s/%s (%s, sha256 %s)" % (root, rel, role, digest))
+text = parts[0] if len(parts) == 1 else "; ".join(parts[:-1]) + "; and " + parts[-1]
+sys.stdout.write("the %d artifact%s under review, every one of which you must read in full: %s"
+                 % (len(parts), "" if len(parts) == 1 else "s", text))
+PY
+}
+
 build_task_prompt() {
   prompt_ctx="$1"
-  prompt_artifact="$2"
+  prompt_artifacts="$(artifact_list_text "$prompt_ctx")" || fail "cannot list packet artifacts for the prompt"
+  prompt_files="${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_artifacts}; ${prompt_ctx}/artifact.sha256 (the primary artifact's SHA-256, computed by the harness: copy its 64-hex digest verbatim into Artifact-hash; you cannot compute a digest yourself and must never guess or use a placeholder); ${prompt_ctx}/artifacts.sha256 (every artifact's SHA-256, computed by the harness: in Artifacts-read, list each artifact you read in full, as its packet-relative path and its digest both copied verbatim from this file; never list an artifact you did not read)"
   if [ "$REVIEW_MODE" = "integration" ]; then
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), ${prompt_ctx}/artifact.sha256 (the artifact's SHA-256, computed by the harness: copy its 64-hex digest verbatim into Artifact-hash; you cannot compute a digest yourself and must never guess or use a placeholder), and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_files}; and ${prompt_ctx}/integration-results.json (canonical gate results). Apply the verifying-mode checklist and return only a verdict JSON conforming to the supplied schema, including Integration-evidence. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   else
-    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_ctx}/delegate-reviewer.md (your role and critic checklist), ${prompt_ctx}/conventions.md (the convention router; load only a needed module from ${prompt_ctx}/conventions/), ${prompt_ctx}/log-slice.md (this checkpoint's slice only), ${prompt_ctx}/state.json (run state), ${prompt_ctx}/${prompt_artifact} (the artifact), and ${prompt_ctx}/artifact.sha256 (the artifact's SHA-256, computed by the harness: copy its 64-hex digest verbatim into Artifact-hash; you cannot compute a digest yourself and must never guess or use a placeholder). Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
+    printf '%s' "You are reviewing checkpoint ${CHECKPOINT} as The Delegate cold reviewer. Read only these staged files, beginning with ${prompt_ctx}/bureau-agents.md (the immutable copy of the applicable canonical Bureau instructions): ${prompt_files}. Apply the critic checklist and return only a verdict JSON conforming to the supplied schema. This is a routine checkpoint, so set Integration-evidence to null when the schema requires that field. Do not look for log.md; it is intentionally unavailable. If a full log or session transcript appears, stop and return an escalate verdict describing the coldness breach."
   fi
 }
 
@@ -3607,6 +3666,10 @@ validate_verdict_shape() {
     and (."Required-changes" | type == "string" and length > 0)
     and (.Escalation | type == "string" and length > 0)
     and (.Ledger | type == "string" and length > 0)
+    and (."Artifacts-read" | type == "array" and length > 0
+         and all(.[]; type == "object"
+                      and (.path | type == "string" and length > 0)
+                      and (.sha256 | type == "string" and test("^[a-f0-9]{64}$"))))
   ' "$1" >/dev/null 2>&1
 }
 
@@ -3696,7 +3759,7 @@ if [ "$RUNTIME" = "cursor" ]; then
     for existing in "$CLAIM_DIR" "$VERDICT_PATH" "$ENVELOPE_PATH" "$RAW_CURSOR"; do
       [ ! -e "$existing" ] || fail "spawn $SPAWN_ID already has $(basename "$existing"); a re-spawn needs a new spawn id"
     done
-    TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
+    TASK_PROMPT="$(build_task_prompt "$CTX")" || fail "cannot build the reviewer task prompt"
     audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
     PLAN_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.json.$$.tmp"
     jq -n \
@@ -3707,6 +3770,7 @@ if [ "$RUNTIME" = "cursor" ]; then
       --arg checkpoint "$CHECKPOINT" \
       --arg artifact "$ARTIFACT_BASE" \
       --arg artifactSha256 "$ARTIFACT_SHA256" \
+      --arg artifactsManifestSha256 "$ARTIFACTS_MANIFEST_SHA256" \
       --arg taskPrompt "$TASK_PROMPT" \
       --arg verdictPath "$VERDICT_PATH" \
       --arg envelopePath "$ENVELOPE_PATH" \
@@ -3726,6 +3790,7 @@ if [ "$RUNTIME" = "cursor" ]; then
         checkpoint: $checkpoint,
         artifact: $artifact,
         artifactSha256: $artifactSha256,
+        artifactsManifestSha256: $artifactsManifestSha256,
         taskPrompt: $taskPrompt,
         verdictPath: $verdictPath,
         envelopePath: $envelopePath,
@@ -3770,7 +3835,8 @@ if [ "$RUNTIME" = "cursor" ]; then
     "checkpoint=$CHECKPOINT" \
     "artifact=$ARTIFACT_BASE" \
     "ctx=$CTX" \
-    "artifactSha256=$ARTIFACT_SHA256"
+    "artifactSha256=$ARTIFACT_SHA256" \
+    "artifactsManifestSha256=$ARTIFACTS_MANIFEST_SHA256"
   do
     plan_key="${pair%%=*}"
     plan_expect="${pair#*=}"
@@ -3942,7 +4008,7 @@ if [ "$RUNTIME" = "cursor" ]; then
 elif [ "$RUNTIME" = "claude" ]; then
   CLAUDE_BIN="${CLAUDE_BIN:-claude}"
   command -v "$CLAUDE_BIN" >/dev/null 2>&1 || fail "Claude CLI not found: $CLAUDE_BIN"
-  TASK_PROMPT="$(build_task_prompt "$CTX" "$ARTIFACT_BASE")"
+  TASK_PROMPT="$(build_task_prompt "$CTX")" || fail "cannot build the reviewer task prompt"
   audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
   RAW_CLAUDE="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-claude-raw.json"
   SYSTEM_PROMPT="You are The Delegate cold reviewer. Do not load CLAUDE.md. Do not act as the Conductor."
@@ -4013,7 +4079,7 @@ else
   esac
 
   PERMISSIONS="{bureau-review={filesystem={${fs_rules}},network={enabled=false}}}"
-  TASK_PROMPT="$(build_task_prompt "$SNAP_CTX" "$ARTIFACT_BASE")"
+  TASK_PROMPT="$(build_task_prompt "$SNAP_CTX")" || fail "cannot build the reviewer task prompt"
   audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
   LAST_MESSAGE="$SNAP_ROOT/last-message.json"
 
@@ -4084,6 +4150,42 @@ else
     >/dev/null 2>&1 || true
 fi
 
+# Packet coverage (#79): Artifacts-read must match artifacts.sha256 exactly, in both
+# directions. A manifest entry missing from it is unread; a reported pair that is not in
+# the manifest (an unstaged path, or a wrong second digest for a staged one) is
+# unexpected. Either makes the verdict incomplete. Like hash_match, this makes the gap
+# visible; the Delegate discards an incomplete verdict and re-spawns. A path may come
+# back packet-relative, "./"-prefixed, or absolute under the live or snapshot CTX.
+ARTIFACTS_COVERAGE="$(python3 - "$ARTIFACTS_MANIFEST" "$VERDICT_PATH" "$CTX" "${SNAP_CTX:-}" <<'PY'
+import json, sys
+manifest, verdict_path, ctx, snap_ctx = sys.argv[1:5]
+expected = [line.rstrip("\n").split("  ", 1) for line in open(manifest) if line.strip()]
+def normalize(path):
+    for root in (ctx, snap_ctx):
+        if root and path.startswith(root.rstrip("/") + "/"):
+            path = path[len(root.rstrip("/")) + 1:]
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+claimed = {(normalize(item["path"]), item["sha256"])
+           for item in json.load(open(verdict_path))["Artifacts-read"]}
+manifest_pairs = {(rel, digest) for digest, rel in expected}
+unread = [rel for digest, rel in expected if (rel, digest) not in claimed]
+unexpected = sorted("%s@%s" % pair for pair in claimed - manifest_pairs)
+json.dump({"unread": unread, "unexpected": unexpected}, sys.stdout)
+PY
+)" || fail "cannot check the verdict's Artifacts-read against artifacts.sha256"
+ARTIFACTS_UNREAD="$(printf '%s' "$ARTIFACTS_COVERAGE" | jq -c '.unread')"
+ARTIFACTS_UNEXPECTED="$(printf '%s' "$ARTIFACTS_COVERAGE" | jq -c '.unexpected')"
+if [ "$ARTIFACTS_UNREAD" = "[]" ] && [ "$ARTIFACTS_UNEXPECTED" = "[]" ]; then
+  ARTIFACTS_READ_COMPLETE=true
+else
+  ARTIFACTS_READ_COMPLETE=false
+  bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
+    "Cold reviewer verdict $SPAWN_ID: Artifacts-read does not match the packet manifest (unread: $ARTIFACTS_UNREAD; not in the manifest: $ARTIFACTS_UNEXPECTED) — the Delegate must discard this verdict and re-spawn" \
+    >/dev/null 2>&1 || true
+fi
+
 jq -cn \
   --arg runtime "$RUNTIME" \
   --arg model "$MODEL" \
@@ -4094,6 +4196,10 @@ jq -cn \
   --arg stderr_path "$STDERR_PATH" \
   --arg artifact_sha256 "$ARTIFACT_SHA256" \
   --argjson hash_match "$HASH_MATCH" \
+  --arg artifacts_manifest "$ARTIFACTS_MANIFEST" \
+  --argjson artifacts_read_complete "$ARTIFACTS_READ_COMPLETE" \
+  --argjson artifacts_unread "$ARTIFACTS_UNREAD" \
+  --argjson artifacts_unexpected "$ARTIFACTS_UNEXPECTED" \
   --arg plan_path "${PLAN_PATH:-}" \
   '{
     runtime: $runtime,
@@ -4104,6 +4210,10 @@ jq -cn \
     events_path: $events_path,
     stderr_path: $stderr_path,
     artifact_sha256: $artifact_sha256,
-    hash_match: $hash_match
+    hash_match: $hash_match,
+    artifacts_manifest: $artifacts_manifest,
+    artifacts_read_complete: $artifacts_read_complete,
+    artifacts_unread: $artifacts_unread,
+    artifacts_unexpected: $artifacts_unexpected
   }
   + (if $plan_path == "" then {} else {plan_path: $plan_path} end)'

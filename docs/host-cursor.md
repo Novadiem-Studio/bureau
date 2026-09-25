@@ -50,7 +50,7 @@ Bash cannot issue a Cursor Task, so the cold review is two calls around one
 Task. The manager never grades.
 
 1. **Plan.** `scripts/run-cold-reviewer.sh <RUN_DIR> <CTX> NN <spawn-id> <artifact> <routine|integration>`
-   stages the bounded CTX and `artifact.sha256`, writes
+   stages the bounded CTX, `artifact.sha256` and `artifacts.sha256`, writes
    `$CHECKPOINTS_DIR/<spawn-id>-reviewer-task-plan.json` (also printed on stdout),
    logs the exact task prompt, and exits **2** with
    `CURSOR-REVIEWER-HOST-TASK-REQUIRED`. Exit 2 is a host action, not a failure.
@@ -61,15 +61,16 @@ Task. The manager never grades.
    or a JSON object carrying it in `.result` or `.structured_output`, optionally
    with `.usage` and `.num_turns`.
 3. **Resume.** `scripts/run-cold-reviewer.sh --resume <response-file> <same six args>`
-   binds the response to the plan (same spawn id, checkpoint, artifact and staged
-   digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
+   binds the response to the plan (same spawn id, checkpoint, artifact, staged
+   digest and packet-manifest digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
    id), extracts the verdict, validates it against
    `config/delegate-verdict.schema.json`, writes
    `<spawn-id>-reviewer-verdict.json` and a Claude-shaped
    `<spawn-id>-reviewer-envelope.json` atomically, marks the plan `resumed` with
    the response digest, appends an audit line, and returns the same metadata
    JSON the Claude and Codex adapters return (`verdict_path`, `envelope_path`,
-   `artifact_sha256`, `hash_match`, plus `plan_path`). Exit **0**. A rejected
+   `artifact_sha256`, `hash_match`, `artifacts_read_complete`, `artifacts_unread`, `artifacts_unexpected`, plus
+   `plan_path`). Exit **0**. A rejected
    response exits 1 and writes nothing durable.
 
 Usage the Task did not report stays absent from the envelope (a `_note` says
