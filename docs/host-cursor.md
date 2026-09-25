@@ -61,15 +61,15 @@ Task. The manager never grades.
    or a JSON object carrying it in `.result` or `.structured_output`, optionally
    with `.usage` and `.num_turns`.
 3. **Resume.** `scripts/run-cold-reviewer.sh --resume <response-file> <same six args>`
-   binds the response to the plan (same spawn id, checkpoint, artifact and staged
-   digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
+   binds the response to the plan (same spawn id, checkpoint, artifact, staged
+   digest and packet-manifest digest; a plan already `resumed` is refused, so a re-spawn gets a new spawn
    id), extracts the verdict, validates it against
    `config/delegate-verdict.schema.json`, writes
    `<spawn-id>-reviewer-verdict.json` and a Claude-shaped
    `<spawn-id>-reviewer-envelope.json` atomically, marks the plan `resumed` with
    the response digest, appends an audit line, and returns the same metadata
    JSON the Claude and Codex adapters return (`verdict_path`, `envelope_path`,
-   `artifact_sha256`, `hash_match`, `artifacts_read_complete`, `artifacts_unread`, plus
+   `artifact_sha256`, `hash_match`, `artifacts_read_complete`, `artifacts_unread`, `artifacts_unexpected`, plus
    `plan_path`). Exit **0**. A rejected
    response exits 1 and writes nothing durable.
 

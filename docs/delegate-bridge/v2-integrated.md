@@ -126,7 +126,7 @@ from `model-routing.json`, computes the staged artifact's SHA-256 and writes it 
 `$CTX/artifact.sha256` (v2 §9), writes the packet manifest `$CTX/artifacts.sha256` and names every
 artifact in it in the prompt, logs the exact task prompt before the provider call, and emits
 deterministic verdict/envelope/event/stderr paths plus `artifact_sha256` and `hash_match` (the
-FR9 binding pre-check) and `artifacts_read_complete` / `artifacts_unread` (the packet-coverage
+FR9 binding pre-check) and `artifacts_read_complete` / `artifacts_unread` / `artifacts_unexpected` (the packet-coverage
 check against the verdict's `Artifacts-read`). A `false` on either appends a warning line to
 `RUN_DIR/log.md`. The Delegate remains the authority: on `hash_match: false` or
 `artifacts_read_complete: false` it discards the verdict and re-spawns.
@@ -294,7 +294,8 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
   `sha256sum`-format line per artifact (primary first, then the supplementary artifacts sorted),
   packet-relative paths. The prompt names every artifact with its digest, and the verdict's
   `Artifacts-read` must list each one as `{path, sha256}` copied from this file. The helper checks
-  that list against the manifest and returns `artifacts_read_complete` and `artifacts_unread`; the
+  that list against the manifest in both directions and returns `artifacts_read_complete`,
+  `artifacts_unread` and `artifacts_unexpected` (a reported pair not in the manifest); the
   Delegate discards an incomplete verdict and re-spawns, as for `hash_match: false`. Added
   2026-09-25 (#79): the prompt used to name the primary alone, so a staged `spec.md` went unread and
   the reviewer accepted spec-side fixes on the plan's evidence (rheo-stream run 0d, checkpoint 02).

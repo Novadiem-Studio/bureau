@@ -352,8 +352,13 @@ process_request() {
   if [ "$review_rc" -eq 0 ]; then
     reviewer_verdict="$(printf '%s' "$review_meta" | jq -r '.verdict_path // empty' 2>/dev/null)"
     reviewer_envelope="$(printf '%s' "$review_meta" | jq -r '.envelope_path // empty' 2>/dev/null)"
-    if [ -s "$reviewer_verdict" ]; then
+    # An incomplete Artifacts-read (#79) is discarded like a failed spawn: no
+    # out_json, so verdict-write.sh refuses it and the request is retried.
+    if [ -s "$reviewer_verdict" ] \
+       && printf '%s' "$review_meta" | jq -e '.artifacts_read_complete == true' >/dev/null 2>&1; then
       cp "$reviewer_verdict" "$out_json"
+    elif [ -s "$reviewer_verdict" ]; then
+      echo "watcher: reviewer verdict for $NN (spawn $spawn_id) does not match the packet manifest; discarding it: $(printf '%s' "$review_meta" | jq -c '{artifacts_unread, artifacts_unexpected}' 2>/dev/null)" >&2
     fi
     if [ -s "$reviewer_envelope" ]; then
       envelope_json="$(jq -c '.' "$reviewer_envelope" 2>/dev/null)"

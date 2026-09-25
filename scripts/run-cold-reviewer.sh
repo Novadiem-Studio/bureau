@@ -3553,6 +3553,7 @@ with open(out, "w") as fh:
             digest = hashlib.sha256(src.read()).hexdigest()
         fh.write("%s  %s\n" % (digest, rel))
 PY
+ARTIFACTS_MANIFEST_SHA256="$(sha256_file "$ARTIFACTS_MANIFEST")" || fail "cannot hash artifacts.sha256"
 
 RUNTIME="${BUREAU_REVIEWER_HOST:-}"
 if [ -z "$RUNTIME" ] && [ -f "$ROUTING" ]; then
@@ -3769,6 +3770,7 @@ if [ "$RUNTIME" = "cursor" ]; then
       --arg checkpoint "$CHECKPOINT" \
       --arg artifact "$ARTIFACT_BASE" \
       --arg artifactSha256 "$ARTIFACT_SHA256" \
+      --arg artifactsManifestSha256 "$ARTIFACTS_MANIFEST_SHA256" \
       --arg taskPrompt "$TASK_PROMPT" \
       --arg verdictPath "$VERDICT_PATH" \
       --arg envelopePath "$ENVELOPE_PATH" \
@@ -3788,6 +3790,7 @@ if [ "$RUNTIME" = "cursor" ]; then
         checkpoint: $checkpoint,
         artifact: $artifact,
         artifactSha256: $artifactSha256,
+        artifactsManifestSha256: $artifactsManifestSha256,
         taskPrompt: $taskPrompt,
         verdictPath: $verdictPath,
         envelopePath: $envelopePath,
@@ -3832,7 +3835,8 @@ if [ "$RUNTIME" = "cursor" ]; then
     "checkpoint=$CHECKPOINT" \
     "artifact=$ARTIFACT_BASE" \
     "ctx=$CTX" \
-    "artifactSha256=$ARTIFACT_SHA256"
+    "artifactSha256=$ARTIFACT_SHA256" \
+    "artifactsManifestSha256=$ARTIFACTS_MANIFEST_SHA256"
   do
     plan_key="${pair%%=*}"
     plan_expect="${pair#*=}"
@@ -4146,11 +4150,13 @@ else
     >/dev/null 2>&1 || true
 fi
 
-# Packet coverage (#79): every artifact in artifacts.sha256 must appear in the verdict's
-# Artifacts-read with the manifest's digest. Like hash_match, this makes a gap visible;
-# the Delegate discards an incomplete verdict and re-spawns. A path may come back
-# packet-relative, "./"-prefixed, or absolute under the live or snapshot CTX.
-ARTIFACTS_UNREAD="$(python3 - "$ARTIFACTS_MANIFEST" "$VERDICT_PATH" "$CTX" "${SNAP_CTX:-}" <<'PY'
+# Packet coverage (#79): Artifacts-read must match artifacts.sha256 exactly, in both
+# directions. A manifest entry missing from it is unread; a reported pair that is not in
+# the manifest (an unstaged path, or a wrong second digest for a staged one) is
+# unexpected. Either makes the verdict incomplete. Like hash_match, this makes the gap
+# visible; the Delegate discards an incomplete verdict and re-spawns. A path may come
+# back packet-relative, "./"-prefixed, or absolute under the live or snapshot CTX.
+ARTIFACTS_COVERAGE="$(python3 - "$ARTIFACTS_MANIFEST" "$VERDICT_PATH" "$CTX" "${SNAP_CTX:-}" <<'PY'
 import json, sys
 manifest, verdict_path, ctx, snap_ctx = sys.argv[1:5]
 expected = [line.rstrip("\n").split("  ", 1) for line in open(manifest) if line.strip()]
@@ -4163,15 +4169,20 @@ def normalize(path):
     return path
 claimed = {(normalize(item["path"]), item["sha256"])
            for item in json.load(open(verdict_path))["Artifacts-read"]}
-json.dump([rel for digest, rel in expected if (rel, digest) not in claimed], sys.stdout)
+manifest_pairs = {(rel, digest) for digest, rel in expected}
+unread = [rel for digest, rel in expected if (rel, digest) not in claimed]
+unexpected = sorted("%s@%s" % pair for pair in claimed - manifest_pairs)
+json.dump({"unread": unread, "unexpected": unexpected}, sys.stdout)
 PY
 )" || fail "cannot check the verdict's Artifacts-read against artifacts.sha256"
-if [ "$ARTIFACTS_UNREAD" = "[]" ]; then
+ARTIFACTS_UNREAD="$(printf '%s' "$ARTIFACTS_COVERAGE" | jq -c '.unread')"
+ARTIFACTS_UNEXPECTED="$(printf '%s' "$ARTIFACTS_COVERAGE" | jq -c '.unexpected')"
+if [ "$ARTIFACTS_UNREAD" = "[]" ] && [ "$ARTIFACTS_UNEXPECTED" = "[]" ]; then
   ARTIFACTS_READ_COMPLETE=true
 else
   ARTIFACTS_READ_COMPLETE=false
   bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
-    "Cold reviewer verdict $SPAWN_ID: Artifacts-read does not cover every packet artifact (unread or wrong digest: $ARTIFACTS_UNREAD) — the Delegate must discard this verdict and re-spawn" \
+    "Cold reviewer verdict $SPAWN_ID: Artifacts-read does not match the packet manifest (unread: $ARTIFACTS_UNREAD; not in the manifest: $ARTIFACTS_UNEXPECTED) — the Delegate must discard this verdict and re-spawn" \
     >/dev/null 2>&1 || true
 fi
 
@@ -4188,6 +4199,7 @@ jq -cn \
   --arg artifacts_manifest "$ARTIFACTS_MANIFEST" \
   --argjson artifacts_read_complete "$ARTIFACTS_READ_COMPLETE" \
   --argjson artifacts_unread "$ARTIFACTS_UNREAD" \
+  --argjson artifacts_unexpected "$ARTIFACTS_UNEXPECTED" \
   --arg plan_path "${PLAN_PATH:-}" \
   '{
     runtime: $runtime,
@@ -4201,6 +4213,7 @@ jq -cn \
     hash_match: $hash_match,
     artifacts_manifest: $artifacts_manifest,
     artifacts_read_complete: $artifacts_read_complete,
-    artifacts_unread: $artifacts_unread
+    artifacts_unread: $artifacts_unread,
+    artifacts_unexpected: $artifacts_unexpected
   }
   + (if $plan_path == "" then {} else {plan_path: $plan_path} end)'

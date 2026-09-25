@@ -6,7 +6,10 @@
 #   - any host's task prompt does not name spec.md with its digest,
 #   - artifacts.sha256 does not list both artifacts, primary first,
 #   - a verdict whose Artifacts-read skips spec.md is reported as complete,
-#   - a verdict with no Artifacts-read at all is accepted.
+#   - a verdict with no Artifacts-read at all is accepted,
+#   - a verdict naming an artifact outside the manifest is reported as complete,
+#   - a Cursor resume is accepted after the packet changed since the plan,
+#   - the v1 watcher publishes a verdict without checking coverage.
 #
 # No real reviewer is spawned and nothing outside the temp dir is written.
 # Usage: scripts/check-cold-reviewer-packet.sh   (exit 0 = pass; check-framework.sh runs it)
@@ -53,6 +56,9 @@ if mode == "all":
     verdict["Artifacts-read"] = [{"path": rel, "sha256": d} for d, rel in entries]
 elif mode == "primary-only":
     verdict["Artifacts-read"] = [{"path": entries[0][1], "sha256": entries[0][0]}]
+elif mode == "extra":
+    verdict["Artifacts-read"] = [{"path": rel, "sha256": d} for d, rel in entries]
+    verdict["Artifacts-read"].append({"path": "never-staged.md", "sha256": "0" * 64})
 json.dump(verdict, open(out, "w"))
 PY
 cat > "$STUBS/claude" <<'SH'
@@ -143,7 +149,7 @@ if printf '%s' "$meta" | jq -e '.artifacts_read_complete == false and .artifacts
 else
   bad "claude/primary-only: a verdict that skipped spec.md was not flagged: $meta"
 fi
-if grep -q "Artifacts-read does not cover every packet artifact" "$run_dir/log.md"; then
+if grep -q "Artifacts-read does not match the packet manifest" "$run_dir/log.md"; then
   pass "claude/primary-only: the gap is logged to log.md"
 else
   bad "claude/primary-only: no log.md warning for the unread artifact"
@@ -182,6 +188,49 @@ if [ "$rc" -eq 2 ] && jq -r '.taskPrompt' "$plan" > "$WORK/prompt-02-5" 2>/dev/n
   prompt_names_both "$WORK/prompt-02-5" "$ctx" "cursor"
 else
   bad "cursor: phase 1 did not produce a Task plan (exit $rc): $(cat "$WORK/stderr-02-5")"
+fi
+
+# 6. Cursor resume on the unchanged packet completes.
+STUB_MODE=all python3 "$STUBS/verdict.py" "$ctx" "$WORK/response-02-5.json"
+meta="$(BUREAU_REVIEWER_HOST=cursor bash "$REVIEWER" --resume "$WORK/response-02-5.json" \
+  "$run_dir" "$ctx" 02 02-5 plan.md routine 2> "$WORK/stderr-02-5r")" \
+  || { bad "cursor/resume: resume on the unchanged packet failed: $(cat "$WORK/stderr-02-5r")"; meta='{}'; }
+if printf '%s' "$meta" | jq -e '.artifacts_read_complete == true' >/dev/null 2>&1; then
+  pass "cursor/resume: resume on the unchanged packet is complete"
+else
+  bad "cursor/resume: expected artifacts_read_complete true, got $meta"
+fi
+
+# 7. Cursor resume after spec.md left the packet is refused: the plan is bound to the
+#    manifest, so a response that never read spec.md cannot be certified complete.
+new_packet cursor-shrunk
+BUREAU_REVIEWER_HOST=cursor bash "$REVIEWER" "$run_dir" "$ctx" 02 02-6 plan.md routine \
+  > /dev/null 2>&1
+rm -f "$ctx/spec.md"
+STUB_MODE=primary-only python3 "$STUBS/verdict.py" "$ctx" "$WORK/response-02-6.json"
+if BUREAU_REVIEWER_HOST=cursor bash "$REVIEWER" --resume "$WORK/response-02-6.json" \
+     "$run_dir" "$ctx" 02 02-6 plan.md routine > /dev/null 2> "$WORK/stderr-02-6r"; then
+  bad "cursor/shrunk: resume was accepted after spec.md left the planned packet"
+elif grep -q "artifactsManifestSha256 mismatch" "$WORK/stderr-02-6r"; then
+  pass "cursor/shrunk: resume is refused when the packet no longer matches the plan"
+else
+  bad "cursor/shrunk: resume failed for the wrong reason: $(cat "$WORK/stderr-02-6r")"
+fi
+
+# 8. A verdict claiming an artifact that was never staged is not complete.
+new_packet claude-extra
+meta="$(run_reviewer claude extra 02-7)" || { bad "claude/extra: reviewer script failed: $(cat "$WORK/stderr-02-7")"; meta='{}'; }
+if printf '%s' "$meta" | jq -e '.artifacts_read_complete == false and .artifacts_unread == [] and (.artifacts_unexpected | length) == 1' >/dev/null 2>&1; then
+  pass "claude/extra: an Artifacts-read entry outside the manifest is reported as unexpected"
+else
+  bad "claude/extra: an entry outside the manifest was not flagged: $meta"
+fi
+
+# 9. The v1 watcher must not publish a verdict whose coverage is incomplete.
+if grep -Fq ".artifacts_read_complete == true" "$SCRIPT_DIR/watcher.sh"; then
+  pass "watcher: publishes a reviewer verdict only when artifacts_read_complete is true"
+else
+  bad "watcher: does not gate the reviewer verdict on artifacts_read_complete"
 fi
 
 if [ "$failures" -gt 0 ]; then

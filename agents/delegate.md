@@ -327,7 +327,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    - `artifact.sha256` and `artifacts.sha256` — do NOT write these yourself;
      `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest
      and writes both into `$CTX` at spawn time (bridge v2 §9), and reports `artifact_sha256`,
-     `hash_match`, `artifacts_read_complete` and `artifacts_unread` in its result JSON for step 7.
+     `hash_match`, `artifacts_read_complete`, `artifacts_unread` and `artifacts_unexpected` in its
+     result JSON for step 7.
    NEVER stage: the full `log.md`, any prior `NN-verdict.md`, or the full dual-mode
    `agents/delegate.md` (it grants manager Bash/Write/spawn capabilities a read-only reviewer
    must not read as its own — W7 capability-contamination guard).
@@ -393,7 +394,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    yourself against the artifact. On mismatch, DISCARD the verdict and re-spawn the reviewer —
    never resume the Conductor with a mismatched verdict. Do the same when the result JSON says
    `artifacts_read_complete: false`: the verdict's `Artifacts-read` skipped a staged artifact
-   (named in `artifacts_unread`), so it judged the checkpoint on part of the evidence (#79).
+   (named in `artifacts_unread`) or claimed one the packet does not hold (`artifacts_unexpected`),
+   so it does not show the reviewer judged the checkpoint on the whole packet (#79).
 8. On a `revise` verdict, call the deterministic cap:
    ```sh
    scripts/revise-cap.sh "$RUN_DIR/delegate-state.json" NN "<revision_cap>"
