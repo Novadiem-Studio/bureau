@@ -62,7 +62,26 @@ command: |
     .scope.cut_symbol_attribution.worker_loop.total.context == 0 and
     .scope.cut_symbol_attribution.worker_loop.total.header == 0
   ' "$OUT/integration-results.json"
+
+  # Case C: quoted diff paths (spaces) attribute to the real decoded path key.
+  mkdir -p "$W/dir"
+  cat > "$W/dir/space file.c" <<'C'
+  int stable = 0;
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "add spaced path file"
+  BASE_SPACED=$(git -C "$W" rev-parse HEAD)
+  cat > "$W/dir/space file.c" <<'C'
+  int stable = 0;
+  int worker_loop = 1;
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "add symbol in spaced path file"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_SPACED" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==false and
+    .scope.cut_symbol_attribution.worker_loop.files["dir/space file.c"].added >= 1
+  ' "$OUT/integration-results.json"
   echo "PASS"
-expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, and `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced.
+expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, and attribution uses decoded file keys for quoted diff paths (e.g. spaces).
 phase: bug-fix · issue-43
 owner: issue #43 / scripts/integration-gate.sh — attributed cut-symbol scanning with added-line-only fail semantics

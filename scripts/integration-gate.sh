@@ -460,21 +460,45 @@ try:
         raise RuntimeError("git diff failed")
 
     kinds = ("added", "removed", "context", "header")
+    def parse_diff_path(token):
+        path = token.strip()
+        if path.startswith('"') and path.endswith('"'):
+            inner = path[1:-1]
+            try:
+                path = bytes(inner, "utf-8").decode("unicode_escape")
+            except Exception:
+                path = inner
+        if path.startswith("b/"):
+            path = path[2:]
+        return None if path == "/dev/null" else path
+
     cut_symbol_attribution = {
         sym: {"total": {k: 0 for k in kinds}, "files": {}}
         for sym in cut_symbols
     }
-    current_file = ""
+    hit_symbols = set()
+    added_hit_symbols = set()
+    current_file = None
+    in_hunk = False
     for raw in r2.stdout.splitlines():
         line = raw.rstrip("\n")
+        if line.startswith("diff --git "):
+            current_file = None
+            in_hunk = False
+            continue
         if line.startswith("+++ "):
-            path = line[4:].strip()
-            if path.startswith("b/"):
-                path = path[2:]
-            current_file = "" if path == "/dev/null" else path
+            current_file = parse_diff_path(line[4:])
+            in_hunk = False
+            continue
+        if line.startswith("--- "):
             continue
         if line.startswith("@@"):
+            if current_file is None:
+                continue
+            in_hunk = True
             kind, text = "header", line
+        elif not in_hunk:
+            continue
         elif line.startswith("+") and not line.startswith("+++"):
             kind, text = "added", line[1:]
         elif line.startswith("-") and not line.startswith("---"):
@@ -487,18 +511,14 @@ try:
             if sym in text:
                 sym_data = cut_symbol_attribution[sym]
                 sym_data["total"][kind] += 1
-                file_key = current_file or "(unknown)"
-                file_counts = sym_data["files"].setdefault(file_key, {k: 0 for k in kinds})
+                file_counts = sym_data["files"].setdefault(current_file, {k: 0 for k in kinds})
                 file_counts[kind] += 1
+                hit_symbols.add(sym)
+                if kind == "added":
+                    added_hit_symbols.add(sym)
 
-    cut_symbol_hits = [
-        sym for sym, data in cut_symbol_attribution.items()
-        if sum(data["total"].values()) > 0
-    ]
-    cut_symbol_added_hits = [
-        sym for sym, data in cut_symbol_attribution.items()
-        if data["total"]["added"] > 0
-    ]
+    cut_symbol_hits = [sym for sym in cut_symbols if sym in hit_symbols]
+    cut_symbol_added_hits = [sym for sym in cut_symbols if sym in added_hit_symbols]
 
     # Scope asks what this run introduced: only added-line cut-symbol hits fail.
     scope_diff_clean = (len(violations) == 0 and len(cut_symbol_added_hits) == 0)
