@@ -10,6 +10,8 @@ The Bureau routes work through isolated specialist agents, carries decisions for
 
 This repository is a public view of a working studio system. It is here for technical evaluation and to show how Novadiem approaches agentic engineering. It is not currently packaged or supported as a self-serve product.
 
+For a short route into the implementation, read the [checkpoint review tour](docs/checkpoint-review-tour.md): how a review packet reaches a fresh reviewer, how its response is checked, and what those checks cannot establish.
+
 ## Why it exists
 
 Coding models can produce useful work, but a long software job still needs someone to hold the structure together.
