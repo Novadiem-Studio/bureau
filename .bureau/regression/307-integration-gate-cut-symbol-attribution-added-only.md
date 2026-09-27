@@ -27,7 +27,7 @@ command: |
   }
   C
   git -C "$W" add -A; git -C "$W" commit -qm "context+removed+header only"
-  printf '{"scope":{"allowed_paths":["**"],"cut_symbols":["worker_loop","header_only_marker","context_only","removed_only"]}}\n' > "$TMP/state.json"
+  printf '{"scope":{"allowed_paths":["**"],"cut_symbols":["worker_loop","header_only_marker","context_only","removed_only","deleted_only"]}}\n' > "$TMP/state.json"
 
   # Case A: only removed/context/header mentions are present => scope_diff_clean stays true.
   "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
@@ -63,25 +63,58 @@ command: |
     .scope.cut_symbol_attribution.worker_loop.total.header == 0
   ' "$OUT/integration-results.json"
 
-  # Case C: quoted diff paths (spaces) attribute to the real decoded path key.
-  mkdir -p "$W/dir"
-  cat > "$W/dir/space file.c" <<'C'
-  int stable = 0;
+  # Case C: added content line `++ ...` does not get misread as a file header.
+  cat > "$W/src.c" <<'C'
+  int header_only_marker = 0;
+
+  void do_work(void) {
+    int context_only = 1;
+    int stable = 2;
+    ++ counter;
+    worker_loop();
+  }
   C
-  git -C "$W" add -A; git -C "$W" commit -qm "add spaced path file"
-  BASE_SPACED=$(git -C "$W" rev-parse HEAD)
-  cat > "$W/dir/space file.c" <<'C'
-  int stable = 0;
-  int worker_loop = 1;
-  C
-  git -C "$W" add -A; git -C "$W" commit -qm "add symbol in spaced path file"
-  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_SPACED" \
+  git -C "$W" add -A; git -C "$W" commit -qm "line starts with ++ and still scans later additions"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
     --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
   jq -e '
     .scope.scope_diff_clean==false and
-    .scope.cut_symbol_attribution.worker_loop.files["dir/space file.c"].added >= 1
+    .scope.cut_symbol_attribution.worker_loop.files["src.c"].added >= 1
+  ' "$OUT/integration-results.json"
+
+  # Case D: deleted-file hunks attribute removed lines via the old (--- a/...) path.
+  cat > "$W/deleted.c" <<'C'
+  int deleted_only = 1;
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "add file to delete"
+  BASE_DELETED=$(git -C "$W" rev-parse HEAD)
+  git -C "$W" rm -q deleted.c
+  git -C "$W" commit -qm "delete file with cut symbol"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_DELETED" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==true and
+    .scope.cut_symbol_attribution.deleted_only.files["deleted.c"].removed >= 1
+  ' "$OUT/integration-results.json"
+
+  # Case E: quoted non-ASCII diff paths decode to UTF-8 file keys.
+  cat > "$W/café.c" <<'C'
+  int stable = 0;
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "add non-ascii file"
+  BASE_NONASCII=$(git -C "$W" rev-parse HEAD)
+  cat > "$W/café.c" <<'C'
+  int stable = 0;
+  int worker_loop = 1;
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "add symbol in non-ascii file"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_NONASCII" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==false and
+    .scope.cut_symbol_attribution.worker_loop.files["café.c"].added >= 1
   ' "$OUT/integration-results.json"
   echo "PASS"
-expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, and attribution uses decoded file keys for quoted diff paths (e.g. spaces).
+expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, lines beginning `++` inside hunks are still scanned as added content, deleted-file removed-line hits attribute to the old path, and quoted non-ASCII paths decode to UTF-8 file keys.
 phase: bug-fix · issue-43
 owner: issue #43 / scripts/integration-gate.sh — attributed cut-symbol scanning with added-line-only fail semantics

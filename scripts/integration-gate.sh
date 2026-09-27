@@ -460,15 +460,45 @@ try:
         raise RuntimeError("git diff failed")
 
     kinds = ("added", "removed", "context", "header")
-    def parse_diff_path(token):
+    def decode_git_quoted_path(inner):
+        out = bytearray()
+        i = 0
+        escapes = {
+            "a": b"\a", "b": b"\b", "f": b"\f", "n": b"\n",
+            "r": b"\r", "t": b"\t", "v": b"\v", "\\": b"\\", '"': b'"'
+        }
+        while i < len(inner):
+            ch = inner[i]
+            if ch != "\\":
+                out.extend(ch.encode("utf-8"))
+                i += 1
+                continue
+            i += 1
+            if i >= len(inner):
+                out.extend(b"\\")
+                break
+            esc = inner[i]
+            if esc in "01234567":
+                j = i
+                while j < len(inner) and j < i + 3 and inner[j] in "01234567":
+                    j += 1
+                out.append(int(inner[i:j], 8))
+                i = j
+                continue
+            out.extend(escapes.get(esc, esc.encode("utf-8")))
+            i += 1
+        return out.decode("utf-8")
+
+    def parse_diff_path(token, side):
         path = token.strip()
         if path.startswith('"') and path.endswith('"'):
             inner = path[1:-1]
             try:
-                path = bytes(inner, "utf-8").decode("unicode_escape")
+                path = decode_git_quoted_path(inner)
             except Exception:
                 path = inner
-        if path.startswith("b/"):
+        prefix = "b/" if side == "new" else "a/"
+        if path.startswith(prefix):
             path = path[2:]
         return None if path == "/dev/null" else path
 
@@ -479,18 +509,22 @@ try:
     hit_symbols = set()
     added_hit_symbols = set()
     current_file = None
+    current_old_file = None
     in_hunk = False
     for raw in r2.stdout.splitlines():
         line = raw.rstrip("\n")
         if line.startswith("diff --git "):
             current_file = None
+            current_old_file = None
             in_hunk = False
             continue
-        if line.startswith("+++ "):
-            current_file = parse_diff_path(line[4:])
-            in_hunk = False
+        if not in_hunk and line.startswith("--- "):
+            current_old_file = parse_diff_path(line[4:], "old")
             continue
-        if line.startswith("--- "):
+        if not in_hunk and line.startswith("+++ "):
+            current_new_file = parse_diff_path(line[4:], "new")
+            current_file = current_new_file if current_new_file is not None else current_old_file
+            in_hunk = False
             continue
         if line.startswith("@@"):
             if current_file is None:
