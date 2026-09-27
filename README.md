@@ -1,37 +1,35 @@
 # The Bureau
 
-Novadiem Studio's agentic engineering system for turning complex software briefs into reviewed, traceable delivery.
+A multi-agent workflow that Novadiem Studio uses to plan, build, review and document software.
 
 [Explore the Bureau](https://thebureau.dev) | [Read the Novadiem case study](https://novadiem.com/bureau) | [Browse the Records](https://thebureau.dev/records) | [Work with Novadiem](https://novadiem.com/contact)
 
-![The Bureau, a coordinated bureau of specialized intelligences](https://thebureau.dev/assets/og/og-home.jpg)
+![The Bureau banner](https://thebureau.dev/assets/og/og-home.jpg)
 
-The Bureau routes work through isolated specialist agents, carries decisions forward in durable artifacts, and places explicit gates around review, external actions, and production boundaries. Novadiem uses it to plan, build, review, and document software across studio projects.
+The Bureau assigns work to specialists in separate contexts and saves their decisions and output to files. Review checkpoints determine whether work can continue, needs revision or requires a human decision. External actions and production deployments have their own authorization rules.
 
-This repository is a public view of a working studio system. It is here for technical evaluation and to show how Novadiem approaches agentic engineering. It is not currently packaged or supported as a self-serve product.
+This is the system we use across studio projects, published for technical evaluation. It is in active development and is not packaged or supported as a self-serve product.
 
-For a short route into the implementation, read the [checkpoint review tour](docs/checkpoint-review-tour.md): how a review packet reaches a fresh reviewer, how its response is checked, and what those checks cannot establish.
+The [checkpoint review tour](docs/checkpoint-review-tour.md) follows a review through the code and tests, including what the checks cannot establish.
 
 ## Why it exists
 
-Coding models can produce useful work, but a long software job still needs someone to hold the structure together.
+Long software jobs need decisions and handoffs to survive beyond one model session.
 
-A single session tends to accumulate several jobs at once. It interprets the brief, argues for an architecture, writes the implementation, and then reviews the choices it already made. Important decisions remain trapped in chat history. If the session is interrupted, the next one has to reconstruct what happened and decide which parts of the conversation were authoritative.
+A single session often interprets the brief, chooses an architecture, writes the code and reviews its own choices. Decisions can get buried in chat history. After an interruption, the next session has to reconstruct what happened and which decisions still apply.
 
-The Bureau moves those responsibilities into a workflow:
+The Bureau separates those responsibilities:
 
 - Tasks are classified before an agent is chosen.
 - Specialists work in fresh contexts with narrow responsibilities.
-- Handoffs are written to files, not left in conversation history.
+- Handoffs are written to files.
 - Reviewers see controlled evidence instead of the discussion that produced it.
-- Human judgment remains at genuine product forks and external-action boundaries.
+- Product choices and actions outside the task's authority go back to the human owner.
 - Interrupted work resumes from state and artifacts on disk.
-
-The model is one component. The routing, boundaries, evidence, and paper trail are the system.
 
 ## How a run moves
 
-The default topology has two coordination layers on a single run. The Delegate manages routine flow and gates. It keeps one resumable Conductor, which dispatches fresh specialists and adjudicates their findings. A mapped series of runs adds a layer above that: The Envoy, pointed at a plan (`INDEX.md`), launches each run as its own Delegate and holds one run's watch at a time.
+By default, a single run has two coordinators. The Delegate manages checkpoints and keeps one resumable Conductor. The Conductor assigns work to fresh specialists and assesses their findings. For a planned series of runs, the Envoy reads an `INDEX.md`, launches each run through its own Delegate and supervises one run at a time.
 
 ```mermaid
 flowchart LR
@@ -46,50 +44,50 @@ flowchart LR
     H --> B
 ```
 
-The exact path depends on the task. A bug fix does not need the same ceremony as a new product feature. The Conductor reads the [workflow registry](workflows/index.md), selects the smallest fitting workflow, and records that choice before work begins.
+The Conductor selects the smallest workflow that fits the task from the [workflow registry](workflows/index.md) and records the choice before work begins. Bug fixes and new product features follow different paths.
 
 ## What the system protects
 
 ### Independent review
 
-Specialists are spawned without the manager's conversation. A reviewer does not watch a design get negotiated and then pretend to encounter it for the first time.
+Specialists start without the manager's conversation. Reviewers examine the written work in a fresh context, without the discussion that produced it.
 
-For integrated checkpoint review, the Bureau stages a bounded packet, excludes the live run log and transcript-like material, and asks an ephemeral reviewer for a structured verdict. The packet and verdict are tied to the artifacts being reviewed. See [the host runtime contract](docs/host-runtime.md) and [the integrated Delegate bridge](docs/delegate-bridge/v2-integrated.md).
+For integrated checkpoint review, the Bureau prepares an evidence packet and starts a temporary reviewer. The packet excludes the full run log and transcript-like material. The response must identify the artifacts under review and match their hashes. See [the host runtime contract](docs/host-runtime.md) and [the integrated Delegate bridge](docs/delegate-bridge/v2-integrated.md).
 
 ### Artifact memory
 
-The conversation is not the source of truth. A run writes its state, decisions, specifications, plans, reviews, prompts, and build evidence into a dedicated directory. Another Conductor can resume from that record without inheriting the previous session's transcript.
+Each run has a directory containing its state, decisions, specifications, plans, reviews, prompts and build evidence. Another Conductor can resume from those files without the previous session's transcript.
 
-[Anatomy of a Run](https://thebureau.dev/records/anatomy-of-a-run) walks through the paper trail in plain language. The mechanical contract lives in [the run protocol](docs/run-protocol.md).
+[Anatomy of a Run](https://thebureau.dev/records/anatomy-of-a-run) explains the record a run leaves behind. The [run protocol](docs/run-protocol.md) defines how it is written and used.
 
 ### Human judgment
 
-The Bureau can continue through routine, written gates. It stops when the remaining question requires a product choice, new authority, or an external action that the task did not already authorize.
+The Bureau can continue when routine checks pass. It stops for product choices, new authority or external actions the task has not already authorized.
 
 Build workflows stop at the development boundary unless a separate, explicit production action is approved. The standing rules are documented in [the Conductor gates](docs/conductor-gates.md) and [the external-action boundary](docs/external-action-boundary.md).
 
 ### Isolated code changes
 
-Code-changing runs receive their own branch and worktree. Concurrent runs can work against the same repository without sharing a checkout or writing directly to the integration branch. The worktree lifecycle is defined in [the git worktree contract](docs/git-worktree.md).
+Code-changing runs receive their own branch and worktree. Concurrent runs can work against the same repository without sharing a checkout or writing directly to the integration branch. The [git worktree contract](docs/git-worktree.md) defines setup, integration and cleanup.
 
 For public GitHub repositories, the delivery unit is a linked issue and pull request: Bureau opens
 a draft early, publishes test and cold-review evidence, marks it ready only after review passes,
 and merges through GitHub. Private repositories may opt in; non-GitHub work keeps an explicit local
 fallback. See [GitHub delivery](docs/github-delivery.md).
 
-### Honest accounting
+### Run accounting
 
 The close-out record distinguishes exact, estimated, inferred, partial, and unavailable evidence. Missing provider data is recorded as unavailable rather than counted as zero. See [run accounting](docs/run-accounting.md).
 
-### Lessons that outlive the run
+### Regression checks
 
-Repeated failures are promoted into conventions, scripts, or committed regression fixtures. The standing regression suite protects mechanical guarantees such as artifact binding, verdict validation, run isolation, accounting integrity, and fail-closed gates.
+Lessons from repeated failures become conventions, script changes or committed regression fixtures. The standing suite checks artifact binding, verdict validation, run isolation, accounting integrity and gates that refuse to proceed when required evidence is missing or invalid.
 
-The suite and its promotion lifecycle are documented in [`.bureau/regression/README.md`](.bureau/regression/README.md). Framework-level consistency checks live in [`check-framework.sh`](check-framework.sh).
+[`.bureau/regression/README.md`](.bureau/regression/README.md) explains the suite and how run-local fixtures enter it. [`check-framework.sh`](check-framework.sh) checks consistency across framework files.
 
 ## Workflows
 
-The Bureau is a dispatcher, not one fixed pipeline. Its registered workflows currently cover:
+The registered workflows cover different kinds of work:
 
 | Workflow | Purpose | Typical result |
 |---|---|---|
@@ -105,11 +103,11 @@ The Bureau is a dispatcher, not one fixed pipeline. Its registered workflows cur
 | [`message-framing`](workflows/message-framing.md) and [`copy-review`](workflows/copy-review.md) | Frame and review public-facing language | Audience-aware copy with a separate voice pass |
 | [`write-article`](workflows/write-article.md) | Produce a long-form article through staged review | Versioned drafts, grounding, cold proof, and a publish gate |
 
-The complete and current list lives in [`workflows/index.md`](workflows/index.md). A task that does not fit an existing entry triggers workflow definition instead of being forced through the feature pipeline.
+[`workflows/index.md`](workflows/index.md) has the complete list. When no entry fits, the Conductor defines a workflow before proceeding.
 
 ## The cast
 
-The names give the system a memorable working language. The responsibilities remain concrete.
+Each named role has a written contract:
 
 | Role | Responsibility |
 |---|---|
@@ -154,11 +152,9 @@ The exact artifact set depends on the workflow. Common files include:
 | `regression/` | Run-local regression fixtures before promotion |
 | `accounting.json` | Close-out record with evidence confidence |
 
-The artifacts allow concurrent runs, inspection after the fact, and recovery after a session ends.
-
 ## Runtime support
 
-The Bureau separates provider-neutral model routing from the host transport that creates agent contexts.
+Model routing chooses which model a role uses. The host transport creates and resumes its agent context.
 
 | Runtime | Agent host | Status |
 |---|---|---|
@@ -168,7 +164,7 @@ The Bureau separates provider-neutral model routing from the host transport that
 | OpenRouter | Model routing only | No native run transport; fails closed |
 | Hermes | Model routing only | No native run transport; fails closed |
 
-Every specialist receives an explicit model assignment from the run's routing file. The framework does not silently inherit the manager's model. Current mappings and known accounting gaps are documented in [`docs/host-runtime.md`](docs/host-runtime.md), [model routing and cast](docs/model-routing-and-cast.md), and [`config/runtimes/README.md`](config/runtimes/README.md).
+Every specialist receives an explicit model assignment from the run's routing file. Current mappings and known accounting gaps are documented in [`docs/host-runtime.md`](docs/host-runtime.md), [model routing and cast](docs/model-routing-and-cast.md), and [`config/runtimes/README.md`](config/runtimes/README.md).
 
 ## Repository map
 
@@ -185,7 +181,7 @@ Every specialist receives an explicit model assignment from the run's routing fi
 
 ## Operator documentation
 
-The public README describes the system. The operational contracts remain in the repository:
+Start with the entrypoint for your host, then load the contracts needed for the task:
 
 - Codex entrypoint and repository rules: [`AGENTS.md`](AGENTS.md) and [`CODEX.md`](CODEX.md)
 - Claude Code entrypoint: [`CLAUDE.md`](CLAUDE.md)
@@ -201,13 +197,11 @@ The public README describes the system. The operational contracts remain in the 
 - Script reference: [`scripts/README.md`](scripts/README.md)
 - External dependencies: [`DEPENDENCIES.md`](DEPENDENCIES.md)
 
-These documents assume a capable operator working from the repository. Novadiem does not currently provide a beginner installer, hosted control plane, or general installation support.
+These documents assume an operator working from the repository. Novadiem does not currently provide a beginner installer, hosted control plane or general installation support.
 
 ## Status and availability
 
-The Bureau is in active development and changes as Novadiem learns from real runs. Interfaces, workflow contracts, model mappings, and operator instructions may change without a stable release boundary.
-
-The repository is public so clients and technical peers can inspect the work. If you want the Bureau applied to a product, an existing codebase, or an agent workflow, [work with Novadiem](https://novadiem.com/contact).
+The Bureau changes as we use it. Interfaces, workflow contracts, model mappings and operator instructions may change without a stable release boundary.
 
 ## License and use
 
@@ -226,6 +220,4 @@ No open-source license is currently attached to this repository. Public visibili
 
 ## Work with Novadiem
 
-The Bureau is part of how Novadiem Studio delivers software. It is not the service by itself.
-
-If you have a product to define, a difficult codebase to move forward, or an agent workflow that needs stronger structure and review, [start a conversation with Novadiem](https://novadiem.com/contact).
+To discuss using the Bureau to define a product, improve an existing codebase or build an agent workflow, [contact Novadiem](https://novadiem.com/contact).
