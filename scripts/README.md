@@ -727,3 +727,17 @@ ls ../chatgpt-export/
 
 Run after editing `LORE.md`, `VISUAL-CANON.md`, `VISUAL-SYSTEM.md`, or adding a locked
 reference image. Full manifest: `reference/README.md` (copied flat as `UPLOAD-INDEX.md`).
+
+# Copilot cloud-agent status
+
+`scripts/copilot-status.sh` reports GitHub Copilot cloud-agent spend and the open PRs the
+agent has opened across `rheos` and `Novadiem-Studio`: AI credits used against the monthly
+allowance, days to reset, Actions minutes, and each agent PR's draft state, size and CI.
+`--alerts` prints only what needs a human (credits under 20% with more than three days
+left, net overage billing, a PR out of draft, failing CI) and is silent otherwise.
+`--json` prints the full snapshot.
+
+Needs the `user` scope on the gh token (`gh auth refresh -h github.com -s user`). Each run
+appends a line to `~/.novadiem/copilot-usage.jsonl`. The billing API reports Copilot credits
+as one aggregate SKU, so per-task cost is the delta between two snapshots, and the web AI
+usage page is still the only per-model breakdown.
