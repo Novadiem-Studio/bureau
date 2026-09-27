@@ -77,7 +77,7 @@ while IFS= read -r pr; do
   [ -n "$pr" ] || continue
   repo="$(jq -r .repository.nameWithOwner <<<"$pr")"
   num="$(jq -r .number <<<"$pr")"
-  detail="$(gh pr view "$num" -R "$repo" --json additions,deletions,changedFiles,statusCheckRollup,reviewDecision 2>/dev/null)" || {
+  detail="$(gh pr view "$num" -R "$repo" --json additions,deletions,changedFiles,headRefOid,reviewDecision 2>/dev/null)" || {
     fetch_errors+=("PR detail failed: ${repo}#${num}")
     detail='{"error": true}'
   }
@@ -87,16 +87,28 @@ while IFS= read -r pr; do
     fetch_errors+=("PR timeline failed: ${repo}#${num}")
     agent_state="copilot_work_error"
   }
-  row="$(jq -n --argjson p "$pr" --argjson d "$detail" --arg agent "${agent_state#copilot_work_}" '
-    ($d.statusCheckRollup // []) as $c
+  # CI verdict comes from the head commit's Actions runs, not the status rollup:
+  # GitHub holds workflow runs on Copilot PRs as action_required until a human
+  # approves them, and those held runs never appear in statusCheckRollup, so a
+  # rollup holding only a CodeRabbit status reads as "passing" with no CI run.
+  runs='{"workflow_runs": []}'
+  head_sha="$(jq -r '.headRefOid // empty' <<<"$detail")"
+  if [ -n "$head_sha" ]; then
+    runs="$(gh api "repos/${repo}/actions/runs?head_sha=${head_sha}&per_page=100" 2>/dev/null)" || {
+      fetch_errors+=("Actions runs lookup failed: ${repo}#${num}")
+      runs='{"workflow_runs": [], "error": true}'
+    }
+  fi
+  row="$(jq -n --argjson p "$pr" --argjson d "$detail" --argjson w "$runs" --arg agent "${agent_state#copilot_work_}" '
+    ($w.workflow_runs // []) as $r
     | {repo: $p.repository.nameWithOwner, number: $p.number, title: $p.title,
        draft: $p.isDraft, url: $p.url,
        additions: ($d.additions // 0), deletions: ($d.deletions // 0), files: ($d.changedFiles // 0),
-       ci: (if $d.error then "error"
-            elif ($c|length)==0 then "none"
-            elif any($c[]; (.conclusion // .state) | IN("FAILURE","ERROR","CANCELLED","TIMED_OUT")) then "failing"
-            elif any($c[]; ((.status // "") | IN("IN_PROGRESS","QUEUED","PENDING"))
-                        or ((.state // "") | IN("PENDING","EXPECTED"))) then "running"
+       ci: (if ($d.error or $w.error) then "error"
+            elif ($r|length)==0 then "no-runs"
+            elif any($r[]; .conclusion == "action_required") then "needs-approval"
+            elif any($r[]; (.conclusion // "") | IN("failure","timed_out","cancelled","startup_failure")) then "failing"
+            elif any($r[]; .status != "completed") then "running"
             else "passing" end),
        agent: (if $agent == "" then "unknown" else $agent end),
        review: ($d.reviewDecision // "")}')"
@@ -145,8 +157,10 @@ if [ "$mode" = "alerts" ]; then
   alerts+=("${fetch_errors[@]+"${fetch_errors[@]}"}")
   while IFS= read -r r; do [ -n "$r" ] && alerts+=("$r"); done < <(jq -r '.[] |
     if .agent == "finished" and .files == 0 then "Agent finished with an EMPTY diff (PR text may claim changes): \(.repo)#\(.number) \(.title)"
-    elif .agent == "finished" and (.review | IN("", "REVIEW_REQUIRED")) then "Agent finished, needs review: \(.repo)#\(.number) \(.title)"
+    elif .agent == "finished" and (.review | IN("", "REVIEW_REQUIRED")) then
+      "Agent finished, needs review\(if .ci == "needs-approval" then " (CI held for approval, nothing has run)" else "" end): \(.repo)#\(.number) \(.title)"
     elif .ci == "failing" then "CI failing: \(.repo)#\(.number) \(.title)"
+    elif .ci == "needs-approval" then "CI held for approval, nothing has run: \(.repo)#\(.number) \(.url)"
     else empty end' <<<"$pr_rows")
   # Drop empty entries left by the fetch_errors expansion.
   kept=()
