@@ -4,7 +4,7 @@ A multi-agent workflow that Novadiem Studio uses to plan, build, review and docu
 
 [Explore the Bureau](https://thebureau.dev) | [Read the Novadiem case study](https://novadiem.com/bureau) | [Browse the Records](https://thebureau.dev/records) | [Work with Novadiem](https://novadiem.com/contact)
 
-![The Bureau's cast of specialist agents](https://thebureau.dev/assets/og/og-home.jpg)
+![The Bureau banner](https://thebureau.dev/assets/og/og-home.jpg)
 
 The Bureau assigns work to specialists in separate contexts and saves their decisions and output to files. Review checkpoints determine whether work can continue, needs revision or requires a human decision. External actions and production deployments have their own authorization rules.
 
