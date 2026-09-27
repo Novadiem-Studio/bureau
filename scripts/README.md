@@ -734,7 +734,7 @@ reference image. Full manifest: `reference/README.md` (copied flat as `UPLOAD-IN
 agent has opened across `rheos` and `Novadiem-Studio`: AI credits used against the monthly
 allowance, days to reset, Actions minutes, and each agent PR's draft state, size and CI.
 `--alerts` prints only what needs a human (credits under 20% with more than three days
-left, net overage billing, a PR out of draft, failing CI) and is silent otherwise.
+left, net overage billing, a finished agent PR awaiting review or with an empty diff, failing CI) and is silent otherwise.
 `--json` prints the full snapshot.
 
 Needs the `user` scope on the gh token (`gh auth refresh -h github.com -s user`). Each run

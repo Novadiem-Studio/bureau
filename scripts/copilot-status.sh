@@ -10,6 +10,11 @@
 #   GET /users/{u}/settings/billing/usage/summary  (needs the gh `user` scope)
 #   gh search prs --author app/copilot-swe-agent   (open agent PRs across OWNERS)
 #
+# An agent PR is 'done' when its timeline's last copilot_work_* event is
+# copilot_work_finished; the agent leaves the PR in draft either way. A finished
+# PR with zero changed files is flagged: the agent has been seen writing a PR
+# description for changes it never committed (rheos/railsbackend#106).
+#
 # Writes one snapshot line per run to ~/.novadiem/copilot-usage.jsonl, so the
 # per-task cost of a session is the credit delta between two snapshots. The
 # billing API reports Copilot Cloud Agent credits as one aggregate SKU, with no
@@ -66,7 +71,10 @@ while IFS= read -r pr; do
   repo="$(jq -r .repository.nameWithOwner <<<"$pr")"
   num="$(jq -r .number <<<"$pr")"
   detail="$(gh pr view "$num" -R "$repo" --json additions,deletions,changedFiles,statusCheckRollup,reviewDecision 2>/dev/null || echo '{}')"
-  row="$(jq -n --argjson p "$pr" --argjson d "$detail" '
+  # The agent keeps its PR in draft when done; the timeline's last copilot_work_* event is the real signal.
+  agent_state="$(gh api "repos/${repo}/issues/${num}/timeline" --paginate \
+    --jq '.[] | select(.event | test("^copilot_work_")) | .event' 2>/dev/null | tail -n 1)"
+  row="$(jq -n --argjson p "$pr" --argjson d "$detail" --arg agent "${agent_state#copilot_work_}" '
     ($d.statusCheckRollup // []) as $c
     | {repo: $p.repository.nameWithOwner, number: $p.number, title: $p.title,
        draft: $p.isDraft, url: $p.url,
@@ -75,6 +83,7 @@ while IFS= read -r pr; do
             elif any($c[]; (.conclusion // .state) | IN("FAILURE","ERROR","CANCELLED","TIMED_OUT")) then "failing"
             elif any($c[]; (.status // "") | IN("IN_PROGRESS","QUEUED","PENDING")) then "running"
             else "passing" end),
+       agent: (if $agent == "" then "unknown" else $agent end),
        review: ($d.reviewDecision // "")}')"
   pr_rows="$(jq --argjson r "$row" '. + [$r]' <<<"$pr_rows")"
 done < <(jq -c '.[]' <<<"$prs")
@@ -112,7 +121,8 @@ if [ "$mode" = "alerts" ]; then
     alerts+=("GitHub is now billing overage: \$${actions_net} net this month")
   fi
   while IFS= read -r r; do [ -n "$r" ] && alerts+=("$r"); done < <(jq -r '.[] |
-    if .draft == false and .review == "" then "Ready for review: \(.repo)#\(.number) \(.title)"
+    if .agent == "finished" and .files == 0 then "Agent finished with an EMPTY diff (PR text may claim changes): \(.repo)#\(.number) \(.title)"
+    elif .agent == "finished" and .review == "" then "Agent finished, needs review: \(.repo)#\(.number) \(.title)"
     elif .ci == "failing" then "CI failing: \(.repo)#\(.number) \(.title)"
     else empty end' <<<"$pr_rows")
   [ "${#alerts[@]}" -eq 0 ] && exit 0
@@ -128,4 +138,4 @@ fi
 printf 'Actions minutes  %s this month  (net billed $%s)\n' "$(printf '%.0f' "$actions_min")" "$actions_net"
 printf '\nOpen Copilot PRs\n'
 jq -r 'if length == 0 then "  none" else .[] |
-  "  \(.repo)#\(.number)  \(if .draft then "draft" else "READY" end)  ci=\(.ci)  +\(.additions)/-\(.deletions) in \(.files)  \(.title)" end' <<<"$pr_rows"
+  "  \(.repo)#\(.number)  agent=\(.agent)\(if .agent == "finished" and .files == 0 then " EMPTY-DIFF" else "" end)  ci=\(.ci)  +\(.additions)/-\(.deletions) in \(.files)  \(.title)" end' <<<"$pr_rows"
