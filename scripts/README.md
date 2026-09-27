@@ -739,5 +739,6 @@ left, net overage billing, a finished agent PR awaiting review or with an empty 
 
 Needs the `user` scope on the gh token (`gh auth refresh -h github.com -s user`). Each run
 appends a line to `~/.novadiem/copilot-usage.jsonl`. The billing API reports Copilot credits
-as one aggregate SKU, so per-task cost is the delta between two snapshots, and the web AI
-usage page is still the only per-model breakdown.
+as one aggregate SKU. The "since last run" delta is the cost of one task only when a single
+session ran between the two snapshots; otherwise it is their combined spend. The web AI usage
+page is still the only per-model breakdown.
