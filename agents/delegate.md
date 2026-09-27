@@ -708,9 +708,10 @@ a keyword?" to "how bad is this?" is a boundary violation (FR-B14-9, AC-15).
 Read `integration-results.json#scope`:
 - If `scope_diff_clean: null` → record in Uncertainties ("scope block absent in
   state.json; scope diff not run"). Not blocking (EC-B14-6).
-- If `violations` or `cut_symbol_hits` is non-empty → emit `revise` with
-  Required-changes listing the out-of-scope files/symbols.
-- If `scope_diff_clean: true` and no violations → non-blocking.
+- If `scope_diff_clean: false` → emit `revise` with Required-changes listing
+  out-of-scope files and/or cut-symbols introduced on added lines.
+- If `scope_diff_clean: true` → non-blocking; `cut_symbol_attribution` remains
+  informational evidence (removed/context/header hits do not fail scope).
 
 **Step 4 — Integration cleanliness** (FR-B14-6)
 

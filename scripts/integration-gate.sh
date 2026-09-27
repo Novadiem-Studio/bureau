@@ -164,7 +164,7 @@ data = {
     "under_declaration": [],
     "scope": {
         "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "scope_diff_clean": None
+        "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
     },
     "fast_forward_ok": False,
     "conflicts_clean": False,
@@ -417,7 +417,7 @@ import json, subprocess, sys
 # "indeterminate" scope object (scope_diff_clean: null), never nothing.
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -440,6 +440,8 @@ try:
         ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
         cwd=worktree, capture_output=True, text=True
     )
+    if r.returncode != 0:
+        raise RuntimeError("git diff --name-only failed")
     diff_files = [l for l in r.stdout.splitlines() if l.strip()]
 
     import fnmatch
@@ -449,18 +451,61 @@ try:
             if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
                 violations.append(f)
 
-    # grep the full diff for each cut symbol
+    # Attribute cut symbols by file and line kind in patch text.
     r2 = subprocess.run(
         ["git", "diff", "%s...HEAD" % base_ref],
         cwd=worktree, capture_output=True, text=True
     )
-    full_diff = r2.stdout
-    cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
+    if r2.returncode != 0:
+        raise RuntimeError("git diff failed")
 
-    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
+    kinds = ("added", "removed", "context", "header")
+    cut_symbol_attribution = {
+        sym: {"total": {k: 0 for k in kinds}, "files": {}}
+        for sym in cut_symbols
+    }
+    current_file = ""
+    for raw in r2.stdout.splitlines():
+        line = raw.rstrip("\n")
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            current_file = "" if path == "/dev/null" else path
+            continue
+        if line.startswith("@@"):
+            kind, text = "header", line
+        elif line.startswith("+") and not line.startswith("+++"):
+            kind, text = "added", line[1:]
+        elif line.startswith("-") and not line.startswith("---"):
+            kind, text = "removed", line[1:]
+        elif line.startswith(" "):
+            kind, text = "context", line[1:]
+        else:
+            continue
+        for sym in cut_symbols:
+            if sym in text:
+                sym_data = cut_symbol_attribution[sym]
+                sym_data["total"][kind] += 1
+                file_key = current_file or "(unknown)"
+                file_counts = sym_data["files"].setdefault(file_key, {k: 0 for k in kinds})
+                file_counts[kind] += 1
+
+    cut_symbol_hits = [
+        sym for sym, data in cut_symbol_attribution.items()
+        if sum(data["total"].values()) > 0
+    ]
+    cut_symbol_added_hits = [
+        sym for sym, data in cut_symbol_attribution.items()
+        if data["total"]["added"] > 0
+    ]
+
+    # Scope asks what this run introduced: only added-line cut-symbol hits fail.
+    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_added_hits) == 0)
     print(json.dumps({
         "diff_files": diff_files, "allowed_paths": allowed_paths,
         "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+        "cut_symbol_attribution": cut_symbol_attribution,
         "scope_diff_clean": scope_diff_clean
     }))
 except Exception:
@@ -620,7 +665,7 @@ import json, sys
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
 }
 
 
