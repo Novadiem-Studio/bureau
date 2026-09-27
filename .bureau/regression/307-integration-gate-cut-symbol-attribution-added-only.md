@@ -82,7 +82,43 @@ command: |
     .scope.cut_symbol_attribution.worker_loop.files["src.c"].added >= 1
   ' "$OUT/integration-results.json"
 
-  # Case D: deleted-file hunks attribute removed lines via the old (--- a/...) path.
+  # Case D: added `++worker_loop` is classified as an added line (not skipped).
+  cat > "$W/src.c" <<'C'
+  int header_only_marker = 0;
+
+  void do_work(void) {
+    int context_only = 1;
+    int stable = 2;
+    ++worker_loop;
+  }
+  C
+  git -C "$W" add -A; git -C "$W" commit -qm "added line begins with ++worker_loop"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==false and
+    .scope.cut_symbol_attribution.worker_loop.files["src.c"].added >= 1
+  ' "$OUT/integration-results.json"
+
+  # Case E: removed `-- worker_loop` counts as removed (informational, non-blocking).
+  cat > "$W/q.sql" <<'SQL'
+  -- worker_loop here
+  select 1;
+  SQL
+  git -C "$W" add -A; git -C "$W" commit -qm "add sql with removed marker token"
+  BASE_SQL=$(git -C "$W" rev-parse HEAD)
+  cat > "$W/q.sql" <<'SQL'
+  select 1;
+  SQL
+  git -C "$W" add -A; git -C "$W" commit -qm "remove sql marker token line"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_SQL" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==true and
+    .scope.cut_symbol_attribution.worker_loop.files["q.sql"].removed >= 1
+  ' "$OUT/integration-results.json"
+
+  # Case F: deleted-file hunks attribute removed lines via the old (--- a/...) path.
   cat > "$W/deleted.c" <<'C'
   int deleted_only = 1;
   C
@@ -97,7 +133,7 @@ command: |
     .scope.cut_symbol_attribution.deleted_only.files["deleted.c"].removed >= 1
   ' "$OUT/integration-results.json"
 
-  # Case E: quoted non-ASCII diff paths decode to UTF-8 file keys.
+  # Case G: quoted non-ASCII diff paths decode to UTF-8 file keys.
   cat > "$W/café.c" <<'C'
   int stable = 0;
   C
@@ -115,6 +151,6 @@ command: |
     .scope.cut_symbol_attribution.worker_loop.files["café.c"].added >= 1
   ' "$OUT/integration-results.json"
   echo "PASS"
-expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, lines beginning `++` inside hunks are still scanned as added content, deleted-file removed-line hits attribute to the old path, and quoted non-ASCII paths decode to UTF-8 file keys.
+expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, `++worker_loop` content lines are classified as added (blocking), removed `-- worker_loop` lines are classified as removed (informational, non-blocking), deleted-file removed-line hits attribute to the old path, and quoted non-ASCII paths decode to UTF-8 file keys.
 phase: bug-fix · issue-43
 owner: issue #43 / scripts/integration-gate.sh — attributed cut-symbol scanning with added-line-only fail semantics

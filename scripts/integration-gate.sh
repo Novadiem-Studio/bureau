@@ -533,9 +533,9 @@ try:
             kind, text = "header", line
         elif not in_hunk:
             continue
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif line.startswith("+"):
             kind, text = "added", line[1:]
-        elif line.startswith("-") and not line.startswith("---"):
+        elif line.startswith("-"):
             kind, text = "removed", line[1:]
         elif line.startswith(" "):
             kind, text = "context", line[1:]
