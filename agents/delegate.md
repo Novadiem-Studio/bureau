@@ -709,7 +709,9 @@ Read `integration-results.json#scope`:
 - If `scope_diff_clean: null` → record in Uncertainties ("scope block absent in
   state.json; scope diff not run"). Not blocking (EC-B14-6).
 - If `scope_diff_clean: false` → emit `revise` with Required-changes listing
-  out-of-scope files and/or cut-symbols introduced on added lines.
+  out-of-scope files and/or cut-symbols introduced on added lines or in a new
+  file's path (attribution kind `path`). If `scope.parse_error` is present, the
+  patch could not be fully scanned: list it verbatim as a Required-change.
 - If `scope_diff_clean: true` → non-blocking; `cut_symbol_attribution` remains
   informational evidence (removed/context/header hits do not fail scope).
 

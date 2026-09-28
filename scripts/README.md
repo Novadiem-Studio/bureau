@@ -496,7 +496,8 @@ scripts/integration-gate.sh \
   `checkpoint_type`, `escalate_marker`, `canonical_source`, `gates`, `pre_existing`,
   `under_declaration`, `scope`, `fast_forward_ok`, `conflicts_clean`, `errors`). `scope` includes
   `cut_symbol_hits` (list shape preserved), `cut_symbol_attribution` (per-symbol, per-file line-kind
-  counts), and `scope_diff_clean` (fails only on added-line symbol leaks or scope path violations). It
+  counts), and `scope_diff_clean` (fails only on added-line or new-path symbol leaks, scope path violations, or a
+  patch the parser cannot fully account for, reported as `parse_error`). It
   carries **NO `verdict` key** — the proceed/revise/escalate Decision is the cold reviewer's (`NN-verdict.md`).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required (no new dep).
 - **Exit codes:** `0` results written (or routine no-op); `2` usage error (missing/unknown flag,

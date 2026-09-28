@@ -150,7 +150,44 @@ command: |
     .scope.scope_diff_clean==false and
     .scope.cut_symbol_attribution.worker_loop.files["café.c"].added >= 1
   ' "$OUT/integration-results.json"
+  # Case H: added-line content that only a non-newline splitter would break
+  # (form feed, vertical tab, U+2028, lone CR) is still one added line and blocks.
+  for BYTES in '\x0c' '\x0b' '\xe2\x80\xa8' '\r'; do
+    printf 'int a;\n' > "$W/split.c"
+    git -C "$W" add -A; git -C "$W" commit -qm "split base"
+    BASE_SPLIT=$(git -C "$W" rev-parse HEAD)
+    printf "int a;\nq;${BYTES}worker_loop();\n" > "$W/split.c"
+    git -C "$W" add -A; git -C "$W" commit -qm "split head"
+    "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_SPLIT" \
+      --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+    jq -e '
+      .scope.scope_diff_clean==false and
+      .scope.cut_symbol_attribution.worker_loop.files["split.c"].added >= 1
+    ' "$OUT/integration-results.json"
+  done
+
+  # Case I: repo colour config does not blind the scan.
+  git -C "$W" config color.ui always; git -C "$W" config color.diff always
+  BASE_COLOR=$(git -C "$W" rev-parse HEAD)
+  printf 'int worker_loop_colour = 1;\n' >> "$W/split.c"
+  git -C "$W" add -A; git -C "$W" commit -qm "colour head"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_COLOR" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '.scope.scope_diff_clean==false' "$OUT/integration-results.json"
+  git -C "$W" config --unset color.ui; git -C "$W" config --unset color.diff
+
+  # Case J: a new file whose path names a cut symbol blocks, attributed as kind "path".
+  BASE_PATH=$(git -C "$W" rev-parse HEAD)
+  : > "$W/worker_loop.c"
+  git -C "$W" add -A; git -C "$W" commit -qm "empty file named for the cut symbol"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_PATH" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==false and
+    .scope.cut_symbol_attribution.worker_loop.files["worker_loop.c"].path == 1 and
+    (.scope | has("parse_error") | not)
+  ' "$OUT/integration-results.json"
   echo "PASS"
-expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, `++worker_loop` content lines are classified as added (blocking), removed `-- worker_loop` lines are classified as removed (informational, non-blocking), deleted-file removed-line hits attribute to the old path, and quoted non-ASCII paths decode to UTF-8 file keys.
+expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, `++worker_loop` content lines are classified as added (blocking), removed `-- worker_loop` lines are classified as removed (informational, non-blocking), deleted-file removed-line hits attribute to the old path, quoted non-ASCII paths decode to UTF-8 file keys, form feed / vertical tab / U+2028 / lone CR inside an added line do not split it out of the scan, repo colour config does not blind it, and a new file whose path names a cut symbol blocks with kind `path`.
 phase: bug-fix · issue-43
 owner: issue #43 / scripts/integration-gate.sh — attributed cut-symbol scanning with added-line-only fail semantics
