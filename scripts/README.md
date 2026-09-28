@@ -495,7 +495,9 @@ scripts/integration-gate.sh \
 - **Output:** writes `integration-results.json` into `--out` — the EVIDENCE file (`schema_version`,
   `checkpoint_type`, `escalate_marker`, `canonical_source`, `gates`, `pre_existing`,
   `under_declaration`, `scope`, `fast_forward_ok`, `conflicts_clean`, `errors`). `scope` includes
-  `cut_symbol_hits` (list shape preserved), `cut_symbol_attribution` (per-symbol, per-file line-kind
+  `cut_symbol_hits` (list shape preserved; every symbol seen, including informational removed/context/
+  header hits), `cut_symbol_introduced` (only symbols on added lines or new paths, the ones that block),
+  `cut_symbol_attribution` (per-symbol, per-file line-kind
   counts), and `scope_diff_clean` (fails only on added-line or new-path symbol leaks, scope path violations, or a
   patch the parser cannot fully account for, reported as `parse_error`). It
   carries **NO `verdict` key** — the proceed/revise/escalate Decision is the cold reviewer's (`NN-verdict.md`).

@@ -164,7 +164,8 @@ data = {
     "under_declaration": [],
     "scope": {
         "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
+        "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
     },
     "fast_forward_ok": False,
     "conflicts_clean": False,
@@ -417,7 +418,8 @@ import json, subprocess, sys
 # "indeterminate" scope object (scope_diff_clean: null), never nothing.
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -439,11 +441,11 @@ try:
     import re
     # Pin every diff to plain, prefixed, uncoloured output so user or repo git
     # config (color.diff=always, diff.noprefix, an external diff driver, a
-    # textconv filter) cannot change what the parser sees. Output is read as
+    # textconv filter, diff.submodule=log) cannot change what the parser sees. Output is read as
     # bytes: text=True would turn a lone CR inside a line into a line break.
     GIT_DIFF = ["git", "-c", "core.quotePath=true", "diff", "--no-color",
                 "--no-ext-diff", "--no-textconv", "--no-relative",
-                "--src-prefix=a/", "--dst-prefix=b/"]
+                "--src-prefix=a/", "--dst-prefix=b/", "--submodule=short"]
     def git_diff(args):
         res = subprocess.run(GIT_DIFF + ["%s...HEAD" % base_ref] + args,
                              cwd=worktree, capture_output=True)
@@ -627,6 +629,7 @@ try:
     result = {
         "diff_files": diff_files, "allowed_paths": allowed_paths,
         "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+        "cut_symbol_introduced": cut_symbol_added_hits,
         "cut_symbol_attribution": cut_symbol_attribution,
         "scope_diff_clean": scope_diff_clean
     }
@@ -790,7 +793,8 @@ import json, sys
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "cut_symbol_attribution": {}, "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
 }
 
 

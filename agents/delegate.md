@@ -734,7 +734,9 @@ OUTER KEY MAP (snake_case in integration-results.json → PascalCase in Integrat
   pre_existing       → Pre-existing-validated
   under_declaration  → Under-declaration
   scope.scope_diff_clean → Scope-diff-clean
-  scope.violations + scope.cut_symbol_hits → Scope-violations (combined list of strings)
+  scope.violations + scope.cut_symbol_introduced (+ "parse_error: <scope.parse_error>" when present)
+                     → Scope-violations (combined list of strings). Not cut_symbol_hits:
+                       that list also carries informational removed/context/header hits.
   fast_forward_ok    → Fast-forward-ok
   conflicts_clean    → Conflicts-clean
 

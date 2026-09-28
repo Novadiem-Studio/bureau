@@ -185,9 +185,32 @@ command: |
   jq -e '
     .scope.scope_diff_clean==false and
     .scope.cut_symbol_attribution.worker_loop.files["worker_loop.c"].path == 1 and
+    (.scope | has("parse_error") | not) and
+    .scope.cut_symbol_introduced == ["worker_loop"]
+  ' "$OUT/integration-results.json"
+
+  # Case K: informational-only hits leave cut_symbol_introduced empty (the Delegate
+  # builds Scope-violations from it), and diff.submodule=log does not cause a false
+  # parse_error on a submodule bump.
+  SUB="$TMP/sub"; git init -q "$SUB"; git -C "$SUB" config user.email t@t; git -C "$SUB" config user.name t
+  echo one > "$SUB/f"; git -C "$SUB" add -A; git -C "$SUB" commit -qm one
+  git -C "$W" -c protocol.file.allow=always submodule add -q "$SUB" sub
+  git -C "$W" commit -qm "add submodule"
+  BASE_SUB=$(git -C "$W" rev-parse HEAD)
+  echo two > "$SUB/f"; git -C "$SUB" commit -qam two
+  git -C "$W/sub" -c protocol.file.allow=always pull -q
+  git -C "$W" config diff.submodule log
+  git -C "$W" add sub; git -C "$W" commit -qm "bump submodule"
+  "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE_SUB" \
+    --claimed-gates '[]' --state-json "$TMP/state.json" --out "$OUT"
+  jq -e '
+    .scope.scope_diff_clean==true and
+    .scope.cut_symbol_introduced == [] and
     (.scope | has("parse_error") | not)
   ' "$OUT/integration-results.json"
+  git -C "$W" config --unset diff.submodule
+  jq -e '.scope.cut_symbol_introduced == []' "$OUT/integration-results.json"
   echo "PASS"
-expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, `++worker_loop` content lines are classified as added (blocking), removed `-- worker_loop` lines are classified as removed (informational, non-blocking), deleted-file removed-line hits attribute to the old path, quoted non-ASCII paths decode to UTF-8 file keys, form feed / vertical tab / U+2028 / lone CR inside an added line do not split it out of the scan, repo colour config does not blind it, and a new file whose path names a cut symbol blocks with kind `path`.
+expected: exit 0; stdout "PASS"; scope includes per-symbol/per-file line-kind attribution (`added`/`removed`/`context`/`header`), `cut_symbol_hits` remains a list of symbol strings, `scope_diff_clean` is true when hits are only removed/context/header and false only when an added-line hit is introduced, `++worker_loop` content lines are classified as added (blocking), removed `-- worker_loop` lines are classified as removed (informational, non-blocking), deleted-file removed-line hits attribute to the old path, quoted non-ASCII paths decode to UTF-8 file keys, form feed / vertical tab / U+2028 / lone CR inside an added line do not split it out of the scan, repo colour config does not blind it, a new file whose path names a cut symbol blocks with kind `path`, `cut_symbol_introduced` lists only blocking symbols, and diff.submodule=log does not cause a false parse_error.
 phase: bug-fix · issue-43
 owner: issue #43 / scripts/integration-gate.sh — attributed cut-symbol scanning with added-line-only fail semantics
