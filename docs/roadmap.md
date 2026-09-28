@@ -151,12 +151,25 @@ Done when:
 
 ### Bundle 06 - Navigation and Runtime Experiments
 
-Purpose: improve discoverability and explore cheaper local execution for safe tasks.
+Purpose: improve discoverability and explore cheaper execution for safe tasks.
 
 Key deliverables:
 
 - Warning-only name lint in repo-root `check-framework.sh`.
 - Optional `local` runtime adapter, capability-profiled and opt-in.
+- GitHub Copilot cloud agent as a build transport for zero-surface changes
+  ([#90](https://github.com/Novadiem-Studio/bureau/issues/90)). The task is scored on the
+  `build-review-cold` silent-failure surfaces before the build; only a predicted zero is built
+  by the agent, and a Claude cold review of the diff is always required.
+
+Copilot note (pilot, 2026-09-27):
+
+- A first attempt cost about $0.74 in Copilot credits. Mechanical fixes were mostly right and
+  finished after one cold review. A gate fix needed three rounds, each missing a neighbouring
+  fail-open, and was rewritten by Claude. That is why only zero-surface work routes there.
+- Agent PRs misstate their own state: they stay in draft when finished, a description can
+  claim changes the diff lacks, and CI is held for approval while the PR looks green.
+  `scripts/copilot-status.sh` reads the real state.
 
 Memory note:
 
@@ -167,6 +180,8 @@ Done when:
 
 - Linting warns without breaking builds.
 - Local routing is proven safe before broad use.
+- Copilot-routed builds never merge without a cold diff review and CI that ran and passed on the
+  head commit (a held, failed, cancelled or startup-failed run does not count).
 
 ### Bundle 13 - Rheo Memory Framework Integration
 
