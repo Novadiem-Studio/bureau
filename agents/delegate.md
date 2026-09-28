@@ -708,9 +708,12 @@ a keyword?" to "how bad is this?" is a boundary violation (FR-B14-9, AC-15).
 Read `integration-results.json#scope`:
 - If `scope_diff_clean: null` → record in Uncertainties ("scope block absent in
   state.json; scope diff not run"). Not blocking (EC-B14-6).
-- If `violations` or `cut_symbol_hits` is non-empty → emit `revise` with
-  Required-changes listing the out-of-scope files/symbols.
-- If `scope_diff_clean: true` and no violations → non-blocking.
+- If `scope_diff_clean: false` → emit `revise` with Required-changes listing
+  out-of-scope files and/or cut-symbols introduced on added lines or in a new
+  file's path (attribution kind `path`). If `scope.parse_error` is present, the
+  patch could not be fully scanned: list it verbatim as a Required-change.
+- If `scope_diff_clean: true` → non-blocking; `cut_symbol_attribution` remains
+  informational evidence (removed/context/header hits do not fail scope).
 
 **Step 4 — Integration cleanliness** (FR-B14-6)
 
@@ -731,7 +734,9 @@ OUTER KEY MAP (snake_case in integration-results.json → PascalCase in Integrat
   pre_existing       → Pre-existing-validated
   under_declaration  → Under-declaration
   scope.scope_diff_clean → Scope-diff-clean
-  scope.violations + scope.cut_symbol_hits → Scope-violations (combined list of strings)
+  scope.violations + scope.cut_symbol_introduced (+ "parse_error: <scope.parse_error>" when present)
+                     → Scope-violations (combined list of strings). Not cut_symbol_hits:
+                       that list also carries informational removed/context/header hits.
   fast_forward_ok    → Fast-forward-ok
   conflicts_clean    → Conflicts-clean
 

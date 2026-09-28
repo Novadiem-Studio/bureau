@@ -164,7 +164,8 @@ data = {
     "under_declaration": [],
     "scope": {
         "diff_files": [], "allowed_paths": [], "violations": [],
-        "cut_symbol_hits": [], "scope_diff_clean": None
+        "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
     },
     "fast_forward_ok": False,
     "conflicts_clean": False,
@@ -417,7 +418,8 @@ import json, subprocess, sys
 # "indeterminate" scope object (scope_diff_clean: null), never nothing.
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -436,11 +438,26 @@ try:
         print(json.dumps(NEUTRAL))
         sys.exit(0)
 
-    r = subprocess.run(
-        ["git", "diff", "%s...HEAD" % base_ref, "--name-only"],
-        cwd=worktree, capture_output=True, text=True
-    )
-    diff_files = [l for l in r.stdout.splitlines() if l.strip()]
+    import re
+    # Pin every diff to plain, prefixed, uncoloured output so user or repo git
+    # config (color.diff=always, diff.noprefix, an external diff driver, a
+    # textconv filter, diff.submodule=log) cannot change what the parser sees. Output is read as
+    # bytes: text=True would turn a lone CR inside a line into a line break.
+    GIT_DIFF = ["git", "-c", "core.quotePath=true", "diff", "--no-color",
+                "--no-ext-diff", "--no-textconv", "--no-relative",
+                "--src-prefix=a/", "--dst-prefix=b/", "--submodule=short"]
+    def git_diff(args):
+        res = subprocess.run(GIT_DIFF + ["%s...HEAD" % base_ref] + args,
+                             cwd=worktree, capture_output=True)
+        if res.returncode != 0:
+            raise RuntimeError("git diff %s failed" % " ".join(args))
+        return res.stdout
+    def nul_paths(raw):
+        return [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
+
+    diff_files = nul_paths(git_diff(["--name-only", "-z"]))
+    # Paths this range brings into existence (added, copied, renamed-to).
+    new_paths = nul_paths(git_diff(["--name-only", "-z", "--diff-filter=ACR"]))
 
     import fnmatch
     violations = []
@@ -449,20 +466,176 @@ try:
             if not any(fnmatch.fnmatch(f, pat) for pat in allowed_paths):
                 violations.append(f)
 
-    # grep the full diff for each cut symbol
-    r2 = subprocess.run(
-        ["git", "diff", "%s...HEAD" % base_ref],
-        cwd=worktree, capture_output=True, text=True
-    )
-    full_diff = r2.stdout
-    cut_symbol_hits = [sym for sym in cut_symbols if sym in full_diff]
+    # Content is decoded leniently: cut symbols are matched as text, and a
+    # non-UTF-8 byte must not abort the scan into the non-blocking null result.
+    patch = git_diff([]).decode("utf-8", "replace")
 
-    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_hits) == 0)
-    print(json.dumps({
+    kinds = ("added", "removed", "context", "header", "path")
+    def decode_git_quoted_path(inner):
+        out = bytearray()
+        i = 0
+        escapes = {
+            "a": b"\a", "b": b"\b", "f": b"\f", "n": b"\n",
+            "r": b"\r", "t": b"\t", "v": b"\v", "\\": b"\\", '"': b'"'
+        }
+        while i < len(inner):
+            ch = inner[i]
+            if ch != "\\":
+                out.extend(ch.encode("utf-8"))
+                i += 1
+                continue
+            i += 1
+            if i >= len(inner):
+                out.extend(b"\\")
+                break
+            esc = inner[i]
+            if esc in "01234567":
+                j = i
+                while j < len(inner) and j < i + 3 and inner[j] in "01234567":
+                    j += 1
+                out.append(int(inner[i:j], 8))
+                i = j
+                continue
+            out.extend(escapes.get(esc, esc.encode("utf-8")))
+            i += 1
+        return out.decode("utf-8")
+
+    def parse_diff_path(token, side):
+        path = token.strip()
+        if path.startswith('"') and path.endswith('"'):
+            inner = path[1:-1]
+            try:
+                path = decode_git_quoted_path(inner)
+            except Exception:
+                path = inner
+        prefix = "b/" if side == "new" else "a/"
+        if path.startswith(prefix):
+            path = path[2:]
+        return None if path == "/dev/null" else path
+
+    cut_symbol_attribution = {
+        sym: {"total": {k: 0 for k in kinds}, "files": {}}
+        for sym in cut_symbols
+    }
+    hit_symbols = set()
+    added_hit_symbols = set()
+
+    def record(sym, path, kind):
+        sym_data = cut_symbol_attribution[sym]
+        sym_data["total"][kind] += 1
+        file_counts = sym_data["files"].setdefault(path, {k: 0 for k in kinds})
+        file_counts[kind] += 1
+        hit_symbols.add(sym)
+        if kind in ("added", "path"):
+            added_hit_symbols.add(sym)
+
+    # A new file whose own path names a cut symbol introduces it as surely as
+    # an added line does.
+    for path in new_paths:
+        for sym in cut_symbols:
+            if sym in path:
+                record(sym, path, "path")
+
+    # Hunk bodies are delimited by the line counts in each @@ header, never by
+    # guessing from the leading characters of a line. Every line of the patch must
+    # be accounted for: a hunk line consumes its count, and anything outside a
+    # hunk must be a known git header. A line the parser cannot place makes the
+    # scope result fail closed (scope_diff_clean false) instead of going unscanned.
+    HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+    FILE_HEADERS = ("index ", "old mode ", "new mode ", "deleted file mode ",
+                    "new file mode ", "similarity index ", "dissimilarity index ",
+                    "rename from ", "rename to ", "copy from ", "copy to ",
+                    "Binary files ", "GIT binary patch")
+    parse_error = None
+    current_file = None
+    current_old_file = None
+    old_left = new_left = 0
+    parsed_added = parsed_removed = 0
+    lines = patch.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    for lineno, line in enumerate(lines, 1):
+        if old_left > 0 or new_left > 0:
+            first = line[:1]
+            if first == "+" and new_left > 0:
+                kind, text = "added", line[1:]
+                new_left -= 1
+                parsed_added += 1
+            elif first == "-" and old_left > 0:
+                kind, text = "removed", line[1:]
+                old_left -= 1
+                parsed_removed += 1
+            elif first in (" ", "") and old_left > 0 and new_left > 0:
+                # "" is a blank context line under diff.suppressBlankEmpty.
+                kind, text = "context", line[1:]
+                old_left -= 1
+                new_left -= 1
+            elif first == "\\":
+                continue
+            else:
+                parse_error = "line %d does not fit the open hunk" % lineno
+                break
+        elif line.startswith("diff --git "):
+            current_file = None
+            current_old_file = None
+            continue
+        elif line.startswith("--- "):
+            current_old_file = parse_diff_path(line[4:], "old")
+            continue
+        elif line.startswith("+++ "):
+            current_new_file = parse_diff_path(line[4:], "new")
+            current_file = current_new_file if current_new_file is not None else current_old_file
+            continue
+        elif line.startswith("@@"):
+            m = HUNK.match(line)
+            if not m or current_file is None:
+                parse_error = "line %d is an unparseable hunk header" % lineno
+                break
+            old_left = int(m.group(1)) if m.group(1) is not None else 1
+            new_left = int(m.group(2)) if m.group(2) is not None else 1
+            kind, text = "header", line[m.end():]
+        elif line.startswith("\\") or line.startswith(FILE_HEADERS):
+            continue
+        else:
+            parse_error = "line %d is outside any hunk and is not a git header" % lineno
+            break
+        for sym in cut_symbols:
+            if sym in text:
+                record(sym, current_file, kind)
+    if parse_error is None and (old_left > 0 or new_left > 0):
+        parse_error = "patch ended inside a hunk"
+
+    # Invariant: the parser saw exactly the added and removed line totals git
+    # reports. A mismatch means some lines were never classified.
+    if parse_error is None:
+        want_added = want_removed = 0
+        for row in git_diff(["--numstat"]).decode("utf-8", "replace").split("\n"):
+            cols = row.split("\t")
+            if len(cols) >= 3 and cols[0] != "-":
+                want_added += int(cols[0])
+                want_removed += int(cols[1])
+        if (want_added, want_removed) != (parsed_added, parsed_removed):
+            parse_error = "parsed +%d/-%d lines but git reports +%d/-%d" % (
+                parsed_added, parsed_removed, want_added, want_removed)
+
+    cut_symbol_hits = [sym for sym in cut_symbols if sym in hit_symbols]
+    cut_symbol_added_hits = [sym for sym in cut_symbols if sym in added_hit_symbols]
+
+    # Scope asks what this run introduced: only added-line and new-path
+    # cut-symbol hits fail. A patch the parser could not fully account for
+    # fails too, because unscanned lines cannot be called clean.
+    scope_diff_clean = (len(violations) == 0 and len(cut_symbol_added_hits) == 0
+                        and parse_error is None)
+    result = {
         "diff_files": diff_files, "allowed_paths": allowed_paths,
         "violations": violations, "cut_symbol_hits": cut_symbol_hits,
+        "cut_symbol_introduced": cut_symbol_added_hits,
+        "cut_symbol_attribution": cut_symbol_attribution,
         "scope_diff_clean": scope_diff_clean
-    }))
+    }
+    if parse_error is not None:
+        result["parse_error"] = parse_error
+    print(json.dumps(result))
 except Exception:
     print(json.dumps(NEUTRAL))
 PY
@@ -620,7 +793,8 @@ import json, sys
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
-    "cut_symbol_hits": [], "scope_diff_clean": None
+    "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
+        "scope_diff_clean": None
 }
 
 
