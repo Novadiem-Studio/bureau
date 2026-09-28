@@ -180,7 +180,8 @@ Done when:
 
 - Linting warns without breaking builds.
 - Local routing is proven safe before broad use.
-- Copilot-routed builds never merge without a cold diff review and CI that ran on the head commit.
+- Copilot-routed builds never merge without a cold diff review and CI that ran and passed on the
+  head commit (a held, failed, cancelled or startup-failed run does not count).
 
 ### Bundle 13 - Rheo Memory Framework Integration
 
