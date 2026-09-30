@@ -307,8 +307,12 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      GitHub-delivered run whose PR has CI. Pass `--since-ref` = the `branch_tip` of the previous
      integration checkpoint's `integration-results.json`, when there is one.
    - `--gate-mode ci --final` for `gate-point: final`. The script keeps the full local suite
-     unless `state.json#integration_gate.ci_covers_full_suite` is `true`, and then still runs
-     each `local_only_gates` entry locally; `final_gate` and `gate_mode_reason` record which.
+     unless the project file declares `ci_covers_full_suite: true`, and then still runs each
+     `local_only_gates` entry locally; `final_gate` and `gate_mode_reason` record which. It reads
+     those settings from `project-context.md` as committed on `--base-ref`, never from
+     `state.json`; pass `--project-context <path>` when the project file lives outside the
+     target repo (for example a parent workspace). A `state.json` copy that differs from the
+     project file makes it run local.
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
      replaces the first).

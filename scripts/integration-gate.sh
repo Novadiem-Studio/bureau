@@ -36,12 +36,17 @@
 #                   commit since --since-ref, no known PR, no gh, or no checks
 #                   reported on the head commit.
 #   --final         this is the final/terminal gate. It runs the full local
-#                   suite unless state.json#integration_gate.ci_covers_full_suite
-#                   is true (the project's CI runs that same full suite). Then
-#                   --gate-mode ci may decide it, and every
-#                   integration_gate.local_only_gates entry ({name, command}:
-#                   tests that need Docker, secrets or hardware on this host)
-#                   still runs locally. Recorded as final_gate in the results.
+#                   suite unless the PROJECT declares ci_covers_full_suite: true
+#                   (its CI runs that same full suite) in the ```json
+#                   integration_gate``` block of its project file. Then
+#                   --gate-mode ci may decide it, and every local_only_gates
+#                   entry ({name, command}: tests that need Docker, secrets or
+#                   hardware on this host) still runs locally. The settings are
+#                   never taken from the run's state.json (the Conductor writes
+#                   it); a state.json copy that differs from the project file
+#                   forces the local suite. Recorded as final_gate.
+#   --project-context <path>  the project file to read those settings from.
+#                   Default: project-context.md as committed on --base-ref.
 #   --since-ref   <git ref>    the commit the previous integration gate verified.
 #                   A merge commit in since-ref..HEAD forces the local suite (the
 #                   first gate after merging main). Unresolvable => local.
@@ -102,6 +107,7 @@ REQ_FINAL=0
 REQ_SINCE_REF=""
 REQ_PR=""
 REQ_REPO=""
+REQ_PROJECT_CONTEXT=""
 CI_TIMEOUT=3600
 CI_POLL=30
 CI_NO_CHECKS_GRACE=300
@@ -126,6 +132,7 @@ while [ "$#" -gt 0 ]; do
     --since-ref)         REQ_SINCE_REF="$2";         shift 2 ;;
     --pr)                REQ_PR="$2";                shift 2 ;;
     --repo)              REQ_REPO="$2";              shift 2 ;;
+    --project-context)   REQ_PROJECT_CONTEXT="$2";   shift 2 ;;
     --ci-timeout)        CI_TIMEOUT="$2";            shift 2 ;;
     --ci-poll)           CI_POLL="$2";               shift 2 ;;
     --ci-no-checks-grace) CI_NO_CHECKS_GRACE="$2";   shift 2 ;;
@@ -361,11 +368,11 @@ PY
   # after `gh pr checks`, so the checks read belong to exactly this commit.
   MODE_JSON="$(python3 - "$REQ_GATE_MODE" "$REQ_WORKTREE_PATH" "$REQ_SINCE_REF" \
     "$REQ_FINAL" "$REQ_PR" "$REQ_REPO" "$STATE_JSON" "$CI_TIMEOUT" "$CI_POLL" \
-    "$CI_NO_CHECKS_GRACE" "$GATE_OUT_DIR" <<'PY'
+    "$CI_NO_CHECKS_GRACE" "$GATE_OUT_DIR" "$REQ_BASE_REF" "$REQ_PROJECT_CONTEXT" <<'PY'
 import json, os, shutil, subprocess, sys, time
 
 (requested, worktree, since_ref, final, pr, repo, state_path,
- timeout_s, poll_s, grace_s, outdir) = sys.argv[1:12]
+ timeout_s, poll_s, grace_s, outdir, base_ref, project_context) = sys.argv[1:14]
 timeout_s, poll_s, grace_s = int(timeout_s), max(int(poll_s), 1), int(grace_s)
 res = {"mode": "local", "requested": requested, "reason": "", "ci": None, "gate": None,
        "final": final == "1", "local_only": []}
@@ -404,19 +411,90 @@ try:
         # exact-head and pending-is-not-pass rules, and any local_only_gates
         # (tests that need Docker, secrets or hardware on this host) still run
         # here. Every other local fallback below still applies.
+        #
+        # The opt-in and the local-only list are read from the project file,
+        # never from the run's state.json: the Conductor writes
+        # state.json, so a run could otherwise shorten the list or flip the
+        # opt-in and skip a check. The project file is --project-context when
+        # the caller (the Delegate) names one, else project-context.md as
+        # committed on --base-ref, which the run branch cannot change. Its
+        # ```json integration_gate``` block holds the settings. If state.json
+        # carries its own copy and that copy differs, the gate runs local.
+        import re as _re
+
+        def project_block():
+            """-> (cfg or None, source label, error or "")."""
+            if project_context:
+                label = project_context
+                try:
+                    with open(project_context) as fh:
+                        text = fh.read()
+                except OSError as e:
+                    return None, label, "cannot read %s: %s" % (label, e)
+            else:
+                label = "%s:project-context.md" % base_ref
+                r = git("show", "%s:project-context.md" % base_ref)
+                if r.returncode != 0:
+                    return None, label, ""
+                text = r.stdout
+            m = _re.search(r"^```json[ \t]+integration_gate[ \t]*\n(.*?)^```", text, _re.S | _re.M)
+            if not m:
+                return None, label, ""
+            try:
+                cfg = json.loads(m.group(1))
+                if not isinstance(cfg, dict):
+                    raise ValueError("not an object")
+            except Exception as e:
+                return None, label, "its integration_gate block is not a JSON object (%s)" % e
+            return cfg, label, ""
+
+        def gate_list(v):
+            if v is None:
+                return []
+            if not isinstance(v, list) or not all(
+                    isinstance(e, dict) and isinstance(e.get("name"), str) and e.get("name")
+                    and isinstance(e.get("command"), str) and e.get("command") for e in v):
+                return None
+            return [{"name": e["name"], "command": e["command"]} for e in v]
+
+        proj, src, perr = project_block()
         try:
             with open(state_path) as fh:
-                ig = (json.load(fh) or {}).get("integration_gate") or {}
+                st = (json.load(fh) or {}).get("integration_gate") or {}
         except Exception:
-            ig = {}
-        if ig.get("ci_covers_full_suite") is not True:
-            done("local", "final gate: the full local suite runs at the final gate (the project has not declared integration_gate.ci_covers_full_suite)")
-        extra = ig.get("local_only_gates") or []
-        if not isinstance(extra, list) or not all(
-                isinstance(e, dict) and isinstance(e.get("name"), str) and e.get("name")
-                and isinstance(e.get("command"), str) and e.get("command") for e in extra):
-            done("local", "final gate: integration_gate.local_only_gates is malformed (need a list of {name, command}); ran the full local suite")
-        res["local_only"] = [{"name": e["name"], "command": e["command"]} for e in extra]
+            st = {}
+        if perr:
+            done("local", "final gate: the project file %s is unusable (%s); ran the full local suite" % (src, perr))
+        if proj is None:
+            if st.get("ci_covers_full_suite") is True or st.get("local_only_gates"):
+                done("local", "final gate: state.json declares integration_gate settings but the project file (%s) has no integration_gate block; ran the full local suite" % src)
+            done("local", "final gate: the full local suite runs at the final gate (the project has not declared integration_gate.ci_covers_full_suite in %s)" % src)
+        extra = gate_list(proj.get("local_only_gates"))
+        if extra is None:
+            done("local", "final gate: integration_gate.local_only_gates in %s is malformed (need a list of {name, command}); ran the full local suite" % src)
+        # Divergence: state.json's copy, where present, must match the project.
+        diffs = []
+        if "ci_covers_full_suite" in st and st.get("ci_covers_full_suite") is not (proj.get("ci_covers_full_suite") is True):
+            diffs.append("ci_covers_full_suite is %s in state.json but %s in the project file"
+                         % (json.dumps(st.get("ci_covers_full_suite")), json.dumps(proj.get("ci_covers_full_suite") is True)))
+        if "local_only_gates" in st:
+            st_list = gate_list(st.get("local_only_gates"))
+            if st_list is None:
+                diffs.append("state.json local_only_gates is malformed")
+            else:
+                key = lambda e: (e["name"], e["command"])
+                missing = [e["name"] for e in extra if key(e) not in {key(x) for x in st_list}]
+                added = [e["name"] for e in st_list if key(e) not in {key(x) for x in extra}]
+                if missing:
+                    diffs.append("state.json is missing local-only gate(s): %s" % ", ".join(missing))
+                if added:
+                    diffs.append("state.json adds local-only gate(s) the project does not declare: %s" % ", ".join(added))
+        if diffs:
+            done("local", "final gate: state.json integration_gate differs from the project file %s (%s); ran the full local suite" % (src, "; ".join(diffs)))
+        if proj.get("ci_covers_full_suite") is not True:
+            done("local", "final gate: the full local suite runs at the final gate (the project has not declared integration_gate.ci_covers_full_suite in %s)" % src)
+        res["local_only"] = extra
+        res["project_source"] = src
         final_ci = True
 
     if not pr or not repo:
@@ -546,8 +624,8 @@ try:
               "failed": "CI red on the exact head commit (re-run with --gate-mode local if the failure needs local diagnosis)"}
     reason = reason.get(status, "CI did not finish on the head commit before the deadline (%s): pending is not a pass" % status)
     if final_ci:
-        reason = "final gate on CI (integration_gate.ci_covers_full_suite: true; local-only gates run here: %s): %s" % (
-            ", ".join(e["name"] for e in res["local_only"]) or "none", reason)
+        reason = "final gate on CI (integration_gate.ci_covers_full_suite: true in %s; local-only gates run here: %s): %s" % (
+            res.get("project_source", "?"), ", ".join(e["name"] for e in res["local_only"]) or "none", reason)
     done("ci", reason)
 except SystemExit:
     raise

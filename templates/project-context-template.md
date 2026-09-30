@@ -51,10 +51,27 @@ For each relevant repo / sub-app:
 - **Delivery policy:** `auto` (`public GitHub → PR`, `private/internal → local`) | `github` | `local`
 - **Private-repo delivery:** `local` (default) | `github`
 - **GitHub merge method:** `merge` (default; preserves branch commits) | `squash` | `rebase`
-- **Integration gate cadence:** `phase` (default; one integration gate per plan phase) | `every_n` (plus every N prompts, default 4) | `every_prompt`. See `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
-- **CI covers the full suite:** no (default) | yes. `yes` means CI runs the same full suite as the local regression runner, so the final gate may use CI instead of 35-55 local minutes (`integration_gate.ci_covers_full_suite`).
-- **Local-only gates:** gates that still run locally at a CI-mode final gate, as `name: command` (tests that need Docker, secrets or hardware on the host). Default: none.
 - **CI on pull requests:** yes | no. With CI, routine integration gates read `gh pr checks` on the pushed commit instead of running the full suite locally. A suite that takes more than about 10 minutes in CI should be sharded first: `docs/ci-sharding.md`.
+
+## Integration gate (build runs)
+> The source of truth for the integration gate. Commit this file on the integration branch:
+> the final gate reads this block from the copy committed there (`integration-gate.sh
+> --final`), never from a run's `state.json`, so a run cannot change what its own final gate
+> checks. The Conductor copies it into `state.json#integration_gate`; if that copy ever
+> differs, the final gate runs the full local suite. Rules:
+> `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
+>
+> - `cadence`: `phase` (default; one integration gate per plan phase) | `every_n` (also every
+>   `every_n_prompts` accepted prompts) | `every_prompt`.
+> - `ci_covers_full_suite`: `true` only when CI runs the same full suite as the local
+>   regression runner. Then the final gate may use CI instead of the local suite (35-55 minutes
+>   for rheo-stream, against about 5 on sharded CI).
+> - `local_only_gates`: gates that still run locally at a CI-mode final gate, for tests that
+>   need Docker, secrets or hardware on the host: `[{"name": "...", "command": "..."}]`.
+
+```json integration_gate
+{"cadence": "phase", "every_n_prompts": 4, "ci_covers_full_suite": false, "local_only_gates": []}
+```
 
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who

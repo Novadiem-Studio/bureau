@@ -147,12 +147,16 @@ The Delegate picks the gate mode, not you. A routine phase or interval gate on a
 with CI runs in CI mode: `gh pr checks` fully green on the exact head SHA, polled with a
 deadline, pending treated as wait. The full local suite runs for `post-merge` gates, when the
 repo has no CI or no PR, and when CI is red in a way that needs local diagnosis. The `final`
-gate runs it too, unless `state.json#integration_gate.ci_covers_full_suite` is `true`: the
-project has declared that CI runs the identical full suite (rheo-stream's CI runs it sharded in
+gate runs it too, unless the project's own file declares `ci_covers_full_suite: true` in the
+` ```json integration_gate``` ` block of `project-context.md`: CI runs the identical full suite (rheo-stream's CI runs it sharded in
 about 5 minutes on Linux, the production OS, against 35-55 minutes locally). Then the final gate
-may run in CI mode on the exact head SHA, and each `integration_gate.local_only_gates` entry
-(tests that need Docker, secrets or hardware on the host) still runs locally. Default off, so a
-project keeps the local final gate until it opts in.
+may run in CI mode on the exact head SHA, and each `local_only_gates` entry (tests that need
+Docker, secrets or hardware on the host) still runs locally. Default off, so a project keeps the
+local final gate until it opts in. The gate reads these two settings from the project file as
+committed on the base branch, never from the run's `state.json`, which you write: a run must not
+be able to shorten its own final gate. If `state.json#integration_gate` differs from the project
+file (a missing local-only gate, a flipped opt-in), the final gate runs the full local suite and
+records why.
 `integration-results.json#gate_mode` records which one produced the result and
 `#gate_mode_reason` says why (`agents/delegate.md` § Main manager loop, step 2). CI mode pays off
 only when CI is quick; a project whose suite takes more than about 10 minutes as one CI job

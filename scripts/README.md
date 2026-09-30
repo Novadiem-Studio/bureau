@@ -492,7 +492,8 @@ scripts/integration-gate.sh \
 | `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
 | `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |
 | `--gate-mode <local\|ci>` | optional | `local` (default) runs the canonical gate set. `ci` confirms `gh pr checks` is fully green on the worktree's exact HEAD instead (#92). |
-| `--final` | optional | The final/terminal gate. Full local suite, unless `state.json#integration_gate.ci_covers_full_suite` is `true`: then `--gate-mode ci` may decide it, and each `integration_gate.local_only_gates` entry (`{name, command}`) still runs locally. |
+| `--final` | optional | The final/terminal gate. Full local suite, unless the project file's `integration_gate` block has `ci_covers_full_suite: true`: then `--gate-mode ci` may decide it, and each `local_only_gates` entry (`{name, command}`) still runs locally. Read from the project file, never `state.json`; a differing `state.json` copy forces local. |
+| `--project-context <path>` | optional | The project file holding the ` ```json integration_gate``` ` block. Default: `project-context.md` as committed on `--base-ref` (the run branch cannot change it). |
 | `--since-ref <ref>` | optional | The commit the previous integration gate verified. A merge commit in `since-ref..HEAD` forces the local suite; an unresolvable ref does too. |
 | `--pr <n\|url>` / `--repo <OWNER/REPO>` | optional | The PR to read and its repo (passed as `gh -R`). Default: `state.json#git.pr_number` / `#git.github_repo`. |
 | `--ci-timeout <s>` | optional | Deadline for CI to finish (default 3600). Pending at the deadline is **red** (`exit_code_branch` 124, `ci.status` `pending_timeout`), never a pass. |
@@ -502,8 +503,9 @@ scripts/integration-gate.sh \
 name,state,bucket,workflow,link` and requires both to equal the worktree HEAD, so the checks
 belong to that exact commit. Any `fail` or `cancel` bucket is red at once; any check that is not
 `pass` or `skipping` is a wait; green needs at least one `pass`. It falls back to the local suite,
-recording why in `gate_mode_reason`, for `--final` without the `ci_covers_full_suite` opt-in (or
-with a malformed `local_only_gates` list), a merge since `--since-ref`, no known PR, no
+recording why in `gate_mode_reason`, for `--final` without the project file's `ci_covers_full_suite`
+opt-in (or with a malformed `local_only_gates` list, an unreadable project file, or a
+`state.json#integration_gate` copy that differs from it), a merge since `--since-ref`, no known PR, no
 `gh` on PATH, three `gh` errors in a row, or no checks on the head commit after the grace period.
 A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
 In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).

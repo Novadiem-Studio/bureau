@@ -128,8 +128,12 @@ prompts inside a phase) or `every_prompt` (the pre-#92 per-prompt gate).
 `ci_covers_full_suite: true` declares that the project's CI runs the same full suite as the
 local runner, which lets the final gate run in CI mode; `local_only_gates` (`[{"name",
 "command"}]`) lists gates that still run locally at a CI-mode final gate (tests that need
-Docker, secrets or hardware on the host). Both default off. A project sets the block in
-`project-context.md`; the Conductor copies it here at run start and does not change it. Rules:
+Docker, secrets or hardware on the host). Both default off. The source of truth is the
+` ```json integration_gate``` ` block in the project's `project-context.md`
+(`templates/project-context-template.md`); the Conductor copies it here at run start and does
+not change it. The final gate never trusts this copy: `integration-gate.sh --final` reads the
+project file as committed on the base branch (or the Delegate's `--project-context`), and runs
+the full local suite if this copy differs from it. Rules:
 `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
 
 `accounting` block: part of `templates/state.json`; the close-out step sets its `status`
