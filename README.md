@@ -1,16 +1,53 @@
 # The Bureau
 
-A multi-agent workflow that Novadiem Studio uses to plan, build, review and document software.
+The Bureau coordinates software planning, implementation and review across
+isolated agent contexts, with file-based handoffs and resumable run state.
 
-[Explore the Bureau](https://thebureau.dev) | [Read the Novadiem case study](https://novadiem.com/bureau) | [Browse the Records](https://thebureau.dev/records) | [Work with Novadiem](https://novadiem.com/contact)
+## Mechanisms you can inspect
 
-![The Bureau banner](https://thebureau.dev/assets/og/og-home.jpg)
+- Cold reviewers receive a staged evidence packet without the full run log,
+  prior verdicts or conversation transcript. Packet checks reject symlinks and
+  transcript-like filenames.
+- Artifact hashes bind the response to the reviewed files. Coverage checks compare
+  the reviewer's reported paths and hashes against the manifest in both directions,
+  exposing missing documents and claims to have read unstaged files.
+- The Codex review adapter uses a read-only packet snapshot, disables network tools
+  and denies access to the live run, repository and session stores.
+- Decisions, specifications, plans and reviews persist on disk so work can resume
+  after a session ends. Code-changing runs use separate Git branches and worktrees.
+- Run accounting labels evidence as exact, estimated, inferred, partial or
+  unavailable. Missing provider data is not recorded as zero.
 
-The Bureau assigns work to specialists in separate contexts and saves their decisions and output to files. Review checkpoints determine whether work can continue, needs revision or requires a human decision. External actions and production deployments have their own authorization rules.
+## Current status and limits
 
-This is the system we use across studio projects, published for technical evaluation. It is in active development and is not packaged or supported as a self-serve product.
+This is Novadiem's internal engineering system, published for inspection and still
+changing. It is not a supported self-serve product and has no open-source license.
+Hash and coverage checks validate the reported evidence set, not whether a model
+understood it or reached a sound verdict. Cold review also lacks unwritten context;
+the [review contract](docs/delegate-bridge/v2-integrated.md) records the remaining
+judgment gaps. Isolation depends on the host adapter.
 
-The [checkpoint review tour](docs/checkpoint-review-tour.md) follows a review through the code and tests, including what the checks cannot establish.
+## Try this in 5 minutes
+
+Run the packet self-test with Git, Bash, Python 3, jq and cmp installed.
+It uses temporary files and stub responses, with no model calls or credentials.
+
+```sh
+git clone https://github.com/Novadiem-Studio/bureau.git
+cd bureau
+bash scripts/check-cold-reviewer-packet.sh
+```
+
+The fixtures cover a complete two-document review, a skipped specification,
+missing coverage, an unstaged-file claim and a changed packet on resume.
+They test validation behavior, not the quality of a live model's review.
+
+## Follow the evidence
+
+The [checkpoint review tour](docs/checkpoint-review-tour.md) connects packet
+construction, artifact hashing, response checks and acceptance rules.
+Read the [host constraints](docs/host-runtime.md) for adapter-specific boundaries
+and the [workflow registry](workflows/index.md) for feature, bug-fix and plan execution.
 
 ## Why it exists
 
