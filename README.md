@@ -29,7 +29,7 @@ judgment gaps. Isolation depends on the host adapter.
 
 ## Try this in 5 minutes
 
-Run the packet self-test with Git, Bash, Python 3 and jq installed.
+Run the packet self-test with Git, Bash, Python 3, jq and cmp installed.
 It uses temporary files and stub responses, with no model calls or credentials.
 
 ```sh
