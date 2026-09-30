@@ -42,7 +42,12 @@
     "merged_at": null,
     "last_sync_at": null
   },
-  "integration_gate": { "cadence": "phase", "every_n_prompts": 4 },
+  "integration_gate": {
+    "cadence": "phase",
+    "every_n_prompts": 4,
+    "ci_covers_full_suite": false,
+    "local_only_gates": []
+  },
   "last_updated": null,
   "accounting": { "status": "pending", "path": null },
   "external_review": { "status": "pending", "path": null },

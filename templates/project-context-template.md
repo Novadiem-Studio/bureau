@@ -52,6 +52,8 @@ For each relevant repo / sub-app:
 - **Private-repo delivery:** `local` (default) | `github`
 - **GitHub merge method:** `merge` (default; preserves branch commits) | `squash` | `rebase`
 - **Integration gate cadence:** `phase` (default; one integration gate per plan phase) | `every_n` (plus every N prompts, default 4) | `every_prompt`. See `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
+- **CI covers the full suite:** no (default) | yes. `yes` means CI runs the same full suite as the local regression runner, so the final gate may use CI instead of 35-55 local minutes (`integration_gate.ci_covers_full_suite`).
+- **Local-only gates:** gates that still run locally at a CI-mode final gate, as `name: command` (tests that need Docker, secrets or hardware on the host). Default: none.
 - **CI on pull requests:** yes | no. With CI, routine integration gates read `gh pr checks` on the pushed commit instead of running the full suite locally. A suite that takes more than about 10 minutes in CI should be sharded first: `docs/ci-sharding.md`.
 
 ## Users

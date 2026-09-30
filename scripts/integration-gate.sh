@@ -32,9 +32,16 @@
 #                   worktree. ci confirms `gh pr checks` is fully green on the
 #                   worktree's exact HEAD instead, and falls back to local (with
 #                   the reason recorded) whenever CI cannot stand in for it:
-#                   --final, a merge commit since --since-ref, no known PR, no gh,
-#                   or no checks reported on the head commit.
-#   --final         this is the final/terminal gate: always the local suite.
+#                   a --final gate without the project opt-in below, a merge
+#                   commit since --since-ref, no known PR, no gh, or no checks
+#                   reported on the head commit.
+#   --final         this is the final/terminal gate. It runs the full local
+#                   suite unless state.json#integration_gate.ci_covers_full_suite
+#                   is true (the project's CI runs that same full suite). Then
+#                   --gate-mode ci may decide it, and every
+#                   integration_gate.local_only_gates entry ({name, command}:
+#                   tests that need Docker, secrets or hardware on this host)
+#                   still runs locally. Recorded as final_gate in the results.
 #   --since-ref   <git ref>    the commit the previous integration gate verified.
 #                   A merge commit in since-ref..HEAD forces the local suite (the
 #                   first gate after merging main). Unresolvable => local.
@@ -48,7 +55,7 @@
 #                   on the head commit before concluding it has no CI (default 300).
 #
 # Output: writes integration-results.json into --out (same snake_case field layout
-# watcher.sh produced; issue #92 adds gate_mode, gate_mode_requested,
+# watcher.sh produced; issue #92 adds final_gate, gate_mode, gate_mode_requested,
 # gate_mode_reason, gate_commands and ci, and keeps every existing field). NOTE:
 # this file has NO `verdict` key — it is EVIDENCE only; the proceed/revise/escalate
 # Decision is the cold reviewer's (NN-verdict.md via verdict-write.sh).
@@ -214,14 +221,15 @@ if [ "$INTEGRATION_ESCALATE" = "1" ]; then
   # (a) verdict-write.sh integration-evidence presence guard is satisfied,
   # (b) the Delegate reads a well-formed file and emits a well-formed verdict,
   # (c) the Delegate's verifying-mode trigger (file presence) fires correctly.
-  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" <<'PY'
+  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" "$REQ_FINAL" <<'PY'
 import json, sys
-path, reason, requested = sys.argv[1], sys.argv[2], sys.argv[3]
+path, reason, requested, final = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 data = {
     "schema_version": 1,
     "checkpoint_type": "integration",
     "escalate_marker": reason,
     "canonical_source": "none",
+    "final_gate": final == "1",
     "gate_mode": "none",
     "gate_mode_requested": requested,
     "gate_mode_reason": "no gate ran: escalate marker set",
@@ -257,6 +265,89 @@ else
     exit 2
   fi
 
+  # ── run_gates <gates-json>: the one local gate runner ──────────────────
+  # Runs each {"name","command"} in the worktree at branch tip, streaming its
+  # output into the kept-output dir, and prints a JSON array of gate records.
+  # Used for the canonical local set and for a CI-mode final gate's
+  # local-only gates (issue #92).
+  run_gates() {
+  python3 - "$REQ_WORKTREE_PATH" "$1" "$GATE_OUT_DIR" <<'PY'
+import hashlib, json, os, re, subprocess, sys, time
+# FIX 2: never let a parse/subprocess failure print nothing and empty this var.
+# Always print a JSON array (possibly empty); a parse failure yields [].
+
+
+def tail(path, n=30, width=400):
+    try:
+        with open(path, "rb") as fh:
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+        return [l[:width] for l in lines[-n:]]
+    except OSError:
+        return []
+
+
+results = []
+try:
+    worktree, canon_raw, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
+    canon = json.loads(canon_raw)
+    for g in canon.get("gates", []):
+        # FIX (defect 1): the gate's stdout/stderr must never inherit this python
+        # process's stdout — which IS the `$(...)` the shell captures into
+        # GATE_RESULTS_JSON. A chatty gate (e.g. jest printing ~74KB) would
+        # prepend non-JSON to the captured string; the downstream json.loads
+        # then fails and gates collapses to [] — a silent false all-clear.
+        # Issue #92: instead of capturing and discarding, both streams go
+        # straight to files in the kept-output dir, so a red gate can be
+        # diagnosed and a gate killed mid-run still leaves what it printed.
+        slug = re.sub(r"[^A-Za-z0-9._-]", "_", g["name"]) or "gate"
+        out_rel = "gate-output/%s.stdout.log" % slug
+        err_rel = "gate-output/%s.stderr.log" % slug
+        out_path = os.path.join(outdir, os.path.basename(out_rel))
+        err_path = os.path.join(outdir, os.path.basename(err_rel))
+        t0 = time.time()
+        output_error = None
+        try:
+            with open(out_path, "wb") as fo, open(err_path, "wb") as fe:
+                ret = subprocess.run(g["command"], shell=True, cwd=worktree,
+                                     stdout=fo, stderr=fe)
+        except OSError as e:
+            # Never let a log-file problem drop the gate (an empty gates list
+            # would read as an all-clear): run it captured, and say so.
+            output_error = "could not keep output: %s" % e
+            ret = subprocess.run(g["command"], shell=True, cwd=worktree,
+                                 capture_output=True)
+        entry = {
+            "name": g["name"],
+            "command": g["command"],
+            "exit_code_branch": ret.returncode,
+            "result": "green" if ret.returncode == 0 else "red",
+            "duration_s": int(time.time() - t0),
+            "stdout_path": out_rel,
+            "stderr_path": err_rel,
+            "stdout_tail": tail(out_path),
+            "stderr_tail": tail(err_path, 20),
+        }
+        if output_error:
+            entry["output_error"] = output_error
+        # The runner file can switch suites (fast vs full) with no change to
+        # the command string, so record its digest, and the suite it names
+        # when it prints a `BUREAU-SUITE: <command>` line.
+        runner = g.get("runner")
+        if runner and os.path.isfile(runner):
+            with open(runner, "rb") as fh:
+                entry["runner_path"] = runner
+                entry["runner_sha256"] = hashlib.sha256(fh.read()).hexdigest()
+        suite = [l.split(":", 1)[1].strip() for l in tail(out_path, 100000, 2000)
+                 if l.startswith("BUREAU-SUITE:")]
+        if suite:
+            entry["suite"] = suite[-1]
+        results.append(entry)
+except Exception:
+    results = []
+print(json.dumps(results))
+PY
+  }
+
   # ── RESOLVE THE GATE MODE, AND IN CI MODE READ THE CHECKS (issue #92) ──
   # Prints one JSON object: {"mode": "ci"|"local", "requested", "reason",
   # "ci": {...}|null, "gate": {...}|null}. "ci" mode means CI decided this gate
@@ -276,7 +367,8 @@ import json, os, shutil, subprocess, sys, time
 (requested, worktree, since_ref, final, pr, repo, state_path,
  timeout_s, poll_s, grace_s, outdir) = sys.argv[1:12]
 timeout_s, poll_s, grace_s = int(timeout_s), max(int(poll_s), 1), int(grace_s)
-res = {"mode": "local", "requested": requested, "reason": "", "ci": None, "gate": None}
+res = {"mode": "local", "requested": requested, "reason": "", "ci": None, "gate": None,
+       "final": final == "1", "local_only": []}
 poll_log = os.path.join(outdir, "ci-poll.log")
 
 
@@ -304,8 +396,28 @@ def git(*args):
 try:
     if requested != "ci":
         done("local", "local mode requested")
+    final_ci = False
     if final == "1":
-        done("local", "final gate: the full local suite always runs at the final or terminal gate")
+        # The final gate runs the full local suite unless the project declares
+        # that its CI runs that same full suite (integration_gate.
+        # ci_covers_full_suite: true). Then CI may stand in, with the same
+        # exact-head and pending-is-not-pass rules, and any local_only_gates
+        # (tests that need Docker, secrets or hardware on this host) still run
+        # here. Every other local fallback below still applies.
+        try:
+            with open(state_path) as fh:
+                ig = (json.load(fh) or {}).get("integration_gate") or {}
+        except Exception:
+            ig = {}
+        if ig.get("ci_covers_full_suite") is not True:
+            done("local", "final gate: the full local suite runs at the final gate (the project has not declared integration_gate.ci_covers_full_suite)")
+        extra = ig.get("local_only_gates") or []
+        if not isinstance(extra, list) or not all(
+                isinstance(e, dict) and isinstance(e.get("name"), str) and e.get("name")
+                and isinstance(e.get("command"), str) and e.get("command") for e in extra):
+            done("local", "final gate: integration_gate.local_only_gates is malformed (need a list of {name, command}); ran the full local suite")
+        res["local_only"] = [{"name": e["name"], "command": e["command"]} for e in extra]
+        final_ci = True
 
     if not pr or not repo:
         try:
@@ -432,7 +544,11 @@ try:
     log("CI result: %s after %ds and %d poll(s)" % (status, waited, polls))
     reason = {"passed": "CI green on the exact head commit",
               "failed": "CI red on the exact head commit (re-run with --gate-mode local if the failure needs local diagnosis)"}
-    done("ci", reason.get(status, "CI did not finish on the head commit before the deadline (%s): pending is not a pass" % status))
+    reason = reason.get(status, "CI did not finish on the head commit before the deadline (%s): pending is not a pass" % status)
+    if final_ci:
+        reason = "final gate on CI (integration_gate.ci_covers_full_suite: true; local-only gates run here: %s): %s" % (
+            ", ".join(e["name"] for e in res["local_only"]) or "none", reason)
+    done("ci", reason)
 except SystemExit:
     raise
 except Exception as e:
@@ -446,7 +562,7 @@ except Exception:
     print("local")' "$MODE_JSON" 2>/dev/null || echo local)"
   case "$MODE_JSON" in
     "{"*) ;;
-    *) MODE_JSON="{\"mode\": \"local\", \"requested\": \"$REQ_GATE_MODE\", \"reason\": \"gate-mode resolution produced no result; ran the local suite\", \"ci\": null, \"gate\": null}" ;;
+    *) MODE_JSON="{\"mode\": \"local\", \"requested\": \"$REQ_GATE_MODE\", \"reason\": \"gate-mode resolution produced no result; ran the local suite\", \"ci\": null, \"gate\": null, \"final\": $( [ "$REQ_FINAL" = 1 ] && echo true || echo false ), \"local_only\": []}" ;;
   esac
 
   if [ "$EFFECTIVE_MODE" = "ci" ]; then
@@ -456,6 +572,34 @@ except Exception:
     GATE_RESULTS_JSON="$(python3 -c 'import json,sys; g=json.loads(sys.argv[1])["gate"]; assert isinstance(g, dict); print(json.dumps([g]))' "$MODE_JSON" 2>/dev/null \
       || echo '[{"name": "ci", "command": "gh pr checks", "exit_code_branch": 2, "result": "red", "ci_status": "unreadable"}]')"
     CANON_GATES_JSON='{"gates": [], "canonical_source": "ci"}'
+    # A CI-mode final gate still runs the project's local-only gates here.
+    LOCAL_ONLY_JSON="$(python3 -c 'import json,sys; print(json.dumps({"gates": json.loads(sys.argv[1]).get("local_only") or []}))' "$MODE_JSON" 2>/dev/null || echo '{"gates": []}')"
+    case "$LOCAL_ONLY_JSON" in
+      '{"gates": []}') ;;
+      *)
+        LOCAL_ONLY_RESULTS="$(run_gates "$LOCAL_ONLY_JSON")"
+        # Fail closed: a local-only gate with no record becomes a red gate.
+        GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$LOCAL_ONLY_JSON" "$LOCAL_ONLY_RESULTS" <<'PY'
+import json, sys
+gates = json.loads(sys.argv[1])
+want = json.loads(sys.argv[2])["gates"]
+try:
+    got = json.loads(sys.argv[3])
+except Exception:
+    got = []
+by_name = {g.get("name"): g for g in got if isinstance(g, dict)}
+for w in want:
+    g = by_name.get(w["name"]) or {"name": w["name"], "command": w["command"],
+                                   "exit_code_branch": 2, "result": "red",
+                                   "output_error": "local-only gate produced no record"}
+    g["local_only"] = True
+    gates.append(g)
+print(json.dumps(gates))
+PY
+)"
+        CANON_GATES_JSON='{"gates": [], "canonical_source": "ci+local-only"}'
+        ;;
+    esac
   else
 
   # ── RESOLVE CANONICAL GATE SET (FR-B14-3, FR-B14-12, FR-B14-14) ──────────
@@ -488,82 +632,7 @@ PY
 
   # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
   # Read gates list; run each command in the worktree; capture exit codes.
-  GATE_RESULTS_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$CANON_GATES_JSON" "$GATE_OUT_DIR" <<'PY'
-import hashlib, json, os, re, subprocess, sys, time
-# FIX 2: never let a parse/subprocess failure print nothing and empty this var.
-# Always print a JSON array (possibly empty); a parse failure yields [].
-
-
-def tail(path, n=30, width=400):
-    try:
-        with open(path, "rb") as fh:
-            lines = fh.read().decode("utf-8", "replace").splitlines()
-        return [l[:width] for l in lines[-n:]]
-    except OSError:
-        return []
-
-
-results = []
-try:
-    worktree, canon_raw, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
-    canon = json.loads(canon_raw)
-    for g in canon.get("gates", []):
-        # FIX (defect 1): the gate's stdout/stderr must never inherit this python
-        # process's stdout — which IS the `$(...)` the shell captures into
-        # GATE_RESULTS_JSON. A chatty gate (e.g. jest printing ~74KB) would
-        # prepend non-JSON to the captured string; the downstream json.loads
-        # then fails and gates collapses to [] — a silent false all-clear.
-        # Issue #92: instead of capturing and discarding, both streams go
-        # straight to files in the kept-output dir, so a red gate can be
-        # diagnosed and a gate killed mid-run still leaves what it printed.
-        slug = re.sub(r"[^A-Za-z0-9._-]", "_", g["name"]) or "gate"
-        out_rel = "gate-output/%s.stdout.log" % slug
-        err_rel = "gate-output/%s.stderr.log" % slug
-        out_path = os.path.join(outdir, os.path.basename(out_rel))
-        err_path = os.path.join(outdir, os.path.basename(err_rel))
-        t0 = time.time()
-        output_error = None
-        try:
-            with open(out_path, "wb") as fo, open(err_path, "wb") as fe:
-                ret = subprocess.run(g["command"], shell=True, cwd=worktree,
-                                     stdout=fo, stderr=fe)
-        except OSError as e:
-            # Never let a log-file problem drop the gate (an empty gates list
-            # would read as an all-clear): run it captured, and say so.
-            output_error = "could not keep output: %s" % e
-            ret = subprocess.run(g["command"], shell=True, cwd=worktree,
-                                 capture_output=True)
-        entry = {
-            "name": g["name"],
-            "command": g["command"],
-            "exit_code_branch": ret.returncode,
-            "result": "green" if ret.returncode == 0 else "red",
-            "duration_s": int(time.time() - t0),
-            "stdout_path": out_rel,
-            "stderr_path": err_rel,
-            "stdout_tail": tail(out_path),
-            "stderr_tail": tail(err_path, 20),
-        }
-        if output_error:
-            entry["output_error"] = output_error
-        # The runner file can switch suites (fast vs full) with no change to
-        # the command string, so record its digest, and the suite it names
-        # when it prints a `BUREAU-SUITE: <command>` line.
-        runner = g.get("runner")
-        if runner and os.path.isfile(runner):
-            with open(runner, "rb") as fh:
-                entry["runner_path"] = runner
-                entry["runner_sha256"] = hashlib.sha256(fh.read()).hexdigest()
-        suite = [l.split(":", 1)[1].strip() for l in tail(out_path, 100000, 2000)
-                 if l.startswith("BUREAU-SUITE:")]
-        if suite:
-            entry["suite"] = suite[-1]
-        results.append(entry)
-except Exception:
-    results = []
-print(json.dumps(results))
-PY
-)"
+  GATE_RESULTS_JSON="$(run_gates "$CANON_GATES_JSON")"
 
   fi   # end gate-mode branch (ci records its one gate above; local ran the suite)
 
@@ -1152,6 +1221,7 @@ def write_escalate(reason, errors):
         "checkpoint_type": "integration",
         "escalate_marker": reason,
         "canonical_source": "none",
+        "final_gate": bool(mode.get("final")),
         "gate_mode": "none",
         "gate_mode_requested": mode.get("requested", ""),
         "gate_mode_reason": "no usable gate result: escalate marker set",
@@ -1217,6 +1287,7 @@ try:
         # Issue #92: which mode produced this result, why, and the exact
         # commands behind it (the regression runner's digest and any
         # BUREAU-SUITE line sit on its gate record).
+        "final_gate": bool(mode.get("final")),
         "gate_mode": mode.get("mode", "local"),
         "gate_mode_requested": mode.get("requested", ""),
         "gate_mode_reason": mode.get("reason", ""),
