@@ -488,6 +488,55 @@ if ! grep -q 'run-worktree' workflows/execute-plan/build-tail.md; then
   err "workflows/execute-plan/build-tail.md should reference run-worktree"
 fi
 
+echo "== integration gate cadence and CI mode (#92)"
+grep -Fq '## Integration checkpoint cadence (build runs)' docs/conductor-gates.md \
+  || err "docs/conductor-gates.md missing the integration checkpoint cadence section"
+grep -Fq -- '--gate-mode' agents/delegate.md \
+  || err "agents/delegate.md should choose the integration gate mode (--gate-mode)"
+for f in docs/delegate-bridge/v2-integrated.md agents/orchestrator.md; do
+  grep -Fq 'gate-point:      phase | interval | post-merge | final' "$f" \
+    || err "$f: CONDUCTOR-RETURN gate-point field missing (v2 contract and orchestrator A4 must match)"
+done
+grep -Fq 'docs/ci-sharding.md' templates/project-context-template.md \
+  || err "templates/project-context-template.md should link docs/ci-sharding.md"
+grep -Fq '## Long-running commands and waits' docs/conventions/tool-discipline.md \
+  || err "docs/conventions/tool-discipline.md missing the long-running commands and waits rule"
+for persona in agents/backend.md agents/frontend.md agents/sysadmin.md; do
+  grep -Fq '**in the foreground, in this turn**' "$persona" \
+    || err "$persona should require checkpoint suites in the foreground"
+done
+# Behavioural, not a grep: the CI-mode fixtures run the real gate against a fake gh.
+# They pin exact-head binding, pending-is-not-pass, the local fallbacks, kept output,
+# the final-gate CI opt-in and the terminal review's same-SHA pairing.
+[[ -x scripts/terminal-pairing.sh ]] || err "scripts/terminal-pairing.sh missing or not executable"
+for f in agents/delegate.md workflows/run-series.md docs/conductor-gates.md; do
+  grep -Fq 'terminal-pairing.sh' "$f" \
+    || err "$f should require terminal-pairing.sh for a parallel terminal review"
+done
+grep -Fq '"ci_covers_full_suite": false' templates/state.json \
+  || err "templates/state.json should default integration_gate.ci_covers_full_suite to false"
+# The project file is the final gate's source of truth: its template must carry a
+# parseable integration_gate block that defaults the CI opt-in off.
+python3 - templates/project-context-template.md <<'PY' \
+  || err "templates/project-context-template.md needs a \`\`\`json integration_gate block with ci_covers_full_suite false"
+import json, re, sys
+m = re.search(r"^```json[ \t]+integration_gate[ \t]*\n(.*?)^```", open(sys.argv[1]).read(), re.S | re.M)
+sys.exit(0 if m and json.loads(m.group(1)).get("ci_covers_full_suite") is False else 1)
+PY
+for fx in 308-integration-gate-ci-mode-green-exact-head.md 309-integration-gate-ci-pending-is-not-pass.md \
+          310-integration-gate-ci-falls-back-to-local.md 311-integration-gate-keeps-gate-output.md \
+          312-integration-gate-final-gate-on-ci-opt-in.md 313-terminal-review-pairs-with-green-final-gate.md; do
+  fx_cmd="$(awk '
+    /^command:[[:space:]]*\|[[:space:]]*$/ { blk = 1; next }
+    blk == 1 { if ($0 ~ /^[[:space:]]/ || $0 == "") { sub(/^  /, ""); print; next } blk = 0 }
+  ' ".bureau/regression/$fx")"
+  if [[ -z "$fx_cmd" ]]; then
+    err "fixture .bureau/regression/$fx missing or has no command block"
+  elif ! fx_out="$(ROOT="$ROOT" sh -c "$fx_cmd" 2>&1)"; then
+    err "integration-gate fixture $fx failed: $(printf '%s' "$fx_out" | tail -3)"
+  fi
+done
+
 echo "== orchestrator.md regrowth guard"
 # agents/orchestrator.md is the Conductor's core context, loaded (in part) on
 # every run's startup. Idea #19 (the Conductor context diet, shipped 2026-07-09)

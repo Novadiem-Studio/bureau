@@ -56,6 +56,11 @@ snapshot).
    second-pass review of the PR against the ratified requirements/architecture and the run card →
    a proceed / revise / escalate verdict. The escalated tier (Fable) only when the charter or Robin
    asks for it, logged as a `MODEL-OVERRIDE:`. The Envoy never grades the PR on its own authority.
+   This review may start while the run's final gate is still running (#92). Record the PR head SHA
+   handed to the reviewer; the verdict counts only when `scripts/terminal-pairing.sh` pairs it
+   with a green final gate on that same SHA (exit 0). A red final gate discards the review
+   uncounted and the run's fix loop proceeds as usual; a SHA mismatch (exit 3) refuses the
+   verdict (`docs/conductor-gates.md § Integration checkpoint cadence (build runs)`).
 4. **The Envoy** — act on the verdict within the charter's grant: relay the go-ahead or the
    revise notes to the run with `claude --bg --resume <full-uuid>` (mechanics doc); the run
    merges through its own delivery flow. A verdict or question outside the grant, or one the plan

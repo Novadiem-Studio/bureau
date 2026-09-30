@@ -844,6 +844,7 @@ question:        <one line>
 checkpoint-subtype: routine | integration
 worktree-path:   <abs> | (none)         # integration subtype only — feeds integration-gate.sh
 base-ref:        <git-ref>              # integration subtype only
+gate-point:      phase | interval | post-merge | final   # integration subtype only (#92 cadence)
 # NOTE: each element of claimed-gates below MUST be an object with "name"/
 # "command" keys. A bare-string element is not a valid claim — integration-gate.sh
 # drops it and records the shape problem in errors[] rather than silently
@@ -860,8 +861,9 @@ Filling it:
 - **`return-type`** — `routine-checkpoint` for a routine checkpoint, `genuine-fork` when A2
   classified a fork. Emit only the matching shape's added fields.
 - **routine-checkpoint** — set `checkpoint-subtype` (`routine` | `integration`); for an
-  `integration` subtype additionally fill `worktree-path`, `base-ref`, and `claimed-gates` (the
-  cross-check input that feeds `integration-gate.sh`).
+  `integration` subtype additionally fill `worktree-path`, `base-ref`, `claimed-gates` (the
+  cross-check input that feeds `integration-gate.sh`) and `gate-point`. Integration comes at phase
+  boundaries, not per prompt: `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
 - **genuine-fork** — fill `escalation-reason`, `signal-fired` (the integer id(s) 1–9 of the matched
   signal(s), so the classification is auditable), and `pending-checkpoint` (EC5 — if a routine
   checkpoint was ready but is being held behind this fork, name it: `"routine on artifact X; held

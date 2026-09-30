@@ -1,8 +1,8 @@
 # Conductor decision gates
 
 This document owns Conductor-level decision policy that sits above workflow mechanics:
-Challenger adjudication, canon/promotion declaration, production boundary, external-action
-boundary, and Notary guardrails.
+Challenger adjudication, canon/promotion declaration, integration checkpoint cadence,
+production boundary, external-action boundary, and Notary guardrails.
 
 **Pointer back:** `agents/orchestrator.md` ("Adjudicating The Challenger's findings",
 "The production boundary", "The external-action boundary", "The Notary")
@@ -111,6 +111,67 @@ The Challenger keys off this structured block and never self-infers a promotion 
 Watch-point: as the one driving things forward, you will lean toward shipping. Hold the line
 on real blockers. If you prove too lenient over time, this adjudication gets split into its
 own judge role (Robin's call).
+
+---
+
+## Integration checkpoint cadence (build runs)
+
+An integration checkpoint (`checkpoint-subtype: integration`) makes the Delegate run
+`scripts/integration-gate.sh` and then a cold reviewer. It is the expensive gate. On
+rheo-stream's 1a4 runs it came after every prompt: about 20 gates for 18 prompts, 35-70
+minutes each, roughly 15 hours of a two-day run. Nearly all of them ended in a plain proceed.
+The three silent defects that run caught came from the per-prompt Challenger build-diff reviews
+and the Envoy's whole-PR pass, not from the gates (Novadiem-Studio/bureau#92). So:
+
+1. **Every prompt keeps its review loop, unchanged.** The coder's own checkpoint (targeted tests
+   plus lint/typecheck, run in the foreground), the CodeRabbit pass, and the Challenger's cold
+   build-diff review, per `workflows/execute-plan/build-tail.md` step 6. Accepting a prompt is a
+   Conductor adjudication, not an integration checkpoint.
+2. **Routine integration checkpoints come at plan phase boundaries.** Return one after the last
+   accepted prompt of each phase (`gate-point: phase`). Phases come from the prompt folder's
+   `### Phase` headings in `00-index.md`, or from the plan's own phase sections when the folder
+   has none. `state.json#integration_gate` can change this: `cadence: "every_n"` also gates every
+   `every_n_prompts` accepted prompts inside a long phase (`gate-point: interval`), and
+   `cadence: "every_prompt"` restores the old per-prompt gate. With no phases anywhere, gate
+   every `every_n_prompts` (default 4).
+3. **Always add an integration checkpoint** right after merging the base branch into the run
+   branch (`gate-point: post-merge`), and for the final gate before close-out
+   (`gate-point: final`). A post-merge gate always runs the full local suite. The final gate
+   does too, unless the project declares that its CI runs the same full suite (below).
+4. **Between gates, read CI.** On a GitHub-delivered run each accepted prompt is pushed to the
+   PR. Before dispatching the next coder, read `gh pr checks <pr>` for the pushed commit. Red is
+   a red gate: route the fix to the owning coder before any new work. Pending does not block the
+   next dispatch, but it is not a pass either; the phase gate waits for it to finish.
+
+The Delegate picks the gate mode, not you. A routine phase or interval gate on a pushed commit
+with CI runs in CI mode: `gh pr checks` fully green on the exact head SHA, polled with a
+deadline, pending treated as wait. The full local suite runs for `post-merge` gates, when the
+repo has no CI or no PR, and when CI is red in a way that needs local diagnosis. The `final`
+gate runs it too, unless the project's own file declares `ci_covers_full_suite: true` in the
+` ```json integration_gate``` ` block of `project-context.md`: CI runs the identical full suite (rheo-stream's CI runs it sharded in
+about 5 minutes on Linux, the production OS, against 35-55 minutes locally). Then the final gate
+may run in CI mode on the exact head SHA, and each `local_only_gates` entry (tests that need
+Docker, secrets or hardware on the host) still runs locally. Default off, so a project keeps the
+local final gate until it opts in. The gate reads these two settings from the project file as
+committed on the base branch, never from the run's `state.json`, which you write: a run must not
+be able to shorten its own final gate. If `state.json#integration_gate` differs from the project
+file (a missing local-only gate, a flipped opt-in), the final gate runs the full local suite and
+records why.
+`integration-results.json#gate_mode` records which one produced the result and
+`#gate_mode_reason` says why (`agents/delegate.md` § Main manager loop, step 2). CI mode pays off
+only when CI is quick; a project whose suite takes more than about 10 minutes as one CI job
+should shard it first (`docs/ci-sharding.md`).
+
+**The terminal cold review may run beside the final gate.** At the terminal gate the Delegate
+(or, in a run series, the Envoy) may spawn the whole-PR cold review while the final gate is
+still running, instead of after it. Record the head SHA the reviewer was handed at spawn time.
+The verdict counts only when `scripts/terminal-pairing.sh --gate <final
+integration-results.json> --review-sha <that SHA>` exits 0: a green final gate
+(`final_gate: true`, every gate green, fast-forward and conflicts clean) whose `branch_tip`
+equals the review's SHA. Exit 1 means the gate is not green: discard the review uncounted (no
+ledger entry, no revise count) and run the fix loop as today; the next final gate gets a fresh
+review. Exit 3 means the gate verified a different SHA than the review saw: refuse the verdict
+and re-review (or re-gate) on one SHA. Keep the pairing record beside the verdict.
 
 ---
 

@@ -45,6 +45,11 @@ Do this:
    write the test path plus red/green command evidence back to `RUN_DIR/repro.md`. If no correct
    seam exists, stop and write `Regression test: none — no correct seam` with the attempted seams
    and follow-up; do not add a shallow test for appearances.
+   Run the checkpoint's suite **in the foreground, in this turn**,
+   never with `run_in_background` or `&`, even if a session directive says to background long
+   commands: a suite still running when your turn ends dies with it, and nobody reads the result.
+   Any wait you do start needs a deadline (`docs/conventions/tool-discipline.md § Long-running
+   commands and waits`).
 4. Do NOT touch anything outside this prompt's scope. If the prompt is wrong or blocked, stop
    and say so. If the honest build wants a broad rewrite, a second domain, or a diff far beyond
    the prompt's `Reviewability:` line, stop and report that the prompt needs to be split or

@@ -491,10 +491,40 @@ scripts/integration-gate.sh \
 | `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named re-run red to `flaky: true`. |
 | `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
 | `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |
+| `--gate-mode <local\|ci>` | optional | `local` (default) runs the canonical gate set. `ci` confirms `gh pr checks` is fully green on the worktree's exact HEAD instead (#92). |
+| `--final` | optional | The final/terminal gate. Full local suite, unless the project file's `integration_gate` block has `ci_covers_full_suite: true`: then `--gate-mode ci` may decide it, and each `local_only_gates` entry (`{name, command}`) still runs locally. Read from the project file, never `state.json`; a differing `state.json` copy forces local. |
+| `--project-context <path>` | optional | The project file holding the ` ```json integration_gate``` ` block. Default: `project-context.md` as committed on `--base-ref` (the run branch cannot change it). |
+| `--since-ref <ref>` | optional | The commit the previous integration gate verified. A merge commit in `since-ref..HEAD` forces the local suite; an unresolvable ref does too. |
+| `--pr <n\|url>` / `--repo <OWNER/REPO>` | optional | The PR to read and its repo (passed as `gh -R`). Default: `state.json#git.pr_number` / `#git.github_repo`. |
+| `--ci-timeout <s>` | optional | Deadline for CI to finish (default 3600). Pending at the deadline is **red** (`exit_code_branch` 124, `ci.status` `pending_timeout`), never a pass. |
+| `--ci-poll <s>` / `--ci-no-checks-grace <s>` | optional | Poll interval (default 30); how long to wait for a first check on the head commit before concluding it has no CI (default 300). |
+
+**CI mode** reads `gh pr view --json headRefOid` before and after `gh pr checks --json
+name,state,bucket,workflow,link` and requires both to equal the worktree HEAD, so the checks
+belong to that exact commit. Any `fail` or `cancel` bucket is red at once; any check that is not
+`pass` or `skipping` is a wait; green needs at least one `pass`. It falls back to the local suite,
+recording why in `gate_mode_reason`, for `--final` without the project file's `ci_covers_full_suite`
+opt-in (or with a malformed `local_only_gates` list, an unreadable project file, or a
+`state.json#integration_gate` copy that differs from it), a merge since `--since-ref`, no known PR, no
+`gh` on PATH, three `gh` errors in a row, or no checks on the head commit after the grace period.
+A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
+In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).
+
+**Kept output.** Every gate's stdout and stderr stream straight into `--out/gate-output/`
+(`<gate>.stdout.log`, `<gate>.stderr.log`; `pre-existing-<gate>.<branch|base>.*.log` for
+re-validated pre-existing reds; `ci-poll.log` and `ci-checks.json` in CI mode). Each gate record
+carries `stdout_path`, `stderr_path`, `stdout_tail`, `stderr_tail` and `duration_s`. The
+regression gate also carries `runner_path` and `runner_sha256`, plus `suite` when the runner
+prints a `BUREAU-SUITE: <command>` line, so a runner switched between a fast and a full suite
+is visible in the record. `run-cold-reviewer.sh` leaves `gate-output/` out of the reviewer's
+artifact manifest.
 
 - **Output:** writes `integration-results.json` into `--out` — the EVIDENCE file (`schema_version`,
-  `checkpoint_type`, `escalate_marker`, `canonical_source`, `gates`, `pre_existing`,
-  `under_declaration`, `scope`, `fast_forward_ok`, `conflicts_clean`, `errors`). `scope` includes
+  `checkpoint_type`, `escalate_marker`, `canonical_source`, `final_gate`, `gate_mode`, `gate_mode_requested`,
+  `gate_mode_reason`, `gate_commands`, `ci`, `gates`, `pre_existing`,
+  `under_declaration`, `scope`, `fast_forward_ok`, `conflicts_clean`, `errors`). `gate_mode` is
+  the mode that produced the result (`local`, `ci`, or `none` when an escalate marker short-circuited
+  the gate) and `gate_commands` the commands actually behind it. `scope` includes
   `cut_symbol_hits` (list shape preserved; every symbol seen, including informational removed/context/
   header hits), `cut_symbol_introduced` (only symbols on added lines or new paths, the ones that block),
   `cut_symbol_attribution` (per-symbol, per-file line-kind
@@ -502,9 +532,35 @@ scripts/integration-gate.sh \
   patch the parser cannot fully account for, reported as `parse_error`). It
   carries **NO `verdict` key** — the proceed/revise/escalate Decision is the cold reviewer's (`NN-verdict.md`).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required (no new dep).
+  CI mode uses `gh` when it is on PATH and falls back to local without it.
 - **Exit codes:** `0` results written (or routine no-op); `2` usage error (missing/unknown flag,
-  `--out` absent or not a directory).
+  bad `--gate-mode` or timing value, `--out` absent or not a directory) or a fail-closed write.
 - **Callers:** the v2 Delegate (manager mode) and the refactored v1 `watcher.sh` (Phase 4).
+
+---
+
+# Terminal review pairing (`terminal-pairing.sh`)
+
+At the terminal gate the whole-PR cold review may run while the final integration gate runs
+(#92). Its verdict counts only when paired with a **green final gate on the same head SHA**.
+This script makes that pairing a script guarantee.
+
+```bash
+scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" \
+  --review-sha <40-hex SHA handed to the reviewer at spawn> \
+  --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"
+```
+
+- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0), no escalate
+  marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
+  `branch_tip` equal to the review SHA. The verdict counts.
+- **Exit 1 `discard`:** the final gate is not green (or not a final gate). Discard the review
+  uncounted and run the fix loop.
+- **Exit 3 `refused`:** the gate is green but verified a different SHA. Refuse the verdict.
+- **Exit 2:** usage error (a short SHA is an error, never a prefix match) or an unreadable file.
+
+The one-line JSON record (`status`, `paired`, `reason`, `review_sha`, `gate_sha`, `gate_green`)
+goes to stdout and to `--out`.
 
 ---
 

@@ -277,6 +277,18 @@ To start a new Delegate-run:
 
    `state.json` stays Conductor-only, so this write can never clobber it (bridge §4
    single-writer-per-file, AC16).
+
+### Every wait has a deadline
+
+Any loop you start to wait for a file, a gate or a subagent (`until [ -f … ]; do sleep …;
+done`, a poll on a done-marker) carries a deadline of about 60-90 minutes and exits on a
+failure marker as well as the success file. Stop your own stale waits as soon as the thing they
+were waiting for is resolved another way. The 1a4a Delegate left five unbounded waits on a
+checkpoint that was settled through a fork; they ran for 10-11 hours. At close-out, check
+`ps -eo pid,etime,command` for loops still pointing at this `RUN_DIR` and stop them. Relay the
+same rule to the Conductor when you spawn it. Details: `docs/conventions/tool-discipline.md
+§ Long-running commands and waits`.
+
 ### Main manager loop
 
 For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
@@ -289,7 +301,29 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
    `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
 2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
-   (FR14):
+   (FR14). Choose the gate mode yourself from facts, never from the Conductor's preference
+   (#92; cadence in `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`):
+   - `--gate-mode ci` for a routine gate (`gate-point: phase` or `interval`) on a
+     GitHub-delivered run whose PR has CI. Pass `--since-ref` = the `branch_tip` of the previous
+     integration checkpoint's `integration-results.json`, when there is one.
+   - `--gate-mode ci --final` for `gate-point: final`. The script keeps the full local suite
+     unless the project file declares `ci_covers_full_suite: true`, and then still runs each
+     `local_only_gates` entry locally; `final_gate` and `gate_mode_reason` record which. It reads
+     those settings from `project-context.md` as committed on `--base-ref`, never from
+     `state.json`; pass `--project-context <path>` when the project file lives outside the
+     target repo (for example a parent workspace). A `state.json` copy that differs from the
+     project file makes it run local.
+   - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
+     locally (re-run the same checkpoint in local mode; the second `integration-results.json`
+     replaces the first).
+   - **Terminal gate: the whole-PR cold review may run in parallel.** Spawn it while the final
+     gate runs, recording the head SHA you hand the reviewer. It counts only if
+     `scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" --review-sha <sha>
+     --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"` exits 0 (green final gate, same
+     SHA). Exit 1: the gate is not green, so discard the review uncounted (no ledger record, no
+     revise count) and run the fix loop as today. Exit 3: SHA mismatch, so refuse the verdict
+     and re-review on the gate's SHA. (`docs/conductor-gates.md § Integration checkpoint cadence
+     (build runs)`.)
    ```sh
    scripts/integration-gate.sh \
      --checkpoint-type integration \
@@ -297,11 +331,20 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      --base-ref "<from return block>" \
      --claimed-gates "<from return block>" \
      --state-json "$RUN_DIR/state.json" \
-     --out "$CTX"
+     --gate-mode "<ci|local>" [--final] [--since-ref "<previous branch_tip>"] \
+     --out "$CTX" > "$RUN_DIR/checkpoints/NN-gate.out" 2>&1
    ```
-   It writes `integration-results.json` into `$CTX`. The canonical gate set is resolved from the
-   project's own runners/manifest, never from `claimed-gates` — the verified party does not
-   define what gets executed.
+   It writes `integration-results.json` into `$CTX`, and each gate's stdout/stderr into
+   `$CTX/gate-output/`. Read `gate_mode` and `gate_mode_reason` back and log them: the script
+   falls back to local on its own for a merge since `--since-ref`, no PR, no `gh` or no checks.
+   CI mode reads the PR and repo from `state.json#git` and treats a pending check as a wait,
+   never a pass; at `--ci-timeout` (default 3600 s) it records red. The canonical gate set is
+   resolved from the project's own runners/manifest, never from `claimed-gates` — the verified
+   party does not define what gets executed.
+   A local gate runs for 30-60 minutes on a large suite. Run it in the foreground within a
+   bounded wait, or detach it with `nohup` plus a done-marker file and poll that file with a
+   deadline. A gate started with `run_in_background` or a bare `&` dies with the shell that
+   launched it (1a4a checkpoint 08 lost about 40 minutes that way).
 3. Stage `$CTX = RUN_DIR/checkpoints/NN-context/` with EXACTLY the manifest (bridge v2 §9):
    - the artifact under review (copied by name), passed as `<artifact-basename>` below,
    - any supplementary artifacts this checkpoint also reviews (e.g. `spec.md` when the checkpoint

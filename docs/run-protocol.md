@@ -98,6 +98,8 @@ After each phase, update the run dir's `state.json`:
     "status": "pull_request_open",
     "prompts_merged": []
   },
+  "integration_gate": { "cadence": "phase", "every_n_prompts": 4,
+                        "ci_covers_full_suite": false, "local_only_gates": [] },
   "last_updated": "ISO timestamp"
 }
 ```
@@ -119,6 +121,20 @@ by that path directly. `preflight-artifacts.sh --phase final` reads this field t
 check the prompt folder instead of assuming `RUN_DIR/prompts.md` (which `execute-plan` never
 produces) — see its own header comment for the full resolution order, including the
 `--prompts-dir` override flag.
+
+`integration_gate` block: build runs only. `cadence` is `phase` (default: one routine
+integration checkpoint per plan phase), `every_n` (also every `every_n_prompts` accepted
+prompts inside a phase) or `every_prompt` (the pre-#92 per-prompt gate).
+`ci_covers_full_suite: true` declares that the project's CI runs the same full suite as the
+local runner, which lets the final gate run in CI mode; `local_only_gates` (`[{"name",
+"command"}]`) lists gates that still run locally at a CI-mode final gate (tests that need
+Docker, secrets or hardware on the host). Both default off. The source of truth is the
+` ```json integration_gate``` ` block in the project's `project-context.md`
+(`templates/project-context-template.md`); the Conductor copies it here at run start and does
+not change it. The final gate never trusts this copy: `integration-gate.sh --final` reads the
+project file as committed on the base branch (or the Delegate's `--project-context`), and runs
+the full local suite if this copy differs from it. Rules:
+`docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
 
 `accounting` block: part of `templates/state.json`; the close-out step sets its `status`
 and `path` (see `docs/run-accounting.md`). `memory` is an optional Conductor-written key,

@@ -60,6 +60,7 @@ question:        <one line>
 checkpoint-subtype: routine | integration
 worktree-path:   <abs> | (none)         # integration subtype only — feeds integration-gate.sh
 base-ref:        <git-ref>              # integration subtype only
+gate-point:      phase | interval | post-merge | final   # integration subtype only (#92 cadence)
 # NOTE: each element of claimed-gates below MUST be an object with "name"/
 # "command" keys. A bare-string element is not a valid claim — integration-gate.sh
 # drops it and records the shape problem in errors[] rather than silently
@@ -185,10 +186,20 @@ capabilities a read-only reviewer must not read as its own (W7 capability-contam
 - The **refactored v1 watcher** calls it in place of its inline executor (Phase 4 / Prompt 4) — one
   copy, two callers, no duplicate to drift.
 - **Inputs (CLI flags):** `--checkpoint-type`, `--worktree-path`, `--base-ref`, `--claimed-gates`,
-  `--known-flaky-gates` (optional), `--state-json`, `--out <dir>`.
-- **Output:** writes `integration-results.json` to the `--out` dir.
+  `--known-flaky-gates` (optional), `--state-json`, `--out <dir>`, and the optional gate-mode
+  flags `--gate-mode <local|ci>`, `--final`, `--since-ref`, `--pr`, `--repo`, `--ci-timeout`,
+  `--ci-poll`, `--ci-no-checks-grace` (#92; `scripts/README.md § Integration gate`).
+- **Gate mode (#92):** `local` (the default; the v1 watcher always uses it) runs the canonical
+  gate set in the worktree. `ci` confirms `gh pr checks` is fully green on the worktree's exact
+  HEAD, polls with a deadline, and treats pending as a wait, never a pass. It falls back to
+  `local` for `--final`, a merge commit since `--since-ref`, no known PR, no `gh`, or no checks
+  on the head commit. The Delegate chooses the mode per `agents/delegate.md` § Main manager
+  loop, step 2.
+- **Output:** writes `integration-results.json` to the `--out` dir, naming `gate_mode`,
+  `gate_mode_reason` and `gate_commands`, and streams every gate's stdout/stderr into
+  `--out/gate-output/` (kept for diagnosis; not part of the reviewer's artifact manifest).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required, so a
-  pure-v1 host gains no new dependency.
+  pure-v1 host gains no new dependency. CI mode also uses `gh` when present.
 
 "The build cannot grade its own homework" (FR14): the Delegate runs the gates; the Conductor/build
 never runs them, and the cold reviewer never runs them (it stays read-only). The canonical gate set
@@ -284,7 +295,8 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
 - **`delegate-reviewer.md`** — the cold-reviewer-mode SECTION of `agents/delegate.md`, via the W-d
   slice (v2 §4);
 - **`integration-results.json`** — integration checkpoints only, written by `integration-gate.sh`
-  into `$CTX`.
+  into `$CTX`. The gate's kept output sits beside it in `$CTX/gate-output/`; `run-cold-reviewer.sh`
+  leaves that directory out of the artifact manifest, like `conventions/`.
 - **`artifact.sha256`** — the artifact's SHA-256 in `sha256sum` text format, written into `$CTX` by
   `run-cold-reviewer.sh` itself (not by the stager) immediately before the spawn. The reviewer is
   Read-only and cannot compute a digest; the task prompt tells it to copy this value verbatim into

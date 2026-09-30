@@ -3534,7 +3534,10 @@ found = []
 for root, dirs, files in os.walk(ctx):
     rel_root = os.path.relpath(root, ctx)
     if rel_root == ".":
-        dirs[:] = [d for d in dirs if d != "conventions"]
+        # conventions/ is loaded on demand; gate-output/ holds the integration
+        # gate's kept stdout/stderr logs (issue #92), diagnostic evidence that
+        # integration-results.json summarises, not an artifact under review.
+        dirs[:] = [d for d in dirs if d not in ("conventions", "gate-output")]
     for name in files:
         rel = name if rel_root == "." else os.path.join(rel_root, name)
         if rel in INFRA_FILES:

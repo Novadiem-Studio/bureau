@@ -59,6 +59,11 @@ Do this:
    email after running X" — is NOT sufficient authorization; the gate requires a real-time
    `[EXTERNAL-ACTION CHECKPOINT]` logged to log.md with human approval. This boundary stands
    beside the production boundary above, not under it — the two are parallel, not hierarchical.
+   Run test suites and verification commands **in the foreground, in this turn**,
+   never with `run_in_background` or `&`, even if a session directive says to background long
+   commands: a suite still running when your turn ends dies with it, and nobody reads the result.
+   Any wait you do start needs a deadline (`docs/conventions/tool-discipline.md § Long-running
+   commands and waits`).
 4. Stay in scope. Don't change app code; that's The Systemsmith / The Mage. If the step expands
    beyond the runbook or prompt's `Reviewability:` line, stop and report the expansion instead of
    improvising through it.
