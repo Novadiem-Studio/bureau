@@ -99,6 +99,10 @@ new_packet() {
   echo '{}' > "$ctx/state.json"
   printf '# Plan\n\nPhase 1 depends on spec.md component 8.\n' > "$ctx/plan.md"
   printf '# Spec\n\nComponent 8: the proxy rollback.\n' > "$ctx/spec.md"
+  # An integration gate's kept output (issue #92) is not an artifact: the
+  # manifest check below fails if gate-output/ leaks into artifacts.sha256.
+  mkdir -p "$ctx/gate-output"
+  printf 'PASS line 1\n' > "$ctx/gate-output/regression.stdout.log"
 }
 
 run_reviewer() {  # <host> <mode> <spawn-id> -> meta JSON on stdout
