@@ -493,9 +493,10 @@ grep -Fq '## Integration checkpoint cadence (build runs)' docs/conductor-gates.m
   || err "docs/conductor-gates.md missing the integration checkpoint cadence section"
 grep -Fq -- '--gate-mode' agents/delegate.md \
   || err "agents/delegate.md should choose the integration gate mode (--gate-mode)"
-grep -Fq 'gate-point:      phase | interval | post-merge | final' docs/delegate-bridge/v2-integrated.md \
-  && grep -Fq 'gate-point:      phase | interval | post-merge | final' agents/orchestrator.md \
-  || err "CONDUCTOR-RETURN gate-point field must match in v2-integrated.md and orchestrator.md A4"
+for f in docs/delegate-bridge/v2-integrated.md agents/orchestrator.md; do
+  grep -Fq 'gate-point:      phase | interval | post-merge | final' "$f" \
+    || err "$f: CONDUCTOR-RETURN gate-point field missing (v2 contract and orchestrator A4 must match)"
+done
 grep -Fq 'docs/ci-sharding.md' templates/project-context-template.md \
   || err "templates/project-context-template.md should link docs/ci-sharding.md"
 grep -Fq '## Long-running commands and waits' docs/conventions/tool-discipline.md \

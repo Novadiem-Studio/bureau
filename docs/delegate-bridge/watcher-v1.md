@@ -95,7 +95,9 @@ gets executed.
 The watcher parses the integration fields before staging, creates `$CTX`, then invokes
 `integration-gate.sh` to write `integration-results.json` before the provider-neutral reviewer.
 The `$CTX`-must-exist-before-write invariant remains: no gate output targets `$CTX` before it
-is created.
+is created. The watcher passes no `--gate-mode`, so it always runs the full local suite; CI mode
+(#92) is a v2 Delegate choice. The gate's stdout/stderr land in `$CTX/gate-output/`, which the
+reviewer's artifact manifest leaves out.
 
 **`known-flaky-gates` demotion (OQ-B14-4):** an optional `known-flaky-gates` field in
 the request lists gates whose re-run failures are known flaky. The watcher marks matching

@@ -451,7 +451,10 @@ except Exception:
 
   if [ "$EFFECTIVE_MODE" = "ci" ]; then
     # CI decided this gate: one "ci" gate record, no local suite run.
-    GATE_RESULTS_JSON="$(python3 -c 'import json,sys; print(json.dumps([json.loads(sys.argv[1])["gate"]]))' "$MODE_JSON" 2>/dev/null || echo '[]')"
+    # Fail closed: an unreadable CI record becomes a red gate, never an empty
+    # list (an empty gates list would read as an all-clear).
+    GATE_RESULTS_JSON="$(python3 -c 'import json,sys; g=json.loads(sys.argv[1])["gate"]; assert isinstance(g, dict); print(json.dumps([g]))' "$MODE_JSON" 2>/dev/null \
+      || echo '[{"name": "ci", "command": "gh pr checks", "exit_code_branch": 2, "result": "red", "ci_status": "unreadable"}]')"
     CANON_GATES_JSON='{"gates": [], "canonical_source": "ci"}'
   else
 
@@ -519,9 +522,17 @@ try:
         out_path = os.path.join(outdir, os.path.basename(out_rel))
         err_path = os.path.join(outdir, os.path.basename(err_rel))
         t0 = time.time()
-        with open(out_path, "wb") as fo, open(err_path, "wb") as fe:
+        output_error = None
+        try:
+            with open(out_path, "wb") as fo, open(err_path, "wb") as fe:
+                ret = subprocess.run(g["command"], shell=True, cwd=worktree,
+                                     stdout=fo, stderr=fe)
+        except OSError as e:
+            # Never let a log-file problem drop the gate (an empty gates list
+            # would read as an all-clear): run it captured, and say so.
+            output_error = "could not keep output: %s" % e
             ret = subprocess.run(g["command"], shell=True, cwd=worktree,
-                                 stdout=fo, stderr=fe)
+                                 capture_output=True)
         entry = {
             "name": g["name"],
             "command": g["command"],
@@ -533,6 +544,8 @@ try:
             "stdout_tail": tail(out_path),
             "stderr_tail": tail(err_path, 20),
         }
+        if output_error:
+            entry["output_error"] = output_error
         # The runner file can switch suites (fast vs full) with no change to
         # the command string, so record its digest, and the suite it names
         # when it prints a `BUREAU-SUITE: <command>` line.
