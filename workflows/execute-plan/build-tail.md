@@ -257,7 +257,10 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
 > neither boundary subsumes the other.
 
 7. **The Conductor** (**strong**) — close out: promote/commit accepted fixtures in the worktree,
-   finish the final cold review and evidence, then merge by the resolved delivery path per
+   finish the final cold review and evidence (the review may run beside the final gate and counts
+   only when `scripts/terminal-pairing.sh` pairs it with a green final gate on the same head SHA;
+   `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`), then merge by the
+   resolved delivery path per
    `git.merge_gate` (self default: hands-off once tests green + cold review accepted; human: on the
    human go) and remove the worktree; check packages, summarize, and move the plan out of `todo/` →
    updated `RUN_DIR/log.md`, `state.json`, relocated plan doc. (Run accounting **last**.)

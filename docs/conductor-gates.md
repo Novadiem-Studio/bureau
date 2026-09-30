@@ -136,7 +136,8 @@ and the Envoy's whole-PR pass, not from the gates (Novadiem-Studio/bureau#92). S
    every `every_n_prompts` (default 4).
 3. **Always add an integration checkpoint** right after merging the base branch into the run
    branch (`gate-point: post-merge`), and for the final gate before close-out
-   (`gate-point: final`). Both run the full local suite (below).
+   (`gate-point: final`). A post-merge gate always runs the full local suite. The final gate
+   does too, unless the project declares that its CI runs the same full suite (below).
 4. **Between gates, read CI.** On a GitHub-delivered run each accepted prompt is pushed to the
    PR. Before dispatching the next coder, read `gh pr checks <pr>` for the pushed commit. Red is
    a red gate: route the fix to the owning coder before any new work. Pending does not block the
@@ -144,12 +145,29 @@ and the Envoy's whole-PR pass, not from the gates (Novadiem-Studio/bureau#92). S
 
 The Delegate picks the gate mode, not you. A routine phase or interval gate on a pushed commit
 with CI runs in CI mode: `gh pr checks` fully green on the exact head SHA, polled with a
-deadline, pending treated as wait. The full local suite runs for `final` and `post-merge`
-gates, when the repo has no CI or no PR, and when CI is red in a way that needs local diagnosis.
+deadline, pending treated as wait. The full local suite runs for `post-merge` gates, when the
+repo has no CI or no PR, and when CI is red in a way that needs local diagnosis. The `final`
+gate runs it too, unless `state.json#integration_gate.ci_covers_full_suite` is `true`: the
+project has declared that CI runs the identical full suite (rheo-stream's CI runs it sharded in
+about 5 minutes on Linux, the production OS, against 35-55 minutes locally). Then the final gate
+may run in CI mode on the exact head SHA, and each `integration_gate.local_only_gates` entry
+(tests that need Docker, secrets or hardware on the host) still runs locally. Default off, so a
+project keeps the local final gate until it opts in.
 `integration-results.json#gate_mode` records which one produced the result and
 `#gate_mode_reason` says why (`agents/delegate.md` § Main manager loop, step 2). CI mode pays off
 only when CI is quick; a project whose suite takes more than about 10 minutes as one CI job
 should shard it first (`docs/ci-sharding.md`).
+
+**The terminal cold review may run beside the final gate.** At the terminal gate the Delegate
+(or, in a run series, the Envoy) may spawn the whole-PR cold review while the final gate is
+still running, instead of after it. Record the head SHA the reviewer was handed at spawn time.
+The verdict counts only when `scripts/terminal-pairing.sh --gate <final
+integration-results.json> --review-sha <that SHA>` exits 0: a green final gate
+(`final_gate: true`, every gate green, fast-forward and conflicts clean) whose `branch_tip`
+equals the review's SHA. Exit 1 means the gate is not green: discard the review uncounted (no
+ledger entry, no revise count) and run the fix loop as today; the next final gate gets a fresh
+review. Exit 3 means the gate verified a different SHA than the review saw: refuse the verdict
+and re-review (or re-gate) on one SHA. Keep the pairing record beside the verdict.
 
 ---
 

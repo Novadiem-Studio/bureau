@@ -506,9 +506,18 @@ for persona in agents/backend.md agents/frontend.md agents/sysadmin.md; do
     || err "$persona should require checkpoint suites in the foreground"
 done
 # Behavioural, not a grep: the CI-mode fixtures run the real gate against a fake gh.
-# They pin exact-head binding, pending-is-not-pass, the local fallbacks and kept output.
+# They pin exact-head binding, pending-is-not-pass, the local fallbacks, kept output,
+# the final-gate CI opt-in and the terminal review's same-SHA pairing.
+[[ -x scripts/terminal-pairing.sh ]] || err "scripts/terminal-pairing.sh missing or not executable"
+for f in agents/delegate.md workflows/run-series.md docs/conductor-gates.md; do
+  grep -Fq 'terminal-pairing.sh' "$f" \
+    || err "$f should require terminal-pairing.sh for a parallel terminal review"
+done
+grep -Fq '"ci_covers_full_suite": false' templates/state.json \
+  || err "templates/state.json should default integration_gate.ci_covers_full_suite to false"
 for fx in 308-integration-gate-ci-mode-green-exact-head.md 309-integration-gate-ci-pending-is-not-pass.md \
-          310-integration-gate-ci-falls-back-to-local.md 311-integration-gate-keeps-gate-output.md; do
+          310-integration-gate-ci-falls-back-to-local.md 311-integration-gate-keeps-gate-output.md \
+          312-integration-gate-final-gate-on-ci-opt-in.md 313-terminal-review-pairs-with-green-final-gate.md; do
   fx_cmd="$(awk '
     /^command:[[:space:]]*\|[[:space:]]*$/ { blk = 1; next }
     blk == 1 { if ($0 ~ /^[[:space:]]/ || $0 == "") { sub(/^  /, ""); print; next } blk = 0 }

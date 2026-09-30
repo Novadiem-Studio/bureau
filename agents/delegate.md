@@ -306,9 +306,20 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    - `--gate-mode ci` for a routine gate (`gate-point: phase` or `interval`) on a
      GitHub-delivered run whose PR has CI. Pass `--since-ref` = the `branch_tip` of the previous
      integration checkpoint's `integration-results.json`, when there is one.
-   - `--gate-mode local --final` for `gate-point: final`; `--gate-mode local` for
-     `post-merge`, for a repo with no CI, and to diagnose a CI red locally (re-run the same
-     checkpoint in local mode; the second `integration-results.json` replaces the first).
+   - `--gate-mode ci --final` for `gate-point: final`. The script keeps the full local suite
+     unless `state.json#integration_gate.ci_covers_full_suite` is `true`, and then still runs
+     each `local_only_gates` entry locally; `final_gate` and `gate_mode_reason` record which.
+   - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
+     locally (re-run the same checkpoint in local mode; the second `integration-results.json`
+     replaces the first).
+   - **Terminal gate: the whole-PR cold review may run in parallel.** Spawn it while the final
+     gate runs, recording the head SHA you hand the reviewer. It counts only if
+     `scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" --review-sha <sha>
+     --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"` exits 0 (green final gate, same
+     SHA). Exit 1: the gate is not green, so discard the review uncounted (no ledger record, no
+     revise count) and run the fix loop as today. Exit 3: SHA mismatch, so refuse the verdict
+     and re-review on the gate's SHA. (`docs/conductor-gates.md § Integration checkpoint cadence
+     (build runs)`.)
    ```sh
    scripts/integration-gate.sh \
      --checkpoint-type integration \
