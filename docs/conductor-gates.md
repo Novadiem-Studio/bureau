@@ -1,8 +1,8 @@
 # Conductor decision gates
 
 This document owns Conductor-level decision policy that sits above workflow mechanics:
-Challenger adjudication, canon/promotion declaration, production boundary, external-action
-boundary, and Notary guardrails.
+Challenger adjudication, canon/promotion declaration, integration checkpoint cadence,
+production boundary, external-action boundary, and Notary guardrails.
 
 **Pointer back:** `agents/orchestrator.md` ("Adjudicating The Challenger's findings",
 "The production boundary", "The external-action boundary", "The Notary")
@@ -111,6 +111,45 @@ The Challenger keys off this structured block and never self-infers a promotion 
 Watch-point: as the one driving things forward, you will lean toward shipping. Hold the line
 on real blockers. If you prove too lenient over time, this adjudication gets split into its
 own judge role (Robin's call).
+
+---
+
+## Integration checkpoint cadence (build runs)
+
+An integration checkpoint (`checkpoint-subtype: integration`) makes the Delegate run
+`scripts/integration-gate.sh` and then a cold reviewer. It is the expensive gate. On
+rheo-stream's 1a4 runs it came after every prompt: about 20 gates for 18 prompts, 35-70
+minutes each, roughly 15 hours of a two-day run. Nearly all of them ended in a plain proceed.
+The three silent defects that run caught came from the per-prompt Challenger build-diff reviews
+and the Envoy's whole-PR pass, not from the gates (Novadiem-Studio/bureau#92). So:
+
+1. **Every prompt keeps its review loop, unchanged.** The coder's own checkpoint (targeted tests
+   plus lint/typecheck, run in the foreground), the CodeRabbit pass, and the Challenger's cold
+   build-diff review, per `workflows/execute-plan/build-tail.md` step 6. Accepting a prompt is a
+   Conductor adjudication, not an integration checkpoint.
+2. **Routine integration checkpoints come at plan phase boundaries.** Return one after the last
+   accepted prompt of each phase (`gate-point: phase`). Phases come from the prompt folder's
+   `### Phase` headings in `00-index.md`, or from the plan's own phase sections when the folder
+   has none. `state.json#integration_gate` can change this: `cadence: "every_n"` also gates every
+   `every_n_prompts` accepted prompts inside a long phase (`gate-point: interval`), and
+   `cadence: "every_prompt"` restores the old per-prompt gate. With no phases anywhere, gate
+   every `every_n_prompts` (default 4).
+3. **Always add an integration checkpoint** right after merging the base branch into the run
+   branch (`gate-point: post-merge`), and for the final gate before close-out
+   (`gate-point: final`). Both run the full local suite (below).
+4. **Between gates, read CI.** On a GitHub-delivered run each accepted prompt is pushed to the
+   PR. Before dispatching the next coder, read `gh pr checks <pr>` for the pushed commit. Red is
+   a red gate: route the fix to the owning coder before any new work. Pending does not block the
+   next dispatch, but it is not a pass either; the phase gate waits for it to finish.
+
+The Delegate picks the gate mode, not you. A routine phase or interval gate on a pushed commit
+with CI runs in CI mode: `gh pr checks` fully green on the exact head SHA, polled with a
+deadline, pending treated as wait. The full local suite runs for `final` and `post-merge`
+gates, when the repo has no CI or no PR, and when CI is red in a way that needs local diagnosis.
+`integration-results.json#gate_mode` records which one produced the result and
+`#gate_mode_reason` says why (`agents/delegate.md` § Main manager loop, step 2). CI mode pays off
+only when CI is quick; a project whose suite takes more than about 10 minutes as one CI job
+should shard it first (`docs/ci-sharding.md`).
 
 ---
 

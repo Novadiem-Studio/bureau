@@ -75,6 +75,12 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
    `.bureau/regression/` always exists and is read on every dispatch. See
    `docs/conventions/regression-fixtures.md § Regression fixture file format` for the fixture format and lifecycle.
 
+   **When the standing runner is the project's full suite and the PR has CI (#92):** the
+   standing-suite half of this gate is the `gh pr checks` read on the pushed HEAD (see
+   "Integration cadence" below): red blocks dispatch, green passes. Do not re-run a 30-60 minute
+   local suite before every coder dispatch; it runs locally at integration checkpoints in local
+   mode. The scratch fixtures in `RUN_DIR/regression/` still run locally before every dispatch.
+
    - frontend + design implementation → **The Mage** · backend → **The Systemsmith** · ops/deploy → **The Mechanic**
 
    **OpenAI fast profile (Spark; narrow exception).** Read the prompt's
@@ -120,7 +126,9 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
 
    Each coder works in **`WORKTREE`** (not the integration branch checkout). Loads the target
    sub-app's CLAUDE.md + the skills the prompt names, builds exactly that one prompt, commits
-   in the worktree, and gets its checkpoint green. After each part:
+   in the worktree, and gets its checkpoint green, running the suite in the foreground in its
+   own turn (a backgrounded suite dies when the coder's turn ends;
+   `docs/conventions/tool-discipline.md § Long-running commands and waits`). After each part:
    - **CodeRabbit pass (pre-filter, not a gate; issue #65).** Before the Challenger spawns, run
      the chunk through CodeRabbit so the mechanical-robustness class (races, partial writes,
      unquoted paths, missing error handling) is cleared cheaply and the cold read spends on
@@ -156,6 +164,13 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
      wrong token, wrong data wiring) is always blocking regardless of server access.
    - **The Conductor adjudicates**: accept and move to the next prompt, send it back to the coder
      to fix (max 2x), or `[CHECKPOINT]`. Don't start the next prompt until this one is accepted.
+   - **Integration cadence (#92):** accepting a prompt is not an integration checkpoint. On a
+     GitHub-delivered run, push the accepted commit and, before the next dispatch, read
+     `gh pr checks` on it: red is a red gate (fix first), pending does not block dispatch but is
+     not a pass. Return a routine integration checkpoint only at a phase boundary (or every N
+     prompts where `state.json#integration_gate` says so), right after merging the base branch
+     in, and for the final gate (`docs/conductor-gates.md § Integration checkpoint cadence
+     (build runs)`). The Delegate runs that gate in CI mode or local mode and records which.
    - **Fixture capture (on accept):** When the Conductor accepts a coder's prompt, capture the verification command(s) used for that prompt as one or more regression fixture files in `RUN_DIR/regression/`, per the format in `docs/conventions/regression-fixtures.md § Regression fixture file format`. One file per fixture, named `<NN>-<slug>.md`. Set `phase:` to the prompt id + workflow (`e.g. 03 · execute-plan`) and `owner:` to the prompt file. If the accepted phase had no discrete verification command (a "looks right" acceptance with no runnable command), record a fixture with `command: <none — phase accepted on visual inspection>` and log a Warning to `RUN_DIR/log.md` — this is a planning deficiency, not a gate failure.
    - **Review-size gate:** before accepting a coder handoff, compare the diff to the prompt's
      named files, domain, and `Review size` handoff line. If the authored change is much broader

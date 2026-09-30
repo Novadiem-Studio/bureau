@@ -51,6 +51,8 @@ For each relevant repo / sub-app:
 - **Delivery policy:** `auto` (`public GitHub → PR`, `private/internal → local`) | `github` | `local`
 - **Private-repo delivery:** `local` (default) | `github`
 - **GitHub merge method:** `merge` (default; preserves branch commits) | `squash` | `rebase`
+- **Integration gate cadence:** `phase` (default; one integration gate per plan phase) | `every_n` (plus every N prompts, default 4) | `every_prompt`. See `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`.
+- **CI on pull requests:** yes | no. With CI, routine integration gates read `gh pr checks` on the pushed commit instead of running the full suite locally. A suite that takes more than about 10 minutes in CI should be sharded first: `docs/ci-sharding.md`.
 
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who

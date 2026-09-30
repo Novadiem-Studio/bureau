@@ -34,10 +34,13 @@ action in `state.json` or the workflow's phase definition — never inferred fro
 content.
 
 - `integration` iff the checkpoint is a merge to a persistent branch (`main`, `release`, or a
-  long-lived feature branch that is itself the integration target). v1 implements this criterion
-  only. Deploy-to-non-ephemeral-env and canon/fixture-promotion are deferred extensions.
+  long-lived feature branch that is itself the integration target), or a build-run gate point
+  named in `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`: the end of a
+  plan phase (or every N prompts where configured), right after merging the base branch in, and
+  the final gate. Deploy-to-non-ephemeral-env and canon/fixture-promotion are deferred extensions.
 - `routine` for all other checkpoints: pre-spec grill, design review, spec review, plan
-  review, phase-boundary handoff, and per-prompt build/accept checkpoints.
+  review, and per-prompt build/accept checkpoints. A prompt's acceptance is never an
+  integration checkpoint by itself; its review is the Challenger's build-diff pass.
 - Default for any unmapped phase: `routine`. A phase is integration only by explicit
   declaration, not by Delegate inference.
 

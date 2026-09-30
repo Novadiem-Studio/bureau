@@ -47,6 +47,23 @@
   once, land the change in one Edit. If a single artifact is genuinely taking dozens of tool
   calls, stop and report for re-scope rather than burning turns.
 
+## Long-running commands and waits
+
+Two ways a long command loses its result, both seen on rheo-stream's 1a4 runs
+(`output/studio/lessons.md`, promoted by Novadiem-Studio/bureau#92):
+
+- **A suite that outlives the agent that started it has no reader.** A coder that runs its
+  checkpoint suite with `run_in_background` or a bare `&` and then ends its turn loses the run
+  with the turn: 1a4a's Prompt 4 coder did exactly that, and the Conductor had to resume it to
+  re-run the suite, which then found a real failure. Run test suites and checkpoint commands in
+  the **foreground, in your own turn**, and read the result before you hand off. This holds even
+  if a host or session directive says to background long commands.
+- **A wait with no deadline outlives its purpose.** A background `until [ -f … ]; do sleep 30;
+  done` for a file that never appears runs for hours. Give every wait loop a deadline (about
+  60-90 minutes), make it exit on failure markers as well as the success file, and stop it once
+  what it waited for is settled. A manager that must detach a long gate uses `nohup` plus a
+  done-marker file, and polls that marker with a deadline.
+
 ## Scope
 
 Applies to every specialist and to the Conductor itself. The Conductor's own tool-call

@@ -488,6 +488,37 @@ if ! grep -q 'run-worktree' workflows/execute-plan/build-tail.md; then
   err "workflows/execute-plan/build-tail.md should reference run-worktree"
 fi
 
+echo "== integration gate cadence and CI mode (#92)"
+grep -Fq '## Integration checkpoint cadence (build runs)' docs/conductor-gates.md \
+  || err "docs/conductor-gates.md missing the integration checkpoint cadence section"
+grep -Fq -- '--gate-mode' agents/delegate.md \
+  || err "agents/delegate.md should choose the integration gate mode (--gate-mode)"
+grep -Fq 'gate-point:      phase | interval | post-merge | final' docs/delegate-bridge/v2-integrated.md \
+  && grep -Fq 'gate-point:      phase | interval | post-merge | final' agents/orchestrator.md \
+  || err "CONDUCTOR-RETURN gate-point field must match in v2-integrated.md and orchestrator.md A4"
+grep -Fq 'docs/ci-sharding.md' templates/project-context-template.md \
+  || err "templates/project-context-template.md should link docs/ci-sharding.md"
+grep -Fq '## Long-running commands and waits' docs/conventions/tool-discipline.md \
+  || err "docs/conventions/tool-discipline.md missing the long-running commands and waits rule"
+for persona in agents/backend.md agents/frontend.md agents/sysadmin.md; do
+  grep -Fq '**in the foreground, in this turn**' "$persona" \
+    || err "$persona should require checkpoint suites in the foreground"
+done
+# Behavioural, not a grep: the CI-mode fixtures run the real gate against a fake gh.
+# They pin exact-head binding, pending-is-not-pass, the local fallbacks and kept output.
+for fx in 308-integration-gate-ci-mode-green-exact-head.md 309-integration-gate-ci-pending-is-not-pass.md \
+          310-integration-gate-ci-falls-back-to-local.md 311-integration-gate-keeps-gate-output.md; do
+  fx_cmd="$(awk '
+    /^command:[[:space:]]*\|[[:space:]]*$/ { blk = 1; next }
+    blk == 1 { if ($0 ~ /^[[:space:]]/ || $0 == "") { sub(/^  /, ""); print; next } blk = 0 }
+  ' ".bureau/regression/$fx")"
+  if [[ -z "$fx_cmd" ]]; then
+    err "fixture .bureau/regression/$fx missing or has no command block"
+  elif ! fx_out="$(ROOT="$ROOT" sh -c "$fx_cmd" 2>&1)"; then
+    err "integration-gate fixture $fx failed: $(printf '%s' "$fx_out" | tail -3)"
+  fi
+done
+
 echo "== orchestrator.md regrowth guard"
 # agents/orchestrator.md is the Conductor's core context, loaded (in part) on
 # every run's startup. Idea #19 (the Conductor context diet, shipped 2026-07-09)
