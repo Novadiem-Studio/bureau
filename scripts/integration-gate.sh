@@ -242,6 +242,7 @@ data = {
     "gate_mode_reason": "no gate ran: escalate marker set",
     "gate_commands": [],
     "ci": None,
+    "regression_runner": None,
     "gates": [],
     "pre_existing": [],
     "under_declaration": [],
@@ -352,6 +353,129 @@ try:
 except Exception:
     results = []
 print(json.dumps(results))
+PY
+  }
+
+  # ── provision_regression_runner: make the worktree's runner real (issue #99) ──
+  # The regression gate runs `sh <worktree>/.bureau/regression/run.sh`. A target
+  # repo that gitignores .bureau/ (rheo-stream does, in its own .gitignore) never
+  # commits that runner, so a build worktree cut from it has no runner and the
+  # gate used to go red with exit 127, listed under under_declaration: a false
+  # red that a cold reviewer reads as a hidden failing gate.
+  #
+  # Rules, in order:
+  #   - runner TRACKED on the build branch -> use it as is. It is in the diff.
+  #   - otherwise copy the main checkout's .bureau/regression/ into the worktree
+  #     and run it there. Never run the main checkout's runner in place: runners
+  #     take their root from their own path (`cd "$(dirname "$0")/../.."`), so
+  #     that would test the main checkout, not the build: a silent false green.
+  #     The copy happens on every gate, overwriting any untracked runner already
+  #     in the worktree: the build can write that ignored file and it never shows
+  #     in its diff, and the verified party does not define what gets executed.
+  #   - copy only when every file lands gitignored in the worktree, so the build
+  #     branch gains no untracked files (and no tracked file is overwritten).
+  #   - anything else -> escalate with "regression runner absent from worktree".
+  # The main checkout comes from git (the worktree's common dir), not from
+  # state.json#target_repo, which the Conductor can write.
+  #
+  # Prints one JSON object: {"source", "runner_path", "main_checkout",
+  # "copied_from", "copied_files", "replaced_worktree_runner", "escalate"}.
+  provision_regression_runner() {
+  python3 - "$REQ_WORKTREE_PATH" <<'PY'
+import hashlib, json, os, shutil, subprocess, sys
+
+worktree = sys.argv[1]
+REL_DIR = os.path.join(".bureau", "regression")
+REL = os.path.join(REL_DIR, "run.sh")
+ABSENT = "regression runner absent from worktree: "
+res = {"source": "", "runner_path": os.path.join(worktree, REL), "main_checkout": None,
+       "copied_from": None, "copied_files": 0, "replaced_worktree_runner": False,
+       "escalate": ""}
+
+
+def finish():
+    print(json.dumps(res))
+    sys.exit(0)
+
+
+def escalate(msg):
+    res["escalate"] = ABSENT + msg
+    finish()
+
+
+def git(*args, stdin=None):
+    return subprocess.run(["git", "-C", worktree] + list(args), input=stdin,
+                          capture_output=True, text=True)
+
+
+def digest(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+try:
+    if git("ls-files", "--error-unmatch", "--", REL).returncode == 0:
+        res["source"] = "worktree"
+        finish()
+
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+    if not common or os.path.basename(common) != ".git":
+        escalate("%s is not committed on this branch, and the target repo's main "
+                 "checkout cannot be located from the worktree (git common dir: %r)."
+                 % (REL, common))
+    main = os.path.dirname(common)
+    res["main_checkout"] = main
+    main_runner = os.path.join(main, REL)
+
+    if os.path.realpath(main) == os.path.realpath(worktree):
+        # The gate was pointed at the main checkout itself: its untracked runner
+        # is the repo owner's own, not something a build wrote.
+        if os.path.isfile(res["runner_path"]):
+            res["source"] = "main-checkout"
+            finish()
+        escalate("%s is neither committed nor present in the checkout %s." % (REL, main))
+
+    if not os.path.isfile(main_runner):
+        escalate("%s is not committed on this branch, and the main checkout %s has "
+                 "none either. Commit a runner, or put one in the main checkout's "
+                 ".bureau/regression/." % (REL, main))
+
+    main_dir = os.path.join(main, REL_DIR)
+    files = []
+    for dirpath, _dirs, names in os.walk(main_dir):
+        for name in names:
+            files.append(os.path.relpath(os.path.join(dirpath, name), main))
+    files.sort()
+    # check-ignore never reports a tracked path, so a tracked file in the way
+    # also blocks the copy.
+    ignored = set(git("check-ignore", "--stdin", stdin="\n".join(files) + "\n")
+                  .stdout.splitlines())
+    loose = [f for f in files if f not in ignored]
+    if loose:
+        escalate("the main checkout %s has one, but %d of its .bureau/regression/ "
+                 "files would land in the worktree un-ignored or over a tracked file "
+                 "(first: %s), so copying them would change the build branch. Commit "
+                 "the runner, or gitignore .bureau/ in the target repo."
+                 % (main, len(loose), loose[0]))
+
+    before = digest(res["runner_path"])
+    for rel in files:
+        dst = os.path.join(worktree, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(os.path.join(main, rel), dst)
+    res["replaced_worktree_runner"] = before is not None and before != digest(main_runner)
+    res["source"] = "main-checkout-copy"
+    res["copied_from"] = main_dir
+    res["copied_files"] = len(files)
+    finish()
+except SystemExit:
+    raise
+except Exception as e:
+    res["escalate"] = ABSENT + "could not provision it from the main checkout: %s" % e
+    finish()
 PY
   }
 
@@ -643,6 +767,11 @@ except Exception:
     *) MODE_JSON="{\"mode\": \"local\", \"requested\": \"$REQ_GATE_MODE\", \"reason\": \"gate-mode resolution produced no result; ran the local suite\", \"ci\": null, \"gate\": null, \"final\": $( [ "$REQ_FINAL" = 1 ] && echo true || echo false ), \"local_only\": []}" ;;
   esac
 
+  # Issue #99: the regression runner's provenance, or why it could not be used.
+  # Stays null in CI mode, where no local regression runner runs.
+  RUNNER_JSON='null'
+  RUNNER_ESCALATE=""
+
   if [ "$EFFECTIVE_MODE" = "ci" ]; then
     # CI decided this gate: one "ci" gate record, no local suite run.
     # Fail closed: an unreadable CI record becomes a red gate, never an empty
@@ -680,6 +809,20 @@ PY
     esac
   else
 
+  # ── PROVISION THE REGRESSION RUNNER (issue #99) ─────────────────────────
+  # A runner the gate cannot use is an escalation, never a red gate: no
+  # canonical gate runs, and the final write emits the escalate-marker file.
+  # Fail closed: an unreadable provisioning record escalates too.
+  RUNNER_JSON="$(provision_regression_runner)"
+  RUNNER_ESCALATE="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert isinstance(r, dict); print(r.get("escalate") or "")' "$RUNNER_JSON" 2>/dev/null \
+    || echo "regression runner absent from worktree: the runner provisioning step produced no readable record")"
+  case "$RUNNER_JSON" in "{"*) ;; *) RUNNER_JSON='null' ;; esac
+
+  if [ -n "$RUNNER_ESCALATE" ]; then
+    CANON_GATES_JSON='{"gates": [], "canonical_source": "none"}'
+    GATE_RESULTS_JSON='[]'
+  else
+
   # ── RESOLVE CANONICAL GATE SET (FR-B14-3, FR-B14-12, FR-B14-14) ──────────
   # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
   # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
@@ -711,6 +854,8 @@ PY
   # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
   # Read gates list; run each command in the worktree; capture exit codes.
   GATE_RESULTS_JSON="$(run_gates "$CANON_GATES_JSON")"
+
+  fi   # end runner-escalate branch (issue #99)
 
   fi   # end gate-mode branch (ci records its one gate above; local ran the suite)
 
@@ -1277,12 +1422,15 @@ print(json.dumps([err] if err else []))' "$CLAIMED_GATES_JSON" 2>/dev/null || ec
     "$FF_OK" \
     "$CONFLICTS_CLEAN" \
     "$ERRORS_JSON" \
-    "$MODE_JSON" <<'PY'
+    "$MODE_JSON" \
+    "$RUNNER_JSON" \
+    "$RUNNER_ESCALATE" <<'PY'
 import json, sys
 
 (path, worktree_path, base_ref, branch_tip, canonical_source,
  gates_raw, pre_raw, under_raw, scope_raw,
- ff_ok, conflicts_clean, errors_raw, mode_raw) = sys.argv[1:14]
+ ff_ok, conflicts_clean, errors_raw, mode_raw,
+ runner_raw, runner_escalate) = sys.argv[1:16]
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
@@ -1305,6 +1453,7 @@ def write_escalate(reason, errors):
         "gate_mode_reason": "no usable gate result: escalate marker set",
         "gate_commands": [],
         "ci": mode.get("ci"),
+        "regression_runner": runner,
         "gates": [],
         "pre_existing": [],
         "under_declaration": [],
@@ -1325,9 +1474,21 @@ except Exception:
     mode = {"mode": "local", "requested": "", "reason": "gate-mode record unreadable", "ci": None}
 
 try:
+    runner = json.loads(runner_raw) if runner_raw.strip() else None
+    if not isinstance(runner, dict):
+        runner = None
+except Exception:
+    runner = None
+
+try:
     errors = json.loads(errors_raw) if errors_raw.strip() else []
     if not isinstance(errors, list):
         errors = []
+
+    # Issue #99: no usable regression runner is an escalation, not a red gate.
+    if runner_escalate.strip():
+        write_escalate(runner_escalate, errors)
+        sys.exit(0)
 
     # pre_raw is now {"results": [...], "errors": [...]}; tolerate a bare list
     # or empty/garbage. Any failure here demotes to the escalate path below.
@@ -1371,6 +1532,8 @@ try:
         "gate_mode_reason": mode.get("reason", ""),
         "gate_commands": [g.get("command", "") for g in gates if isinstance(g, dict)],
         "ci": mode.get("ci"),
+        # Issue #99: where the regression runner came from (null in CI mode).
+        "regression_runner": runner,
         "gates": gates,
         "pre_existing": pre_existing,
         "under_declaration": under,
