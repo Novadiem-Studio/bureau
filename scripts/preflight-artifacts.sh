@@ -242,7 +242,14 @@ if [ ! -f "$PLAN" ]; then
   add_defect "plan.md:0 — presence — required artifact absent: plan.md"
   MISSING_PLAN=1
 fi
-if [ "$PHASE" = "final" ]; then
+# bureau-lite: prompts are optional (workflows/bureau-lite.md step 6 — the build
+# units in plan.md are the briefs by default). With no prompts artifact at all, final
+# behaves like round1 for presence; a prompts artifact that does exist is still checked.
+PROMPTS_OPTIONAL=0
+if [ "$WORKFLOW" = "bureau-lite" ] && [ "$PROMPTS_MODE" = "file" ] && [ ! -f "$PROMPTS" ]; then
+  PROMPTS_OPTIONAL=1
+fi
+if [ "$PHASE" = "final" ] && [ "$PROMPTS_OPTIONAL" -eq 0 ]; then
   if [ "$PROMPTS_MODE" = "folder" ]; then
     if [ ! -d "$PROMPTS_DIR" ]; then
       add_defect "$(basename "$PROMPTS_DIR")/00-index.md:0 — presence — required artifact absent: prompt folder ($PROMPTS_DIR)"

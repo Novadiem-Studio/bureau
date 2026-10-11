@@ -2,6 +2,7 @@
   "project": "",
   "target_repo": null,
   "workflow": null,
+  "workflow_shifts": [],
   "phase": "not_started",
   "phase_status": "pending",
   "phases_complete": [],

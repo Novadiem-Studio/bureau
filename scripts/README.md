@@ -564,6 +564,31 @@ goes to stdout and to `--out`.
 
 ---
 
+# Risk-tag check (`risk-tags.sh`)
+
+Decides whether one `bureau-lite` build unit gets a cold Challenger review, by matching the
+unit's changed paths and changed lines against `config/risk-tags.json` (plus any
+` ```json risk_tags``` ` block in `project-context.md` as committed on the base). Judgement may
+add a review; it may not skip one this script asks for (`workflows/bureau-lite.md` step 8).
+
+```bash
+scripts/risk-tags.sh --worktree "$WORKTREE" --base "$UNIT_BASE" \
+  --out "$RUN_DIR/risk-tags/<NN>.json"
+```
+
+- **Exit 0 `clean`:** no tag fired. The unit ships on the coder's tests + CodeRabbit.
+- **Exit 1 `review`:** a `review` tag fired. Run the cold build-diff Challenger on the unit.
+- **Exit 3 `escalate`:** a `money` or `destructive-migration` tag (or a project tag raised to
+  `escalate`) fired. Stop and checkpoint.
+- **Exit 2 `error`:** bad args, an unresolvable ref, or an invalid config or project block.
+  Fail closed: treat as review.
+
+The record names files, line numbers and the matched pattern, never the line text. A project
+block may only add tags or patterns or raise a class; `ignore_paths`, a lower class or a
+`line_scope` on a default tag is an exit 2.
+
+---
+
 # CodeRabbit chunk pass (`coderabbit-pass.sh`)
 
 Runs one coder chunk through CodeRabbit **before** the Challenger sees it (issue #65). A

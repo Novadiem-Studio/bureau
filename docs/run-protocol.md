@@ -108,6 +108,15 @@ After each phase, update the run dir's `state.json`:
 target-repo resolution step; an absolute path or the literal `"(no-target)"` sentinel.
 Independent of the execute-only `git` block (which stays `enabled: false` on planning runs).
 
+`workflow_shifts`: empty unless the run changed review cadence mid-run. `workflow` keeps the
+id the run started with (accounting and the runs index classify by it); each shift appends
+`{"from", "to", "effective_from", "at", "by", "reason"}`, where `effective_from` is the first
+build unit or prompt id the new cadence governs, `at` comes from `scripts/log-append.sh --now`,
+and `by` is `robin`, `conductor` or `delegate`. The cadence in force is the last entry's `to`,
+else `workflow`. Only Robin may shift to a lighter cadence; any role may shift to a heavier one.
+The rules and the matching `log.md` entry: `workflows/bureau-lite.md § Downshifting a running
+build`.
+
 `git` block: set by `scripts/run-worktree.sh create`, then enriched by
 `scripts/pr-delivery.sh`; omit or `enabled: false` for planning-only runs. Full schema:
 `templates/state.json`, `docs/git-worktree.md`, and `docs/github-delivery.md`.

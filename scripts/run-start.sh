@@ -22,7 +22,8 @@
 # Arguments:
 #   <RUN_DIR>          absolute path where the new run dir will be created
 #   --target <repo>    absolute path to the target git repository
-#   --workflow <id>    workflow identifier (e.g. "feature", "execute-plan")
+#   --workflow <id>    workflow identifier (e.g. "feature", "execute-plan",
+#                       "bureau-lite"); must name an existing workflows/<id>.md
 #   --slug <slug>      OPTIONAL. The runs-index slug — docs/run-protocol.md
 #                       § Index write requires this to be exactly RUN_DIR's
 #                       basename (e.g. "20260918-my-task" for a RUN_DIR of
@@ -164,6 +165,19 @@ if [ "$TARGET" != "(no-target)" ]; then
 fi
 if [ -z "$WORKFLOW" ]; then
   echo "run-start: missing argument: --workflow" >&2; exit 1
+fi
+# The workflow id must name a registered workflow file. state.json#workflow drives
+# behaviour later (preflight-artifacts.sh, the bureau-lite review cadence), so a typo
+# such as "bureau_lite" would otherwise start a run that silently follows no workflow.
+case "$WORKFLOW" in
+  *[!a-z0-9-]*|-*) WORKFLOW_OK=0 ;;
+  *) WORKFLOW_OK=1 ;;
+esac
+if [ "$WORKFLOW_OK" -ne 1 ] || [ ! -f "$FRAMEWORK_ROOT/workflows/$WORKFLOW.md" ] \
+   || [ "$WORKFLOW" = "index" ]; then
+  KNOWN_WORKFLOWS="$(cd "$FRAMEWORK_ROOT/workflows" && ls -1 *.md 2>/dev/null | sed 's/\.md$//' | grep -v '^index$' | tr '\n' ' ')"
+  echo "run-start: unknown --workflow '$WORKFLOW' — no workflows/$WORKFLOW.md in $FRAMEWORK_ROOT. Registered: $KNOWN_WORKFLOWS" >&2
+  exit 1
 fi
 
 # ── Slug/RUN_DIR agreement (closes the runs-index mismatch bug) ───────────────
