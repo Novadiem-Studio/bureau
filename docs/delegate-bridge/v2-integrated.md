@@ -198,6 +198,10 @@ capabilities a read-only reviewer must not read as its own (W7 capability-contam
 - **Output:** writes `integration-results.json` to the `--out` dir, naming `gate_mode`,
   `gate_mode_reason` and `gate_commands`, and streams every gate's stdout/stderr into
   `--out/gate-output/` (kept for diagnosis; not part of the reviewer's artifact manifest).
+- **Regression runner (#99):** a runner not committed on the build branch is copied from the
+  target repo's main checkout into the worktree's gitignored `.bureau/regression/` and run there,
+  recorded in `regression_runner`. No usable runner is an `escalate_marker`, never a red gate
+  (`scripts/README.md § Integration gate`).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required, so a
   pure-v1 host gains no new dependency. CI mode also uses `gh` when present.
 
