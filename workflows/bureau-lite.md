@@ -44,8 +44,8 @@ linked PR (or the recorded local fallback).
 **Leans on skills:** **novadiem-engineering** (Architect, Challenger, every coder) + the
 project's `testing` skill and per-sub-app skills. Scripts: `scripts/run-start.sh`,
 `scripts/preflight-artifacts.sh`, `scripts/run-worktree.sh`, `scripts/pr-delivery.sh`,
-`scripts/coderabbit-pass.sh`, `scripts/risk-tags.sh`, `scripts/risk-coverage.sh` and
-`scripts/integration-gate.sh` (both run by the Delegate at gates), `scripts/terminal-pairing.sh`,
+`scripts/coderabbit-pass.sh`, `scripts/risk-tags.sh`, `scripts/integration-gate.sh` (the
+Delegate's; it runs `scripts/risk-coverage.sh` for this workflow), `scripts/terminal-pairing.sh`,
 `scripts/account-run.sh`.
 
 ## Objective
@@ -193,8 +193,10 @@ entrypoint`). Start the run with
         config or the project block, fix it and re-scan; the re-scan replaces the record.
       - **3 escalate:** stop dispatching. Return a `genuine-fork` (signal 6) naming the unit,
         the tag and the record path. Robin either upshifts the run (§ Downshifting a running
-        build, last part) or keeps it lite. Either way this unit gets step 9. A keep-lite answer
-        is logged as `RISK-TAGS waiver: unit <NN> <tag>; by Robin: "<Robin's words>"`.
+        build, last part) or keeps it lite. Either way this unit gets step 9, and his answer is
+        logged as a heading after the record, which `risk-coverage.sh` requires:
+        `scripts/log-append.sh "$RUN_DIR" 'RISK-TAGS waiver: unit <NN> <tag>; by Robin: "<Robin's words>"'`
+        for keep-lite, or the `WORKFLOW-SHIFT:` heading for an upshift.
    f. If fix commits land after the scan (a Challenger `revise`, a review-size reroute), scan
       them as `<NN>+<k>` before accepting the unit; a flagged follow-up needs its own step 9
       read.
@@ -210,9 +212,10 @@ entrypoint`). Start the run with
 
    Only for records step 8 sent here. Spawned cold per the build-diff slice
    (`agents/critic/build-diff.md`) and the cold-reviewer recipe
-   (`docs/delegate-bridge/v2-integrated.md § v2 §3`), with SPAWN-EVENT `attempt_id`
-   `challenger-unit-<NN>-<n>` (n counts reviews of that unit). `risk-coverage.sh` matches
-   reviews to records by that id and by time, so use it exactly. The Challenger gets the
+   (`docs/delegate-bridge/v2-integrated.md § v2 §3`), with SPAWN-EVENT `role` `challenger`
+   and `attempt_id` `challenger-unit-<NN>-<n>` (n counts reviews of that unit).
+   `risk-coverage.sh` matches reviews to records by role, that id and time, so use them
+   exactly. The Challenger gets the
    record's diff, the unit brief from `plan.md` (or its prompt), the risk-tag record and the
    dispositioned CodeRabbit findings file. It does not get `log.md` or the coder's reasoning.
    Its question: **"on the surfaces these tags name, what here corrupts, leaks, miscounts or
@@ -220,21 +223,20 @@ entrypoint`). Start the run with
    adjudicates**: accept, route the fix back to the coder (max 2, `max_critic_loops`), or
    `[CHECKPOINT]`.
 
-10. **Gate** — integration checkpoints at phase boundaries, after any base-branch merge, and the final gate, plus the coverage check. `[CHECKPOINT]`
+10. **Gate** — integration checkpoints at phase boundaries, after any base-branch merge, and the final gate; the gate includes the coverage check. `[CHECKPOINT]`
 
     The Conductor returns `routine-checkpoint` with `checkpoint-subtype: integration` and the
     right `gate-point` after the last accepted unit of each phase (`docs/conductor-gates.md §
-    Integration checkpoint cadence (build runs)`), with the question naming
-    `risk-coverage.json`. The Delegate runs `integration-gate.sh` as on any build run, and also
-    runs the coverage check itself, since the build does not grade its own homework:
-    ```sh
-    scripts/risk-coverage.sh "$RUN_DIR" --out "$CTX/risk-coverage.json"
-    ```
-    It stages `risk-coverage.json` in the cold reviewer's packet as a supplementary artifact
-    (`agents/delegate.md` § Main manager loop, step 3). A result other than `covered` (a gap, a
-    record scanned with a different tag list or policy ref, or a flagged record with no
-    `challenger-unit-<NN>` review after it) is a Blocker for that checkpoint: the reviewer
-    returns `revise` naming it. Accepting a unit is never a checkpoint, so the Delegate's cold
+    Integration checkpoint cadence (build runs)`). The Delegate runs `integration-gate.sh` as on
+    any build run. For a run whose `state.json` uses bureau-lite (its `workflow`, or a shift to
+    it), that script also runs `scripts/risk-coverage.sh` and adds a `risk-coverage` gate to
+    `integration-results.json`, with its record at `$CTX/risk-coverage.json`. The check is run
+    by the gate, not the build, and needs no extra step from either side. It is red on a gap
+    (including a merge that brings in commits from anywhere but the base branch), on a record
+    whose re-scan with the run's policy disagrees with what it says, on a flagged record with no
+    `challenger-unit-<NN>` review after it, and on an escalate record with no logged Robin
+    decision. A red `risk-coverage` gate is handled like any red gate under the Delegate's
+    existing verdict rules. Accepting a unit is never a checkpoint, so the Delegate's cold
     reviews in this workflow happen at these integration gates and the terminal review.
 
 11. **The Conductor** (**strong**) — close out through build-tail step 7, plus the coverage gate → `log.md`, `state.json`, `github/evidence.md`, `accounting.json`
@@ -243,10 +245,11 @@ entrypoint`). Start the run with
     same head SHA (`scripts/terminal-pairing.sh`), the close-out gates (preflight PASS,
     external-action log, `docs-sync-needed`, `lessons-append`), merge by the resolved delivery
     path (a merge commit, never a squash), worktree removal, and `account-run.sh` last. Added:
-    - **Coverage gate (Blocker):** `scripts/risk-coverage.sh "$RUN_DIR"` exits 0 on the final
-      head before the evidence is published. Log its `REVIEW-COVERAGE:` line verbatim and copy
-      it into `github/evidence.md`. The line comes from the script, never typed.
-    - `scripts/preflight-artifacts.sh "$RUN_DIR" --phase final` reports no defects.
+    - **Coverage gate (Blocker):** the final integration gate's `risk-coverage` record is
+      green, and `scripts/preflight-artifacts.sh "$RUN_DIR" --phase final` (which runs
+      `risk-coverage.sh` again for this workflow) reports no defects on the final head. Log the
+      `REVIEW-COVERAGE:` line from `risk-coverage.json` verbatim and copy it into
+      `github/evidence.md`. The line comes from the script, never typed.
 
 > **Production boundary and external-action boundary.** Both apply exactly as in
 > `workflows/execute-plan/build-tail.md` ("Production boundary — hard stop" and
@@ -275,7 +278,7 @@ flagged line may hold a secret.
 | `external-irreversible` | review | email/SMS/chat sends, DNS/infra mutation, deploys, force pushes, PR merges, publishes, recursive and object-store deletes |
 | `concurrency` | review | locks, transactions, idempotency and dedup, thread/process pools, schedulers, cron and launchd |
 | `risk-policy` | review | any change to `project-context.md` or `config/risk-tags.json` |
-| `money` | escalate | payments, payouts, refunds, invoices, ledgers, billing, card charges |
+| `money` | escalate | payments, payouts, refunds, invoices, ledgers, billing, card charges, pricing modules, balance and price arithmetic |
 | `destructive-migration` | escalate | drop/rename/truncate/delete/update-set, Django `RemoveField`/`RunPython`, inside migration or SQL files |
 
 The first five are the set Robin chose on the upwork-collector run. The rest overlap
@@ -285,11 +288,14 @@ changes, and visibility filters outside the named idioms are not matched. Those 
 through the Conductor's REVIEW-ADD, the integration gates and the terminal review.
 
 One cold reviewer per flagged unit, however many tags fire. `build-review-cold` escalates when
-two or more surfaces fire because its single review is the only one the change ever gets. Here
-the unit already sits inside a design the Challenger has read, and every unit is read again at
-its phase gate and in the terminal whole-PR review. A credential unit that trips `oauth-auth`,
-`tokens-secrets` and `network-egress` together is the normal case for this workflow, not an
-outlier; the review question names every fired tag.
+two or more surfaces fire because its single review is the only code read the change ever
+gets. Here a flagged unit gets two: its own build-diff review, and the terminal whole-PR cold
+review, which re-reads every unit's code. (The phase-gate reviewer does not: its packet is the
+gate results, `state.json` and a log slice, not diffs. It checks that tests and coverage hold,
+not the code.) A credential unit that trips `oauth-auth`, `tokens-secrets` and
+`network-egress` together is the normal case for this workflow, not an outlier; the review
+question names every fired tag, and a unit Robin or the Conductor thinks needs more can be
+upshifted.
 
 A project adds to the list with one block in `project-context.md`, committed on the base branch
 before the run starts. `risk-tags.sh` reads it from `state.json#git.base_sha` (`--policy-ref`),
@@ -363,27 +369,35 @@ treats a missing prompts artifact as acceptable once a shift to `bureau-lite` is
    JSON, and runs `scripts/update-runs-index.sh "$RUN_DIR"`:
    ```json
    {"from": "execute-plan", "to": "bureau-lite", "effective_from": "10",
-    "at": "<log-append.sh --now>", "by": "robin", "reason": "<one line>"}
+    "head": "<git rev-parse HEAD at the shift>", "at": "<log-append.sh --now>",
+    "by": "robin", "reason": "<one line>"}
    ```
    `state.json#workflow` keeps the original id, so the runs index and accounting still show
    what the run started as. No script reads the shift for accounting yet; it is there for the
    eval and for `risk-coverage.sh`, which anchors its chain at the base of unit
-   `effective_from`'s record.
+   `effective_from`'s record. A `WORKFLOW-SHIFT` heading to bureau-lite in `log.md` with no
+   matching `state.json` entry makes `risk-coverage.sh` exit 2, so a forgotten state write
+   cannot switch the check off.
 3. From unit 10 on, every unit gets its records and `RISK-TAGS:` lines, scanned with
    `--policy-ref` set to `state.json#git.base_sha`. A run created before `base_sha` existed
-   uses `git merge-base <base_branch> HEAD`, computed once at the shift and passed unchanged
-   to every scan.
+   uses `git merge-base <base_branch> HEAD`, computed once at the shift, stored as the shift
+   entry's `policy_ref`, and passed unchanged to every scan.
 
 **Upshifting.** Moving back to every-unit review needs no permission: the Conductor, the
 Delegate or Robin may do it at any unit boundary, for example after an `escalate` result or
-when most units are firing anyway. Record it the same way, with `"to"` set to the heavier
-workflow's id (`execute-plan` for the every-prompt build tail) and `by` set to whoever made the
-call.
+when most units are firing anyway. Record it the same way: the
+`WORKFLOW-SHIFT: bureau-lite to execute-plan from unit <NN>` heading, and a `workflow_shifts`
+entry with `"to"` set to the heavier workflow's id (`execute-plan` for the every-prompt build
+tail), `by` set to whoever made the call, and `head` set to HEAD at the shift. The coverage
+chain ends at that `head`; units after it follow the build tail's every-prompt review.
 
 **What is not machine-checked.** That a waiver or a downshift really came from Robin. Both are
 written by the session he spoke to, never by the Conductor on its own account, and both carry
 his words verbatim; nothing verifies the authorship. Escalate waivers at least arrive as the
-answer to a `genuine-fork`, which only Robin answers.
+answer to a `genuine-fork`, which only Robin answers. The same goes for the review evidence:
+`risk-coverage.sh` re-scans every record, so an edited record is caught, but it trusts that a
+`challenger-unit-<NN>` SPAWN-EVENT in `log.md` marks a review that happened. It catches the
+failure seen in real runs, a skipped step, not a deliberately forged log.
 
 ## Done criteria
 
@@ -392,9 +406,10 @@ answer to a `genuine-fork`, which only Robin answers.
 - `log.md` holds the design-model checkpoint with Robin's answer and exactly one Challenger
   design round with its adjudication.
 - `scripts/risk-coverage.sh "$RUN_DIR"` exits 0 on the final head: every commit since the
-  anchor sits in a record scanned with the default tag list and the run's policy ref, and every
-  flagged record has a `challenger-unit-<NN>` review after it (or, for a `review` record only,
-  Robin's waiver). Its `REVIEW-COVERAGE:` line is in `log.md` and `github/evidence.md`.
+  anchor sits in a record whose re-scan with the default tag list and the run's policy ref
+  agrees with it, every flagged record has a `challenger-unit-<NN>` review after it (or, for a
+  `review` record only, Robin's waiver heading), and every escalate record also has Robin's
+  logged decision. Its `REVIEW-COVERAGE:` line is in `log.md` and `github/evidence.md`.
 - An integration gate ran at each phase boundary, after each base-branch merge, and at the
   end, each with `integration-results.json`, `risk-coverage.json` and a cold verdict.
 - Build-tail step 7 is complete: terminal review paired with the green final gate, evidence
@@ -414,7 +429,11 @@ answer to a `genuine-fork`, which only Robin answers.
 - **A rewritten history** (a reset or rebase past an accepted unit). `risk-tags.sh` refuses a
   base that is not an ancestor of head, and the chain check reports the orphaned records.
 - **Uncommitted or untracked files.** `risk-tags.sh` exits 2 until they are committed or
-  removed, so nothing reaches a merge unscanned.
+  removed, so nothing reaches a merge unscanned. Build output that is not gitignored trips
+  this on every scan; gitignore it rather than living with fail-closed reviews.
+- **A merge of anything but the base branch** (a side branch, another run's branch). The
+  coverage check treats it as a gap unless a record scans it, so scan the merge as a
+  follow-up (`<NN>+<k>`, base = the commit before the merge).
 - **Two parallel tracks in one worktree.** Their commits interleave; scan the union range once
   and give both units that record (or a follow-up each). Over-firing is the safe direction.
 - **Rename-only units.** The path check sees both names; a moved `auth/` file fires
@@ -429,8 +448,9 @@ answer to a `genuine-fork`, which only Robin answers.
 - `risk-tags.sh` exits 2 (no `python3` or `git`, a dirty tree, a non-ancestor or empty range,
   a bad config or project block, any internal error): treat it as review, log it, fix the cause
   and re-scan.
-- `risk-coverage.sh` exits 1 at a gate: route the named gap or missing review to the Conductor
-  (scan the gap, run the missing review) before the gate can pass. Exit 2 (no `base_sha`, no
+- The `risk-coverage` gate is red: route the named gap, mismatch or missing review to the
+  Conductor (scan the gap, run the missing review, get Robin's decision) before the gate can
+  pass. Exit 2 (no `base_sha`, no
   worktree, an unreadable record): fix the setup; the gate does not pass on an unrun check.
 - The Challenger spawn fails: retry once fresh. If it fails again, the unit cannot be accepted;
   `[CHECKPOINT]`. A flagged record is never accepted unreviewed.
@@ -449,8 +469,9 @@ answer to a `genuine-fork`, which only Robin answers.
 - `RUN_DIR/risk-tags/<NN>.json` and `<NN>+<k>.json`: base and head SHAs, commit count, scan
   time, config sha256, policy ref and project source, files scanned and ignored, each fired tag
   with up to 20 hits (file, line, side, pattern).
-- `RUN_DIR/checkpoints/<NN>-context/risk-coverage.json` per integration gate: the chain, every
-  unit's records and results, and each problem found.
+- `RUN_DIR/checkpoints/<NN>-context/risk-coverage.json` per integration gate, and the
+  `risk-coverage` entry in that gate's `integration-results.json`: the chain, every unit's
+  records and results, and each problem found.
 - `state.json#workflow`, `#workflow_shifts` and `#git.base_sha`: what the run started as, every
   cadence change, and the anchor.
 - `integration-results.json` per gate and `github/evidence.md` on the PR, which carries the

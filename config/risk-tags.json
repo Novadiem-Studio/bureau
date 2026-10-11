@@ -9,7 +9,7 @@
   "ignore_except": [
     "(^|/)\\.claude/",
     "(^|/)SKILL\\.md$",
-    "(^|/)agents/[^/]+\\.md$",
+    "(^|/)agents/(.+/)?[^/]+\\.md$",
     "(^|/)(CLAUDE|AGENTS|CODEX|GEMINI|CURSOR|GROK)\\.md$",
     "(^|/)project-context\\.md$"
   ],
@@ -68,7 +68,7 @@
         "\\bhttpx\\b|\\baiohttp\\b|\\brequests\\.(get|post|put|patch|delete|head|request|session)\\b",
         "urllib\\.request|urlopen|http\\.client|\\bpycurl\\b",
         "\\baxios\\b|node-fetch|\\bundici\\b|\\bgot\\(|\\bky\\(",
-        "\\bfetch\\(\\s*[\"'`]https?://",
+        "\\bfetch\\(\\s*([\\\"'`]https?://|`\\$\\{|\\w*(url|uri|api|endpoint|host|base)\\w*\\s*[,)+])",
         "\\bhttp\\.(get|post|head|newrequest|defaultclient)\\b|\\bnet\\.dial",
         "\\bcurl\\s|\\bwget\\s",
         "\\bsocket\\.|websocket|\\bgrpc\\b",
@@ -168,14 +168,16 @@
     {
       "id": "money",
       "class": "escalate",
-      "description": "Money movement: payments, payouts, refunds, invoices, ledgers, billing",
+      "description": "Money movement and money arithmetic: payments, payouts, refunds, invoices, ledgers, billing, pricing logic, balances",
       "paths": [
-        "(^|/)(billing|payments?|payouts?|ledgers?|invoices?|wallets?|checkout)(/|[._-]|$)"
+        "(^|/)(billing|payments?|payouts?|ledgers?|invoices?|wallets?|checkout)(/|[._-]|$)",
+        "(^|/)pricing[^/]*(/.*)?\\.(py|rb|go|java|kt|cs|php|ex|exs|sql|ts|js|mjs)$"
       ],
       "lines": [
         "\\bstripe\\b|payment_?intent|\\bpaypal\\b|\\bbraintree\\b",
         "\\bpayouts?\\b|\\brefunds?\\b|\\binvoices?\\b|\\bledgers?\\b|\\bbilling\\b",
-        "amount_?cents|credit_?balance|\\bdebit\\b|\\bcharge_?(card|customer)\\b"
+        "amount_?cents|credit_?balance|\\bdebit\\b|\\bcharge_?(card|customer)\\b",
+        "\\bbalance\\w*\\s*[-+*/]?=(?!=)|\\b(unit_?)?price\\w*\\s*[*+]|\\btotal_?(price|amount|due)\\b"
       ]
     },
     {

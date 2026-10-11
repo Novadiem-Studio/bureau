@@ -591,20 +591,25 @@ the scan time, config sha256 and policy ref. A project block may only add tags o
 raise a class; `ignore_paths`, a lower class, a `line_scope` on a default tag or a second block
 is an exit 2.
 
-`risk-coverage.sh` is the check the Conductor does not grade. The Delegate runs it at each
-`bureau-lite` integration gate and the close-out runs it on the final head:
+`risk-coverage.sh` is the check the Conductor does not grade. `integration-gate.sh` runs it at
+every integration gate of a run that uses `bureau-lite` and records a `risk-coverage` gate in
+`integration-results.json` (record at `$OUT/risk-coverage.json`); `preflight-artifacts.sh
+--phase final` runs it again at close-out. By hand:
 
 ```bash
-scripts/risk-coverage.sh "$RUN_DIR" --out "$CTX/risk-coverage.json"
+scripts/risk-coverage.sh "$RUN_DIR" [--worktree <path>] [--out <file>]
 ```
 
 It walks first-parent history from `state.json#git.base_sha` (or, after a downshift, from the
-`effective_from` unit's record) to HEAD and exits 1 on any of: a commit in no record (merge-only
-gaps excepted), a record scanned with a different config or policy ref, or a review/error/
-escalate record with no `"status":"complete"` SPAWN-EVENT for `challenger-unit-<unit>-<n>` after
-the record's scan time (a `review` record may instead carry a `RISK-TAGS waiver: unit <unit>`
-line). Exit 0 also covers a run that never used `bureau-lite`; exit 2 is a setup error. Its
-`REVIEW-COVERAGE:` line is the one the close-out logs and publishes.
+`effective_from` unit's record; it ends at an upshift's `head`) and exits 1 on any of: a commit
+in no record (a merge needs none only when its side parents are on the base branch), a record
+whose re-scan with the default config and the run's policy ref disagrees with it, a
+review/error/escalate record with no `"status":"complete"` challenger-role SPAWN-EVENT for
+`challenger-unit-<unit>-<n>` after the record's scan time (a `review` record may instead have a
+later `RISK-TAGS waiver: unit <unit>` log heading), or an escalate record without a later
+waiver or `WORKFLOW-SHIFT` heading recording Robin's decision. Exit 0 also covers a run that
+never used `bureau-lite`; exit 2 is a setup error, including a `WORKFLOW-SHIFT` to bureau-lite
+in `log.md` that `state.json` does not record.
 
 ---
 

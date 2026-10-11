@@ -110,9 +110,11 @@ Independent of the execute-only `git` block (which stays `enabled: false` on pla
 
 `workflow_shifts`: empty unless the run changed review cadence mid-run. `workflow` keeps the
 id the run started with (accounting and the runs index classify by it); each shift appends
-`{"from", "to", "effective_from", "at", "by", "reason"}`, where `effective_from` is the first
-build unit or prompt id the new cadence governs, `at` comes from `scripts/log-append.sh --now`,
-and `by` is `robin`, `conductor` or `delegate`. The cadence in force is the last entry's `to`,
+`{"from", "to", "effective_from", "head", "at", "by", "reason"}` (plus `policy_ref` on a
+shift to bureau-lite in a run with no `git.base_sha`), where `effective_from` is the first build
+unit or prompt id the new cadence governs, `head` is `git rev-parse HEAD` at the shift (required
+when shifting off bureau-lite), `at` comes from `scripts/log-append.sh --now`, and `by` is
+`robin`, `conductor` or `delegate`. The cadence in force is the last entry's `to`,
 else `workflow`. Only Robin may shift to a lighter cadence; any role may shift to a heavier one.
 The rules and the matching `log.md` entry: `workflows/bureau-lite.md § Downshifting a running
 build`.

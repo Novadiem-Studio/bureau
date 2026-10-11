@@ -248,11 +248,14 @@ def main():
         r = git("show", label)
         text = r.stdout if r.returncode == 0 else ""
     text = text.replace("\r\n", "\n")
-    blocks = re.findall(r"^```json[ \t]+risk_tags[ \t]*\n(.*?)^```", text, re.S | re.M)
-    if len(blocks) > 1:
-        raise Fail("%s carries %d risk_tags blocks; keep one" % (label, len(blocks)))
-    if not blocks and re.search(r"^```json[ \t]+risk_tags", text, re.M):
-        raise Fail("%s has an unterminated risk_tags block" % label)
+    # Lenient on indentation and case, strict on count: any fence line that names
+    # risk_tags must parse as exactly one block, or the scan fails closed.
+    openers = re.findall(r"^[ \t]*```[ \t]*json[ \t]+risk_tags\b", text, re.M | re.I)
+    blocks = re.findall(r"^[ \t]*```[ \t]*json[ \t]+risk_tags[ \t]*\n(.*?)^[ \t]*```", text, re.S | re.M | re.I)
+    if len(openers) > 1:
+        raise Fail("%s carries %d risk_tags blocks; keep one" % (label, len(openers)))
+    if len(openers) != len(blocks):
+        raise Fail("%s has a risk_tags fence that does not parse as a block" % label)
     if blocks:
         record["project_source"] = label
         try:
