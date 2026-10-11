@@ -564,15 +564,17 @@ goes to stdout and to `--out`.
 
 ---
 
-# Risk-tag check (`risk-tags.sh`)
+# Risk-tag check (`risk-tags.sh`) and coverage (`risk-coverage.sh`)
 
-Decides whether one `bureau-lite` build unit gets a cold Challenger review, by matching the
-unit's changed paths and changed lines against `config/risk-tags.json` (plus any
-` ```json risk_tags``` ` block in `project-context.md` as committed on the base). Judgement may
-add a review; it may not skip one this script asks for (`workflows/bureau-lite.md` step 8).
+`risk-tags.sh` decides whether one `bureau-lite` build unit gets a cold Challenger review, by
+matching the changed paths and changed lines of `base..head` against `config/risk-tags.json`
+(plus any ` ```json risk_tags``` ` block in `project-context.md` as committed at the run's
+start). Judgement may add a review; it may not skip one this script asks for
+(`workflows/bureau-lite.md` step 8).
 
 ```bash
 scripts/risk-tags.sh --worktree "$WORKTREE" --base "$UNIT_BASE" \
+  --policy-ref "$(jq -r .git.base_sha "$RUN_DIR/state.json")" \
   --out "$RUN_DIR/risk-tags/<NN>.json"
 ```
 
@@ -580,12 +582,29 @@ scripts/risk-tags.sh --worktree "$WORKTREE" --base "$UNIT_BASE" \
 - **Exit 1 `review`:** a `review` tag fired. Run the cold build-diff Challenger on the unit.
 - **Exit 3 `escalate`:** a `money` or `destructive-migration` tag (or a project tag raised to
   `escalate`) fired. Stop and checkpoint.
-- **Exit 2 `error`:** bad args, an unresolvable ref, or an invalid config or project block.
+- **Exit 2 `error`:** bad args, missing `python3`/`git`, a dirty worktree, a base that is not an
+  ancestor of head, an empty range, an invalid config or project block, or any internal error.
   Fail closed: treat as review.
 
-The record names files, line numbers and the matched pattern, never the line text. A project
-block may only add tags or patterns or raise a class; `ignore_paths`, a lower class or a
-`line_scope` on a default tag is an exit 2.
+The record names files, line numbers and the matched pattern, never the line text, and carries
+the scan time, config sha256 and policy ref. A project block may only add tags or patterns or
+raise a class; `ignore_paths`, a lower class, a `line_scope` on a default tag or a second block
+is an exit 2.
+
+`risk-coverage.sh` is the check the Conductor does not grade. The Delegate runs it at each
+`bureau-lite` integration gate and the close-out runs it on the final head:
+
+```bash
+scripts/risk-coverage.sh "$RUN_DIR" --out "$CTX/risk-coverage.json"
+```
+
+It walks first-parent history from `state.json#git.base_sha` (or, after a downshift, from the
+`effective_from` unit's record) to HEAD and exits 1 on any of: a commit in no record (merge-only
+gaps excepted), a record scanned with a different config or policy ref, or a review/error/
+escalate record with no `"status":"complete"` SPAWN-EVENT for `challenger-unit-<unit>-<n>` after
+the record's scan time (a `review` record may instead carry a `RISK-TAGS waiver: unit <unit>`
+line). Exit 0 also covers a run that never used `bureau-lite`; exit 2 is a setup error. Its
+`REVIEW-COVERAGE:` line is the one the close-out logs and publishes.
 
 ---
 

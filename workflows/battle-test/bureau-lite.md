@@ -4,8 +4,30 @@
 `config/risk-tags.json`, `scripts/risk-tags.sh`, `scripts/run-start.sh`,
 `scripts/preflight-artifacts.sh`, `templates/state.json`
 **Promotion to canon:** yes (new workflow row; `docs/conventions/canon-promotion.md`)
-**Status:** 5 cases. Cases 1-4 executed against the landed script and config; case 5 is a
-walkthrough of the written downshift procedure, since no live run has downshifted under it yet.
+**Status:** re-run in full after the cold review (block below). 6 cases; cases 1-5 executed
+against the landed scripts and config, case 6 is a walkthrough of the written downshift
+procedure, since no live run has downshifted under it yet. The first run's block is kept under
+it as history.
+
+## Run 2026-10-11 (re-run after cold review)
+
+A fresh-context reviewer read the first version cold and found that nothing mechanical checked
+the Conductor's routing, that commits outside a unit's scanned range (fix loops, gate fixes)
+were never tagged, that an empty or rewritten range reported clean, that a run could empty its
+own project block in one unit and lose the triggers in the next, that `ignore_paths` hid agent
+and skill `.md` files and any nested `docs/` directory, and that several idioms under-fired or
+over-fired (the reference case's own budget parser escalated on `currency`). Every one of those
+is fixed in this PR and pinned by fixtures 316 and 320-322. The cases below were re-evaluated
+from scratch against the fixed scripts.
+
+| Case name | Input description | Expected outcome | Actual result |
+|-----------|------------------|-----------------|---------------|
+| Credential collector, eight units (typical) | Scratch repo shaped like the upwork-collector run, one commit per unit, each scanned with `--policy-ref <start>`: 01 jobs-list view + `jobs.html`; 02 OAuth callback with PKCE verifier; 03 refresh-token store with `encrypt`; 04 launchd plist with `StartInterval`; 05 a plain model field; 06 a view test; 07 an Upwork fee from `amount_cents`; 08 a budget parser reading `currency` plus a same-origin `fetch(..., {credentials: "include"})`. | 01, 05, 06, 08 clean. 02 `oauth-auth`, 03 `tokens-secrets`, 04 `concurrency` (exit 1). 07 `money` (exit 3). | pass — exactly as expected. 08 was a false escalate under the first config (`currency`) and is clean now; `credentials: "include"` no longer trips `tokens-secrets`. |
+| EDGE: diff shapes that fool naive parsing | (a) a removed SQL comment `-- legacy password column`, shown as `--- legacy ...` in the -U0 diff; (b) a README full of risky words; (c) `DELETE FROM` in app code vs. in an alembic revision; (d) a path git quotes, `auth/we"ird.py`; (e) `.claude/agents/x.md` with `tools:`, `SKILL.md` with `allowed-tools:`, and `httpx.post` under `src/docs/`. | (a) `tokens-secrets` on removed line 2; (b) clean, README in `files_ignored`; (c) app code does not escalate, the revision does; (d) `oauth-auth` on the real name; (e) `tool-allowlist` twice and `network-egress`, despite the `.md` and docs rules. | pass — fixtures 315, 317, 321. |
+| FAILURE MODE: money and destructive migration mid-build | (a) the fee unit above; (b) `ALTER TABLE users DROP COLUMN legacy` appended to a migration. | Both exit 3: dispatch stops, `genuine-fork` signal 6, the unit is still reviewed whatever Robin decides. | pass — (a) case 1 unit 07; (b) fixture 314. |
+| FAILURE MODE: a run tries to loosen or dodge its own triggers | (a) an earlier unit empties the project `risk_tags` block, a later unit adds `api.upwork.com`; (b) explicit blocks setting `ignore_paths`, a `line_scope` on a default tag, or `money` lowered to review; (c) a staged-but-uncommitted `API_KEY`; (d) a `reset --hard` past an accepted guard commit; (e) an empty range; (f) `run-start.sh --workflow bureau_lite`. | (a) the emptying unit trips `risk-policy` and the later unit still fires `upwork-api`, because the policy is read at the run's start commit; (b) exit 2 each; (c)-(e) exit 2 with an error record, never clean; (f) refused before any run dir exists. | pass — fixtures 316, 318, 320. |
+| FAILURE MODE: the Conductor skips a scan or a review | A run with records 01 (clean) and 02 (review). (a) no Challenger SPAWN-EVENT for unit 02; (b) a fix commit after 02's scan with no follow-up record; (c) a base-branch merge commit; (d) a record scanned without `--policy-ref`. | `risk-coverage.sh` (run by the Delegate at each gate): (a) exit 1 naming record 02; covered once `challenger-unit-02-1` completes after the scan; (b) exit 1 `gap:` until `02+1.json` exists; (c) allowed, no record needed; (d) exit 1 naming the policy mismatch. | pass — fixture 322. |
+| EDGE: downshift of a running build (walkthrough) | An `execute-plan` build at prompt 09 of 25. Robin tells the Delegate the work is low risk and to lighten the review. | The Delegate logs `WORKFLOW-SHIFT: execute-plan to bureau-lite from unit 10` with Robin's words and relays it; 09 finishes under the old cadence; the Conductor appends the shift to `state.json#workflow_shifts`, leaves `workflow` as `execute-plan`, runs `update-runs-index.sh`; from 10 on every commit gets a record and only flagged ones a Challenger; `risk-coverage.sh` anchors at unit 10's record and joins each gate; `preflight-artifacts.sh` accepts the missing prompts artifact once the shift is recorded. Neither the Delegate nor the Conductor could have made the shift without Robin. | pass (walkthrough) — every step is written in `workflows/bureau-lite.md § Downshifting a running build`; the anchor rule is exercised by `risk-coverage.sh` code paths but not by a fixture with a real shift. Not yet observed on a live run. |
 
 ## Run 2026-10-11 (promotion)
 

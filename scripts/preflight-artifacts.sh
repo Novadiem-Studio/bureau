@@ -245,8 +245,17 @@ fi
 # bureau-lite: prompts are optional (workflows/bureau-lite.md step 6 — the build
 # units in plan.md are the briefs by default). With no prompts artifact at all, final
 # behaves like round1 for presence; a prompts artifact that does exist is still checked.
+# A run that shifted to bureau-lite mid-run (state.json#workflow_shifts) counts too.
+USES_LITE=0
+if [ "$WORKFLOW" = "bureau-lite" ]; then
+  USES_LITE=1
+elif [ -f "$_STATE_JSON" ] && python3 -c 'import json,sys
+s = json.load(open(sys.argv[1]))
+sys.exit(0 if any(isinstance(x, dict) and x.get("to") == "bureau-lite" for x in (s.get("workflow_shifts") or [])) else 1)' "$_STATE_JSON" 2>/dev/null; then
+  USES_LITE=1
+fi
 PROMPTS_OPTIONAL=0
-if [ "$WORKFLOW" = "bureau-lite" ] && [ "$PROMPTS_MODE" = "file" ] && [ ! -f "$PROMPTS" ]; then
+if [ "$USES_LITE" -eq 1 ] && [ "$PROMPTS_MODE" = "file" ] && [ ! -f "$PROMPTS" ]; then
   PROMPTS_OPTIONAL=1
 fi
 if [ "$PHASE" = "final" ] && [ "$PROMPTS_OPTIONAL" -eq 0 ]; then

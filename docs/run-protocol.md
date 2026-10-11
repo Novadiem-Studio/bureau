@@ -117,7 +117,8 @@ else `workflow`. Only Robin may shift to a lighter cadence; any role may shift t
 The rules and the matching `log.md` entry: `workflows/bureau-lite.md § Downshifting a running
 build`.
 
-`git` block: set by `scripts/run-worktree.sh create`, then enriched by
+`git` block: set by `scripts/run-worktree.sh create` (including `base_sha`, the commit the run
+branch starts from), then enriched by
 `scripts/pr-delivery.sh`; omit or `enabled: false` for planning-only runs. Full schema:
 `templates/state.json`, `docs/git-worktree.md`, and `docs/github-delivery.md`.
 
