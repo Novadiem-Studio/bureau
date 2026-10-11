@@ -16,7 +16,9 @@ command: |
   set +e; "$S" --worktree "$W" --base "$A" --policy-ref "$A" --out "$R/risk-tags/01.json" >/dev/null 2>&1; rc=$?; set -e
   [ "$rc" -eq 3 ] || { echo "FAIL money did not escalate (rc $rc)"; exit 1; }
   sleep 1
-  printf 'SPAWN-EVENT: {"role":"challenger","agent":"x","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"challenger-unit-01-1","status":"complete","at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$R/log.md"
+  for st in started complete; do
+    printf 'SPAWN-EVENT: {"role":"challenger","agent":"The Challenger","configured_model":"opus","actual_model":"opus","attempt":1,"attempt_id":"challenger-unit-01-1","status":"%s","at":"%s"}\n' "$st" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$R/log.md"
+  done
   # reviewed but no decision: not covered, and preflight final flags it
   cov; [ "$rc" -eq 1 ] && jq -e 'any(.problems[]; contains("Robin"))' "$TMP/cov.json" >/dev/null || { echo "FAIL escalate without decision covered (rc $rc)"; exit 1; }
   set +e; out=$("$ROOT/scripts/preflight-artifacts.sh" "$R" --phase final 2>&1); prc=$?; set -e
