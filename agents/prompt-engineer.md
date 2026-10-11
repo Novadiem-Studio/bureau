@@ -76,6 +76,11 @@ top-level `output/<file>`.
 ```
 [The actual prompt text, written as if you are the developer speaking to Claude Code]
 
+## If the code disagrees with this prompt
+If a path, symbol, contract, or test named here doesn't match the codebase, or the spec leaves
+a decision open, stop. Report what you expected, what you found, and where. Don't guess, and
+don't redesign around it.
+
 ## Checkpoint
 Seams under test: <named public seam(s), or "none — <short reason>">
 <exact verification commands; green before handoff>
@@ -96,7 +101,10 @@ Each prompt should:
 1. **State the context** — what already exists, what stack is in use
 2. **State the single task** — one clear thing to build or implement
 3. **Specify the output** — what files, functions, or components should exist after
-4. **Include relevant constraints** — naming conventions, patterns to follow, things to avoid
+4. **Include relevant constraints** — naming conventions, patterns to follow, things to avoid.
+   Give the reason for any constraint whose reason isn't obvious ("no new dependency: this
+   sub-app ships to a locked-down host"). A coder who knows why a rule exists can handle the
+   case the rule didn't anticipate; a bare rule gets followed literally or not at all.
 5. **Not decide things** that belong in the spec — if the spec says use Postgres, the prompt says use Postgres
 
 ## Scoping rules
@@ -195,6 +203,19 @@ there. So every prompt must carry or name the context the work needs:
   latest docs, or language-server search, point at the relevant skill/MCP/tooling instead of
   leaving the choice implicit.
 
+## Give the coder a way out — every prompt
+
+A coder with no sanctioned way to say "this doesn't match" forces the work through: it invents
+the missing helper, guesses the payload shape, or patches around a wrong path. That
+improvisation is the defect the Challenger then has to find, or doesn't. Every prompt carries
+the `## If the code disagrees with this prompt` section from the template, verbatim, plus any
+specific known risk worth naming (e.g. "`Invitation` may still use the old `token` column; if
+so, stop"). A stopped coder costs one round trip. A guessing coder costs a review loop or a
+silent defect.
+
+This is a different stop from the execute-plan `Reviewability:` boundary, which tells the coder
+when to stop expanding scope. This one tells it when to stop trusting the prompt.
+
 ## Revision loops — rewrite, don't patch
 
 If you are re-spawned with Critic blockers: rewrite the affected prompts clean. Renumber or
@@ -234,10 +255,10 @@ evidence.
 prompt text — you do not decide whether it "seems necessary." Grep `prompts.md` (or each
 `NN-<slug>.md`) for the trigger signal; if it hits, the check is in scope.
 
-**Triggered checks — each runs when its signal appears in any prompt (checks 1–6 fire on code
-blocks/paths/env refs; check 7 fires on prompt prose). No always-on check — every check is
-trigger-gated, but the triggers are broad and overlapping so a real prompt set never goes
-wholly unchecked.**
+**Checks 1–10 are trigger-gated: each runs when its signal appears in any prompt (checks 1–6
+fire on code blocks/paths/env refs; check 7 fires on prompt prose). Check 11 is the one
+always-on check, because the others verify tokens and none of them reads a prompt for
+meaning.**
 
 | Check | Trigger (grep over the prompts) | What to verify | Evidence form |
 |---|---|---|---|
@@ -251,6 +272,7 @@ wholly unchecked.**
 | 8. Code-volume | Any fenced block in a prompt's body exceeding 25 lines (the prompt-wrapper fence itself is not a trigger — count only fenced blocks nested within the prompt body) | Block is either a test fixture, a contract stub (signatures + types only, no logic), or a reference snippet explicitly labelled "for reference only." If none of these: flag it as a contracts-not-code violation. | block location (prompt N, line M), block type classification, or `violation — implementation code in prompt N` |
 | 9. Reuse `path:Symbol` in prompt prose (ADVISORY) | A prompt's prose (outside any fenced block) contains an active reuse verb (`reuse`/`reuses`/`reused`) governing a backticked code-symbol. Grep the prose layer of each prompt for the pattern. | Verify **by reading** that the claim names a greppable `path:Symbol` — not just a noun phrase. There is no mechanical backstop for this semantic claim; the seam-declaration preflight only checks that checkpoints name their seams. Sub-clauses: (a) **Numeric consistency (ADVISORY):** if the same labeled quantity appears across two separate prompts in a shared-label context, confirm the values agree in context or add a disambiguating qualifier. (b) **Sub-app CLAUDE.md naming (ADVISORY):** if a prompt directs work on an existing sub-app and names a convention-bearing structural term (the Check-h set: `store slice`, `service class`, `db column`, etc.) adjacent to a backticked name, confirm a `CLAUDE.md §` / `novadiem-engineering §` / `no CLAUDE.md for` citation appears in the same prompt. None of these fire a preflight defect — all are self-check obligations. | `path:line` of the real definition, or `reuse-claim-no-symbol — <prompt N, prose line>` (self-check finding only, not a preflight emission). |
 | 10. Seam declaration | Every prompt has a `## Checkpoint`. | Confirm the first checkpoint lines include `Seams under test:` with either named public seam(s) or `none — <reason>`. For non-`none` seams, confirm the checkpoint asks the coder to load `docs/conventions/tdd-seams.md` and mutation-verify the seam tests before handoff. This presence check is backed by `scripts/preflight-artifacts.sh --phase final`; the public-seam quality remains your self-check and the Challenger's review. | `prompts.md:<line>` / `<NN-*.md>:<line>` of each declaration, or `seam-declaration-missing — <prompt N>`. |
+| 11. Cold read | Always on: every prompt. | Reread each finished prompt as the coder will meet it: the prompt text, novadiem-engineering, and the target sub-app's context, with no memory of spec.md, plan.md, or your own reasoning. List every point where a competent coder would have to guess: an undefined term, a step with two readings, a `Done when` that can't be checked, a decision the spec made that the prompt doesn't state. Fix each in the prompt, or name the spec section that settles it. | `cold-read: prompt N — <ambiguity> → <fix>`, or `cold-read: prompt N — clean; closest call: <point>, settled by <prompt line or spec §>`. |
 
 **Output discipline.** Run every in-scope check. Surface only the **N's** and any **Y whose
 evidence was non-obvious** — never a wall of routine Y's. Each defect you **found and fixed**
