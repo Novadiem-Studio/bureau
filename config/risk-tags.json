@@ -127,7 +127,7 @@
       "class": "review",
       "description": "Locks, transactions, schedulers and read-modify-write on shared state",
       "paths": [
-        "(^|/)(scheduler|schedule|cron|jobs?|workers?|queues?)(/|[._-]|$)",
+        "(^|/)(schedulers?|cron|crontabs?|celery|workers)(/|\\.[a-z]+$)",
         "\\.plist$"
       ],
       "lines": [
