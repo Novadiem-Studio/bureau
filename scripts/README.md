@@ -415,11 +415,13 @@ sh scripts/promote-fixtures.sh \
 
 # Cross-model pass (`model-pass.sh`)
 
-One deterministic "improve this draft" call to a non-Claude model, for the
-`write-article` workflow's cross-model stage. Routes by a provider-prefixed
-`<model-spec>` (v1 ships the `openrouter:` arm only). This is the intended
-metered-API use: cheap or specialized **non-build** work. It is not a Bureau
-host and must not be used to build code. The caller supplies everything;
+One deterministic "improve this draft" (or memo) call to a non-Claude model, for the
+`write-*` workflows' cross-model stage. Routes by a provider-prefixed
+`<model-spec>`: `openrouter:` makes one metered OpenRouter POST; `codex:` runs the
+local Codex CLI once on Robin's subscription (`codex exec`, ephemeral, user config
+ignored, read-only sandbox, launched from an empty temp dir, no approvals). Either way it
+is cheap or specialized **non-build** work. It is not a Bureau host and must not be used
+to build code. The caller supplies everything;
 the script makes no routing decisions and promotes nothing — it writes a **candidate**
 out-file that the workflow's Scribe step reconciles. Full design: `plan-write-article-workflow.md §1`.
 
@@ -430,7 +432,16 @@ scripts/model-pass.sh \
   config/passes/improve-grok.md \
   "$RUN_DIR/passes/01-grok.md" \
   --run-dir "$RUN_DIR"
+
+# the same pass on the local Codex CLI
+scripts/model-pass.sh codex:gpt-6.1-sol "$RUN_DIR/draft.md" \
+  config/passes/improve-grok.md "$RUN_DIR/passes/01-codex.md" --run-dir "$RUN_DIR"
 ```
+
+Codex knobs: `MODEL_PASS_CODEX_EFFORT` (reasoning effort, default `medium`),
+`MODEL_PASS_CODEX_TIMEOUT` (seconds, default `900`), `CODEX_BIN` (default `codex`). Codex
+reports no `finish_reason`, so the audit line records `codex-exit-0`, `codex-exit-<rc>` or
+`codex-timeout` in that field; the content checks below apply to both arms.
 
 **Fail-closed:** the out-file is written ONLY when every integrity check passes — HTTP 2xx,
 no `.error`, non-empty content, `finish_reason` exactly `"stop"`, and output within 50%-300%
@@ -441,7 +452,7 @@ step, never speculatively — each call spends real money on a third-party API.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| `<model-spec>` | Required | Provider-prefixed model id, e.g. `openrouter:x-ai/grok-4.3`. Only `openrouter:` is routable in v1. |
+| `<model-spec>` | Required | Provider-prefixed model id: `openrouter:x-ai/grok-4.3` or `codex:gpt-6.1-sol`. |
 | `<draft-file>` | Required | Absolute path to the draft markdown to improve (must exist, non-empty). |
 | `<instruction-file>` | Required | Absolute path to the pass instruction file (must exist, non-empty). |
 | `<out-file>` | Required | Absolute path for the candidate; parent dir must exist. Written only on full success. |
@@ -451,9 +462,9 @@ step, never speculatively — each call spends real money on a third-party API.
 |-----------|---------|
 | `0` | Candidate written to `<out-file>`. |
 | `1` | Bad arguments or missing input files (before any network call). |
-| `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response). |
+| `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response; for `codex:`, a non-zero `codex exec` exit or a timeout). |
 | `3` | Integrity check failed (`finish_reason` != `stop`, empty content, or length-delta out of range). |
-| `4` | OpenRouter key missing (`OPENROUTER_API_KEY` absent and no valid `OPENROUTER_KEYSTORE` supplied). |
+| `4` | OpenRouter key missing (`OPENROUTER_API_KEY` absent and no valid `OPENROUTER_KEYSTORE` supplied), or the Codex CLI is not on PATH. |
 
 The request body is built with `jq -n` (the draft is arbitrary markdown — never
 string-interpolated). The key is read from `OPENROUTER_API_KEY`, or from the optional

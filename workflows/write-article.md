@@ -287,9 +287,10 @@ resume-skip predicate); step 9 reconciles those candidates into the next `versio
    `config/article-passes.json`) with these `jq -e` guards (pattern mirrors `account-run.sh` and
    `scripts/model-pass.sh`'s contract); **on any failure, halt and name the file:**
    - `jq -e '.passes | type == "array"' <config>` — `.passes` is an array.
-   - `jq -e '[.passes[] | select(.enabled == true) | .model | startswith("openrouter:")] | all' <config>`
-     — every **enabled** pass's `model` carries the routable `openrouter:` provider prefix (v1's
-     only arm). A non-`openrouter:` enabled pass fails loud — it is never silently skipped.
+   - `jq -e '[.passes[] | select(.enabled == true) | .model | (startswith("openrouter:") or startswith("codex:"))] | all' <config>`
+     — every **enabled** pass's `model` carries a routable provider prefix: `openrouter:` (metered
+     API) or `codex:` (the local Codex CLI). Any other enabled pass fails loud — it is never
+     silently skipped.
    - For each enabled pass, confirm its `instruction` path resolves to a real file under the bureau
      root: `test -f "<bureau-root>/<instruction>"`. A missing
      instruction file fails **before** the API call, not as an empty-instruction POST.
