@@ -6,8 +6,29 @@ JSON payload on stdin after each API response; the script extracts the 5-hour an
 prints a compact status bar. No external app, no keychain prompts, no launchd agent needed —
 Claude Code itself (the token owner) hands the numbers over directly.
 
-The snapshot is updated after every API response, so the Conductor always reads live data
-without triggering any separate process.
+The status line updates the snapshot after every API response, but only where a status
+line renders (the terminal CLI).
+
+**Second writer: `scripts/usage-snapshot-hook.sh` (issue #109).** The desktop app's Code tab
+never runs the status line, so a run driven from there would read whatever the last terminal
+session wrote. This hook covers that gap. Register it on `PostToolUse` and `Stop` with
+`"async": true`. Hooks fire in the desktop app, the CLI and subagents. A hook payload has no
+rate-limit figures, so it reads them from the ClaudeUsage app's local API
+(`127.0.0.1:47291/usage`). It fetches at most once a minute, writes `source: "claudeusage-hook"`
+in the same schema, never replaces a snapshot newer than ClaudeUsage's `lastUpdated`, and
+writes nothing if ClaudeUsage reports a different account from the session's login. When
+ClaudeUsage isn't running, the hook does nothing and the snapshot keeps its last value.
+
+Use the bureau's one global install path (`~/Code/novadiem/bureau` on Robin's machine), not
+`${CLAUDE_PROJECT_DIR}`, which points at whatever repo the session is working in. In
+`~/.claude/settings.json`, merged into any existing hook arrays:
+
+```json
+"PostToolUse": [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
+  "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }],
+"Stop":        [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
+  "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }]
+```
 
 Retired scripts `poll-usage-snapshot.sh` and `install-usage-poller.sh` are kept in place
 for reference but marked retired at the top of each file.
