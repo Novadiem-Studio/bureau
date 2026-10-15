@@ -19,8 +19,14 @@ in the same schema, never replaces a snapshot newer than ClaudeUsage's `lastUpda
 writes nothing if ClaudeUsage reports a different account from the session's login. When
 ClaudeUsage isn't running, the hook does nothing and the snapshot keeps its last value.
 
+Use the bureau's one global install path (`~/Code/novadiem/bureau` on Robin's machine), not
+`${CLAUDE_PROJECT_DIR}`, which points at whatever repo the session is working in. In
+`~/.claude/settings.json`, merged into any existing hook arrays:
+
 ```json
 "PostToolUse": [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
+  "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }],
+"Stop":        [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
   "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }]
 ```
 

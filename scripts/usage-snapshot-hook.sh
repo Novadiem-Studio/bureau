@@ -45,12 +45,21 @@ command -v curl >/dev/null 2>&1 || exit 0
 
 now="$(date -u +%s)"
 
-# Throttle.
-if [ -f "$STAMP" ]; then
-  last="$(stat -f %m "$STAMP" 2>/dev/null || stat -c %Y "$STAMP" 2>/dev/null || echo 0)"
-  [ $(( now - last )) -lt "$INTERVAL" ] && exit 0
-fi
+mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+# Throttle. Parallel PostToolUse hooks can start together, so the check and the
+# stamp update run under an mkdir lock (atomic); a loser just exits. A lock left
+# by a killed run is cleared after 30 s.
 mkdir -p "$(dirname "$STAMP")" 2>/dev/null || exit 0
+LOCK="$STAMP.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  [ $(( now - $(mtime "$LOCK") )) -gt 30 ] && rmdir "$LOCK" 2>/dev/null
+  exit 0
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+if [ -f "$STAMP" ] && [ $(( now - $(mtime "$STAMP") )) -lt "$INTERVAL" ]; then
+  exit 0
+fi
 touch "$STAMP" 2>/dev/null || exit 0
 
 body="$(curl -s --max-time 2 "${BASE_URL%/}/usage" 2>/dev/null)" || exit 0
@@ -78,12 +87,17 @@ eval "$fields"
 case "$usage_updated" in *T*Z) ;; *) exit 0 ;; esac
 
 # Freshness guard: keep a snapshot that is newer than ClaudeUsage's data.
-if [ -r "$SNAPSHOT" ]; then
+# Checked here and again just before the move, which narrows the race with the
+# status line to the mv itself; a status-line write that still loses that race
+# is restored by its next response. A lock shared with statusline-usage.sh
+# would close it fully, but is not worth it for a model-routing heuristic.
+snapshot_is_newer() {
+  [ -r "$SNAPSHOT" ] || return 1
+  local snap_polled
   snap_polled="$(jq -r '.polledAt // empty' "$SNAPSHOT" 2>/dev/null)"
-  if [ -n "$snap_polled" ] && [[ "$snap_polled" > "$usage_updated" ]]; then
-    exit 0
-  fi
-fi
+  [ -n "$snap_polled" ] && [[ "$snap_polled" > "$usage_updated" ]]
+}
+snapshot_is_newer && exit 0
 
 resets_in() {
   local target="$1"
@@ -133,5 +147,6 @@ jq -n \
   }' > "$tmp" 2>/dev/null || { rm -f "$tmp"; exit 0; }
 
 mkdir -p "$(dirname "$SNAPSHOT")" 2>/dev/null
+if snapshot_is_newer; then rm -f "$tmp"; exit 0; fi
 mv -f "$tmp" "$SNAPSHOT" 2>/dev/null || rm -f "$tmp"
 exit 0
