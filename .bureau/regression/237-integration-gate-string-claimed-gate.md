@@ -8,6 +8,10 @@ command: |
   git -C "$W" init -q; git -C "$W" config user.email t@t; git -C "$W" config user.name t
   # A real 2-commit worktree so the pre-existing-red loop actually runs (it adds a
   # detached base-ref worktree and re-runs each claimed pre-existing gate).
+  # A committed regression runner gives the gate its canonical "regression" gate.
+  # (Before issue #99 a missing runner still produced one, as a false red exit 127;
+  # it now escalates instead, so the fixture commits a real runner.)
+  mkdir -p "$W/.bureau/regression"; printf '#!/bin/sh\nexit 0\n' > "$W/.bureau/regression/run.sh"
   echo v1 > "$W/f"; git -C "$W" add -A; git -C "$W" commit -qm base
   BASE=$(git -C "$W" rev-parse HEAD)
   echo v2 > "$W/f"; git -C "$W" commit -qam tip
