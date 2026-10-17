@@ -13,8 +13,8 @@ that is a paid-generation decision for Robin, see `video-production` money rules
 must update from live data (that is a component, `build-review-cold`); writing the page text
 itself (the content workflow for that site); a single figure Robin has already drawn.
 
-**Type:** mixed. Spawns a drawer (and, on the optional reference path, a librarian and a
-brief-writer), runs `scripts/figure-restyle.sh`, then wires, gates, PRs and merges.
+**Type:** mixed. Spawns a surveyor and a drawer (and, on the optional reference path, a
+librarian and a brief-writer), runs `scripts/figure-restyle.sh`, then wires, gates, PRs and merges.
 
 **Inputs:**
 - A **project profile**, `config/illustrate-profiles/<project>.md`, plus its style file. The
@@ -55,19 +55,43 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
      content strand's agents (a forked session once resumed the content writer by mistake and
      two writers drafted the same files for five minutes). Its diary goes in its own notes file,
      not the shared run log.
-   - If the profile names no look yet, step 6 runs first on one figure.
+   - If the profile names no look yet, step 7 runs first on one figure.
 
-2. **The Conductor** (Select, **strong**): pick the pages and get Robin's go on the list → page list in `notes.md`
+2. **Analizer 2000** (Survey, **standard**): before any drawing, list every content page with its current figure count and the sections that need a figure, ranked → a `## Survey <date>` table in `RUN_DIR/<strand>/notes.md`
+   - A read-only subagent (Sonnet is enough): no drawing, no edits outside the notes file. It
+     reads every page published on the default branch, the manifest, and the site's page
+     contracts and voice guide (on cryptowatchtools: `learn/content/**`, `learn/manifest.json`,
+     `learn/tools/contracts/*.md`, `learn/tools/voice/voice-guide.md`).
+   - One row per page, every page included: page key, figures on the page now (its image
+     lines), then each section that needs a figure with its heading, what the figure would
+     show, the page numbers it would use (quoted from the page) and a priority. A page with no
+     section worth a figure gets "none", so the table shows it was read.
+   - Priority: **P0** a page contract requires a figure there (on cryptowatchtools, every
+     setup's Entry section; `learn:check` warns `setup-entry-figure-missing`); **P1** a worked
+     calculation, a process with steps or a comparison; **P2** nice to have. A section on a page
+     that already has figures still gets a row when it holds a separate teachable idea. Pure
+     prose gets none.
+   - Then a Codex direction memo on the table (`scripts/model-pass.sh codex:<model> <survey>
+     <instruction> RUN_DIR/<strand>/survey-memo.md --mode memo --run-dir <RUN>`): where a
+     reader gets lost without a picture, what is over-illustrated, whether the figures read as
+     one visual language across chapters. The memo stays in the run dir; link it under the
+     table, log adopted and declined points there, and re-rank. Keep this pass even when Claude
+     quota is tight (Robin, standing).
+   - Why this step exists: Select used to ask the content strand which live pages had no figure.
+     That list stopped when the content strand finished, and it never asked which sections on
+     an illustrated page still needed one.
+
+3. **The Conductor** (Select, **strong**): pick the pages and get Robin's go on the list → page list in `notes.md`
    - Only pages published on the default branch. Unpublished drafts change under you.
    - Rank by teaching value: a worked calculation, a process with steps, a comparison of two
      cases, a rule with a threshold. Skip pages whose point is pure prose.
-   - Ask the content strand for its ranked list of live pages that need a figure; it sends one
-     after each merge.
+   - Work from the step 2 survey, P0 rows first. A content strand that is still publishing can
+     add newly live pages to it after each merge; it no longer supplies the list.
    - One sentence per page on what the figure shows, using the page's own numbers. Robin
      answers with a go on the whole list or a subset. That go covers wiring those pages and
      merging them.
 
-3. **Analizer 2000** (Librarian, **standard**): OPTIONAL, only when the profile names a reference source: index it and pull a few frames per topic into the private frames dir → `<frames_dir>/index.md`, `pilot-moments.md`
+4. **Analizer 2000** (Librarian, **standard**): OPTIONAL, only when the profile names a reference source: index it and pull a few frames per topic into the private frames dir → `<frames_dir>/index.md`, `pilot-moments.md`
    - Hard privacy rules in the prompt: opaque ids only, real names only in a private mapping file
      in the frames dir, no transcript text in the reply, nothing written under `~/Code`, frames
      dir outside the repo and outside RUN_DIR.
@@ -75,7 +99,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
      moment (`ffmpeg -ss <t> -i <video> -frames:v 1 -q:v 3 <file>.jpg`) and drop frames with no chart.
    - Reply with counts and gaps only.
 
-4. **The Cleric** (Brief-writer, **standard**): OPTIONAL, same condition: look at the frames and write one figure brief per page in original words → `RUN_DIR/<strand>/briefs/<slug>.md`
+5. **The Cleric** (Brief-writer, **standard**): OPTIONAL, same condition: look at the frames and write one figure brief per page in original words → `RUN_DIR/<strand>/briefs/<slug>.md`
    - Describe the CONCEPT, never the instance: no coin, ticker, date, timeframe or price level
      from a frame, no source name, layout, colours or annotation style, no transcript text, no
      shape that could recreate a frame.
@@ -87,7 +111,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
    - Then a **Gate**: the Conductor greps the briefs for tickers, dates, exchange names and any
      source names before the drawer sees them.
 
-5. **The Mage** (Drawer, **standard**): draw each figure in code from the page's own numbers, assert every value, render SVG and a 2x PNG, commit and push the figures branch with no PR → `defs/<slug>.ts`, `samples/<slug>.svg`, `samples/<slug>.png`, `samples/captions.json`
+6. **The Mage** (Drawer, **standard**): draw each figure in code from the page's own numbers, assert every value, render SVG and a 2x PNG, commit and push the figures branch with no PR → `defs/<slug>.ts`, `samples/<slug>.svg`, `samples/<slug>.png`, `samples/captions.json`
    - The prompt says: work only from the page text (and the brief, if any). Never open the
      frames dir. Draw from scratch.
    - Before the spawn, update the figures branch from the default branch so the drawer reads
@@ -104,7 +128,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
    - Reply: per figure, path, size and the asserted values in one line; anything the page did
      not support.
 
-6. **The Conductor** (Look, **strong**): FIRST RUN ON A PROJECT ONLY: restyle one dense figure in 3 or 4 candidate looks with `scripts/figure-restyle.sh` (a different style file each), check each as in step 8, and let Robin pick → profile `style_file`
+7. **The Conductor** (Look, **strong**): FIRST RUN ON A PROJECT ONLY: restyle one dense figure in 3 or 4 candidate looks with `scripts/figure-restyle.sh` (a different style file each), check each as in step 9, and let Robin pick → profile `style_file`
    - What the cryptowatchtools test showed: a look that is told it may redesign the layout
      misspells labels (the editorial look wrote "planred"); a light textbook look invents a
      figure number; a faithful look barely changes anything. Robin picked the hand-drawn
@@ -112,7 +136,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
    - Generated art bills to Robin's ChatGPT plan through Codex, not an API key. Check before
      reaching for a site's own OpenAI key: on cryptowatchtools it had no credits.
 
-7. **The Conductor** (Restyle, **standard**): run `scripts/figure-restyle.sh <png> <out.png> --style-file <profile style> --webp ...` per figure, in parallel waves of about five → `looks/<look>/<slug>.png`, `looks/<look>/<slug>.webp`
+8. **The Conductor** (Restyle, **standard**): run `scripts/figure-restyle.sh <png> <out.png> --style-file <profile style> --webp ...` per figure, in parallel waves of about five → `looks/<look>/<slug>.png`, `looks/<look>/<slug>.webp`
    - The script holds the content rules (every label character for character, every mark in the
      same relative place, nothing added). Only the style varies by project.
    - Each call takes 1 to 3 minutes. Save state to the notes file before a long wave if the
@@ -120,7 +144,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
    - PNG masters stay out of git; commit the WebP set to the figures branch if useful as a
      record.
 
-8. **The Conductor** (Restyle check, **strong**): read each restyled PNG beside its source PNG and its page, label by label and level by level, and record PASS or FAIL per figure → `notes.md`
+9. **The Conductor** (Restyle check, **strong**): read each restyled PNG beside its source PNG and its page, label by label and level by level, and record PASS or FAIL per figure → `notes.md`
    - **Tolerance.** Text: zero differences. Any misspelling, dropped or added word, changed
      number or invented title or figure number fails. Marks: a line, bar or level may sit
      slightly off its code position only if its label is correct, it keeps its order against
@@ -130,10 +154,10 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
    - On FAIL, re-run the restyle once or twice. If it still fails, ship the code-rendered PNG
      converted to WebP, or drop that figure from the wave and say so.
 
-9. **Worktree**: a fresh wiring branch and worktree off the latest default branch, after checking the content strand's open PRs → profile `worktrees`
-   - Never wire on the figures branch; it carries tooling that is not meant for main.
+10. **Worktree**: a fresh wiring branch and worktree off the latest default branch, after checking the content strand's open PRs → profile `worktrees`
+    - Never wire on the figures branch; it carries tooling that is not meant for main.
 
-10. **The Conductor** (Wiring, **standard**): copy each WebP beside its page and insert the image line with alt and caption per the profile's wiring convention → page files, assets
+11. **The Conductor** (Wiring, **standard**): copy each WebP beside its page and insert the image line with alt and caption per the profile's wiring convention → page files, assets
     - Do it with a short script per wave: a map of page key to the heading the figure goes
       before, assert the heading exists, refuse any caption or alt with a straight double quote
       or an em dash.
@@ -143,28 +167,29 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
     - When a figure replaces an older one, grep the repo for links to the old file before
       deleting it.
 
-11. **Gate**: run the profile's check commands; all must pass before the PR
+12. **Gate**: run the profile's check commands; all must pass before the PR
     - Includes the full site check with a build, the tests, any originality or terms stamp
       (fresh), and a typecheck against the baseline.
     - A lint error caused by the figure's file name or alt text (not the page) is fixed in the
       alt text and logged as a tooling carry for the content strand, not suppressed.
 
-12. **The Conductor** (Ship, **standard**): create the issue (pages and acceptance), commit with a message naming the pages, open the PR with `Closes #N` and a table of page and what its figure shows → issue, PR
+13. **The Conductor** (Ship, **standard**): create the issue (pages and acceptance), commit with a message naming the pages, open the PR with `Closes #N` and a table of page and what its figure shows → issue, PR
     - Acceptance in the issue: file beside each page, every number matches its page, checks
       pass, each page serves its image after deploy.
     - The PR body states how the figures were made (code-drawn and asserted, restyled, checked
       by eye) and, if frames were used, that none shipped.
 
-13. **Gate**: merge per the profile's merge protocol: pre-merge notice, newest CI run green, merge commit with `--match-head-commit` (never squash), deploy watched, every page and image curled
-    - Robin's go from step 2 covers this merge. Hold only if he said "let me review", or the
+14. **Gate**: merge per the profile's merge protocol: pre-merge notice, newest CI run green, merge commit with `--match-head-commit` (never squash), deploy watched, every page and image curled
+    - Robin's go from step 3 covers this merge. Hold only if he said "let me review", or the
       content strand has a PR merging first.
 
-14. **The Conductor** (Close-out, **standard**): message the merge SHA to the content strand, add one line to the shared run log, update the strand's notes and handoff → `RUN_DIR/log.md`, `notes.md`, `HANDOFF.md`
+15. **The Conductor** (Close-out, **standard**): message the merge SHA to the content strand, add one line to the shared run log, update the strand's notes and handoff → `RUN_DIR/log.md`, `notes.md`, `HANDOFF.md`
     - The handoff names the current session ids, branches, worktrees, uncommitted scratch, and
       the next pages waiting for figures. Rewrite it whenever it stops matching reality.
 
 ## Done criteria
 
+- The survey table for this wave is in the strand's notes, every content page listed.
 - Every page in the wave is on the default branch with its image line, alt and caption.
 - Each figure's def asserts every labelled value and the render passes.
 - Each restyle has a recorded PASS against its source and page.
@@ -176,7 +201,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
 
 - **Page changes after drawing.** Re-read the page on the wiring branch; if a number moved,
   fix the def, re-render, re-restyle that figure. Never ship a figure drawn against an older page.
-- **Restyle keeps failing.** Ship the code-rendered PNG as WebP or drop the figure (step 8).
+- **Restyle keeps failing.** Ship the code-rendered PNG as WebP or drop the figure (step 9).
 - **Quota cut mid-wave.** Notes first, then work. A takeover session reads the notes and
   HANDOFF, checks uncommitted changes are only the wiring and the stamp, re-checks every
   shipped image by eye, then finishes the gate.
@@ -209,7 +234,7 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
 - `learn:check` flagged two errors that were the risk lint reading `portfolio-risk.webp` in the
   image URL. The fix was alt wording; the lint should skip image URLs.
 - The original HANDOFF.md went stale within hours (it still described SVG-only figures). Step
-  14 rewrites it at the end of every wave.
+  15 rewrites it at the end of every wave.
 
 ## Project profiles
 
