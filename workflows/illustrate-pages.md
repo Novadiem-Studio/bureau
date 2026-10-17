@@ -72,10 +72,11 @@ every error that reached it (one misspelled label); a Challenger pass is optiona
      that already has figures still gets a row when it holds a separate teachable idea. Pure
      prose gets none.
    - Then a Codex direction memo on the table (`scripts/model-pass.sh codex:<model> <survey>
-     <instruction> <out> --mode memo --run-dir <RUN>`): where a reader gets lost without a
-     picture, what is over-illustrated, whether the figures read as one visual language across
-     chapters. Log adopted and declined points under the table and re-rank. Keep this pass even
-     when Claude quota is tight (Robin, standing).
+     <instruction> RUN_DIR/<strand>/survey-memo.md --mode memo --run-dir <RUN>`): where a
+     reader gets lost without a picture, what is over-illustrated, whether the figures read as
+     one visual language across chapters. The memo stays in the run dir; link it under the
+     table, log adopted and declined points there, and re-rank. Keep this pass even when Claude
+     quota is tight (Robin, standing).
    - Why this step exists: Select used to ask the content strand which live pages had no figure.
      That list stopped when the content strand finished, and it never asked which sections on
      an illustrated page still needed one.
