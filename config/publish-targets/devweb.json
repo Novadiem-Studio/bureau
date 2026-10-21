@@ -6,7 +6,8 @@
   "categories": [
     "frameworks",
     "memory",
-    "engineering"
+    "engineering",
+    "culture"
   ],
   "mdx_components": [
     "PullQuote",
@@ -47,6 +48,9 @@
       "Mark Down",
       "Dee Fault",
       "Justin Time"
+    ],
+    "culture": [
+      "Ann Notate"
     ]
   },
   "author_note": "Pen names from devweb lib/authors.ts, mapped by pillar. Essays carry a pen name; reference pages (glossary, topics, data, evidence) carry no author field."
