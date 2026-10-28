@@ -733,7 +733,9 @@ Also read `integration-results.json#under_declaration` (canonical gates the buil
 did NOT declare in claimed-gates, FR-B14-14):
 - Any entry with `result: "red"` is a hidden failing gate → emit `escalate` with
   Escalation naming the gate and the fact the build did not declare it (EC-B14-8,
-  FR-B14-7).
+  FR-B14-7), UNLESS the entry carries `flaky: true`: then flag it in Uncertainties
+  ("known-flaky gate <name> failed and was not declared — not blocking per
+  known-flaky-gates list") and do not escalate, the same demotion as in `gates`.
 - Green and `absent` entries are informational → note in Uncertainties (EC-B14-9).
   An absent gate could not have been declared; it is not an under-declaration.
 
@@ -742,7 +744,9 @@ did NOT declare in claimed-gates, FR-B14-14):
 Read `integration-results.json#pre_existing`. For each entry:
 - If `confirmed_pre_existing: false` (passes at base, fails on branch) → emit `revise`
   with Required-changes naming the gate. A proceed verdict is impossible while any
-  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4).
+  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4), UNLESS the entry
+  carries `flaky: true` (named in known-flaky-gates): then flag it in Uncertainties
+  and do not revise on it, the same demotion as in `gates`.
 - If `confirmed_pre_existing: true` → non-blocking per FR-B14-4, UNLESS the
   severity-marker check fires (see below).
 
@@ -835,8 +839,10 @@ This `Integration-evidence` block is the ONE authoritative schema-PascalCase lis
 1. All canonical gates in `Gates-checked` have `exit-code-on-branch: 0`
    (or are demoted as flaky per OQ-B14-4, or have `result: "absent"`), and at
    least one gate is not absent.
-2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`.
-3. No `Under-declaration` entry has `result: "red"`.
+2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`
+   (or carry `flaky: true` in integration-results.json, flagged in Uncertainties).
+3. No `Under-declaration` entry has `result: "red"` (except one that carries
+   `flaky: true` in integration-results.json, flagged in Uncertainties).
 4. `Scope-diff-clean: true` (or null — absent scope is not blocking).
 5. `Scope-violations: []` (empty).
 6. `Fast-forward-ok: true`.

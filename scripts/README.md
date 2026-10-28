@@ -520,7 +520,7 @@ scripts/integration-gate.sh \
 | `--worktree-path` | yes (integration) | Abs path to the build worktree, or `(none)` → short-circuit escalate. |
 | `--base-ref` | yes (integration) | Git ref; unresolvable in the worktree → short-circuit escalate. |
 | `--claimed-gates` | yes (integration) | Single-line inline JSON array. **Cross-check input only** (never the executed set). |
-| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named re-run red to `flaky: true`. |
+| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named red to `flaky: true` in `gates`, `under_declaration` and (failed on branch) `pre_existing`. A gate red because its runner went missing is never demoted. |
 | `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
 | `--run-dir` | optional | Abs path to `RUN_DIR`, the second place the regression runner is looked for. Default: the directory holding `--state-json`. |
 | `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |

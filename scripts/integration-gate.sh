@@ -1329,27 +1329,45 @@ PY
   # ── BRANCH TIP SHA ────────────────────────────────────────────────────
   BRANCH_TIP="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
 
-  # ── APPLY known-flaky-gates demotion to GATE_RESULTS_JSON ─────────────
+  # ── APPLY known-flaky-gates demotion ───────────────────────────────────
   # Any gate in the known-flaky-gates list whose result is "red" gets marked
   # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
-  GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
+  # The same gate also appears in under_declaration[] (a copy taken before this
+  # step) and, when claimed pre-existing, in pre_existing[]; those copies get the
+  # flag too, or a declared-flaky gate still escalates there (issue #115). A gate
+  # that is red because its runner went missing (missing_reason) is never
+  # demoted: a removed runner is not flakiness.
+  apply_flaky() {
+  python3 - "$1" "$2" "$KNOWN_FLAKY_JSON" <<'PY'
 import json, sys
-# FIX 2: guarded — on any failure, echo arg1 through unchanged (or [] if that
-# too is unparseable) so this never empties GATE_RESULTS_JSON downstream.
+# FIX 2: guarded — on any failure, echo arg2 through unchanged (or the empty
+# shape if that too is unparseable) so this never empties the variable downstream.
+kind, raw, flaky_raw = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    gates = json.loads(sys.argv[1])
-    flaky_names = set(json.loads(sys.argv[2]))
-    for g in gates:
-        if g.get("result") == "red" and g.get("name") in flaky_names:
+    data = json.loads(raw)
+    flaky_names = set(json.loads(flaky_raw))
+    entries = data.get("results", []) if kind == "pre_existing" else data
+    for g in entries:
+        if not isinstance(g, dict) or g.get("name") not in flaky_names or g.get("missing_reason"):
+            continue
+        if kind == "pre_existing":
+            # pre_existing entries carry exit codes, not a result.
+            failed = g.get("exit_code_branch") not in (0, None)
+        else:
+            failed = g.get("result") == "red"
+        if failed:
             g["flaky"] = True
-    print(json.dumps(gates))
+    print(json.dumps(data))
 except Exception:
     try:
-        print(json.dumps(json.loads(sys.argv[1])))
+        print(json.dumps(json.loads(raw)))
     except Exception:
-        print("[]")
+        print('{"results": [], "errors": []}' if kind == "pre_existing" else "[]")
 PY
-)"
+  }
+  GATE_RESULTS_JSON="$(apply_flaky gates "$GATE_RESULTS_JSON")"
+  UNDER_DECL_JSON="$(apply_flaky under_declaration "$UNDER_DECL_JSON")"
+  PRE_EXISTING_JSON="$(apply_flaky pre_existing "$PRE_EXISTING_JSON")"
 
   # ── WRITE integration-results.json to $OUT ────────────────────────────
   # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
