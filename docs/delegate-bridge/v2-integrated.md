@@ -198,6 +198,11 @@ capabilities a read-only reviewer must not read as its own (W7 capability-contam
 - **Output:** writes `integration-results.json` to the `--out` dir, naming `gate_mode`,
   `gate_mode_reason` and `gate_commands`, and streams every gate's stdout/stderr into
   `--out/gate-output/` (kept for diagnosis; not part of the reviewer's artifact manifest).
+- **Regression runner (#99):** after canonical selection, a linked worktree's untracked
+  suite can be refreshed from the target repo's main checkout by replacing its ignored
+  `.bureau/regression/` directory, recorded in `regression_runner`. A selected run-directory
+  runner and ordinary absence retain their existing behavior; unsafe refreshes escalate,
+  and removed/broken tracked suites remain red (`scripts/README.md § Integration gate`).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required, so a
   pure-v1 host gains no new dependency. CI mode also uses `gh` when present.
 

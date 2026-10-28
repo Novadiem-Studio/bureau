@@ -697,7 +697,12 @@ If non-empty:
 - Stop. Do not proceed to the five-step checklist.
 
 Escalate-marker cases: `worktree-path: (none)` (EC-B14-1); unresolvable `base-ref`
-(EC-B14-4).
+(EC-B14-4); `regression runner absent from worktree`: refreshing an untracked suite
+from the main checkout was unsafe or failed (#99), for example a symlinked suite
+directory or tracked/unignored destination content. Fix the named provisioning
+problem and re-run the gate; do not copy a runner into the worktree by hand.
+Ordinary absence is not a provisioning error: the run-directory fallback and
+absent-gate rules below still apply. A removed or broken tracked suite remains red.
 
 ### Five-step verifying checklist
 

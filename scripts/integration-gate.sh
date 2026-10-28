@@ -265,6 +265,7 @@ data = {
     "gate_mode_reason": "no gate ran: escalate marker set",
     "gate_commands": [],
     "ci": None,
+    "regression_runner": None,
     "gates": [],
     "pre_existing": [],
     "under_declaration": [],
@@ -405,6 +406,171 @@ try:
 except Exception:
     results = []
 print(json.dumps(results))
+PY
+  }
+
+  # ── provision_regression_runner: refresh an ignored suite (issue #99) ──
+  # Canonical resolution runs first: explicit run-dir runners, absent gates and
+  # broken/removed tracked-suite guards keep their established meaning. A linked
+  # worktree's untracked runner is refreshed from the owner's main checkout.
+  # Replace the whole ignored directory from a staged copy; never overlay files
+  # through destination symlinks or retain worktree-only test code.
+  provision_regression_runner() {
+  python3 - "$REQ_WORKTREE_PATH" "$1" <<'PY'
+import hashlib, json, os, shutil, subprocess, sys, tempfile
+
+worktree = os.path.abspath(sys.argv[1])
+canon = json.loads(sys.argv[2])
+gate = next(g for g in canon["gates"] if g["name"] == "regression")
+REL_DIR = os.path.join(".bureau", "regression")
+REL = os.path.join(REL_DIR, "run.sh")
+ABSENT = "regression runner absent from worktree: "
+res = {"source": "absent", "runner_path": os.path.join(worktree, REL), "main_checkout": None,
+       "copied_from": None, "copied_files": 0, "replaced_worktree_runner": False,
+       "escalate": ""}
+
+
+def finish():
+    print(json.dumps(res))
+    sys.exit(0)
+
+
+def git(*args, stdin=None):
+    return subprocess.run(["git", "-C", worktree] + list(args), input=stdin,
+                          capture_output=True)
+
+
+def tracked_paths(path):
+    r = git("ls-files", "-z", "--", path)
+    if r.returncode != 0:
+        raise RuntimeError("could not read tracked paths for %s" % path)
+    return [os.fsdecode(p) for p in r.stdout.split(b"\0") if p]
+
+
+def require_ignored(paths):
+    if not paths:
+        return
+    r = git("check-ignore", "-z", "--stdin",
+            stdin=b"\0".join(os.fsencode(p) for p in paths) + b"\0")
+    if r.returncode not in (0, 1):
+        raise RuntimeError("could not check ignored regression paths")
+    ignored = {os.fsdecode(p) for p in r.stdout.split(b"\0") if p}
+    loose = sorted(set(paths) - ignored)
+    if loose:
+        raise RuntimeError("refusing to replace unignored or tracked regression content: %s" % loose[0])
+
+
+def suite_files(root, source=False):
+    paths = []
+    if not source and not os.path.lexists(root):
+        return paths
+    def unreadable(error):
+        raise error
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
+        links = [name for name in dirs if os.path.islink(os.path.join(directory, name))]
+        for name in files + links:
+            path = os.path.join(directory, name)
+            if source and (os.path.islink(path) or not os.path.isfile(path)):
+                raise RuntimeError("source suite contains a symlink or non-regular file: %s" % path)
+            paths.append(os.path.join(REL_DIR, os.path.relpath(path, root)))
+    return paths
+
+
+def digest(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+try:
+    if gate.get("missing_reason"):
+        res["source"] = "unavailable"
+        finish()  # Never repair/demote a broken or removed tracked suite.
+    if gate.get("runner_source") == "run-dir":
+        res.update(source="run-dir", runner_path=gate["runner"])
+        finish()
+    if tracked_paths(REL):
+        res["source"] = "worktree"
+        finish()
+
+    r = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    if r.returncode != 0:
+        raise RuntimeError("could not locate the main checkout")
+    common = os.fsdecode(r.stdout).strip()
+    if not common or os.path.basename(common) != ".git":
+        if gate.get("absent"):
+            finish()  # Optional provisioning cannot invent a missing suite.
+        raise RuntimeError("cannot locate the owner of an untracked worktree runner")
+    main = os.path.dirname(common)
+    res["main_checkout"] = main
+    main_dir = os.path.join(main, REL_DIR)
+    main_runner = os.path.join(main, REL)
+    if os.path.realpath(main) == os.path.realpath(worktree):
+        if gate.get("runner_source") == "worktree":
+            res["source"] = "main-checkout"
+        finish()
+    if not os.path.isfile(main_runner):
+        if gate.get("absent") and not os.path.lexists(main_runner):
+            finish()
+        raise RuntimeError("the main checkout has no usable runner to refresh the untracked suite")
+
+    parent = os.path.join(worktree, ".bureau")
+    destination = os.path.join(worktree, REL_DIR)
+    for path in (parent, destination, os.path.join(main, ".bureau"), main_dir):
+        if os.path.islink(path):
+            raise RuntimeError("refusing a symlink suite directory: %s" % path)
+        if os.path.lexists(path) and not os.path.isdir(path):
+            raise RuntimeError("suite directory is not a directory: %s" % path)
+    if tracked_paths(REL_DIR):
+        raise RuntimeError("refusing to replace tracked regression content")
+    files = suite_files(main_dir, source=True)
+    require_ignored(files + suite_files(destination))
+
+    before = digest(res["runner_path"])
+    parent_existed = os.path.isdir(parent)
+    os.makedirs(parent, exist_ok=True)
+    stage = tempfile.mkdtemp(prefix=".regression-stage-", dir=parent)
+    replacement = os.path.join(stage, "replacement")
+    previous = os.path.join(stage, "previous")
+    installed = False
+    try:
+        # Preserve source symlinks during staging so the validation rejects them
+        # rather than following a link that appeared after the initial scan.
+        shutil.copytree(main_dir, replacement, symlinks=True)
+        files = suite_files(replacement, source=True)
+        if REL not in files:
+            raise RuntimeError("staged regression suite has no runner")
+        require_ignored(files)
+        if os.path.exists(destination):
+            os.rename(destination, previous)
+        try:
+            os.rename(replacement, destination)
+            installed = True
+        except Exception:
+            if os.path.exists(previous) and not os.path.lexists(destination):
+                os.rename(previous, destination)
+            raise
+    finally:
+        # Retain a backup if restoration itself failed; never discard that data.
+        if installed or not os.path.exists(previous):
+            shutil.rmtree(stage)
+        if not parent_existed:
+            try:
+                os.rmdir(parent)
+            except OSError:
+                pass
+    res["replaced_worktree_runner"] = before is not None and before != digest(res["runner_path"])
+    res["source"] = "main-checkout-copy"
+    res["copied_from"] = main_dir
+    res["copied_files"] = len(files)
+    finish()
+except SystemExit:
+    raise
+except Exception as e:
+    res["escalate"] = ABSENT + "could not provision it from the main checkout: %s" % e
+    finish()
 PY
   }
 
@@ -696,6 +862,11 @@ except Exception:
     *) MODE_JSON="{\"mode\": \"local\", \"requested\": \"$REQ_GATE_MODE\", \"reason\": \"gate-mode resolution produced no result; ran the local suite\", \"ci\": null, \"gate\": null, \"final\": $( [ "$REQ_FINAL" = 1 ] && echo true || echo false ), \"local_only\": []}" ;;
   esac
 
+  # Issue #99: the regression runner's provenance, or why it could not be used.
+  # Stays null in CI mode, where no local regression runner runs.
+  RUNNER_JSON='null'
+  RUNNER_ESCALATE=""
+
   if [ "$EFFECTIVE_MODE" = "ci" ]; then
     # CI decided this gate: one "ci" gate record, no local suite run.
     # Fail closed: an unreadable CI record becomes a red gate, never an empty
@@ -838,9 +1009,35 @@ print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
 PY
 )"
 
+  # Provision only after canonical selection, preserving run-dir, absent and
+  # missing-suite outcomes. Unsafe refreshes escalate before any gate executes.
+  RUNNER_JSON="$(provision_regression_runner "$CANON_GATES_JSON")"
+  RUNNER_ESCALATE="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert isinstance(r, dict); print(r.get("escalate") or "")' "$RUNNER_JSON" 2>/dev/null \
+    || echo "regression runner absent from worktree: the runner provisioning step produced no readable record")"
+  case "$RUNNER_JSON" in "{"*) ;; *) RUNNER_JSON='null' ;; esac
+  if [ -n "$RUNNER_ESCALATE" ]; then
+    CANON_GATES_JSON='{"gates": [], "canonical_source": "none"}'
+    GATE_RESULTS_JSON='[]'
+  else
+    # A provisioned runner replaces the prior absent/untracked selection.
+    CANON_GATES_JSON="$(python3 - "$CANON_GATES_JSON" "$RUNNER_JSON" <<'PY'
+import json, shlex, sys
+canon, runner = map(json.loads, sys.argv[1:3])
+if runner.get("source") == "main-checkout-copy":
+    path = runner["runner_path"]
+    canon["gates"] = [{"name": "regression", "command": "sh " + shlex.quote(path),
+                       "runner": path, "runner_source": "worktree"}
+                      if g["name"] == "regression" else g for g in canon["gates"]]
+    canon["canonical_source"] = "regression+manifest" if len(canon["gates"]) > 1 else "regression-only"
+print(json.dumps(canon))
+PY
+)"
+
   # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
   # Read gates list; run each command in the worktree; capture exit codes.
   GATE_RESULTS_JSON="$(run_gates "$CANON_GATES_JSON")"
+
+  fi   # end runner-escalate branch (issue #99)
 
   fi   # end gate-mode branch (ci records its one gate above; local ran the suite)
 
@@ -1425,12 +1622,15 @@ print(json.dumps([err] if err else []))' "$CLAIMED_GATES_JSON" 2>/dev/null || ec
     "$FF_OK" \
     "$CONFLICTS_CLEAN" \
     "$ERRORS_JSON" \
-    "$MODE_JSON" <<'PY'
+    "$MODE_JSON" \
+    "$RUNNER_JSON" \
+    "$RUNNER_ESCALATE" <<'PY'
 import json, sys
 
 (path, worktree_path, base_ref, branch_tip, canonical_source,
  gates_raw, pre_raw, under_raw, scope_raw,
- ff_ok, conflicts_clean, errors_raw, mode_raw) = sys.argv[1:14]
+ ff_ok, conflicts_clean, errors_raw, mode_raw,
+ runner_raw, runner_escalate) = sys.argv[1:16]
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
@@ -1453,6 +1653,7 @@ def write_escalate(reason, errors):
         "gate_mode_reason": "no usable gate result: escalate marker set",
         "gate_commands": [],
         "ci": mode.get("ci"),
+        "regression_runner": runner,
         "gates": [],
         "pre_existing": [],
         "under_declaration": [],
@@ -1473,9 +1674,21 @@ except Exception:
     mode = {"mode": "local", "requested": "", "reason": "gate-mode record unreadable", "ci": None}
 
 try:
+    runner = json.loads(runner_raw) if runner_raw.strip() else None
+    if not isinstance(runner, dict):
+        runner = None
+except Exception:
+    runner = None
+
+try:
     errors = json.loads(errors_raw) if errors_raw.strip() else []
     if not isinstance(errors, list):
         errors = []
+
+    # Issue #99: no usable regression runner is an escalation, not a red gate.
+    if runner_escalate.strip():
+        write_escalate(runner_escalate, errors)
+        sys.exit(0)
 
     # pre_raw is now {"results": [...], "errors": [...]}; tolerate a bare list
     # or empty/garbage. Any failure here demotes to the escalate path below.
@@ -1520,6 +1733,8 @@ try:
         "gate_commands": [g.get("command", "") for g in gates
                           if isinstance(g, dict) and g.get("result") != "absent"],
         "ci": mode.get("ci"),
+        # Issue #99: where the regression runner came from (null in CI mode).
+        "regression_runner": runner,
         "gates": gates,
         "pre_existing": pre_existing,
         "under_declaration": under,
