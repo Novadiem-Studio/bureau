@@ -88,11 +88,14 @@ if not gates:
     problems.append("no gate records")
 # Issue #115: an absent gate (no runner anywhere, nothing ran) is neither green
 # nor red. It does not block pairing, but at least one gate must have run green.
-absent = [x.get("name", "?") for x in gates
-          if isinstance(x, dict) and x.get("result") == "absent"]
+# Absent means result "absent" AND exit_code_branch null; anything else is judged
+# on its exit code.
+def is_absent(x):
+    return isinstance(x, dict) and x.get("result") == "absent" and x.get("exit_code_branch") is None
+absent = [x.get("name", "?") for x in gates if is_absent(x)]
 red = [x.get("name", "?") for x in gates
-       if not isinstance(x, dict) or (x.get("result") != "absent"
-                                      and (x.get("exit_code_branch") != 0 or x.get("result") != "green"))]
+       if not is_absent(x) and (not isinstance(x, dict) or x.get("exit_code_branch") != 0
+                                or x.get("result") != "green")]
 if red:
     problems.append("red gate(s): %s" % ", ".join(map(str, red)))
 if gates and len(absent) == len(gates):

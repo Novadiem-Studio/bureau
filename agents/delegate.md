@@ -707,15 +707,19 @@ Apply these steps in order. The first failing step determines the verdict.
 
 Read `integration-results.json#gates` (canonical gates run by the watcher —
 regression runner + manifest gates, resolved by the watcher, NOT from claimed-gates).
-For each entry with `result: "absent"`: no runner existed, so nothing ran
-(issue #115). The regression runner is looked for at
+For each entry with `result: "absent"` and `exit_code_branch: null`: no runner
+existed, so nothing ran (issue #115). The regression runner is looked for at
 `<worktree>/.bureau/regression/run.sh`, then `RUN_DIR/regression/run.sh`; a run
 whose target repo must not carry `.bureau/` may have neither. Absent is not a
 failure and not a hidden red gate: never revise or escalate on it alone. Note it
 in Uncertainties ("regression gate absent: no runner at <runner_searched>;
 <fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
 absent, no gate evidence exists for this checkpoint: emit `escalate` with
-Escalation "no canonical gate ran: <names> absent".
+Escalation "no canonical gate ran: <names> absent". A runner the branch removed
+or broke is not absent: the gate records it red (`runner_source: "missing"`,
+`missing_reason`), and Step 1's failed-gate rule applies. A gate with
+`runner_source: "run-dir"` ran a runner outside the reviewed diff: note it in
+Uncertainties with its `runner_path` and `runner_sha256`.
 
 For every other entry: if `exit_code_branch != 0`, the gate failed.
 - If the entry carries `flaky: true`, flag it in Uncertainties ("known-flaky gate
@@ -799,7 +803,7 @@ INNER KEY MAP (entries within each array — inner entry keys differ from outer 
 Within Gates-checked entries:
   name              → name
   command           → command
-  exit_code_branch  → exit-code-on-branch
+  exit_code_branch  → exit-code-on-branch   (null for an absent gate; never 0)
   result            → result
 
 Within Pre-existing-validated entries:

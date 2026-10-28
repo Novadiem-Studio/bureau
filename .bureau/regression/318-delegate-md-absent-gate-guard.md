@@ -5,7 +5,7 @@ command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   DM="$ROOT/agents/delegate.md"
   PATH=/usr/bin:$PATH
-  grep -q 'For each entry with `result: "absent"`: no runner existed' "$DM" \
+  grep -q 'For each entry with `result: "absent"` and `exit_code_branch: null`: no runner' "$DM" \
     || { echo "FAIL: Step 1 absent-gate rule missing"; exit 1; }
   grep -q 'Absent is not a' "$DM" && grep -q 'failure and not a hidden red gate' "$DM" \
     || { echo "FAIL: absent-is-not-failure wording missing"; exit 1; }
@@ -15,6 +15,10 @@ command: |
     || { echo "FAIL: under-declaration absent carve-out missing"; exit 1; }
   grep -q 'or have `result: "absent"`), and at' "$DM" \
     || { echo "FAIL: proceed rule 1 absent carve-out missing"; exit 1; }
+  grep -q 'A runner the branch removed' "$DM" \
+    || { echo "FAIL: removed-runner-is-red note missing"; exit 1; }
+  grep -q '(null for an absent gate; never 0)' "$DM" \
+    || { echo "FAIL: null exit-code projection note missing"; exit 1; }
   echo "PASS"
   # Mutation note: delete the Step 1 absent paragraph; the first grep fails.
 expected: PASS

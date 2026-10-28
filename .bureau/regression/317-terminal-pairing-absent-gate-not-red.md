@@ -18,6 +18,10 @@ command: |
   [ "$rc" -eq 1 ] || { echo "FAIL: all-absent exited $rc (expected 1 discard): $out"; exit 1; }
   printf '%s\n' "$out" | grep -q "no gate ran (every gate absent" || { echo "FAIL: expected every-gate-absent reason: $out"; exit 1; }
   if printf '%s\n' "$out" | grep -q "red gate"; then echo "FAIL: absent reported as red: $out"; exit 1; fi
+  # A record marked absent that carries an exit code is judged on that code.
+  mk '{"name":"regression","command":"x","exit_code_branch":1,"result":"absent"},'"$GREEN"
+  out=$(sh "$ROOT/scripts/terminal-pairing.sh" --gate "$TMPD/g.json" --review-sha "$SHA" 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || { echo "FAIL: absent with exit 1 exited $rc (expected 1 discard): $out"; exit 1; }
   echo "PASS"
   # Mutation note: restore the old check (exit_code_branch != 0 or result != green
   # is red). The absent+green case then discards as "red gate(s): regression" with

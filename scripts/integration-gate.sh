@@ -40,6 +40,12 @@
 # `exit_code_branch: null`, the paths it searched, and how many NN-*.md fixtures
 # sit in those regression dirs. Nothing runs, so absent is never red: a missing
 # runner is not a failing suite (it used to exit 127 and read as a hidden red).
+# Absent is only for a project that never had a committed suite. A missing
+# worktree runner is RED (exit 127, runner_source "missing", missing_reason set)
+# when the branch removed it (it exists at --base-ref), when the path exists but
+# is not a regular file (a dangling symlink, a directory), or when committed
+# fixtures sit in <worktree>/.bureau/regression/ with no runner beside them. The
+# branch under review must not be able to turn its own suite off.
 #
 # Gate-mode flags (issue #92). All optional; the default is the full local suite,
 # exactly as before, so the v1 watcher and older callers are unchanged:
@@ -328,6 +334,19 @@ try:
                 "runner_searched": g.get("runner_searched", []),
                 "fixtures_found": g.get("fixtures_found", 0),
                 "reason": "no regression runner in the worktree or the run dir; nothing ran",
+            })
+            continue
+        # A runner the branch removed or broke: red without running anything.
+        if g.get("missing_reason"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": 127,
+                "result": "red",
+                "duration_s": 0,
+                "runner_source": "missing",
+                "runner_searched": g.get("runner_searched", []),
+                "missing_reason": g["missing_reason"],
             })
             continue
         # FIX (defect 1): the gate's stdout/stderr must never inherit this python
@@ -725,14 +744,48 @@ PY
   if [ -z "$RUN_DIR" ] && [ -n "$STATE_JSON" ]; then
     RUN_DIR="$(dirname "$STATE_JSON")"
   fi
-  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" <<'PY'
-import glob, json, os, shlex, sys
-worktree, run_dir = sys.argv[1], sys.argv[2]
+  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" "$REQ_BASE_REF" <<'PY'
+import glob, json, os, shlex, subprocess, sys
+# Absolute paths: the gate runs with cwd = worktree, so a relative run dir would
+# be checked and hashed here but resolved against the worktree when it runs.
+worktree = os.path.abspath(sys.argv[1])
+run_dir = os.path.abspath(sys.argv[2]) if sys.argv[2] else ""
+base_ref = sys.argv[3]
 candidates = [("worktree", os.path.join(worktree, ".bureau", "regression", "run.sh"))]
 if run_dir:
     candidates.append(("run-dir", os.path.join(run_dir, "regression", "run.sh")))
+
+
+def fixture_files(d):
+    return (glob.glob(os.path.join(d, "[0-9][0-9]-*.md"))
+            + glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
+
+
+# Fail closed on a runner the branch could have switched off (see header).
+missing = ""
+wt_runner = candidates[0][1]
+if not os.path.isfile(wt_runner):
+    on_base = subprocess.run(
+        ["git", "-C", worktree, "cat-file", "-e",
+         "%s:.bureau/regression/run.sh" % base_ref],
+        capture_output=True).returncode == 0
+    if os.path.lexists(wt_runner):
+        missing = "%s exists but is not a regular file" % wt_runner
+    elif on_base:
+        missing = ".bureau/regression/run.sh exists at %s but not on the branch" % base_ref
+    elif fixture_files(os.path.dirname(wt_runner)):
+        missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
+for src, p in candidates[1:]:
+    if not missing and os.path.lexists(p) and not os.path.isfile(p):
+        missing = "%s exists but is not a regular file" % p
 found = [(src, p) for src, p in candidates if os.path.isfile(p)]
-if found:
+if missing:
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(wt_runner),
+              "missing_reason": missing,
+              "runner_searched": [p for _, p in candidates]}]
+    canonical_source = "regression-only"
+elif found:
     source, runner = found[0]
     gates = [{"name": "regression",
               "command": "sh %s" % shlex.quote(runner),
@@ -742,9 +795,7 @@ if found:
 else:
     fixtures = set()
     for _, p in candidates:
-        d = os.path.dirname(p)
-        fixtures.update(glob.glob(os.path.join(d, "[0-9][0-9]-*.md")))
-        fixtures.update(glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
+        fixtures.update(fixture_files(os.path.dirname(p)))
     gates = [{"name": "regression",
               "command": "(absent)",
               "absent": True,
