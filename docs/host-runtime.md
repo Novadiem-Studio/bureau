@@ -29,7 +29,9 @@ Code, Codex, Cursor Agent, or Grok Bot. Do not start those runs with
 `--runtime openrouter`. Do not promote OpenRouter to a specialist transport
 for building.
 
-Metered API (OpenRouter via `scripts/model-pass.sh`, and similar) is for
+Cross-model text passes go through `scripts/model-pass.sh`: `codex:` runs the
+local Codex CLI on the subscription, `openrouter:` is the metered API. Metered API
+(OpenRouter via `scripts/model-pass.sh`, and similar) is for
 **cheap or specialized non-build** work: article / topic / data cross-model
 passes, a one-off critique from a model the subscription host cannot spawn,
 or a cost-down draft when Robin names that explicitly. It is not a second

@@ -24,7 +24,28 @@
 #                        canonical-gate declaration (issue #74).
 #   --known-flaky-gates <single-line inline JSON array>   (optional, default empty)
 #   --state-json        <abs path to RUN_DIR/state.json>  (scope projection source)
+#   --run-dir           <abs path to RUN_DIR>  (optional; default: the directory
+#                        holding --state-json). Second place the regression
+#                        runner is looked for, see "Regression runner" below.
 #   --out               <abs path to the output dir = $CTX>
+#
+# Regression runner (issue #115). The standing `regression` gate runs the first
+# runner found, in this order:
+#   1. <worktree>/.bureau/regression/run.sh   the project's committed suite
+#   2. <RUN_DIR>/regression/run.sh            for runs whose target repo must
+#                                             not carry .bureau/ (a client team
+#                                             repo); runs with cwd = worktree
+# The gate record names which one ran (runner_source: worktree | run-dir). When
+# neither exists the gate is recorded `result: "absent"` with
+# `exit_code_branch: null`, the paths it searched, and how many NN-*.md fixtures
+# sit in those regression dirs. Nothing runs, so absent is never red: a missing
+# runner is not a failing suite (it used to exit 127 and read as a hidden red).
+# Absent is only for a project that never had a committed suite. A missing
+# worktree runner is RED (exit 127, runner_source "missing", missing_reason set)
+# when the branch removed it (it exists at --base-ref), when the path exists but
+# is not a regular file (a dangling symlink, a directory), or when committed
+# fixtures sit in <worktree>/.bureau/regression/ with no runner beside them. The
+# branch under review must not be able to turn its own suite off.
 #
 # Gate-mode flags (issue #92). All optional; the default is the full local suite,
 # exactly as before, so the v1 watcher and older callers are unchanged:
@@ -101,6 +122,7 @@ REQ_BASE_REF=""
 REQ_CLAIMED_GATES_RAW=""
 REQ_KNOWN_FLAKY_RAW=""
 STATE_JSON=""
+RUN_DIR=""
 OUT=""
 REQ_GATE_MODE="local"
 REQ_FINAL=0
@@ -127,6 +149,7 @@ while [ "$#" -gt 0 ]; do
     --claimed-gates)     REQ_CLAIMED_GATES_RAW="$2"; shift 2 ;;
     --known-flaky-gates) REQ_KNOWN_FLAKY_RAW="$2";   shift 2 ;;
     --state-json)        STATE_JSON="$2";            shift 2 ;;
+    --run-dir)           RUN_DIR="$2";               shift 2 ;;
     --out)               OUT="$2";                   shift 2 ;;
     --gate-mode)         REQ_GATE_MODE="$2";         shift 2 ;;
     --since-ref)         REQ_SINCE_REF="$2";         shift 2 ;;
@@ -299,6 +322,34 @@ try:
     worktree, canon_raw, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
     canon = json.loads(canon_raw)
     for g in canon.get("gates", []):
+        # Issue #115: a gate with no runner anywhere is recorded, not run.
+        # exit_code_branch stays null so no reader can mistake it for a red.
+        if g.get("absent"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": None,
+                "result": "absent",
+                "duration_s": 0,
+                "runner_source": "absent",
+                "runner_searched": g.get("runner_searched", []),
+                "fixtures_found": g.get("fixtures_found", 0),
+                "reason": "no regression runner in the worktree or the run dir; nothing ran",
+            })
+            continue
+        # A runner the branch removed or broke: red without running anything.
+        if g.get("missing_reason"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": 127,
+                "result": "red",
+                "duration_s": 0,
+                "runner_source": "missing",
+                "runner_searched": g.get("runner_searched", []),
+                "missing_reason": g["missing_reason"],
+            })
+            continue
         # FIX (defect 1): the gate's stdout/stderr must never inherit this python
         # process's stdout — which IS the `$(...)` the shell captures into
         # GATE_RESULTS_JSON. A chatty gate (e.g. jest printing ~74KB) would
@@ -345,6 +396,8 @@ try:
             with open(runner, "rb") as fh:
                 entry["runner_path"] = runner
                 entry["runner_sha256"] = hashlib.sha256(fh.read()).hexdigest()
+        if g.get("runner_source"):
+            entry["runner_source"] = g["runner_source"]
         suite = [l.split(":", 1)[1].strip() for l in tail(out_path, 100000, 2000)
                  if l.startswith("BUREAU-SUITE:")]
         if suite:
@@ -827,14 +880,90 @@ PY
   # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
   # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
   # a parseable manifest exists in the worktree.
-  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" <<'PY'
-import json, os, sys
-worktree = sys.argv[1]
-gates = [{"name": "regression",
-          "command": "sh %s/.bureau/regression/run.sh" % worktree,
-          "runner": os.path.join(worktree, ".bureau", "regression", "run.sh")}]
+  # Issue #115: the runner is the first of <worktree>/.bureau/regression/run.sh,
+  # then <RUN_DIR>/regression/run.sh (RUN_DIR = --run-dir, else the directory
+  # holding --state-json). With neither, the gate is marked absent and run_gates
+  # records it without running anything.
+  if [ -z "$RUN_DIR" ] && [ -n "$STATE_JSON" ]; then
+    RUN_DIR="$(dirname "$STATE_JSON")"
+  fi
+  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" "$REQ_BASE_REF" <<'PY'
+import fnmatch, glob, json, os, shlex, subprocess, sys
+# Absolute paths: the gate runs with cwd = worktree, so a relative run dir would
+# be checked and hashed here but resolved against the worktree when it runs.
+worktree = os.path.abspath(sys.argv[1])
+run_dir = os.path.abspath(sys.argv[2]) if sys.argv[2] else ""
+base_ref = sys.argv[3]
+candidates = [("worktree", os.path.join(worktree, ".bureau", "regression", "run.sh"))]
+if run_dir:
+    candidates.append(("run-dir", os.path.join(run_dir, "regression", "run.sh")))
+
+
+def fixture_files(d):
+    return (glob.glob(os.path.join(d, "[0-9][0-9]-*.md"))
+            + glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
+
+
+def has_tracked_fixtures(d):
+    relative_dir = os.path.relpath(d, worktree)
+    tracked = subprocess.check_output(
+        ["git", "-C", worktree, "ls-files", "-z", "--", relative_dir],
+        stderr=subprocess.PIPE)
+    paths = [os.fsdecode(p) for p in tracked.split(b"\0") if p]
+    # The index remains authoritative even if a tracked fixture was deleted on disk.
+    return any(os.path.dirname(p) == relative_dir
+               and any(fnmatch.fnmatchcase(os.path.basename(p), pattern)
+                       for pattern in ("[0-9][0-9]-*.md", "[0-9][0-9][0-9]-*.md"))
+               for p in paths)
+
+
+# Fail closed on a runner the branch could have switched off (see header).
+missing = ""
+wt_runner = candidates[0][1]
+if not os.path.isfile(wt_runner):
+    on_base = subprocess.run(
+        ["git", "-C", worktree, "cat-file", "-e",
+         "%s:.bureau/regression/run.sh" % base_ref],
+        capture_output=True).returncode == 0
+    if os.path.lexists(wt_runner):
+        missing = "%s exists but is not a regular file" % wt_runner
+    elif on_base:
+        missing = ".bureau/regression/run.sh exists at %s but not on the branch" % base_ref
+    else:
+        try:
+            if has_tracked_fixtures(os.path.dirname(wt_runner)):
+                missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
+        except (OSError, subprocess.CalledProcessError) as e:
+            missing = "could not inspect tracked regression fixtures: %s" % e
+    # A broken fallback cannot override a valid higher-priority runner.
+    for src, p in candidates[1:]:
+        if not missing and os.path.lexists(p) and not os.path.isfile(p):
+            missing = "%s exists but is not a regular file" % p
+found = [(src, p) for src, p in candidates if os.path.isfile(p)]
+if missing:
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(wt_runner),
+              "missing_reason": missing,
+              "runner_searched": [p for _, p in candidates]}]
+    canonical_source = "regression-only"
+elif found:
+    source, runner = found[0]
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(runner),
+              "runner": runner,
+              "runner_source": source}]
+    canonical_source = "regression-only"
+else:
+    fixtures = set()
+    for _, p in candidates:
+        fixtures.update(fixture_files(os.path.dirname(p)))
+    gates = [{"name": "regression",
+              "command": "(absent)",
+              "absent": True,
+              "runner_searched": [p for _, p in candidates],
+              "fixtures_found": len(fixtures)}]
+    canonical_source = "regression-absent"
 manifest = os.path.join(worktree, "package.json")
-canonical_source = "regression-only"
 if os.path.isfile(manifest):
     try:
         with open(manifest) as fh:
@@ -844,7 +973,8 @@ if os.path.isfile(manifest):
         for k in gate_keys:
             gates.append({"name": "npm-%s" % k, "command": "npm run %s" % k})
         if gate_keys:
-            canonical_source = "regression+manifest"
+            canonical_source = ("manifest-only" if canonical_source == "regression-absent"
+                                else "regression+manifest")
     except Exception:
         pass
 print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
@@ -1362,27 +1492,45 @@ PY
   # ── BRANCH TIP SHA ────────────────────────────────────────────────────
   BRANCH_TIP="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
 
-  # ── APPLY known-flaky-gates demotion to GATE_RESULTS_JSON ─────────────
+  # ── APPLY known-flaky-gates demotion ───────────────────────────────────
   # Any gate in the known-flaky-gates list whose result is "red" gets marked
   # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
-  GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
+  # The same gate also appears in under_declaration[] (a copy taken before this
+  # step) and, when claimed pre-existing, in pre_existing[]; those copies get the
+  # flag too, or a declared-flaky gate still escalates there (issue #115). A gate
+  # that is red because its runner went missing (missing_reason) is never
+  # demoted: a removed runner is not flakiness.
+  apply_flaky() {
+  python3 - "$1" "$2" "$KNOWN_FLAKY_JSON" <<'PY'
 import json, sys
-# FIX 2: guarded — on any failure, echo arg1 through unchanged (or [] if that
-# too is unparseable) so this never empties GATE_RESULTS_JSON downstream.
+# FIX 2: guarded — on any failure, echo arg2 through unchanged (or the empty
+# shape if that too is unparseable) so this never empties the variable downstream.
+kind, raw, flaky_raw = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    gates = json.loads(sys.argv[1])
-    flaky_names = set(json.loads(sys.argv[2]))
-    for g in gates:
-        if g.get("result") == "red" and g.get("name") in flaky_names:
+    data = json.loads(raw)
+    flaky_names = set(json.loads(flaky_raw))
+    entries = data.get("results", []) if kind == "pre_existing" else data
+    for g in entries:
+        if not isinstance(g, dict) or g.get("name") not in flaky_names or g.get("missing_reason"):
+            continue
+        if kind == "pre_existing":
+            # pre_existing entries carry exit codes, not a result.
+            failed = g.get("exit_code_branch") not in (0, None)
+        else:
+            failed = g.get("result") == "red"
+        if failed:
             g["flaky"] = True
-    print(json.dumps(gates))
+    print(json.dumps(data))
 except Exception:
     try:
-        print(json.dumps(json.loads(sys.argv[1])))
+        print(json.dumps(json.loads(raw)))
     except Exception:
-        print("[]")
+        print('{"results": [], "errors": []}' if kind == "pre_existing" else "[]")
 PY
-)"
+  }
+  GATE_RESULTS_JSON="$(apply_flaky gates "$GATE_RESULTS_JSON")"
+  UNDER_DECL_JSON="$(apply_flaky under_declaration "$UNDER_DECL_JSON")"
+  PRE_EXISTING_JSON="$(apply_flaky pre_existing "$PRE_EXISTING_JSON")"
 
   # ── WRITE integration-results.json to $OUT ────────────────────────────
   # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
@@ -1530,7 +1678,8 @@ try:
         "gate_mode": mode.get("mode", "local"),
         "gate_mode_requested": mode.get("requested", ""),
         "gate_mode_reason": mode.get("reason", ""),
-        "gate_commands": [g.get("command", "") for g in gates if isinstance(g, dict)],
+        "gate_commands": [g.get("command", "") for g in gates
+                          if isinstance(g, dict) and g.get("result") != "absent"],
         "ci": mode.get("ci"),
         # Issue #99: where the regression runner came from (null in CI mode).
         "regression_runner": runner,

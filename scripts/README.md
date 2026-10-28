@@ -6,8 +6,29 @@ JSON payload on stdin after each API response; the script extracts the 5-hour an
 prints a compact status bar. No external app, no keychain prompts, no launchd agent needed —
 Claude Code itself (the token owner) hands the numbers over directly.
 
-The snapshot is updated after every API response, so the Conductor always reads live data
-without triggering any separate process.
+The status line updates the snapshot after every API response, but only where a status
+line renders (the terminal CLI).
+
+**Second writer: `scripts/usage-snapshot-hook.sh` (issue #109).** The desktop app's Code tab
+never runs the status line, so a run driven from there would read whatever the last terminal
+session wrote. This hook covers that gap. Register it on `PostToolUse` and `Stop` with
+`"async": true`. Hooks fire in the desktop app, the CLI and subagents. A hook payload has no
+rate-limit figures, so it reads them from the ClaudeUsage app's local API
+(`127.0.0.1:47291/usage`). It fetches at most once a minute, writes `source: "claudeusage-hook"`
+in the same schema, never replaces a snapshot newer than ClaudeUsage's `lastUpdated`, and
+writes nothing if ClaudeUsage reports a different account from the session's login. When
+ClaudeUsage isn't running, the hook does nothing and the snapshot keeps its last value.
+
+Use the bureau's one global install path (`~/Code/novadiem/bureau` on Robin's machine), not
+`${CLAUDE_PROJECT_DIR}`, which points at whatever repo the session is working in. In
+`~/.claude/settings.json`, merged into any existing hook arrays:
+
+```json
+"PostToolUse": [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
+  "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }],
+"Stop":        [{ "hooks": [{ "type": "command", "async": true, "timeout": 5,
+  "command": "/Users/robin/Code/novadiem/bureau/scripts/usage-snapshot-hook.sh" }] }]
+```
 
 Retired scripts `poll-usage-snapshot.sh` and `install-usage-poller.sh` are kept in place
 for reference but marked retired at the top of each file.
@@ -415,11 +436,13 @@ sh scripts/promote-fixtures.sh \
 
 # Cross-model pass (`model-pass.sh`)
 
-One deterministic "improve this draft" call to a non-Claude model, for the
-`write-article` workflow's cross-model stage. Routes by a provider-prefixed
-`<model-spec>` (v1 ships the `openrouter:` arm only). This is the intended
-metered-API use: cheap or specialized **non-build** work. It is not a Bureau
-host and must not be used to build code. The caller supplies everything;
+One deterministic "improve this draft" (or memo) call to a non-Claude model, for the
+`write-*` workflows' cross-model stage. Routes by a provider-prefixed
+`<model-spec>`: `openrouter:` makes one metered OpenRouter POST; `codex:` runs the
+local Codex CLI once on Robin's subscription (`codex exec`, ephemeral, user config
+ignored, read-only sandbox, launched from an empty temp dir, no approvals). Either way it
+is cheap or specialized **non-build** work. It is not a Bureau host and must not be used
+to build code. The caller supplies everything;
 the script makes no routing decisions and promotes nothing — it writes a **candidate**
 out-file that the workflow's Scribe step reconciles. Full design: `plan-write-article-workflow.md §1`.
 
@@ -430,7 +453,16 @@ scripts/model-pass.sh \
   config/passes/improve-grok.md \
   "$RUN_DIR/passes/01-grok.md" \
   --run-dir "$RUN_DIR"
+
+# the same pass on the local Codex CLI
+scripts/model-pass.sh codex:gpt-6.1-sol "$RUN_DIR/draft.md" \
+  config/passes/improve-grok.md "$RUN_DIR/passes/01-codex.md" --run-dir "$RUN_DIR"
 ```
+
+Codex knobs: `MODEL_PASS_CODEX_EFFORT` (reasoning effort, default `medium`),
+`MODEL_PASS_CODEX_TIMEOUT` (seconds, default `900`), `CODEX_BIN` (default `codex`). Codex
+reports no `finish_reason`, so the audit line records `codex-exit-0`, `codex-exit-<rc>` or
+`codex-timeout` in that field; the content checks below apply to both arms.
 
 **Fail-closed:** the out-file is written ONLY when every integrity check passes — HTTP 2xx,
 no `.error`, non-empty content, `finish_reason` exactly `"stop"`, and output within 50%-300%
@@ -441,7 +473,7 @@ step, never speculatively — each call spends real money on a third-party API.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| `<model-spec>` | Required | Provider-prefixed model id, e.g. `openrouter:x-ai/grok-4.3`. Only `openrouter:` is routable in v1. |
+| `<model-spec>` | Required | Provider-prefixed model id: `openrouter:x-ai/grok-4.3` or `codex:gpt-6.1-sol`. |
 | `<draft-file>` | Required | Absolute path to the draft markdown to improve (must exist, non-empty). |
 | `<instruction-file>` | Required | Absolute path to the pass instruction file (must exist, non-empty). |
 | `<out-file>` | Required | Absolute path for the candidate; parent dir must exist. Written only on full success. |
@@ -451,9 +483,9 @@ step, never speculatively — each call spends real money on a third-party API.
 |-----------|---------|
 | `0` | Candidate written to `<out-file>`. |
 | `1` | Bad arguments or missing input files (before any network call). |
-| `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response). |
+| `2` | Provider error (non-2xx HTTP, curl failure, or `.error` in the response; for `codex:`, a non-zero `codex exec` exit or a timeout). |
 | `3` | Integrity check failed (`finish_reason` != `stop`, empty content, or length-delta out of range). |
-| `4` | OpenRouter key missing (`OPENROUTER_API_KEY` absent and no valid `OPENROUTER_KEYSTORE` supplied). |
+| `4` | OpenRouter key missing (`OPENROUTER_API_KEY` absent and no valid `OPENROUTER_KEYSTORE` supplied), or the Codex CLI is not on PATH. |
 
 The request body is built with `jq -n` (the draft is arbitrary markdown — never
 string-interpolated). The key is read from `OPENROUTER_API_KEY`, or from the optional
@@ -488,8 +520,9 @@ scripts/integration-gate.sh \
 | `--worktree-path` | yes (integration) | Abs path to the build worktree, or `(none)` → short-circuit escalate. |
 | `--base-ref` | yes (integration) | Git ref; unresolvable in the worktree → short-circuit escalate. |
 | `--claimed-gates` | yes (integration) | Single-line inline JSON array. **Cross-check input only** (never the executed set). |
-| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named re-run red to `flaky: true`. |
+| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named red to `flaky: true` in `gates`, `under_declaration` and (failed on branch) `pre_existing`. A gate red because its runner went missing is never demoted. |
 | `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
+| `--run-dir` | optional | Abs path to `RUN_DIR`, the second place the regression runner is looked for. Default: the directory holding `--state-json`. |
 | `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |
 | `--gate-mode <local\|ci>` | optional | `local` (default) runs the canonical gate set. `ci` confirms `gh pr checks` is fully green on the worktree's exact HEAD instead (#92). |
 | `--final` | optional | The final/terminal gate. Full local suite, unless the project file's `integration_gate` block has `ci_covers_full_suite: true`: then `--gate-mode ci` may decide it, and each `local_only_gates` entry (`{name, command}`) still runs locally. Read from the project file, never `state.json`; a differing `state.json` copy forces local. |
@@ -509,6 +542,17 @@ opt-in (or with a malformed `local_only_gates` list, an unreadable project file,
 `gh` on PATH, three `gh` errors in a row, or no checks on the head commit after the grace period.
 A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
 In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).
+
+**Regression runner (#115).** The standing `regression` gate runs the first runner it finds:
+`<worktree>/.bureau/regression/run.sh` (the project's committed suite), then
+`RUN_DIR/regression/run.sh` (for runs whose target repo must not carry `.bureau/`, such as a
+client team's repo; it runs with the worktree as cwd). The record's `runner_source` says which
+(`worktree` or `run-dir`). With neither, the gate is recorded `result: "absent"`,
+`exit_code_branch: null`, with `runner_searched` and `fixtures_found` (NN-*.md files sitting in
+those dirs, unexecuted). Nothing runs, so it is never red; `canonical_source` reads
+`regression-absent`, or `manifest-only` when manifest gates still ran. The cold reviewer notes
+an absent gate in Uncertainties and escalates only when every gate is absent
+(`agents/delegate.md` § Five-step verifying checklist).
 
 **Kept output.** Every gate's stdout and stderr stream straight into `--out/gate-output/`
 (`<gate>.stdout.log`, `<gate>.stderr.log`; `pre-existing-<gate>.<branch|base>.*.log` for
@@ -565,7 +609,7 @@ scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" \
   --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"
 ```
 
-- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0), no escalate
+- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green, no escalate
   marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
   `branch_tip` equal to the review SHA. The verdict counts.
 - **Exit 1 `discard`:** the final gate is not green (or not a final gate). Discard the review
