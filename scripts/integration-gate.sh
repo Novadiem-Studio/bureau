@@ -24,7 +24,22 @@
 #                        canonical-gate declaration (issue #74).
 #   --known-flaky-gates <single-line inline JSON array>   (optional, default empty)
 #   --state-json        <abs path to RUN_DIR/state.json>  (scope projection source)
+#   --run-dir           <abs path to RUN_DIR>  (optional; default: the directory
+#                        holding --state-json). Second place the regression
+#                        runner is looked for, see "Regression runner" below.
 #   --out               <abs path to the output dir = $CTX>
+#
+# Regression runner (issue #115). The standing `regression` gate runs the first
+# runner found, in this order:
+#   1. <worktree>/.bureau/regression/run.sh   the project's committed suite
+#   2. <RUN_DIR>/regression/run.sh            for runs whose target repo must
+#                                             not carry .bureau/ (a client team
+#                                             repo); runs with cwd = worktree
+# The gate record names which one ran (runner_source: worktree | run-dir). When
+# neither exists the gate is recorded `result: "absent"` with
+# `exit_code_branch: null`, the paths it searched, and how many NN-*.md fixtures
+# sit in those regression dirs. Nothing runs, so absent is never red: a missing
+# runner is not a failing suite (it used to exit 127 and read as a hidden red).
 #
 # Gate-mode flags (issue #92). All optional; the default is the full local suite,
 # exactly as before, so the v1 watcher and older callers are unchanged:
@@ -101,6 +116,7 @@ REQ_BASE_REF=""
 REQ_CLAIMED_GATES_RAW=""
 REQ_KNOWN_FLAKY_RAW=""
 STATE_JSON=""
+RUN_DIR=""
 OUT=""
 REQ_GATE_MODE="local"
 REQ_FINAL=0
@@ -127,6 +143,7 @@ while [ "$#" -gt 0 ]; do
     --claimed-gates)     REQ_CLAIMED_GATES_RAW="$2"; shift 2 ;;
     --known-flaky-gates) REQ_KNOWN_FLAKY_RAW="$2";   shift 2 ;;
     --state-json)        STATE_JSON="$2";            shift 2 ;;
+    --run-dir)           RUN_DIR="$2";               shift 2 ;;
     --out)               OUT="$2";                   shift 2 ;;
     --gate-mode)         REQ_GATE_MODE="$2";         shift 2 ;;
     --since-ref)         REQ_SINCE_REF="$2";         shift 2 ;;
@@ -298,6 +315,21 @@ try:
     worktree, canon_raw, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
     canon = json.loads(canon_raw)
     for g in canon.get("gates", []):
+        # Issue #115: a gate with no runner anywhere is recorded, not run.
+        # exit_code_branch stays null so no reader can mistake it for a red.
+        if g.get("absent"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": None,
+                "result": "absent",
+                "duration_s": 0,
+                "runner_source": "absent",
+                "runner_searched": g.get("runner_searched", []),
+                "fixtures_found": g.get("fixtures_found", 0),
+                "reason": "no regression runner in the worktree or the run dir; nothing ran",
+            })
+            continue
         # FIX (defect 1): the gate's stdout/stderr must never inherit this python
         # process's stdout — which IS the `$(...)` the shell captures into
         # GATE_RESULTS_JSON. A chatty gate (e.g. jest printing ~74KB) would
@@ -344,6 +376,8 @@ try:
             with open(runner, "rb") as fh:
                 entry["runner_path"] = runner
                 entry["runner_sha256"] = hashlib.sha256(fh.read()).hexdigest()
+        if g.get("runner_source"):
+            entry["runner_source"] = g["runner_source"]
         suite = [l.split(":", 1)[1].strip() for l in tail(out_path, 100000, 2000)
                  if l.startswith("BUREAU-SUITE:")]
         if suite:
@@ -684,14 +718,40 @@ PY
   # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
   # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
   # a parseable manifest exists in the worktree.
-  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" <<'PY'
-import json, os, sys
-worktree = sys.argv[1]
-gates = [{"name": "regression",
-          "command": "sh %s/.bureau/regression/run.sh" % worktree,
-          "runner": os.path.join(worktree, ".bureau", "regression", "run.sh")}]
+  # Issue #115: the runner is the first of <worktree>/.bureau/regression/run.sh,
+  # then <RUN_DIR>/regression/run.sh (RUN_DIR = --run-dir, else the directory
+  # holding --state-json). With neither, the gate is marked absent and run_gates
+  # records it without running anything.
+  if [ -z "$RUN_DIR" ] && [ -n "$STATE_JSON" ]; then
+    RUN_DIR="$(dirname "$STATE_JSON")"
+  fi
+  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" <<'PY'
+import glob, json, os, shlex, sys
+worktree, run_dir = sys.argv[1], sys.argv[2]
+candidates = [("worktree", os.path.join(worktree, ".bureau", "regression", "run.sh"))]
+if run_dir:
+    candidates.append(("run-dir", os.path.join(run_dir, "regression", "run.sh")))
+found = [(src, p) for src, p in candidates if os.path.isfile(p)]
+if found:
+    source, runner = found[0]
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(runner),
+              "runner": runner,
+              "runner_source": source}]
+    canonical_source = "regression-only"
+else:
+    fixtures = set()
+    for _, p in candidates:
+        d = os.path.dirname(p)
+        fixtures.update(glob.glob(os.path.join(d, "[0-9][0-9]-*.md")))
+        fixtures.update(glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
+    gates = [{"name": "regression",
+              "command": "(absent)",
+              "absent": True,
+              "runner_searched": [p for _, p in candidates],
+              "fixtures_found": len(fixtures)}]
+    canonical_source = "regression-absent"
 manifest = os.path.join(worktree, "package.json")
-canonical_source = "regression-only"
 if os.path.isfile(manifest):
     try:
         with open(manifest) as fh:
@@ -701,7 +761,8 @@ if os.path.isfile(manifest):
         for k in gate_keys:
             gates.append({"name": "npm-%s" % k, "command": "npm run %s" % k})
         if gate_keys:
-            canonical_source = "regression+manifest"
+            canonical_source = ("manifest-only" if canonical_source == "regression-absent"
+                                else "regression+manifest")
     except Exception:
         pass
 print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
@@ -1369,7 +1430,8 @@ try:
         "gate_mode": mode.get("mode", "local"),
         "gate_mode_requested": mode.get("requested", ""),
         "gate_mode_reason": mode.get("reason", ""),
-        "gate_commands": [g.get("command", "") for g in gates if isinstance(g, dict)],
+        "gate_commands": [g.get("command", "") for g in gates
+                          if isinstance(g, dict) and g.get("result") != "absent"],
         "ci": mode.get("ci"),
         "gates": gates,
         "pre_existing": pre_existing,

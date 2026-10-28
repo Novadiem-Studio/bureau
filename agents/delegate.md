@@ -707,19 +707,31 @@ Apply these steps in order. The first failing step determines the verdict.
 
 Read `integration-results.json#gates` (canonical gates run by the watcher —
 regression runner + manifest gates, resolved by the watcher, NOT from claimed-gates).
-For each entry: if `exit_code_branch != 0`, the gate failed.
+For each entry with `result: "absent"`: no runner existed, so nothing ran
+(issue #115). The regression runner is looked for at
+`<worktree>/.bureau/regression/run.sh`, then `RUN_DIR/regression/run.sh`; a run
+whose target repo must not carry `.bureau/` may have neither. Absent is not a
+failure and not a hidden red gate: never revise or escalate on it alone. Note it
+in Uncertainties ("regression gate absent: no runner at <runner_searched>;
+<fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
+absent, no gate evidence exists for this checkpoint: emit `escalate` with
+Escalation "no canonical gate ran: <names> absent".
+
+For every other entry: if `exit_code_branch != 0`, the gate failed.
 - If the entry carries `flaky: true`, flag it in Uncertainties ("known-flaky gate
   <name> failed on re-run — not blocking per known-flaky-gates list") rather than
   emitting revise. (OQ-B14-4 demotion.)
 - Otherwise, a failed gate is a blocking finding. A proceed verdict requires all
-  canonical gates to pass (exit 0) or be demoted as flaky.
+  canonical gates to pass (exit 0), be demoted as flaky, or be absent, with at
+  least one gate that ran.
 
 Also read `integration-results.json#under_declaration` (canonical gates the build
 did NOT declare in claimed-gates, FR-B14-14):
 - Any entry with `result: "red"` is a hidden failing gate → emit `escalate` with
   Escalation naming the gate and the fact the build did not declare it (EC-B14-8,
   FR-B14-7).
-- Green entries are informational → note in Uncertainties (EC-B14-9).
+- Green and `absent` entries are informational → note in Uncertainties (EC-B14-9).
+  An absent gate could not have been declared; it is not an under-declaration.
 
 **Step 2 — Pre-existing red validation** (FR-B14-4)
 
@@ -817,7 +829,8 @@ This `Integration-evidence` block is the ONE authoritative schema-PascalCase lis
 
 `proceed` requires ALL of the following (AC-5):
 1. All canonical gates in `Gates-checked` have `exit-code-on-branch: 0`
-   (or are demoted as flaky per OQ-B14-4).
+   (or are demoted as flaky per OQ-B14-4, or have `result: "absent"`), and at
+   least one gate is not absent.
 2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`.
 3. No `Under-declaration` entry has `result: "red"`.
 4. `Scope-diff-clean: true` (or null — absent scope is not blocking).
