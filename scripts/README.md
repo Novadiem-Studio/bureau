@@ -563,19 +563,26 @@ prints a `BUREAU-SUITE: <command>` line, so a runner switched between a fast and
 is visible in the record. `run-cold-reviewer.sh` leaves `gate-output/` out of the reviewer's
 artifact manifest.
 
-**Regression runner provisioning (#99).** In local mode the regression gate runs
-`<worktree>/.bureau/regression/run.sh`. When that runner is committed on the build branch it is
-used as is. When it is not (a target repo that gitignores `.bureau/` keeps its runner in the main
-checkout only), the gate copies the main checkout's `.bureau/regression/` into the worktree on
-every gate and runs it there; the main checkout comes from the worktree's git common dir, never
-from `state.json`. It never runs the main checkout's runner in place, because runners take their
-root from their own path and would test the main checkout instead of the build. Any untracked
-runner already in the worktree is overwritten, since the build can write that ignored file without
-it showing in the diff. The copy goes ahead only when every file lands gitignored in the worktree.
-Otherwise, or when no runner exists anywhere, the result is an `escalate_marker` starting
-`regression runner absent from worktree`, never a red gate. `regression_runner` records the
-outcome: `source` (`worktree`, `main-checkout-copy`, `main-checkout`), `main_checkout`,
-`copied_from`, `copied_files` and `replaced_worktree_runner`; it is `null` in CI mode.
+**Regression runner provisioning (#99).** Canonical selection happens first. A selected
+`RUN_DIR/regression/run.sh` runs directly, and a removed/broken tracked suite stays red.
+If the worktree has no runner or only an untracked runner, the gate can refresh its suite
+from the target repo's main checkout (located through Git's common directory, never
+`state.json`). An untracked runner in a linked worktree is not trusted by itself: refresh
+it from the owner's checkout on each gate, or escalate if its owner has no usable copy.
+The primary checkout's own runner is used in place. No runner anywhere still means
+`absent`, so manifest gates can run as described above.
+
+Provisioning stages a fresh copy and replaces the entire ignored `.bureau/regression/`
+directory; stale worktree-only files do not survive. It never runs the main checkout's
+runner in place, because runners can derive their root from their own path. Source
+symlinks and symlinked suite directories are rejected. Leaf destination symlinks are
+removed with the old directory, never followed. Any tracked path under the destination,
+or any unignored file that would be copied or removed, blocks replacement. A copy or
+validation failure produces an `escalate_marker` starting `regression runner absent from
+worktree` before canonical gates run. `regression_runner` records `source` (`worktree`,
+`run-dir`, `main-checkout-copy`, `main-checkout`, `absent`, or `unavailable` for an existing
+red missing-suite record), `main_checkout`, `copied_from`, `copied_files` and
+`replaced_worktree_runner`; it is `null` in CI mode.
 
 - **Output:** writes `integration-results.json` into `--out` — the EVIDENCE file (`schema_version`,
   `checkpoint_type`, `escalate_marker`, `canonical_source`, `final_gate`, `gate_mode`, `gate_mode_requested`,

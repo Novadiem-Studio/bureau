@@ -697,10 +697,12 @@ If non-empty:
 - Stop. Do not proceed to the five-step checklist.
 
 Escalate-marker cases: `worktree-path: (none)` (EC-B14-1); unresolvable `base-ref`
-(EC-B14-4); `regression runner absent from worktree`: the target repo's runner is not
-committed on the build branch and the main checkout cannot supply a gitignored copy (#99).
-Fix the runner setup (commit it, or put it in the main checkout with `.bureau/` gitignored)
-and re-run the gate; do not copy a runner into the worktree by hand.
+(EC-B14-4); `regression runner absent from worktree`: refreshing an untracked suite
+from the main checkout was unsafe or failed (#99), for example a symlinked suite
+directory or tracked/unignored destination content. Fix the named provisioning
+problem and re-run the gate; do not copy a runner into the worktree by hand.
+Ordinary absence is not a provisioning error: the run-directory fallback and
+absent-gate rules below still apply. A removed or broken tracked suite remains red.
 
 ### Five-step verifying checklist
 

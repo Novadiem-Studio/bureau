@@ -1,4 +1,4 @@
-name: F316 · integration-gate.sh replaces an untracked runner in the build worktree with the main checkout's (issue #99)
+name: F328 · integration-gate.sh replaces an untracked runner in the build worktree with the main checkout's (issue #99)
 command: |
   set -e
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"

@@ -1,4 +1,4 @@
-name: F314 · integration-gate.sh runs a gitignored regression runner from the main checkout inside the worktree (issue #99)
+name: F326 · integration-gate.sh runs a gitignored regression runner from the main checkout inside the worktree (issue #99)
 command: |
   set -e
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"

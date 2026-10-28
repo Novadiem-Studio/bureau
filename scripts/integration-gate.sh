@@ -409,39 +409,23 @@ print(json.dumps(results))
 PY
   }
 
-  # ── provision_regression_runner: make the worktree's runner real (issue #99) ──
-  # The regression gate runs `sh <worktree>/.bureau/regression/run.sh`. A target
-  # repo that gitignores .bureau/ (rheo-stream does, in its own .gitignore) never
-  # commits that runner, so a build worktree cut from it has no runner and the
-  # gate used to go red with exit 127, listed under under_declaration: a false
-  # red that a cold reviewer reads as a hidden failing gate.
-  #
-  # Rules, in order:
-  #   - runner TRACKED on the build branch -> use it as is. It is in the diff.
-  #   - otherwise copy the main checkout's .bureau/regression/ into the worktree
-  #     and run it there. Never run the main checkout's runner in place: runners
-  #     take their root from their own path (`cd "$(dirname "$0")/../.."`), so
-  #     that would test the main checkout, not the build: a silent false green.
-  #     The copy happens on every gate, overwriting any untracked runner already
-  #     in the worktree: the build can write that ignored file and it never shows
-  #     in its diff, and the verified party does not define what gets executed.
-  #   - copy only when every file lands gitignored in the worktree, so the build
-  #     branch gains no untracked files (and no tracked file is overwritten).
-  #   - anything else -> escalate with "regression runner absent from worktree".
-  # The main checkout comes from git (the worktree's common dir), not from
-  # state.json#target_repo, which the Conductor can write.
-  #
-  # Prints one JSON object: {"source", "runner_path", "main_checkout",
-  # "copied_from", "copied_files", "replaced_worktree_runner", "escalate"}.
+  # ── provision_regression_runner: refresh an ignored suite (issue #99) ──
+  # Canonical resolution runs first: explicit run-dir runners, absent gates and
+  # broken/removed tracked-suite guards keep their established meaning. A linked
+  # worktree's untracked runner is refreshed from the owner's main checkout.
+  # Replace the whole ignored directory from a staged copy; never overlay files
+  # through destination symlinks or retain worktree-only test code.
   provision_regression_runner() {
-  python3 - "$REQ_WORKTREE_PATH" <<'PY'
-import hashlib, json, os, shutil, subprocess, sys
+  python3 - "$REQ_WORKTREE_PATH" "$1" <<'PY'
+import hashlib, json, os, shutil, subprocess, sys, tempfile
 
-worktree = sys.argv[1]
+worktree = os.path.abspath(sys.argv[1])
+canon = json.loads(sys.argv[2])
+gate = next(g for g in canon["gates"] if g["name"] == "regression")
 REL_DIR = os.path.join(".bureau", "regression")
 REL = os.path.join(REL_DIR, "run.sh")
 ABSENT = "regression runner absent from worktree: "
-res = {"source": "", "runner_path": os.path.join(worktree, REL), "main_checkout": None,
+res = {"source": "absent", "runner_path": os.path.join(worktree, REL), "main_checkout": None,
        "copied_from": None, "copied_files": 0, "replaced_worktree_runner": False,
        "escalate": ""}
 
@@ -451,14 +435,45 @@ def finish():
     sys.exit(0)
 
 
-def escalate(msg):
-    res["escalate"] = ABSENT + msg
-    finish()
-
-
 def git(*args, stdin=None):
     return subprocess.run(["git", "-C", worktree] + list(args), input=stdin,
-                          capture_output=True, text=True)
+                          capture_output=True)
+
+
+def tracked_paths(path):
+    r = git("ls-files", "-z", "--", path)
+    if r.returncode != 0:
+        raise RuntimeError("could not read tracked paths for %s" % path)
+    return [os.fsdecode(p) for p in r.stdout.split(b"\0") if p]
+
+
+def require_ignored(paths):
+    if not paths:
+        return
+    r = git("check-ignore", "-z", "--stdin",
+            stdin=b"\0".join(os.fsencode(p) for p in paths) + b"\0")
+    if r.returncode not in (0, 1):
+        raise RuntimeError("could not check ignored regression paths")
+    ignored = {os.fsdecode(p) for p in r.stdout.split(b"\0") if p}
+    loose = sorted(set(paths) - ignored)
+    if loose:
+        raise RuntimeError("refusing to replace unignored or tracked regression content: %s" % loose[0])
+
+
+def suite_files(root, source=False):
+    paths = []
+    if not source and not os.path.lexists(root):
+        return paths
+    def unreadable(error):
+        raise error
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
+        links = [name for name in dirs if os.path.islink(os.path.join(directory, name))]
+        for name in files + links:
+            path = os.path.join(directory, name)
+            if source and (os.path.islink(path) or not os.path.isfile(path)):
+                raise RuntimeError("source suite contains a symlink or non-regular file: %s" % path)
+            paths.append(os.path.join(REL_DIR, os.path.relpath(path, root)))
+    return paths
 
 
 def digest(path):
@@ -470,56 +485,83 @@ def digest(path):
 
 
 try:
-    if git("ls-files", "--error-unmatch", "--", REL).returncode == 0:
+    if gate.get("missing_reason"):
+        res["source"] = "unavailable"
+        finish()  # Never repair/demote a broken or removed tracked suite.
+    if gate.get("runner_source") == "run-dir":
+        res.update(source="run-dir", runner_path=gate["runner"])
+        finish()
+    if tracked_paths(REL):
         res["source"] = "worktree"
         finish()
 
-    common = git("rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+    r = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    if r.returncode != 0:
+        raise RuntimeError("could not locate the main checkout")
+    common = os.fsdecode(r.stdout).strip()
     if not common or os.path.basename(common) != ".git":
-        escalate("%s is not committed on this branch, and the target repo's main "
-                 "checkout cannot be located from the worktree (git common dir: %r)."
-                 % (REL, common))
+        if gate.get("absent"):
+            finish()  # Optional provisioning cannot invent a missing suite.
+        raise RuntimeError("cannot locate the owner of an untracked worktree runner")
     main = os.path.dirname(common)
     res["main_checkout"] = main
-    main_runner = os.path.join(main, REL)
-
-    if os.path.realpath(main) == os.path.realpath(worktree):
-        # The gate was pointed at the main checkout itself: its untracked runner
-        # is the repo owner's own, not something a build wrote.
-        if os.path.isfile(res["runner_path"]):
-            res["source"] = "main-checkout"
-            finish()
-        escalate("%s is neither committed nor present in the checkout %s." % (REL, main))
-
-    if not os.path.isfile(main_runner):
-        escalate("%s is not committed on this branch, and the main checkout %s has "
-                 "none either. Commit a runner, or put one in the main checkout's "
-                 ".bureau/regression/." % (REL, main))
-
     main_dir = os.path.join(main, REL_DIR)
-    files = []
-    for dirpath, _dirs, names in os.walk(main_dir):
-        for name in names:
-            files.append(os.path.relpath(os.path.join(dirpath, name), main))
-    files.sort()
-    # check-ignore never reports a tracked path, so a tracked file in the way
-    # also blocks the copy.
-    ignored = set(git("check-ignore", "--stdin", stdin="\n".join(files) + "\n")
-                  .stdout.splitlines())
-    loose = [f for f in files if f not in ignored]
-    if loose:
-        escalate("the main checkout %s has one, but %d of its .bureau/regression/ "
-                 "files would land in the worktree un-ignored or over a tracked file "
-                 "(first: %s), so copying them would change the build branch. Commit "
-                 "the runner, or gitignore .bureau/ in the target repo."
-                 % (main, len(loose), loose[0]))
+    main_runner = os.path.join(main, REL)
+    if os.path.realpath(main) == os.path.realpath(worktree):
+        if gate.get("runner_source") == "worktree":
+            res["source"] = "main-checkout"
+        finish()
+    if not os.path.isfile(main_runner):
+        if gate.get("absent") and not os.path.lexists(main_runner):
+            finish()
+        raise RuntimeError("the main checkout has no usable runner to refresh the untracked suite")
+
+    parent = os.path.join(worktree, ".bureau")
+    destination = os.path.join(worktree, REL_DIR)
+    for path in (parent, destination, os.path.join(main, ".bureau"), main_dir):
+        if os.path.islink(path):
+            raise RuntimeError("refusing a symlink suite directory: %s" % path)
+        if os.path.lexists(path) and not os.path.isdir(path):
+            raise RuntimeError("suite directory is not a directory: %s" % path)
+    if tracked_paths(REL_DIR):
+        raise RuntimeError("refusing to replace tracked regression content")
+    files = suite_files(main_dir, source=True)
+    require_ignored(files + suite_files(destination))
 
     before = digest(res["runner_path"])
-    for rel in files:
-        dst = os.path.join(worktree, rel)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(os.path.join(main, rel), dst)
-    res["replaced_worktree_runner"] = before is not None and before != digest(main_runner)
+    parent_existed = os.path.isdir(parent)
+    os.makedirs(parent, exist_ok=True)
+    stage = tempfile.mkdtemp(prefix=".regression-stage-", dir=parent)
+    replacement = os.path.join(stage, "replacement")
+    previous = os.path.join(stage, "previous")
+    installed = False
+    try:
+        # Preserve source symlinks during staging so the validation rejects them
+        # rather than following a link that appeared after the initial scan.
+        shutil.copytree(main_dir, replacement, symlinks=True)
+        files = suite_files(replacement, source=True)
+        if REL not in files:
+            raise RuntimeError("staged regression suite has no runner")
+        require_ignored(files)
+        if os.path.exists(destination):
+            os.rename(destination, previous)
+        try:
+            os.rename(replacement, destination)
+            installed = True
+        except Exception:
+            if os.path.exists(previous) and not os.path.lexists(destination):
+                os.rename(previous, destination)
+            raise
+    finally:
+        # Retain a backup if restoration itself failed; never discard that data.
+        if installed or not os.path.exists(previous):
+            shutil.rmtree(stage)
+        if not parent_existed:
+            try:
+                os.rmdir(parent)
+            except OSError:
+                pass
+    res["replaced_worktree_runner"] = before is not None and before != digest(res["runner_path"])
     res["source"] = "main-checkout-copy"
     res["copied_from"] = main_dir
     res["copied_files"] = len(files)
@@ -862,20 +904,6 @@ PY
     esac
   else
 
-  # ── PROVISION THE REGRESSION RUNNER (issue #99) ─────────────────────────
-  # A runner the gate cannot use is an escalation, never a red gate: no
-  # canonical gate runs, and the final write emits the escalate-marker file.
-  # Fail closed: an unreadable provisioning record escalates too.
-  RUNNER_JSON="$(provision_regression_runner)"
-  RUNNER_ESCALATE="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert isinstance(r, dict); print(r.get("escalate") or "")' "$RUNNER_JSON" 2>/dev/null \
-    || echo "regression runner absent from worktree: the runner provisioning step produced no readable record")"
-  case "$RUNNER_JSON" in "{"*) ;; *) RUNNER_JSON='null' ;; esac
-
-  if [ -n "$RUNNER_ESCALATE" ]; then
-    CANON_GATES_JSON='{"gates": [], "canonical_source": "none"}'
-    GATE_RESULTS_JSON='[]'
-  else
-
   # ── RESOLVE CANONICAL GATE SET (FR-B14-3, FR-B14-12, FR-B14-14) ──────────
   # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
   # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
@@ -978,6 +1006,30 @@ if os.path.isfile(manifest):
     except Exception:
         pass
 print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
+PY
+)"
+
+  # Provision only after canonical selection, preserving run-dir, absent and
+  # missing-suite outcomes. Unsafe refreshes escalate before any gate executes.
+  RUNNER_JSON="$(provision_regression_runner "$CANON_GATES_JSON")"
+  RUNNER_ESCALATE="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert isinstance(r, dict); print(r.get("escalate") or "")' "$RUNNER_JSON" 2>/dev/null \
+    || echo "regression runner absent from worktree: the runner provisioning step produced no readable record")"
+  case "$RUNNER_JSON" in "{"*) ;; *) RUNNER_JSON='null' ;; esac
+  if [ -n "$RUNNER_ESCALATE" ]; then
+    CANON_GATES_JSON='{"gates": [], "canonical_source": "none"}'
+    GATE_RESULTS_JSON='[]'
+  else
+    # A provisioned runner replaces the prior absent/untracked selection.
+    CANON_GATES_JSON="$(python3 - "$CANON_GATES_JSON" "$RUNNER_JSON" <<'PY'
+import json, shlex, sys
+canon, runner = map(json.loads, sys.argv[1:3])
+if runner.get("source") == "main-checkout-copy":
+    path = runner["runner_path"]
+    canon["gates"] = [{"name": "regression", "command": "sh " + shlex.quote(path),
+                       "runner": path, "runner_source": "worktree"}
+                      if g["name"] == "regression" else g for g in canon["gates"]]
+    canon["canonical_source"] = "regression+manifest" if len(canon["gates"]) > 1 else "regression-only"
+print(json.dumps(canon))
 PY
 )"
 
