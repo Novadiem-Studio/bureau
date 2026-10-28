@@ -761,6 +761,16 @@ def fixture_files(d):
             + glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
 
 
+def has_tracked_fixtures(d):
+    fixtures = set(fixture_files(d))
+    if not fixtures:
+        return False
+    tracked = subprocess.check_output(
+        ["git", "-C", worktree, "ls-files", "-z", "--", os.path.relpath(d, worktree)])
+    return any(os.path.join(worktree, os.fsdecode(p)) in fixtures
+               for p in tracked.split(b"\0") if p)
+
+
 # Fail closed on a runner the branch could have switched off (see header).
 missing = ""
 wt_runner = candidates[0][1]
@@ -773,11 +783,12 @@ if not os.path.isfile(wt_runner):
         missing = "%s exists but is not a regular file" % wt_runner
     elif on_base:
         missing = ".bureau/regression/run.sh exists at %s but not on the branch" % base_ref
-    elif fixture_files(os.path.dirname(wt_runner)):
+    elif has_tracked_fixtures(os.path.dirname(wt_runner)):
         missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
-for src, p in candidates[1:]:
-    if not missing and os.path.lexists(p) and not os.path.isfile(p):
-        missing = "%s exists but is not a regular file" % p
+    # A broken fallback cannot override a valid higher-priority runner.
+    for src, p in candidates[1:]:
+        if not missing and os.path.lexists(p) and not os.path.isfile(p):
+            missing = "%s exists but is not a regular file" % p
 found = [(src, p) for src, p in candidates if os.path.isfile(p)]
 if missing:
     gates = [{"name": "regression",
