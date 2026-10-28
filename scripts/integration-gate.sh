@@ -745,7 +745,7 @@ PY
     RUN_DIR="$(dirname "$STATE_JSON")"
   fi
   CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" "$REQ_BASE_REF" <<'PY'
-import glob, json, os, shlex, subprocess, sys
+import fnmatch, glob, json, os, shlex, subprocess, sys
 # Absolute paths: the gate runs with cwd = worktree, so a relative run dir would
 # be checked and hashed here but resolved against the worktree when it runs.
 worktree = os.path.abspath(sys.argv[1])
@@ -762,13 +762,16 @@ def fixture_files(d):
 
 
 def has_tracked_fixtures(d):
-    fixtures = set(fixture_files(d))
-    if not fixtures:
-        return False
+    relative_dir = os.path.relpath(d, worktree)
     tracked = subprocess.check_output(
-        ["git", "-C", worktree, "ls-files", "-z", "--", os.path.relpath(d, worktree)])
-    return any(os.path.join(worktree, os.fsdecode(p)) in fixtures
-               for p in tracked.split(b"\0") if p)
+        ["git", "-C", worktree, "ls-files", "-z", "--", relative_dir],
+        stderr=subprocess.PIPE)
+    paths = [os.fsdecode(p) for p in tracked.split(b"\0") if p]
+    # The index remains authoritative even if a tracked fixture was deleted on disk.
+    return any(os.path.dirname(p) == relative_dir
+               and any(fnmatch.fnmatchcase(os.path.basename(p), pattern)
+                       for pattern in ("[0-9][0-9]-*.md", "[0-9][0-9][0-9]-*.md"))
+               for p in paths)
 
 
 # Fail closed on a runner the branch could have switched off (see header).
@@ -783,8 +786,12 @@ if not os.path.isfile(wt_runner):
         missing = "%s exists but is not a regular file" % wt_runner
     elif on_base:
         missing = ".bureau/regression/run.sh exists at %s but not on the branch" % base_ref
-    elif has_tracked_fixtures(os.path.dirname(wt_runner)):
-        missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
+    else:
+        try:
+            if has_tracked_fixtures(os.path.dirname(wt_runner)):
+                missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
+        except (OSError, subprocess.CalledProcessError) as e:
+            missing = "could not inspect tracked regression fixtures: %s" % e
     # A broken fallback cannot override a valid higher-priority runner.
     for src, p in candidates[1:]:
         if not missing and os.path.lexists(p) and not os.path.isfile(p):
