@@ -520,8 +520,9 @@ scripts/integration-gate.sh \
 | `--worktree-path` | yes (integration) | Abs path to the build worktree, or `(none)` → short-circuit escalate. |
 | `--base-ref` | yes (integration) | Git ref; unresolvable in the worktree → short-circuit escalate. |
 | `--claimed-gates` | yes (integration) | Single-line inline JSON array. **Cross-check input only** (never the executed set). |
-| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named re-run red to `flaky: true`. |
+| `--known-flaky-gates` | optional | Single-line inline JSON array; demotes a named red to `flaky: true` in `gates`, `under_declaration` and (failed on branch) `pre_existing`. A gate red because its runner went missing is never demoted. |
 | `--state-json` | yes (integration) | Abs path to `RUN_DIR/state.json` — the `#scope` projection source. |
+| `--run-dir` | optional | Abs path to `RUN_DIR`, the second place the regression runner is looked for. Default: the directory holding `--state-json`. |
 | `--out <dir>` | yes | The caller-staged `$CTX` dir. The script **writes into it but never creates it** (the caller owns `$CTX`); it fails clearly if the dir is absent. |
 | `--gate-mode <local\|ci>` | optional | `local` (default) runs the canonical gate set. `ci` confirms `gh pr checks` is fully green on the worktree's exact HEAD instead (#92). |
 | `--final` | optional | The final/terminal gate. Full local suite, unless the project file's `integration_gate` block has `ci_covers_full_suite: true`: then `--gate-mode ci` may decide it, and each `local_only_gates` entry (`{name, command}`) still runs locally. Read from the project file, never `state.json`; a differing `state.json` copy forces local. |
@@ -541,6 +542,17 @@ opt-in (or with a malformed `local_only_gates` list, an unreadable project file,
 `gh` on PATH, three `gh` errors in a row, or no checks on the head commit after the grace period.
 A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
 In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).
+
+**Regression runner (#115).** The standing `regression` gate runs the first runner it finds:
+`<worktree>/.bureau/regression/run.sh` (the project's committed suite), then
+`RUN_DIR/regression/run.sh` (for runs whose target repo must not carry `.bureau/`, such as a
+client team's repo; it runs with the worktree as cwd). The record's `runner_source` says which
+(`worktree` or `run-dir`). With neither, the gate is recorded `result: "absent"`,
+`exit_code_branch: null`, with `runner_searched` and `fixtures_found` (NN-*.md files sitting in
+those dirs, unexecuted). Nothing runs, so it is never red; `canonical_source` reads
+`regression-absent`, or `manifest-only` when manifest gates still ran. The cold reviewer notes
+an absent gate in Uncertainties and escalates only when every gate is absent
+(`agents/delegate.md` § Five-step verifying checklist).
 
 **Kept output.** Every gate's stdout and stderr stream straight into `--out/gate-output/`
 (`<gate>.stdout.log`, `<gate>.stderr.log`; `pre-existing-<gate>.<branch|base>.*.log` for
@@ -583,7 +595,7 @@ scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" \
   --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"
 ```
 
-- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0), no escalate
+- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green, no escalate
   marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
   `branch_tip` equal to the review SHA. The verdict counts.
 - **Exit 1 `discard`:** the final gate is not green (or not a final gate). Discard the review

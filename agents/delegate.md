@@ -707,26 +707,46 @@ Apply these steps in order. The first failing step determines the verdict.
 
 Read `integration-results.json#gates` (canonical gates run by the watcher —
 regression runner + manifest gates, resolved by the watcher, NOT from claimed-gates).
-For each entry: if `exit_code_branch != 0`, the gate failed.
+For each entry with `result: "absent"` and `exit_code_branch: null`: no runner
+existed, so nothing ran (issue #115). The regression runner is looked for at
+`<worktree>/.bureau/regression/run.sh`, then `RUN_DIR/regression/run.sh`; a run
+whose target repo must not carry `.bureau/` may have neither. Absent is not a
+failure and not a hidden red gate: never revise or escalate on it alone. Note it
+in Uncertainties ("regression gate absent: no runner at <runner_searched>;
+<fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
+absent, no gate evidence exists for this checkpoint: emit `escalate` with
+Escalation "no canonical gate ran: <names> absent". A runner the branch removed
+or broke is not absent: the gate records it red (`runner_source: "missing"`,
+`missing_reason`), and Step 1's failed-gate rule applies. A gate with
+`runner_source: "run-dir"` ran a runner outside the reviewed diff: note it in
+Uncertainties with its `runner_path` and `runner_sha256`.
+
+For every other entry: if `exit_code_branch != 0`, the gate failed.
 - If the entry carries `flaky: true`, flag it in Uncertainties ("known-flaky gate
   <name> failed on re-run — not blocking per known-flaky-gates list") rather than
   emitting revise. (OQ-B14-4 demotion.)
 - Otherwise, a failed gate is a blocking finding. A proceed verdict requires all
-  canonical gates to pass (exit 0) or be demoted as flaky.
+  canonical gates to pass (exit 0), be demoted as flaky, or be absent, with at
+  least one gate that ran.
 
 Also read `integration-results.json#under_declaration` (canonical gates the build
 did NOT declare in claimed-gates, FR-B14-14):
 - Any entry with `result: "red"` is a hidden failing gate → emit `escalate` with
   Escalation naming the gate and the fact the build did not declare it (EC-B14-8,
-  FR-B14-7).
-- Green entries are informational → note in Uncertainties (EC-B14-9).
+  FR-B14-7), UNLESS the entry carries `flaky: true`: then flag it in Uncertainties
+  ("known-flaky gate <name> failed and was not declared — not blocking per
+  known-flaky-gates list") and do not escalate, the same demotion as in `gates`.
+- Green and `absent` entries are informational → note in Uncertainties (EC-B14-9).
+  An absent gate could not have been declared; it is not an under-declaration.
 
 **Step 2 — Pre-existing red validation** (FR-B14-4)
 
 Read `integration-results.json#pre_existing`. For each entry:
 - If `confirmed_pre_existing: false` (passes at base, fails on branch) → emit `revise`
   with Required-changes naming the gate. A proceed verdict is impossible while any
-  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4).
+  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4), UNLESS the entry
+  carries `flaky: true` (named in known-flaky-gates): then flag it in Uncertainties
+  and do not revise on it, the same demotion as in `gates`.
 - If `confirmed_pre_existing: true` → non-blocking per FR-B14-4, UNLESS the
   severity-marker check fires (see below).
 
@@ -787,7 +807,7 @@ INNER KEY MAP (entries within each array — inner entry keys differ from outer 
 Within Gates-checked entries:
   name              → name
   command           → command
-  exit_code_branch  → exit-code-on-branch
+  exit_code_branch  → exit-code-on-branch   (null for an absent gate; never 0)
   result            → result
 
 Within Pre-existing-validated entries:
@@ -817,9 +837,12 @@ This `Integration-evidence` block is the ONE authoritative schema-PascalCase lis
 
 `proceed` requires ALL of the following (AC-5):
 1. All canonical gates in `Gates-checked` have `exit-code-on-branch: 0`
-   (or are demoted as flaky per OQ-B14-4).
-2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`.
-3. No `Under-declaration` entry has `result: "red"`.
+   (or are demoted as flaky per OQ-B14-4, or have `result: "absent"`), and at
+   least one gate is not absent.
+2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`
+   (or carry `flaky: true` in integration-results.json, flagged in Uncertainties).
+3. No `Under-declaration` entry has `result: "red"` (except one that carries
+   `flaky: true` in integration-results.json, flagged in Uncertainties).
 4. `Scope-diff-clean: true` (or null — absent scope is not blocking).
 5. `Scope-violations: []` (empty).
 6. `Fast-forward-ok: true`.
