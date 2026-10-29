@@ -17,6 +17,13 @@ command: |
   HASH=$(shasum -a 256 "$CTX/artifact.md" | awk '{print $1}')
   printf '{"target_repo":"%s","scope":{}}\n' "$TMPF/target" > "$CTX/state.json"
   cp "$CTX/state.json" "$RD/state.json"
+  cp "$CTX/artifact.md" "$CTX/log-slice.md" "$RD/"
+  python3 - "$RD" <<'PYRECIPE'
+  import json, pathlib, sys
+  r = pathlib.Path(sys.argv[1])
+  (r / 'checkpoints/01-review-sources.json').write_text(json.dumps({'files': {
+      n: [str(r / n)] for n in ('artifact.md', 'log-slice.md', 'state.json')}}))
+  PYRECIPE
   cat > "$RD/model-routing.json" <<JSON
   {"runtime":"openai","roles":{"delegate":{"model":"gpt-5.6-sol","reasoningEffort":"high"}}}
   JSON
@@ -37,7 +44,7 @@ command: |
     fi
     shift
   done
-  printf '{"Decision":"proceed","Artifact-hash":"%s","Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" > "$out"
+  printf '{"Decision":"proceed","Artifact-hash":"%s","Artifacts-read":[{"path":"artifact.md","sha256":"%s"}],"Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" "$HASH" > "$out"
   printf '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":5,"output_tokens":20,"reasoning_output_tokens":7}}\n'
   SH
   chmod +x "$FAKE"

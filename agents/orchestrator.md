@@ -813,7 +813,7 @@ Robin.
 Before emitting the return block, write the checkpoint-completing artifacts to disk, in this order:
 
 1. **the artifact under review** — to its `RUN_DIR` path (if not already written);
-2. **the log-slice** — `RUN_DIR/checkpoints/NN-context/log-slice.md`, **this checkpoint's slice
+2. **the log-slice** — `RUN_DIR/checkpoints/NN-log-slice.md`, **this checkpoint's slice
    only, never the full `log.md`** (FR5/EC8);
 3. **`state.json`** — updated with the current phase state.
 

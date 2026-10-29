@@ -103,6 +103,14 @@ new_packet() {
   # manifest check below fails if gate-output/ leaks into artifacts.sha256.
   mkdir -p "$ctx/gate-output"
   printf 'PASS line 1\n' > "$ctx/gate-output/regression.stdout.log"
+  mkdir -p "$run_dir/sources"
+  cp "$ctx/plan.md" "$ctx/spec.md" "$ctx/log-slice.md" "$ctx/state.json" "$run_dir/sources/"
+  python3 - "$run_dir" <<'PYRECIPE'
+import json, pathlib, sys
+r = pathlib.Path(sys.argv[1])
+files = {p.name: [str(p)] for p in (r / 'sources').iterdir()}
+(r / 'checkpoints/02-review-sources.json').write_text(json.dumps({'files': files}))
+PYRECIPE
 }
 
 run_reviewer() {  # <host> <mode> <spawn-id> -> meta JSON on stdout
@@ -215,7 +223,7 @@ STUB_MODE=primary-only python3 "$STUBS/verdict.py" "$ctx" "$WORK/response-02-6.j
 if BUREAU_REVIEWER_HOST=cursor bash "$REVIEWER" --resume "$WORK/response-02-6.json" \
      "$run_dir" "$ctx" 02 02-6 plan.md routine > /dev/null 2> "$WORK/stderr-02-6r"; then
   bad "cursor/shrunk: resume was accepted after spec.md left the planned packet"
-elif grep -q "artifactsManifestSha256 mismatch" "$WORK/stderr-02-6r"; then
+elif grep -q "archived packet mismatch" "$WORK/stderr-02-6r"; then
   pass "cursor/shrunk: resume is refused when the packet no longer matches the plan"
 else
   bad "cursor/shrunk: resume failed for the wrong reason: $(cat "$WORK/stderr-02-6r")"
@@ -236,6 +244,8 @@ if grep -Fq ".artifacts_read_complete == true" "$SCRIPT_DIR/watcher.sh"; then
 else
   bad "watcher: does not gate the reviewer verdict on artifacts_read_complete"
 fi
+
+python3 "$SCRIPT_DIR/check-cold-review-staging.py" || bad "source staging regression tests"
 
 if [ "$failures" -gt 0 ]; then
   echo "check-cold-reviewer-packet: $failures failure(s)" >&2

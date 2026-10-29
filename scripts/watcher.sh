@@ -283,13 +283,15 @@ process_request() {
   # The inline integration executor (part A short-circuit guards + part B body)
   # was extracted to scripts/integration-gate.sh in Bundle 15 P4 — one copy, two
   # callers (this watcher + the v2 Delegate), no duplicate to drift (bridge v2 §5).
-  # $CTX is staged ABOVE this call, so the $CTX-exists-before-write invariant holds:
-  # integration-gate.sh writes integration-results.json INTO the already-staged
-  # $CTX, exactly as the inline body did. A routine/absent checkpoint-type is a
+  # Gate evidence stays outside the review root until the source stager builds it.
+  # Every gate pass starts with an empty source directory. A routine/absent checkpoint-type is a
   # no-op inside the gate (exit 0, no file); the guard here keeps the routine path
   # from spawning the subprocess at all, preserving v1 behavior.
   if [ "$REQ_CHECKPOINT_TYPE" = "integration" ]; then
     gate_err="$CHECKPOINTS_DIR/$NN.gate-err.log"
+    gate_sources="$CHECKPOINTS_DIR/$NN-gate-sources"
+    rm -rf "$gate_sources"
+    mkdir -p "$gate_sources"
     sh "$SCRIPT_DIR/integration-gate.sh" \
       --checkpoint-type   "$REQ_CHECKPOINT_TYPE" \
       --worktree-path     "$REQ_WORKTREE_PATH" \
@@ -297,7 +299,7 @@ process_request() {
       --claimed-gates     "$REQ_CLAIMED_GATES_RAW" \
       --known-flaky-gates "$REQ_KNOWN_FLAKY_RAW" \
       --state-json        "$RUN_DIR/state.json" \
-      --out               "$CTX" 2> "$gate_err"
+      --out               "$gate_sources" 2> "$gate_err"
     gate_rc=$?
     if [ "$gate_rc" -ne 0 ]; then
       # #28 — CONSUME the gate exit code. integration-gate.sh fails CLOSED
@@ -337,6 +339,28 @@ process_request() {
   spawn_id="${NN}-${REQ_ATTEMPT}-${spawn_seq}"
   review_mode="routine"
   [ "$REQ_CHECKPOINT_TYPE" = "integration" ] && review_mode="integration"
+
+  # The dispatcher rebuilds from these original sources, not our staged copies.
+  python3 - "$CHECKPOINTS_DIR/$NN-review-sources.json" "$REQ_ARTIFACT" \
+    "$REQ_LOG_SLICE" "$RUN_DIR/state.json" "$review_mode" \
+    "$CHECKPOINTS_DIR/$NN-gate-sources" <<'PYSOURCES'
+import json, pathlib, sys
+out, artifact, log_slice, state, mode, gate = sys.argv[1:]
+files = {pathlib.Path(artifact).name: [str(pathlib.Path(artifact).resolve())],
+         "log-slice.md": [str(pathlib.Path(log_slice).resolve())],
+         "state.json": [str(pathlib.Path(state).resolve())]}
+if mode == "integration":
+    for path in pathlib.Path(gate).rglob("*"):
+        if path.is_file():
+            files[path.relative_to(gate).as_posix()] = [str(path.resolve())]
+pathlib.Path(out).write_text(json.dumps({"files": files}))
+PYSOURCES
+  if [ "$?" -ne 0 ]; then
+    echo "watcher: source recipe could not be written for $NN; refusing reviewer" >&2
+    : > "$failed_marker"
+    rm -rf "$lock_dir"
+    return
+  fi
 
   # Single provider-neutral entrypoint. It selects Claude or Codex from this
   # run's model-routing.json and returns paths to a normalized verdict and usage

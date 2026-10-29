@@ -32,7 +32,7 @@ command: |
     if [ "$1" = "-o" ]; then shift; out="$1"; fi
     shift
   done
-  printf '{"Decision":"proceed","Artifact-hash":"%s","Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" > "$out"
+  printf '{"Decision":"proceed","Artifact-hash":"%s","Artifacts-read":[{"path":"artifact.md","sha256":"%s"}],"Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" "$HASH" > "$out"
   printf '{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":3,"cache_write_input_tokens":2,"output_tokens":4}}\n'
   SH
   chmod +x "$FAKE"
