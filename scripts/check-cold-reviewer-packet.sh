@@ -238,6 +238,25 @@ else
   bad "claude/extra: an entry outside the manifest was not flagged: $meta"
 fi
 
+# A second real dispatch must rebuild changed source bytes and preserve round one.
+new_packet fresh-rounds
+run_reviewer claude all 02-fresh-1 > /dev/null || bad "first freshness review failed"
+old_plan_sha="$(sha "$ctx/plan.md")"
+printf '# Plan revised after the first verdict\n' > "$run_dir/sources/plan.md"
+printf '# stale supplementary artifact\n' > "$ctx/obsolete.md"
+meta="$(run_reviewer claude all 02-fresh-2)" || { bad "second freshness review failed"; meta='{}'; }
+source_sha="$(sha "$run_dir/sources/plan.md")"
+archive="$run_dir/checkpoints/02-fresh-1-reviewer-context"
+if printf '%s' "$meta" | jq -e --arg h "$source_sha" \
+     '.hash_match == true and .artifact_sha256 == $h and .artifacts_read_complete == true' >/dev/null \
+   && [ ! -e "$ctx/obsolete.md" ] \
+   && [ "$(sha "$archive/plan.md")" = "$old_plan_sha" ] \
+   && cmp -s "$run_dir/checkpoints/02-fresh-2-log-slice.md" "$ctx/log-slice.md"; then
+  pass "second dispatch reviews current sources, drops stale files, preserves round one outside CTX"
+else
+  bad "second dispatch reused stale bytes or lost the previous read-set"
+fi
+
 # 9. The v1 watcher must not publish a verdict whose coverage is incomplete.
 if grep -Fq ".artifacts_read_complete == true" "$SCRIPT_DIR/watcher.sh"; then
   pass "watcher: publishes a reviewer verdict only when artifacts_read_complete is true"
