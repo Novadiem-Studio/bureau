@@ -30,19 +30,23 @@ because Task executors start blank.
 | Mode | When | Where RUN_DIR lives |
 |---|---|---|
 | `environment: local` | default | Delegate machine; specialists write it directly |
-| `environment: cloud` | Robin asked for cloud, and the current workspace is the target (or a Bureau self-run) | still the Delegate machine; cloud Tasks return an `ARTIFACT PACKET` unless they cloned a repo that already contains that run dir |
+| `environment: cloud` (workspace **is** the target, or Bureau self-run) | Robin asked for cloud | still the Delegate machine; cloud Tasks return an `ARTIFACT PACKET` unless they cloned a repo that already contains that run dir |
+| `environment: cloud` (workspace is the Bureau install, target is another repo) | Robin asked for cloud | Cloud Agents API `repos[]` clones **the target only** (`scripts/cursor-cloud-target.sh`); `--launch` POSTs `/v1/agents`. Handoff is an `ARTIFACT PACKET` plus commits on the PR branch. RUN_DIR stays on the Delegate machine. |
 
-Cloud Task clones the **current workspace** onto a VM and works on its own
-branch (`bc-…` agent ids). It does not mount `~/Code/novadiem/bureau` and it
-does not see another checkout's `.bureau/runs/`.
+Cloud Task clones the **current workspace** onto a VM (`bc-…` agent ids). That
+is correct only when that workspace is already the target. It does not mount
+`~/Code/novadiem/bureau` onto a different product checkout, and it does not
+see another checkout's `.bureau/runs/`.
 
 Do not vendor the Bureau into a target repo to make cloud work. Multi-repo
-cloud (canonical Bureau + a different target) is the Cursor SDK / Cloud
-Agents API `repos` array, which this host has not wired yet. Fail that case
-closed.
+cloud (canonical Bureau session + a different target) uses the Cloud Agents
+API `repos` array with the **target GitHub URL only** — never Bureau.
+`run-cursor-specialist.sh --plan --environment cloud` emits
+`transport: cursor-cloud-api` in that case; `--launch` requires
+`CURSOR_API_KEY`. `autoCreatePR` stays false; Bureau owns delivery.
 
-Cold graded review stays on **local** Task even when producers run in cloud:
-the reviewer packet is staged on the Delegate machine.
+The Conductor does not go to a target-only VM. Cold graded review stays on
+**local** Task even when producers run in cloud.
 
 ## Cold reviewer (two phases)
 

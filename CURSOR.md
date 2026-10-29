@@ -70,25 +70,45 @@ intentional: bash cannot spawn Cursor Tasks. The Task call *is* the launch.
 
 ### Cloud
 
-Robin asked to run specialists in the cloud: set Task `environment: cloud`.
+Robin asked to run specialists in the cloud: set `--environment cloud` on
+the helper.
 
-Cloud Task clones **this workspace**, not an arbitrary second repo. Allowed
-only when the current workspace is the target repo, or this is a Bureau
-self-run (install path is the target). Do not copy `~/Code/novadiem/bureau`
-into a project to make cloud work.
+Cloud Task clones **this workspace**. That is the right transport when the
+Cursor workspace **is** the target repo (or a Bureau self-run).
+
+When this session is the Bureau install and `--target` is a **different**
+repo, do not issue `Task environment: cloud` — that VM would be Bureau, not
+the product. Run:
+
+```sh
+scripts/run-cursor-specialist.sh --plan --environment cloud \
+  --workspace "$CURSOR_WORKSPACE" \
+  "$RUN_DIR" <role> <prompt-file> <attempt-id>
+```
+
+If stdout `transport` is `cursor-cloud-api`, launch with `--launch` instead
+of Task (`CURSOR_API_KEY` from Cursor Dashboard → API Keys). The Cloud
+Agents API `repos` array clones **the target only**. Do not copy
+`~/Code/novadiem/bureau` into the product repo and do not add Bureau to
+`repos`.
+
+`--launch` sets `autoCreatePR: false`. Bureau still owns issue/PR delivery.
+If `state.json#git.pr_url` is set, the agent works on that PR's branch.
 
 Cold roles stay local: Challenger, Notary, and the Delegate reviewer Task.
-They grade a staged packet on this machine.
+The Conductor stays in this workspace when the target is a different repo,
+so it can keep spawning.
 
 Named gaps, fail closed rather than improvise:
 
-- multi-repo cloud (Bureau install + a different target) needs the Cursor SDK
-  / Cloud Agents API `repos` array — not Task;
 - readiness-audit cold reviewer has no Cursor adapter yet;
-- token accounting is a named `_runtime_gap` (same class as Codex).
+- token accounting is a named `_runtime_gap` (same class as Codex);
+- Cloud API model ids may differ from Task slugs — pass the routing slug,
+  log a model-id gap if the API rejects it, do not inherit.
 
-Unattended SDK launch is deferred. This host is the Cursor Agent session
-Robin is talking to.
+Unattended SDK/API launch for multi-repo cloud is `--launch` on the helper.
+Same-workspace cloud is still the Task tool. This host is the Cursor Agent
+session Robin is talking to.
 
 ### Model IDs
 

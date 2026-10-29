@@ -138,10 +138,12 @@ Cursor Agent is a first-class Bureau host. Entrypoint: `CURSOR.md`. Contract:
 and Grok Bot do not use this path.
 
 Live specialist spawn is Cursor **Task**. It starts blank. Optional
-`environment: cloud` is for producers when Robin asked for cloud and the
-workspace is the target (or a Bureau self-run). Cold Challenger, Notary, and
-the Delegate reviewer stay on local Task. Sticky `.cursor/agents/` desks are
-forbidden as specialists.
+`environment: cloud` is for producers when Robin asked for cloud. If the
+Cursor workspace is the target (or a Bureau self-run), that is Task
+`environment: cloud`. If this session is the Bureau install and the target
+is a different repo, `scripts/run-cursor-specialist.sh --launch` uses the
+Cloud Agents API `repos` array with the target only (`docs/host-cursor.md`).
+Cold Challenger, Notary, and the Delegate reviewer stay on local Task.
 
 `scripts/run-cursor-specialist.sh --plan` is the audit record; bash never
 launches the model.
