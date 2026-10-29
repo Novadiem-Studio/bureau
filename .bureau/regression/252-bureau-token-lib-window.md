@@ -1,7 +1,12 @@
 name: bureau-token-lib sum_transcript_usage applies half-open optional windows without changing the omitted path
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
+  export ROOT
+  # This library explicitly requires Bash; /bin/sh is dash on Linux.
+  bash <<'BASH'
+  set -e
   TMPF=$(mktemp -d)
+  trap 'rm -rf "$TMPF"' EXIT
   TRANSCRIPT="$TMPF/window.jsonl"
   OMITTED="$TMPF/omitted.jsonl"
   # shellcheck disable=SC1091
@@ -53,6 +58,7 @@ command: |
   # fractional-after-upper; requiring both bounds admits upper into until_only;
   # timestamp-filtering the omitted path drops plain and fails the byte-exact
   # golden.
+  BASH
 expected: exit 0; stdout "PASS"; mixed-precision [since,until) is half-open, until-only filters independently, omitted args preserve the exact prior JSON
 phase: 02 · execute-plan
 owner: Prompt 02 / bureau-token-lib.sh optional window seam

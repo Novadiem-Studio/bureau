@@ -15,6 +15,10 @@ The runner resolves the repo root, exports `$ROOT`, and runs every `NN-*.md` fix
 guarantee holding ⇒ exit 0, and is *mutation-tested* — deleting the guaranteed line from the
 script makes the fixture exit non-zero. `retired:`/`slow:` fixtures are skipped.
 
+GitHub Actions runs this same complete automated suite as the **Regression suite** check
+on every pull request and push to main. Its log includes every pass, failure and skip;
+manual/retired fixtures retain their declared skip policy.
+
 ## Fixture format
 
 Each `NN-<slug>.md` follows `docs/conventions/regression-fixtures.md § Regression fixture file format`

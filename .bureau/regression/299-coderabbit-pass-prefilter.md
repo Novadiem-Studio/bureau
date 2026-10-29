@@ -5,7 +5,7 @@ command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT INT TERM
   WT="$TMP/wt"; RD="$TMP/run"; mkdir -p "$WT" "$RD"
-  git -C "$WT" init -q && git -C "$WT" config user.email t@t && git -C "$WT" config user.name t
+  git -C "$WT" init -q -b main && git -C "$WT" config user.email t@t && git -C "$WT" config user.name t
   printf 'a\n' > "$WT/changed.sh"; printf 'b\n' > "$WT/untouched.sh"
   git -C "$WT" add . && git -C "$WT" commit -qm base
   BASE=$(git -C "$WT" rev-parse HEAD)
