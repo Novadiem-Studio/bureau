@@ -251,9 +251,9 @@ if [ "$INTEGRATION_ESCALATE" = "1" ]; then
   # (a) verdict-write.sh integration-evidence presence guard is satisfied,
   # (b) the Delegate reads a well-formed file and emits a well-formed verdict,
   # (c) the Delegate's verifying-mode trigger (file presence) fires correctly.
-  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" "$REQ_FINAL" <<'PY'
+  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" "$REQ_FINAL" "$STATE_JSON" <<'PY'
 import json, sys
-path, reason, requested, final = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+path, reason, requested, final, state_path = sys.argv[1:6]
 data = {
     "schema_version": 1,
     "checkpoint_type": "integration",
@@ -278,6 +278,17 @@ data = {
     "conflicts_clean": False,
     "errors": []
 }
+# Even the early guard distinguishes an absent scope from one we could not check.
+if state_path:
+    try:
+        with open(state_path) as source:
+            state = json.load(source)
+        scope_present = state.get("scope") is not None
+    except Exception as exc:
+        scope_present = True
+        reason = "cannot read scope state: " + str(exc)
+    if scope_present:
+        data["scope"].update(scope_diff_clean=False, scope_error=reason)
 with open(path, "w") as fh:
     json.dump(data, fh, indent=2)
 sys.exit(0)
@@ -1233,8 +1244,8 @@ PY
     "$REQ_BASE_REF" \
     "$STATE_JSON" <<'PY'
 import json, subprocess, sys
-# FIX 2: the whole step is guarded — a git/parse failure prints a valid
-# "indeterminate" scope object (scope_diff_clean: null), never nothing.
+# An absent scope is neutral. Failure to read or verify a supplied scope is
+# blocking; never collapse an unreadable diff into the absent-scope result (#89).
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
     "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
@@ -1242,20 +1253,22 @@ NEUTRAL = {
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
-    try:
-        with open(state_path) as fh:
-            state = json.load(fh)
-        scope_block = state.get("scope") or {}
-        allowed_paths = scope_block.get("allowed_paths") or []
-        cut_symbols = scope_block.get("cut_symbols") or []
-    except Exception:
-        scope_block = None
-        allowed_paths = []
-        cut_symbols = []
-
+    if not state_path:
+        print(json.dumps(NEUTRAL))
+        sys.exit(0)
+    with open(state_path) as fh:
+        state = json.load(fh)
+    scope_block = state.get("scope")
     if scope_block is None:
         print(json.dumps(NEUTRAL))
         sys.exit(0)
+    if not isinstance(scope_block, dict):
+        raise ValueError("scope must be an object or null")
+    allowed_paths = scope_block.get("allowed_paths", [])
+    cut_symbols = scope_block.get("cut_symbols", [])
+    for name, values in (("allowed_paths", allowed_paths), ("cut_symbols", cut_symbols)):
+        if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise ValueError("scope." + name + " must be an array of strings")
 
     import re
     # Pin every diff to plain, prefixed, uncoloured output so user or repo git
@@ -1455,8 +1468,9 @@ try:
     if parse_error is not None:
         result["parse_error"] = parse_error
     print(json.dumps(result))
-except Exception:
-    print(json.dumps(NEUTRAL))
+except Exception as exc:
+    print(json.dumps(dict(NEUTRAL, scope_diff_clean=False,
+                          scope_error="scope verification failed: " + str(exc))))
 PY
 )"
 
