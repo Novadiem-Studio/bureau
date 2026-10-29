@@ -782,6 +782,9 @@ a keyword?" to "how bad is this?" is a boundary violation (FR-B14-9, AC-15).
 **Step 3 — Scope diff** (FR-B14-5)
 
 Read `integration-results.json#scope`:
+- If `scope_error` is present → emit `revise`, naming the error verbatim and requiring
+  scope verification to be rerun successfully. This is blocking even if a malformed or
+  older result also says `scope_diff_clean: null`; a failed check is not absent scope.
 - If `scope_diff_clean: null` → record in Uncertainties ("scope block absent in
   state.json; scope diff not run"). Not blocking (EC-B14-6).
 - If `scope_diff_clean: false` → emit `revise` with Required-changes listing
@@ -810,7 +813,8 @@ OUTER KEY MAP (snake_case in integration-results.json → PascalCase in Integrat
   pre_existing       → Pre-existing-validated
   under_declaration  → Under-declaration
   scope.scope_diff_clean → Scope-diff-clean
-  scope.violations + scope.cut_symbol_introduced (+ "parse_error: <scope.parse_error>" when present)
+  scope.violations + scope.cut_symbol_introduced
+    (+ "parse_error: <scope.parse_error>" and "scope_error: <scope.scope_error>" when present)
                      → Scope-violations (combined list of strings). Not cut_symbol_hits:
                        that list also carries informational removed/context/header hits.
   fast_forward_ok    → Fast-forward-ok

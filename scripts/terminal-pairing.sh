@@ -100,6 +100,12 @@ if red:
     problems.append("red gate(s): %s" % ", ".join(map(str, red)))
 if gates and len(absent) == len(gates):
     problems.append("no gate ran (every gate absent: %s)" % ", ".join(map(str, absent)))
+scope = g.get("scope") or {}
+if not isinstance(scope, dict):
+    problems.append("scope verification result is malformed")
+elif scope.get("scope_diff_clean") is False or scope.get("scope_error") or scope.get("parse_error"):
+    problems.append("scope verification is not clean: %s" %
+                    (scope.get("scope_error") or scope.get("parse_error") or "scope violations"))
 if g.get("fast_forward_ok") is not True:
     problems.append("fast_forward_ok is not true")
 if g.get("conflicts_clean") is not True:
