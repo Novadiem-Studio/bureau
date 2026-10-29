@@ -90,6 +90,19 @@ class StagingTests(unittest.TestCase):
                 self.stage(success=False)
                 del self.files[name]
 
+    def test_full_log_and_archived_slice_sources_are_refused(self):
+        for name in ("log.md", "01-previous-log-slice.md", "02-log-slice.md",
+                     "chat-transcript.md", "01-verdict.md"):
+            with self.subTest(name=name):
+                source = self.cp / name
+                source.write_text("history that must not reach a fresh reviewer")
+                self.files["log-slice.md"] = [str(source)]
+                self.assertIn("prior review history", self.stage(success=False))
+        current = self.cp / "01-log-slice.md"
+        current.write_text("current checkpoint")
+        self.files["log-slice.md"] = [str(current)]
+        self.stage()
+
     def test_integration_evidence_is_fresh_and_not_an_artifact(self):
         self.stage(success=False, mode="integration")
         (self.run / "gate.json").write_text('{"gates":[]}')

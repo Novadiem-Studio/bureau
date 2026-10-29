@@ -82,6 +82,12 @@ def main():
             if not path.is_absolute():
                 reject("source paths must be absolute")
             resolved = path.resolve()
+            source_name = resolved.name.lower()
+            if (source_name == "log.md" or "transcript" in source_name or
+                    "verdict" in source_name or
+                    (source_name.endswith("-log-slice.md") and
+                     source_name != checkpoint + "-log-slice.md")):
+                reject("source is full or prior review history: " + source)
             if resolved == ctx.resolve() or ctx.resolve() in resolved.parents:
                 reject("source cannot be a staged copy: " + source)
             if any(re.fullmatch(r".+-reviewer-context", p) for p in resolved.parts):

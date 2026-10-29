@@ -357,6 +357,9 @@ pathlib.Path(out).write_text(json.dumps({"files": files}))
 PYSOURCES
   if [ "$?" -ne 0 ]; then
     echo "watcher: source recipe could not be written for $NN; refusing reviewer" >&2
+    sh "$SCRIPT_DIR/notify-escalation.sh" "$NN" "$RUN_DIR" \
+      "source recipe could not be written for checkpoint $NN; reviewer not spawned — attended intervention needed" \
+      || true
     : > "$failed_marker"
     rm -rf "$lock_dir"
     return

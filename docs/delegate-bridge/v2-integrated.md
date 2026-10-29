@@ -302,8 +302,8 @@ Before invoking `run-cold-reviewer.sh`, write
 
 Each value is an ordered nonempty list of absolute **live source** paths. Prefer separate
 artifacts; a composite is rebuilt by concatenating its listed sources with one newline
-between each, never by copying an earlier composite. Sources inside `$CTX` or a prior
-review archive are refused. Do not include framework instructions or digest files: the
+between each, never by copying an earlier composite. Sources inside `$CTX`, prior review archives, archived slices, full logs, transcripts
+or verdicts are refused. Do not include framework instructions or digest files: the
 helper derives those itself. Missing recipes/sources fail closed before a provider runs.
 For integration, run the gate into `checkpoints/NN-gate-sources/` (outside `$CTX`) and
 include its current `integration-results.json` and each retained `gate-output/` file in
@@ -340,11 +340,12 @@ The rebuilt packet contains exactly:
   output is staged in `$CTX/gate-output/`; `run-cold-reviewer.sh`
   leaves that directory out of the artifact manifest, like `conventions/`.
 - **`artifact.sha256`** — the artifact's SHA-256 in `sha256sum` text format, written into `$CTX` by
-  `run-cold-reviewer.sh` itself (not by the stager) immediately before the spawn. The reviewer is
+  `stage-cold-review.py` while building the packet, before archiving and dispatch. The reviewer is
   Read-only and cannot compute a digest; the task prompt tells it to copy this value verbatim into
   `Artifact-hash`. Added 2026-09-05 after a routine verdict returned an all-zeros placeholder hash
   and had to be discarded (FR9).
-- **`artifacts.sha256`**: the packet manifest, also written by `run-cold-reviewer.sh`. One
+- **`artifacts.sha256`**: the packet manifest, also written by `stage-cold-review.py`
+  during packet build, before archiving. One
   `sha256sum`-format line per artifact (primary first, then the supplementary artifacts sorted),
   packet-relative paths. The prompt names every artifact with its digest, and the verdict's
   `Artifacts-read` must list each one as `{path, sha256}` copied from this file. The helper checks
