@@ -15,6 +15,10 @@ Prioritize findings in this order:
   changes, or diff shape that hides the conceptual change.
 - **Missing tests / verification** — important changed behavior with no targeted test, fixture,
   or honestly reported manual check.
+- **Hand-rolled what already exists** — new code that reimplements something the codebase, the
+  standard library, the platform, or an already-installed dependency provides, or a new
+  dependency added for a few lines. Name the existing thing (`path:Symbol`, the API, or the
+  package) or there is no finding.
 - **Local convention drift** — breaks from the repo's `CLAUDE.md`, `AGENTS.md`, skill, runbook,
   framework, typing, UI state, error handling, or naming conventions named in `review-target.md`.
 
