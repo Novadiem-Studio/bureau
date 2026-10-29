@@ -525,7 +525,8 @@ sys.exit(0 if m and json.loads(m.group(1)).get("ci_covers_full_suite") is False 
 PY
 for fx in 308-integration-gate-ci-mode-green-exact-head.md 309-integration-gate-ci-pending-is-not-pass.md \
           310-integration-gate-ci-falls-back-to-local.md 311-integration-gate-keeps-gate-output.md \
-          312-integration-gate-final-gate-on-ci-opt-in.md 313-terminal-review-pairs-with-green-final-gate.md; do
+          312-integration-gate-final-gate-on-ci-opt-in.md 313-terminal-review-pairs-with-green-final-gate.md \
+          333-integration-scope-errors-fail-closed.md; do
   fx_cmd="$(awk '
     /^command:[[:space:]]*\|[[:space:]]*$/ { blk = 1; next }
     blk == 1 { if ($0 ~ /^[[:space:]]/ || $0 == "") { sub(/^  /, ""); print; next } blk = 0 }
