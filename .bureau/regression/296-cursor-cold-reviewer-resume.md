@@ -18,6 +18,13 @@ command: |
   HASH=$(shasum -a 256 "$CTX/artifact.md" | awk '{print $1}')
   printf '{"target_repo":"%s","scope":{}}\n' "$TMPF/target" > "$CTX/state.json"
   cp "$CTX/state.json" "$RD/state.json"
+  cp "$CTX/artifact.md" "$CTX/log-slice.md" "$RD/"
+  python3 - "$RD" <<'PYRECIPE'
+  import json, pathlib, sys
+  r = pathlib.Path(sys.argv[1])
+  (r / 'checkpoints/01-review-sources.json').write_text(json.dumps({'files': {
+      n: [str(r / n)] for n in ('artifact.md', 'log-slice.md', 'state.json')}}))
+  PYRECIPE
   : > "$RD/log.md"
   cat > "$RD/model-routing.json" <<JSON
   {"runtime":"cursor","roles":{"delegate":{"model":"gpt-5.6-sol-medium"}},"hostPolicy":{"allowed_spawn_models":["composer-2.5-fast","gpt-5.6-sol-medium","cursor-grok-4.6-high-fast","claude-opus-5-thinking-high"]}}
@@ -87,7 +94,7 @@ command: |
 
   # ── phase 2: resume with a good response wrapped in .result + usage ────────
   cat > "$TMPF/resp.json" <<JSON
-  {"result":{"Decision":"revise","Artifact-hash":"$HASH","Uncertainties":"none","Rationale":"fixture","Required-changes":"architecture: tighten the lease","Escalation":"none","Ledger":"fixture","Integration-evidence":null},"usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":5,"output_tokens":20},"num_turns":3}
+  {"result":{"Decision":"revise","Artifact-hash":"$HASH","Artifacts-read":[{"path":"artifact.md","sha256":"$HASH"}],"Uncertainties":"none","Rationale":"fixture","Required-changes":"architecture: tighten the lease","Escalation":"none","Ledger":"fixture","Integration-evidence":null},"usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":5,"output_tokens":20},"num_turns":3}
   JSON
   META=$(run --resume "$TMPF/resp.json" "$RD" "$CTX" 01 01-1-1 artifact.md routine 2>"$TMPF/err")
   rc=$?
@@ -166,7 +173,7 @@ command: |
   P5="$CP/01-1-5-reviewer-task-plan.json"
   jq '.status = "host-task-required" | del(.resumedAt, .responseFile, .responseSha256)' "$P5" > "$TMPF/p5" && mv "$TMPF/p5" "$P5"
   V5SHA=$(shasum -a 256 "$CP/01-1-5-reviewer-verdict.json" | awk '{print $1}')
-  printf '{"Decision":"proceed","Artifact-hash":"%s","Uncertainties":"none","Rationale":"other","Required-changes":"none","Escalation":"none","Ledger":"l"}\n' "$HASH" > "$TMPF/other.json"
+  printf '{"Decision":"proceed","Artifact-hash":"%s","Artifacts-read":[{"path":"artifact.md","sha256":"%s"}],"Uncertainties":"none","Rationale":"other","Required-changes":"none","Escalation":"none","Ledger":"l"}\n' "$HASH" "$HASH" > "$TMPF/other.json"
   set +e
   run --resume "$TMPF/other.json" "$RD" "$CTX" 01 01-1-5 artifact.md routine >/dev/null 2>"$TMPF/err"; r=$?
   set -e
@@ -287,7 +294,7 @@ command: |
   set +e
   run "$RD" "$CTX" 01 01-1-2 artifact.md routine >/dev/null 2>&1
   set -e
-  printf '{"Decision":"proceed","Artifact-hash":"%s","Uncertainties":"none","Rationale":"r","Required-changes":"none","Escalation":"none","Ledger":"l"}\n' "$(printf 'a%.0s' $(seq 1 64))" > "$TMPF/resp2.json"
+  printf '{"Decision":"proceed","Artifact-hash":"%s","Artifacts-read":[{"path":"artifact.md","sha256":"%s"}],"Uncertainties":"none","Rationale":"r","Required-changes":"none","Escalation":"none","Ledger":"l"}\n' "$(printf 'a%.0s' $(seq 1 64))" "$HASH" > "$TMPF/resp2.json"
   META2=$(run --resume "$TMPF/resp2.json" "$RD" "$CTX" 01 01-1-2 artifact.md routine 2>/dev/null) || { echo "FAIL: bare verdict resume failed"; exit 1; }
   printf '%s' "$META2" | jq -e '.hash_match == false' >/dev/null || { echo "FAIL: hash mismatch not reported"; exit 1; }
   jq -e '(has("usage") | not) and (._note | test("no usage"))' "$(printf '%s' "$META2" | jq -r .envelope_path)" >/dev/null \

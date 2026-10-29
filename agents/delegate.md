@@ -300,7 +300,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    and append `<current id>` to `conductor_agent_ids` if absent.
    A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
    `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
-2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
+2. Set `$CTX = RUN_DIR/checkpoints/NN-context/`. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
    (FR14). Choose the gate mode yourself from facts, never from the Conductor's preference
    (#92; cadence in `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`):
    - `--gate-mode ci` for a routine gate (`gate-point: phase` or `interval`) on a
@@ -332,10 +332,10 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      --claimed-gates "<from return block>" \
      --state-json "$RUN_DIR/state.json" \
      --gate-mode "<ci|local>" [--final] [--since-ref "<previous branch_tip>"] \
-     --out "$CTX" > "$RUN_DIR/checkpoints/NN-gate.out" 2>&1
+     --out "$RUN_DIR/checkpoints/NN-gate-sources" > "$RUN_DIR/checkpoints/NN-gate.out" 2>&1
    ```
-   It writes `integration-results.json` into `$CTX`, and each gate's stdout/stderr into
-   `$CTX/gate-output/`. Read `gate_mode` and `gate_mode_reason` back and log them: the script
+   It writes `integration-results.json` and `gate-output/` into the separate gate-source
+   directory; step 3 includes those current files in the source recipe. Read `gate_mode` and `gate_mode_reason` back and log them: the script
    falls back to local on its own for a merge since `--since-ref`, no PR, no `gh` or no checks.
    CI mode reads the PR and repo from `state.json#git` and treats a pending check as a wait,
    never a pass; at `--ci-timeout` (default 3600 s) it records red. The canonical gate set is
@@ -345,14 +345,22 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    bounded wait, or detach it with `nohup` plus a done-marker file and poll that file with a
    deadline. A gate started with `run_in_background` or a bare `&` dies with the shell that
    launched it (1a4a checkpoint 08 lost about 40 minutes that way).
-3. Stage `$CTX = RUN_DIR/checkpoints/NN-context/` with EXACTLY the manifest (bridge v2 §9):
+3. Write `RUN_DIR/checkpoints/NN-review-sources.json` using the live sources for EXACTLY
+   the manifest below (bridge v2 §9 has the recipe format). `run-cold-reviewer.sh` rebuilds
+   `$CTX` from scratch immediately before **every** new spawn, including a re-return or
+   correction by anyone. Never supply an old staged composite as a source: list its current
+   component files instead. The helper derives framework instructions and hashes, and
+   archives the full read-set and `<spawn-id>-log-slice.md` outside `$CTX` before dispatch.
+   Use a new spawn id for each attempt; retain old archives, never put them into `$CTX`.
+   Cursor resume validates the frozen packet instead of rebuilding. A lost old slice is
+   recorded as lost, never fabricated. The resulting manifest is:
    - the artifact under review (copied by name), passed as `<artifact-basename>` below,
    - any supplementary artifacts this checkpoint also reviews (e.g. `spec.md` when the checkpoint
      is "plan.md (+ spec.md)"), copied by name. Stage every file the reviewer must judge into ONE
      packet; do not split them across reviewers, which leaves each blind to the other file.
      Every staged file outside this fixed list counts as an artifact: the helper names each in
      the prompt with its digest, so stage nothing the reviewer should not read,
-   - `log-slice.md` (this checkpoint's slice only),
+   - `log-slice.md` (source `checkpoints/NN-log-slice.md`, this checkpoint's slice only),
    - `state.json` (the scope projection the Conductor wrote before returning),
    - `bureau-agents.md` — a byte-identical content-copy of `$ROOT/AGENTS.md`, so the cold
      reviewer can satisfy the Bureau startup instruction without access to the live framework root:
@@ -368,7 +376,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      ```
    - `integration-results.json` — integration checkpoints only.
    - `artifact.sha256` and `artifacts.sha256` — do NOT write these yourself;
-     `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest
+     `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest from current source bytes
      and writes both into `$CTX` at spawn time (bridge v2 §9), and reports `artifact_sha256`,
      `hash_match`, `artifacts_read_complete`, `artifacts_unread` and `artifacts_unexpected` in its
      result JSON for step 7.

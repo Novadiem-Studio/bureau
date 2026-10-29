@@ -103,6 +103,14 @@ new_packet() {
   # manifest check below fails if gate-output/ leaks into artifacts.sha256.
   mkdir -p "$ctx/gate-output"
   printf 'PASS line 1\n' > "$ctx/gate-output/regression.stdout.log"
+  mkdir -p "$run_dir/sources"
+  cp "$ctx/plan.md" "$ctx/spec.md" "$ctx/log-slice.md" "$ctx/state.json" "$run_dir/sources/"
+  python3 - "$run_dir" <<'PYRECIPE'
+import json, pathlib, sys
+r = pathlib.Path(sys.argv[1])
+files = {p.name: [str(p)] for p in (r / 'sources').iterdir()}
+(r / 'checkpoints/02-review-sources.json').write_text(json.dumps({'files': files}))
+PYRECIPE
 }
 
 run_reviewer() {  # <host> <mode> <spawn-id> -> meta JSON on stdout
@@ -215,7 +223,7 @@ STUB_MODE=primary-only python3 "$STUBS/verdict.py" "$ctx" "$WORK/response-02-6.j
 if BUREAU_REVIEWER_HOST=cursor bash "$REVIEWER" --resume "$WORK/response-02-6.json" \
      "$run_dir" "$ctx" 02 02-6 plan.md routine > /dev/null 2> "$WORK/stderr-02-6r"; then
   bad "cursor/shrunk: resume was accepted after spec.md left the planned packet"
-elif grep -q "artifactsManifestSha256 mismatch" "$WORK/stderr-02-6r"; then
+elif grep -q "archived packet mismatch" "$WORK/stderr-02-6r"; then
   pass "cursor/shrunk: resume is refused when the packet no longer matches the plan"
 else
   bad "cursor/shrunk: resume failed for the wrong reason: $(cat "$WORK/stderr-02-6r")"
@@ -230,12 +238,33 @@ else
   bad "claude/extra: an entry outside the manifest was not flagged: $meta"
 fi
 
+# A second real dispatch must rebuild changed source bytes and preserve round one.
+new_packet fresh-rounds
+run_reviewer claude all 02-fresh-1 > /dev/null || bad "first freshness review failed"
+old_plan_sha="$(sha "$ctx/plan.md")"
+printf '# Plan revised after the first verdict\n' > "$run_dir/sources/plan.md"
+printf '# stale supplementary artifact\n' > "$ctx/obsolete.md"
+meta="$(run_reviewer claude all 02-fresh-2)" || { bad "second freshness review failed"; meta='{}'; }
+source_sha="$(sha "$run_dir/sources/plan.md")"
+archive="$run_dir/checkpoints/02-fresh-1-reviewer-context"
+if printf '%s' "$meta" | jq -e --arg h "$source_sha" \
+     '.hash_match == true and .artifact_sha256 == $h and .artifacts_read_complete == true' >/dev/null \
+   && [ ! -e "$ctx/obsolete.md" ] \
+   && [ "$(sha "$archive/plan.md")" = "$old_plan_sha" ] \
+   && cmp -s "$run_dir/checkpoints/02-fresh-2-log-slice.md" "$ctx/log-slice.md"; then
+  pass "second dispatch reviews current sources, drops stale files, preserves round one outside CTX"
+else
+  bad "second dispatch reused stale bytes or lost the previous read-set"
+fi
+
 # 9. The v1 watcher must not publish a verdict whose coverage is incomplete.
 if grep -Fq ".artifacts_read_complete == true" "$SCRIPT_DIR/watcher.sh"; then
   pass "watcher: publishes a reviewer verdict only when artifacts_read_complete is true"
 else
   bad "watcher: does not gate the reviewer verdict on artifacts_read_complete"
 fi
+
+python3 "$SCRIPT_DIR/check-cold-review-staging.py" || bad "source staging regression tests"
 
 if [ "$failures" -gt 0 ]; then
   echo "check-cold-reviewer-packet: $failures failure(s)" >&2
