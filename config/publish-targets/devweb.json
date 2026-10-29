@@ -11,7 +11,8 @@
   ],
   "mdx_components": [
     "PullQuote",
-    "RunTable"
+    "RunTable",
+    "VideoEmbed"
   ],
   "build_check": "all-static",
   "frontmatter": {
