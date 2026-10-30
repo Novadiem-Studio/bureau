@@ -38,6 +38,12 @@ command: |
   git -C "$W" checkout -q main; echo 'm = 1' > "$W/m.py"; git -C "$W" add -A; git -C "$W" commit -qm main-moves
   git -C "$W" checkout -q run; git -C "$W" merge -q --no-ff --no-edit main
   cov; [ "$rc" -eq 0 ] || { echo "FAIL base-branch merge rejected (rc $rc)"; cat "$TMP/cov.json"; exit 1; }
+  # A fetched origin/main can advance while the local main branch stays stale.
+  git -C "$W" checkout -q -b remote-main main
+  echo 'remote = 1' > "$W/remote.py"; git -C "$W" add -A; git -C "$W" commit -qm remote-base-moves
+  git -C "$W" update-ref refs/remotes/origin/main HEAD
+  git -C "$W" checkout -q run; git -C "$W" merge -q --no-ff --no-edit origin/main
+  cov; [ "$rc" -eq 0 ] || { echo "FAIL stale local base rejected remote merge (rc $rc)"; cat "$TMP/cov.json"; exit 1; }
   # merging a side branch is a gap: it can carry code no record scanned
   git -C "$W" checkout -q -b side "$A"; echo 'TOKEN = "sk-live"' > "$W/t.py"; git -C "$W" add -A; git -C "$W" commit -qm side
   git -C "$W" checkout -q run; git -C "$W" merge -q --no-ff --no-edit side

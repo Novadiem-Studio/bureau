@@ -136,10 +136,12 @@ def main():
 
     shifts = [s for s in (state.get("workflow_shifts") or []) if isinstance(s, dict)]
     lite_idx = max([i for i, s in enumerate(shifts) if s.get("to") == "bureau-lite"], default=None)
-    logged_lite = any(SHIFT.match(h) and SHIFT.match(h).group(2) == "bureau-lite" for _, h in headings)
+    logged_lite = sum(1 for _, h in headings if SHIFT.match(h) and SHIFT.match(h).group(2) == "bureau-lite")
+    recorded_lite = sum(1 for s in shifts if s.get("to") == "bureau-lite")
+    if logged_lite > recorded_lite:
+        raise Fail("log.md records %d WORKFLOW-SHIFT headings to bureau-lite but state.json#workflow_shifts records %d"
+                   % (logged_lite, recorded_lite))
     if state.get("workflow") != "bureau-lite" and lite_idx is None:
-        if logged_lite:
-            raise Fail("log.md records a WORKFLOW-SHIFT to bureau-lite that state.json#workflow_shifts lacks")
         rec["coverage"] = "REVIEW-COVERAGE: not applicable (run never used bureau-lite)"
         finish("not_applicable")
 
@@ -216,13 +218,12 @@ def main():
             raise Fail("anchor %s is not an ancestor of %s" % (anchor[:12], end[:12]))
 
         base_branch = git_block.get("base_branch") or ""
-        base_tip = None
+        base_tips = []
         for cand in (base_branch, "origin/" + base_branch):
             if base_branch:
                 r = git("rev-parse", "--verify", "--quiet", cand + "^{commit}")
                 if r.returncode == 0 and r.stdout.strip():
-                    base_tip = r.stdout.strip()
-                    break
+                    base_tips.append(r.stdout.strip())
 
         # 1. Chain over first-parent history.
         commits = git("rev-list", "--first-parent", "--reverse", "%s..%s" % (anchor, end)).stdout.split()
@@ -246,7 +247,8 @@ def main():
             parents = git("rev-list", "--parents", "-n", "1", nxt).stdout.split()[1:]
             if len(parents) >= 2:
                 side = parents[1:]
-                if base_tip and all(git("merge-base", "--is-ancestor", p, base_tip).returncode == 0 for p in side):
+                if base_tips and all(any(git("merge-base", "--is-ancestor", p, tip).returncode == 0
+                                         for tip in base_tips) for p in side):
                     i += 1
                     continue
                 rec["problems"].append("gap: merge %s brings in commits not on the base branch %r and no record scans it"

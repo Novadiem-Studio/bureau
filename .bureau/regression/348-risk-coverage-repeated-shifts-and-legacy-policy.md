@@ -43,6 +43,13 @@ command: |
       p = subprocess.run(['sh', '-c', cmd], env=env, capture_output=True, text=True)
       assert p.returncode == 0 and p.stdout == a, p
       rc, rec = coverage(); assert rc == 0, rec
+      # A missing earlier state entry cannot be hidden by a later recorded downshift.
+      (run / 'log.md').write_text('## [2026-10-01T00:00:00Z] — WORKFLOW-SHIFT: feature to bureau-lite from unit 01\n'
+                                 '## [2026-10-01T00:00:01Z] — WORKFLOW-SHIFT: bureau-lite to execute-plan from unit 02\n'
+                                 '## [2026-10-01T00:00:02Z] — WORKFLOW-SHIFT: execute-plan to bureau-lite from unit 03\n')
+      rc, rec = coverage(); assert rc == 2 and 'records 2 WORKFLOW-SHIFT' in rec['error'], rec
+      (run / 'log.md').write_text('## [2026-10-01T00:00:02Z] — WORKFLOW-SHIFT: feature to bureau-lite from unit 03\n')
+      rc, rec = coverage(); assert rc == 0, rec
       del state['workflow_shifts'][0]['policy_ref']; save()
       p = subprocess.run(['sh', '-c', cmd], env=env, capture_output=True, text=True)
       assert p.returncode == 2 and p.stdout == '', p

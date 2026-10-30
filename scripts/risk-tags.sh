@@ -245,8 +245,16 @@ def main():
             raise Fail("cannot read project file %s: %s" % (label, e))
     else:
         label = "%s:project-context.md" % pref
-        r = git("show", label)
-        text = r.stdout if r.returncode == 0 else ""
+        listed = git("ls-tree", pref, "--", "project-context.md")
+        if listed.returncode != 0:
+            raise Fail("cannot list project policy at %s: %s" % (pref[:12], listed.stderr.strip()))
+        if listed.stdout.strip():
+            r = git("show", label)
+            if r.returncode != 0:
+                raise Fail("cannot read %s: %s" % (label, r.stderr.strip()))
+            text = r.stdout
+        else:
+            text = ""
     text = text.replace("\r\n", "\n")
     # Lenient on indentation and case, strict on count: any fence line that names
     # risk_tags must parse as exactly one block, or the scan fails closed.

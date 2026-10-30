@@ -19,6 +19,10 @@ command: |
   [ "$rc" -eq 0 ] || { echo "FAIL pricing page escalated (rc $rc)"; exit 1; }
   run fetchvar "printf 'const r = await fetch(API_URL, {method: \"POST\"})\n' > '$W/web/sync.ts'"
   [ "$rc" -eq 1 ] && jq -e '.review_tags|index("network-egress")' "$TMP/fetchvar.json" >/dev/null || { echo "FAIL fetch(API_URL) (rc $rc)"; exit 1; }
+  run fetchprop "printf 'const r = await fetch(config.apiEndpoint, options)\n' > '$W/web/prop.ts'"
+  [ "$rc" -eq 1 ] && jq -e '.review_tags|index("network-egress")' "$TMP/fetchprop.json" >/dev/null || { echo "FAIL fetch(config.apiEndpoint) (rc $rc)"; exit 1; }
+  run fetchlocal "printf 'const r = await fetch(\"/api/items\")\n' > '$W/web/local.ts'"
+  [ "$rc" -eq 0 ] || { echo "FAIL same-origin fetch flagged (rc $rc)"; exit 1; }
   run agent "printf -- '---\ntools: Bash\n---\n' > '$W/plugins/foo/agents/sub/x.md'"
   [ "$rc" -eq 1 ] && jq -e '.review_tags|index("tool-allowlist")' "$TMP/agent.json" >/dev/null || { echo "FAIL nested agent (rc $rc)"; exit 1; }
   printf -- '- item\n  ```JSON risk_tags\n  {"tags": [{"id": "proj-x", "class": "review", "lines": ["zebra_api"]}]}\n  ```\n' > "$TMP/ctx.md"

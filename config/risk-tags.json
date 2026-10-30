@@ -9,6 +9,7 @@
   "ignore_except": [
     "(^|/)\\.claude/",
     "(^|/)(workflows|skills|\\.codex|\\.cursor)/",
+    "(^|/)\\.bureau/regression/",
     "(^|/)SKILL\\.md$",
     "(^|/)agents/(.+/)?[^/]+\\.md$",
     "(^|/)(CLAUDE|AGENTS|CODEX|GEMINI|CURSOR|GROK)\\.md$",
@@ -69,7 +70,7 @@
         "\\bhttpx\\b|\\baiohttp\\b|\\brequests\\.(get|post|put|patch|delete|head|request|session)\\b",
         "urllib\\.request|urlopen|http\\.client|\\bpycurl\\b",
         "\\baxios\\b|node-fetch|\\bundici\\b|\\bgot\\(|\\bky\\(",
-        "\\bfetch\\(\\s*([\\\"'`]https?://|`\\$\\{|\\w*(url|uri|api|endpoint|host|base)\\w*\\s*[,)+])",
+        "\\bfetch\\(\\s*([\\\"'`]https?://|`\\$\\{|[\\w.]*(url|uri|api|endpoint|host|base)[\\w.]*\\s*[,)+])",
         "\\bhttp\\.(get|post|head|newrequest|defaultclient)\\b|\\bnet\\.dial",
         "\\bcurl\\s|\\bwget\\s",
         "\\bsocket\\.|websocket|\\bgrpc\\b",
