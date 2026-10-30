@@ -179,8 +179,11 @@ entrypoint`). Start the run with
    c. The CodeRabbit pass runs and its dispositions are recorded (build tail step 6).
    d. Scan the unit's whole range, CodeRabbit fixes included:
       ```sh
+      POLICY_REF=$(jq -er '.git.base_sha //
+        ([.workflow_shifts[]? | select(.to == "bureau-lite")][-1].policy_ref) //
+        error("missing recorded risk policy ref")' "$RUN_DIR/state.json") || exit 2
       scripts/risk-tags.sh --worktree "$WORKTREE" --base "$UNIT_BASE" \
-        --policy-ref "$(jq -r .git.base_sha "$RUN_DIR/state.json")" \
+        --policy-ref "$POLICY_REF" \
         --out "$RUN_DIR/risk-tags/<NN>.json"
       ```
       and log `RISK-TAGS: unit <NN> <result> [<tags>], record risk-tags/<NN>.json` with
@@ -192,11 +195,10 @@ entrypoint`). Start the run with
       - **2 error:** fail closed, step 9 runs. If the cause is a dirty tree, a wrong base, the
         config or the project block, fix it and re-scan; the re-scan replaces the record.
       - **3 escalate:** stop dispatching. Return a `genuine-fork` (signal 6) naming the unit,
-        the tag and the record path. Robin either upshifts the run (§ Downshifting a running
-        build, last part) or keeps it lite. Either way this unit gets step 9, and his answer is
-        logged as a heading after the record, which `risk-coverage.sh` requires:
-        `scripts/log-append.sh "$RUN_DIR" 'RISK-TAGS waiver: unit <NN> <tag>; by Robin: "<Robin's words>"'`
-        for keep-lite, or the `WORKFLOW-SHIFT:` heading for an upshift.
+        the tag and the record path. Robin must upshift to `execute-plan` (§ Downshifting a
+        running build, last part) or stop the run. Before dispatch resumes, this unit gets
+        step 9 and the upshift is recorded in both a `WORKFLOW-SHIFT:` heading after the
+        risk record and `state.json#workflow_shifts`. A waiver cannot keep the run lite.
    f. If fix commits land after the scan (a Challenger `revise`, a review-size reroute), scan
       them as `<NN>+<k>` before accepting the unit; a flagged follow-up needs its own step 9
       read.
@@ -235,8 +237,7 @@ entrypoint`). Start the run with
     (including a merge that brings in commits from anywhere but the base branch), on a record
     whose re-scan with the run's policy disagrees with what it says, on a flagged record with no
     `challenger-unit-<NN>` review after it, and on an escalate record with no logged Robin
-    decision. A red `risk-coverage` gate is handled like any red gate under the Delegate's
-    existing verdict rules. Accepting a unit is never a checkpoint, so the Delegate's cold
+    upshift. A red `risk-coverage` gate always blocks; `known-flaky-gates` cannot demote it. Accepting a unit is never a checkpoint, so the Delegate's cold
     reviews in this workflow happen at these integration gates and the terminal review.
 
 11. **The Conductor** (**strong**) — close out through build-tail step 7, plus the coverage gate → `log.md`, `state.json`, `github/evidence.md`, `accounting.json`
@@ -389,12 +390,13 @@ when most units are firing anyway. Record it the same way: the
 `WORKFLOW-SHIFT: bureau-lite to execute-plan from unit <NN>` heading, and a `workflow_shifts`
 entry with `"to"` set to the heavier workflow's id (`execute-plan` for the every-prompt build
 tail), `by` set to whoever made the call, and `head` set to HEAD at the shift. The coverage
-chain ends at that `head`; units after it follow the build tail's every-prompt review.
+chain ends at that `head`; units after it follow the build tail's every-prompt review. A later
+downshift starts another interval; coverage continues to verify all earlier lite intervals.
 
 **What is not machine-checked.** That a waiver or a downshift really came from Robin. Both are
 written by the session he spoke to, never by the Conductor on its own account, and both carry
-his words verbatim; nothing verifies the authorship. Escalate waivers at least arrive as the
-answer to a `genuine-fork`, which only Robin answers. The same goes for the review evidence:
+his words verbatim; nothing verifies the authorship. Waivers apply only to `review` tags;
+escalations require an upshift or a stop. The same goes for the review evidence:
 `risk-coverage.sh` re-scans every record, so an edited record is caught, but it trusts that a
 `challenger-unit-<NN>` SPAWN-EVENT in `log.md` marks a review that happened. It catches the
 failure seen in real runs, a skipped step, not a deliberately forged log.
@@ -409,7 +411,7 @@ failure seen in real runs, a skipped step, not a deliberately forged log.
   anchor sits in a record whose re-scan with the default tag list and the run's policy ref
   agrees with it, every flagged record has a `challenger-unit-<NN>` review after it (or, for a
   `review` record only, Robin's waiver heading), and every escalate record also has Robin's
-  logged decision. Its `REVIEW-COVERAGE:` line is in `log.md` and `github/evidence.md`.
+  logged upshift with a matching state entry. Its `REVIEW-COVERAGE:` line is in `log.md` and `github/evidence.md`.
 - An integration gate ran at each phase boundary, after each base-branch merge, and at the
   end, each with `integration-results.json`, `risk-coverage.json` and a cold verdict.
 - Build-tail step 7 is complete: terminal review paired with the green final gate, evidence
@@ -419,8 +421,8 @@ failure seen in real runs, a skipped step, not a deliberately forged log.
 ## Edge cases
 
 - **An escalate tag on a unit that is not really money or a destructive migration.** Still a
-  stop; Robin's keep-lite answer is the waiver, and the unit still gets its review. If it keeps
-  happening, narrow the pattern by PR.
+  stop or upshift to `execute-plan`, and the unit still gets its review. If it keeps
+  happening, narrow the pattern through a separately reviewed PR for future runs.
 - **A unit flagged only by a test file** (a fixture token named `secret_value`). It gets the
   review. Test code that fakes credentials is where redaction and storage bugs hide.
 - **Base-branch merge mid-run.** Take `UNIT_BASE` after the merge. The merge commit itself

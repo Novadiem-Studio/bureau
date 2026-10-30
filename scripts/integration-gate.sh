@@ -24,7 +24,28 @@
 #                        canonical-gate declaration (issue #74).
 #   --known-flaky-gates <single-line inline JSON array>   (optional, default empty)
 #   --state-json        <abs path to RUN_DIR/state.json>  (scope projection source)
+#   --run-dir           <abs path to RUN_DIR>  (optional; default: the directory
+#                        holding --state-json). Second place the regression
+#                        runner is looked for, see "Regression runner" below.
 #   --out               <abs path to the output dir = $CTX>
+#
+# Regression runner (issue #115). The standing `regression` gate runs the first
+# runner found, in this order:
+#   1. <worktree>/.bureau/regression/run.sh   the project's committed suite
+#   2. <RUN_DIR>/regression/run.sh            for runs whose target repo must
+#                                             not carry .bureau/ (a client team
+#                                             repo); runs with cwd = worktree
+# The gate record names which one ran (runner_source: worktree | run-dir). When
+# neither exists the gate is recorded `result: "absent"` with
+# `exit_code_branch: null`, the paths it searched, and how many NN-*.md fixtures
+# sit in those regression dirs. Nothing runs, so absent is never red: a missing
+# runner is not a failing suite (it used to exit 127 and read as a hidden red).
+# Absent is only for a project that never had a committed suite. A missing
+# worktree runner is RED (exit 127, runner_source "missing", missing_reason set)
+# when the branch removed it (it exists at --base-ref), when the path exists but
+# is not a regular file (a dangling symlink, a directory), or when committed
+# fixtures sit in <worktree>/.bureau/regression/ with no runner beside them. The
+# branch under review must not be able to turn its own suite off.
 #
 # Gate-mode flags (issue #92). All optional; the default is the full local suite,
 # exactly as before, so the v1 watcher and older callers are unchanged:
@@ -101,6 +122,7 @@ REQ_BASE_REF=""
 REQ_CLAIMED_GATES_RAW=""
 REQ_KNOWN_FLAKY_RAW=""
 STATE_JSON=""
+RUN_DIR=""
 OUT=""
 REQ_GATE_MODE="local"
 REQ_FINAL=0
@@ -127,6 +149,7 @@ while [ "$#" -gt 0 ]; do
     --claimed-gates)     REQ_CLAIMED_GATES_RAW="$2"; shift 2 ;;
     --known-flaky-gates) REQ_KNOWN_FLAKY_RAW="$2";   shift 2 ;;
     --state-json)        STATE_JSON="$2";            shift 2 ;;
+    --run-dir)           RUN_DIR="$2";               shift 2 ;;
     --out)               OUT="$2";                   shift 2 ;;
     --gate-mode)         REQ_GATE_MODE="$2";         shift 2 ;;
     --since-ref)         REQ_SINCE_REF="$2";         shift 2 ;;
@@ -228,9 +251,9 @@ if [ "$INTEGRATION_ESCALATE" = "1" ]; then
   # (a) verdict-write.sh integration-evidence presence guard is satisfied,
   # (b) the Delegate reads a well-formed file and emits a well-formed verdict,
   # (c) the Delegate's verifying-mode trigger (file presence) fires correctly.
-  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" "$REQ_FINAL" <<'PY'
+  python3 - "$OUT/integration-results.json" "$INTEGRATION_ESCALATE_REASON" "$REQ_GATE_MODE" "$REQ_FINAL" "$STATE_JSON" <<'PY'
 import json, sys
-path, reason, requested, final = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+path, reason, requested, final, state_path = sys.argv[1:6]
 data = {
     "schema_version": 1,
     "checkpoint_type": "integration",
@@ -242,6 +265,7 @@ data = {
     "gate_mode_reason": "no gate ran: escalate marker set",
     "gate_commands": [],
     "ci": None,
+    "regression_runner": None,
     "gates": [],
     "pre_existing": [],
     "under_declaration": [],
@@ -254,6 +278,17 @@ data = {
     "conflicts_clean": False,
     "errors": []
 }
+# Even the early guard distinguishes an absent scope from one we could not check.
+if state_path:
+    try:
+        with open(state_path) as source:
+            state = json.load(source)
+        scope_present = state.get("scope") is not None
+    except Exception as exc:
+        scope_present = True
+        reason = "cannot read scope state: " + str(exc)
+    if scope_present:
+        data["scope"].update(scope_diff_clean=False, scope_error=reason)
 with open(path, "w") as fh:
     json.dump(data, fh, indent=2)
 sys.exit(0)
@@ -298,6 +333,34 @@ try:
     worktree, canon_raw, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
     canon = json.loads(canon_raw)
     for g in canon.get("gates", []):
+        # Issue #115: a gate with no runner anywhere is recorded, not run.
+        # exit_code_branch stays null so no reader can mistake it for a red.
+        if g.get("absent"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": None,
+                "result": "absent",
+                "duration_s": 0,
+                "runner_source": "absent",
+                "runner_searched": g.get("runner_searched", []),
+                "fixtures_found": g.get("fixtures_found", 0),
+                "reason": "no regression runner in the worktree or the run dir; nothing ran",
+            })
+            continue
+        # A runner the branch removed or broke: red without running anything.
+        if g.get("missing_reason"):
+            results.append({
+                "name": g["name"],
+                "command": g["command"],
+                "exit_code_branch": 127,
+                "result": "red",
+                "duration_s": 0,
+                "runner_source": "missing",
+                "runner_searched": g.get("runner_searched", []),
+                "missing_reason": g["missing_reason"],
+            })
+            continue
         # FIX (defect 1): the gate's stdout/stderr must never inherit this python
         # process's stdout — which IS the `$(...)` the shell captures into
         # GATE_RESULTS_JSON. A chatty gate (e.g. jest printing ~74KB) would
@@ -344,6 +407,8 @@ try:
             with open(runner, "rb") as fh:
                 entry["runner_path"] = runner
                 entry["runner_sha256"] = hashlib.sha256(fh.read()).hexdigest()
+        if g.get("runner_source"):
+            entry["runner_source"] = g["runner_source"]
         suite = [l.split(":", 1)[1].strip() for l in tail(out_path, 100000, 2000)
                  if l.startswith("BUREAU-SUITE:")]
         if suite:
@@ -352,6 +417,171 @@ try:
 except Exception:
     results = []
 print(json.dumps(results))
+PY
+  }
+
+  # ── provision_regression_runner: refresh an ignored suite (issue #99) ──
+  # Canonical resolution runs first: explicit run-dir runners, absent gates and
+  # broken/removed tracked-suite guards keep their established meaning. A linked
+  # worktree's untracked runner is refreshed from the owner's main checkout.
+  # Replace the whole ignored directory from a staged copy; never overlay files
+  # through destination symlinks or retain worktree-only test code.
+  provision_regression_runner() {
+  python3 - "$REQ_WORKTREE_PATH" "$1" <<'PY'
+import hashlib, json, os, shutil, subprocess, sys, tempfile
+
+worktree = os.path.abspath(sys.argv[1])
+canon = json.loads(sys.argv[2])
+gate = next(g for g in canon["gates"] if g["name"] == "regression")
+REL_DIR = os.path.join(".bureau", "regression")
+REL = os.path.join(REL_DIR, "run.sh")
+ABSENT = "regression runner absent from worktree: "
+res = {"source": "absent", "runner_path": os.path.join(worktree, REL), "main_checkout": None,
+       "copied_from": None, "copied_files": 0, "replaced_worktree_runner": False,
+       "escalate": ""}
+
+
+def finish():
+    print(json.dumps(res))
+    sys.exit(0)
+
+
+def git(*args, stdin=None):
+    return subprocess.run(["git", "-C", worktree] + list(args), input=stdin,
+                          capture_output=True)
+
+
+def tracked_paths(path):
+    r = git("ls-files", "-z", "--", path)
+    if r.returncode != 0:
+        raise RuntimeError("could not read tracked paths for %s" % path)
+    return [os.fsdecode(p) for p in r.stdout.split(b"\0") if p]
+
+
+def require_ignored(paths):
+    if not paths:
+        return
+    r = git("check-ignore", "-z", "--stdin",
+            stdin=b"\0".join(os.fsencode(p) for p in paths) + b"\0")
+    if r.returncode not in (0, 1):
+        raise RuntimeError("could not check ignored regression paths")
+    ignored = {os.fsdecode(p) for p in r.stdout.split(b"\0") if p}
+    loose = sorted(set(paths) - ignored)
+    if loose:
+        raise RuntimeError("refusing to replace unignored or tracked regression content: %s" % loose[0])
+
+
+def suite_files(root, source=False):
+    paths = []
+    if not source and not os.path.lexists(root):
+        return paths
+    def unreadable(error):
+        raise error
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
+        links = [name for name in dirs if os.path.islink(os.path.join(directory, name))]
+        for name in files + links:
+            path = os.path.join(directory, name)
+            if source and (os.path.islink(path) or not os.path.isfile(path)):
+                raise RuntimeError("source suite contains a symlink or non-regular file: %s" % path)
+            paths.append(os.path.join(REL_DIR, os.path.relpath(path, root)))
+    return paths
+
+
+def digest(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+try:
+    if gate.get("missing_reason"):
+        res["source"] = "unavailable"
+        finish()  # Never repair/demote a broken or removed tracked suite.
+    if gate.get("runner_source") == "run-dir":
+        res.update(source="run-dir", runner_path=gate["runner"])
+        finish()
+    if tracked_paths(REL):
+        res["source"] = "worktree"
+        finish()
+
+    r = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    if r.returncode != 0:
+        raise RuntimeError("could not locate the main checkout")
+    common = os.fsdecode(r.stdout).strip()
+    if not common or os.path.basename(common) != ".git":
+        if gate.get("absent"):
+            finish()  # Optional provisioning cannot invent a missing suite.
+        raise RuntimeError("cannot locate the owner of an untracked worktree runner")
+    main = os.path.dirname(common)
+    res["main_checkout"] = main
+    main_dir = os.path.join(main, REL_DIR)
+    main_runner = os.path.join(main, REL)
+    if os.path.realpath(main) == os.path.realpath(worktree):
+        if gate.get("runner_source") == "worktree":
+            res["source"] = "main-checkout"
+        finish()
+    if not os.path.isfile(main_runner):
+        if gate.get("absent") and not os.path.lexists(main_runner):
+            finish()
+        raise RuntimeError("the main checkout has no usable runner to refresh the untracked suite")
+
+    parent = os.path.join(worktree, ".bureau")
+    destination = os.path.join(worktree, REL_DIR)
+    for path in (parent, destination, os.path.join(main, ".bureau"), main_dir):
+        if os.path.islink(path):
+            raise RuntimeError("refusing a symlink suite directory: %s" % path)
+        if os.path.lexists(path) and not os.path.isdir(path):
+            raise RuntimeError("suite directory is not a directory: %s" % path)
+    if tracked_paths(REL_DIR):
+        raise RuntimeError("refusing to replace tracked regression content")
+    files = suite_files(main_dir, source=True)
+    require_ignored(files + suite_files(destination))
+
+    before = digest(res["runner_path"])
+    parent_existed = os.path.isdir(parent)
+    os.makedirs(parent, exist_ok=True)
+    stage = tempfile.mkdtemp(prefix=".regression-stage-", dir=parent)
+    replacement = os.path.join(stage, "replacement")
+    previous = os.path.join(stage, "previous")
+    installed = False
+    try:
+        # Preserve source symlinks during staging so the validation rejects them
+        # rather than following a link that appeared after the initial scan.
+        shutil.copytree(main_dir, replacement, symlinks=True)
+        files = suite_files(replacement, source=True)
+        if REL not in files:
+            raise RuntimeError("staged regression suite has no runner")
+        require_ignored(files)
+        if os.path.exists(destination):
+            os.rename(destination, previous)
+        try:
+            os.rename(replacement, destination)
+            installed = True
+        except Exception:
+            if os.path.exists(previous) and not os.path.lexists(destination):
+                os.rename(previous, destination)
+            raise
+    finally:
+        # Retain a backup if restoration itself failed; never discard that data.
+        if installed or not os.path.exists(previous):
+            shutil.rmtree(stage)
+        if not parent_existed:
+            try:
+                os.rmdir(parent)
+            except OSError:
+                pass
+    res["replaced_worktree_runner"] = before is not None and before != digest(res["runner_path"])
+    res["source"] = "main-checkout-copy"
+    res["copied_from"] = main_dir
+    res["copied_files"] = len(files)
+    finish()
+except SystemExit:
+    raise
+except Exception as e:
+    res["escalate"] = ABSENT + "could not provision it from the main checkout: %s" % e
+    finish()
 PY
   }
 
@@ -643,6 +873,11 @@ except Exception:
     *) MODE_JSON="{\"mode\": \"local\", \"requested\": \"$REQ_GATE_MODE\", \"reason\": \"gate-mode resolution produced no result; ran the local suite\", \"ci\": null, \"gate\": null, \"final\": $( [ "$REQ_FINAL" = 1 ] && echo true || echo false ), \"local_only\": []}" ;;
   esac
 
+  # Issue #99: the regression runner's provenance, or why it could not be used.
+  # Stays null in CI mode, where no local regression runner runs.
+  RUNNER_JSON='null'
+  RUNNER_ESCALATE=""
+
   if [ "$EFFECTIVE_MODE" = "ci" ]; then
     # CI decided this gate: one "ci" gate record, no local suite run.
     # Fail closed: an unreadable CI record becomes a red gate, never an empty
@@ -684,14 +919,90 @@ PY
   # CRITICAL: the canonical gate set is NEVER derived from REQ_CLAIMED_GATES_RAW.
   # It is always: (1) the standing regression runner, PLUS (2) manifest gates if
   # a parseable manifest exists in the worktree.
-  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" <<'PY'
-import json, os, sys
-worktree = sys.argv[1]
-gates = [{"name": "regression",
-          "command": "sh %s/.bureau/regression/run.sh" % worktree,
-          "runner": os.path.join(worktree, ".bureau", "regression", "run.sh")}]
+  # Issue #115: the runner is the first of <worktree>/.bureau/regression/run.sh,
+  # then <RUN_DIR>/regression/run.sh (RUN_DIR = --run-dir, else the directory
+  # holding --state-json). With neither, the gate is marked absent and run_gates
+  # records it without running anything.
+  if [ -z "$RUN_DIR" ] && [ -n "$STATE_JSON" ]; then
+    RUN_DIR="$(dirname "$STATE_JSON")"
+  fi
+  CANON_GATES_JSON="$(python3 - "$REQ_WORKTREE_PATH" "$RUN_DIR" "$REQ_BASE_REF" <<'PY'
+import fnmatch, glob, json, os, shlex, subprocess, sys
+# Absolute paths: the gate runs with cwd = worktree, so a relative run dir would
+# be checked and hashed here but resolved against the worktree when it runs.
+worktree = os.path.abspath(sys.argv[1])
+run_dir = os.path.abspath(sys.argv[2]) if sys.argv[2] else ""
+base_ref = sys.argv[3]
+candidates = [("worktree", os.path.join(worktree, ".bureau", "regression", "run.sh"))]
+if run_dir:
+    candidates.append(("run-dir", os.path.join(run_dir, "regression", "run.sh")))
+
+
+def fixture_files(d):
+    return (glob.glob(os.path.join(d, "[0-9][0-9]-*.md"))
+            + glob.glob(os.path.join(d, "[0-9][0-9][0-9]-*.md")))
+
+
+def has_tracked_fixtures(d):
+    relative_dir = os.path.relpath(d, worktree)
+    tracked = subprocess.check_output(
+        ["git", "-C", worktree, "ls-files", "-z", "--", relative_dir],
+        stderr=subprocess.PIPE)
+    paths = [os.fsdecode(p) for p in tracked.split(b"\0") if p]
+    # The index remains authoritative even if a tracked fixture was deleted on disk.
+    return any(os.path.dirname(p) == relative_dir
+               and any(fnmatch.fnmatchcase(os.path.basename(p), pattern)
+                       for pattern in ("[0-9][0-9]-*.md", "[0-9][0-9][0-9]-*.md"))
+               for p in paths)
+
+
+# Fail closed on a runner the branch could have switched off (see header).
+missing = ""
+wt_runner = candidates[0][1]
+if not os.path.isfile(wt_runner):
+    on_base = subprocess.run(
+        ["git", "-C", worktree, "cat-file", "-e",
+         "%s:.bureau/regression/run.sh" % base_ref],
+        capture_output=True).returncode == 0
+    if os.path.lexists(wt_runner):
+        missing = "%s exists but is not a regular file" % wt_runner
+    elif on_base:
+        missing = ".bureau/regression/run.sh exists at %s but not on the branch" % base_ref
+    else:
+        try:
+            if has_tracked_fixtures(os.path.dirname(wt_runner)):
+                missing = "committed fixtures in %s but no run.sh beside them" % os.path.dirname(wt_runner)
+        except (OSError, subprocess.CalledProcessError) as e:
+            missing = "could not inspect tracked regression fixtures: %s" % e
+    # A broken fallback cannot override a valid higher-priority runner.
+    for src, p in candidates[1:]:
+        if not missing and os.path.lexists(p) and not os.path.isfile(p):
+            missing = "%s exists but is not a regular file" % p
+found = [(src, p) for src, p in candidates if os.path.isfile(p)]
+if missing:
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(wt_runner),
+              "missing_reason": missing,
+              "runner_searched": [p for _, p in candidates]}]
+    canonical_source = "regression-only"
+elif found:
+    source, runner = found[0]
+    gates = [{"name": "regression",
+              "command": "sh %s" % shlex.quote(runner),
+              "runner": runner,
+              "runner_source": source}]
+    canonical_source = "regression-only"
+else:
+    fixtures = set()
+    for _, p in candidates:
+        fixtures.update(fixture_files(os.path.dirname(p)))
+    gates = [{"name": "regression",
+              "command": "(absent)",
+              "absent": True,
+              "runner_searched": [p for _, p in candidates],
+              "fixtures_found": len(fixtures)}]
+    canonical_source = "regression-absent"
 manifest = os.path.join(worktree, "package.json")
-canonical_source = "regression-only"
 if os.path.isfile(manifest):
     try:
         with open(manifest) as fh:
@@ -701,16 +1012,43 @@ if os.path.isfile(manifest):
         for k in gate_keys:
             gates.append({"name": "npm-%s" % k, "command": "npm run %s" % k})
         if gate_keys:
-            canonical_source = "regression+manifest"
+            canonical_source = ("manifest-only" if canonical_source == "regression-absent"
+                                else "regression+manifest")
     except Exception:
         pass
 print(json.dumps({"gates": gates, "canonical_source": canonical_source}))
 PY
 )"
 
+  # Provision only after canonical selection, preserving run-dir, absent and
+  # missing-suite outcomes. Unsafe refreshes escalate before any gate executes.
+  RUNNER_JSON="$(provision_regression_runner "$CANON_GATES_JSON")"
+  RUNNER_ESCALATE="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert isinstance(r, dict); print(r.get("escalate") or "")' "$RUNNER_JSON" 2>/dev/null \
+    || echo "regression runner absent from worktree: the runner provisioning step produced no readable record")"
+  case "$RUNNER_JSON" in "{"*) ;; *) RUNNER_JSON='null' ;; esac
+  if [ -n "$RUNNER_ESCALATE" ]; then
+    CANON_GATES_JSON='{"gates": [], "canonical_source": "none"}'
+    GATE_RESULTS_JSON='[]'
+  else
+    # A provisioned runner replaces the prior absent/untracked selection.
+    CANON_GATES_JSON="$(python3 - "$CANON_GATES_JSON" "$RUNNER_JSON" <<'PY'
+import json, shlex, sys
+canon, runner = map(json.loads, sys.argv[1:3])
+if runner.get("source") == "main-checkout-copy":
+    path = runner["runner_path"]
+    canon["gates"] = [{"name": "regression", "command": "sh " + shlex.quote(path),
+                       "runner": path, "runner_source": "worktree"}
+                      if g["name"] == "regression" else g for g in canon["gates"]]
+    canon["canonical_source"] = "regression+manifest" if len(canon["gates"]) > 1 else "regression-only"
+print(json.dumps(canon))
+PY
+)"
+
   # ── RUN EACH CANONICAL GATE at branch tip ──────────────────────────────
   # Read gates list; run each command in the worktree; capture exit codes.
   GATE_RESULTS_JSON="$(run_gates "$CANON_GATES_JSON")"
+
+  fi   # end runner-escalate branch (issue #99)
 
   fi   # end gate-mode branch (ci records its one gate above; local ran the suite)
 
@@ -906,8 +1244,8 @@ PY
     "$REQ_BASE_REF" \
     "$STATE_JSON" <<'PY'
 import json, subprocess, sys
-# FIX 2: the whole step is guarded — a git/parse failure prints a valid
-# "indeterminate" scope object (scope_diff_clean: null), never nothing.
+# An absent scope is neutral. Failure to read or verify a supplied scope is
+# blocking; never collapse an unreadable diff into the absent-scope result (#89).
 NEUTRAL = {
     "diff_files": [], "allowed_paths": [], "violations": [],
     "cut_symbol_hits": [], "cut_symbol_introduced": [], "cut_symbol_attribution": {},
@@ -915,20 +1253,22 @@ NEUTRAL = {
 }
 try:
     worktree, base_ref, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
-    try:
-        with open(state_path) as fh:
-            state = json.load(fh)
-        scope_block = state.get("scope") or {}
-        allowed_paths = scope_block.get("allowed_paths") or []
-        cut_symbols = scope_block.get("cut_symbols") or []
-    except Exception:
-        scope_block = None
-        allowed_paths = []
-        cut_symbols = []
-
+    if not state_path:
+        print(json.dumps(NEUTRAL))
+        sys.exit(0)
+    with open(state_path) as fh:
+        state = json.load(fh)
+    scope_block = state.get("scope")
     if scope_block is None:
         print(json.dumps(NEUTRAL))
         sys.exit(0)
+    if not isinstance(scope_block, dict):
+        raise ValueError("scope must be an object or null")
+    allowed_paths = scope_block.get("allowed_paths", [])
+    cut_symbols = scope_block.get("cut_symbols", [])
+    for name, values in (("allowed_paths", allowed_paths), ("cut_symbols", cut_symbols)):
+        if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise ValueError("scope." + name + " must be an array of strings")
 
     import re
     # Pin every diff to plain, prefixed, uncoloured output so user or repo git
@@ -1128,8 +1468,9 @@ try:
     if parse_error is not None:
         result["parse_error"] = parse_error
     print(json.dumps(result))
-except Exception:
-    print(json.dumps(NEUTRAL))
+except Exception as exc:
+    print(json.dumps(dict(NEUTRAL, scope_diff_clean=False,
+                          scope_error="scope verification failed: " + str(exc))))
 PY
 )"
 
@@ -1266,27 +1607,46 @@ PY
 )"
   fi
 
-  # ── APPLY known-flaky-gates demotion to GATE_RESULTS_JSON ─────────────
+  # ── APPLY known-flaky-gates demotion ───────────────────────────────────
   # Any gate in the known-flaky-gates list whose result is "red" gets marked
   # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
-  GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$KNOWN_FLAKY_JSON" <<'PY'
+  # The same gate also appears in under_declaration[] (a copy taken before this
+  # step) and, when claimed pre-existing, in pre_existing[]; those copies get the
+  # flag too, or a declared-flaky gate still escalates there (issue #115). A gate
+  # that is red because its runner went missing (missing_reason) is never
+  # demoted: a removed runner is not flakiness.
+  apply_flaky() {
+  python3 - "$1" "$2" "$KNOWN_FLAKY_JSON" <<'PY'
 import json, sys
-# FIX 2: guarded — on any failure, echo arg1 through unchanged (or [] if that
-# too is unparseable) so this never empties GATE_RESULTS_JSON downstream.
+# FIX 2: guarded — on any failure, echo arg2 through unchanged (or the empty
+# shape if that too is unparseable) so this never empties the variable downstream.
+kind, raw, flaky_raw = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    gates = json.loads(sys.argv[1])
-    flaky_names = set(json.loads(sys.argv[2]))
-    for g in gates:
-        if g.get("result") == "red" and g.get("name") in flaky_names:
+    data = json.loads(raw)
+    flaky_names = set(json.loads(flaky_raw))
+    entries = data.get("results", []) if kind == "pre_existing" else data
+    for g in entries:
+        if (not isinstance(g, dict) or g.get("name") not in flaky_names
+                or g.get("missing_reason") or g.get("name") == "risk-coverage"):
+            continue
+        if kind == "pre_existing":
+            # pre_existing entries carry exit codes, not a result.
+            failed = g.get("exit_code_branch") not in (0, None)
+        else:
+            failed = g.get("result") == "red"
+        if failed:
             g["flaky"] = True
-    print(json.dumps(gates))
+    print(json.dumps(data))
 except Exception:
     try:
-        print(json.dumps(json.loads(sys.argv[1])))
+        print(json.dumps(json.loads(raw)))
     except Exception:
-        print("[]")
+        print('{"results": [], "errors": []}' if kind == "pre_existing" else "[]")
 PY
-)"
+  }
+  GATE_RESULTS_JSON="$(apply_flaky gates "$GATE_RESULTS_JSON")"
+  UNDER_DECL_JSON="$(apply_flaky under_declaration "$UNDER_DECL_JSON")"
+  PRE_EXISTING_JSON="$(apply_flaky pre_existing "$PRE_EXISTING_JSON")"
 
   # ── WRITE integration-results.json to $OUT ────────────────────────────
   # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
@@ -1326,12 +1686,15 @@ print(json.dumps([err] if err else []))' "$CLAIMED_GATES_JSON" 2>/dev/null || ec
     "$FF_OK" \
     "$CONFLICTS_CLEAN" \
     "$ERRORS_JSON" \
-    "$MODE_JSON" <<'PY'
+    "$MODE_JSON" \
+    "$RUNNER_JSON" \
+    "$RUNNER_ESCALATE" <<'PY'
 import json, sys
 
 (path, worktree_path, base_ref, branch_tip, canonical_source,
  gates_raw, pre_raw, under_raw, scope_raw,
- ff_ok, conflicts_clean, errors_raw, mode_raw) = sys.argv[1:14]
+ ff_ok, conflicts_clean, errors_raw, mode_raw,
+ runner_raw, runner_escalate) = sys.argv[1:16]
 
 NEUTRAL_SCOPE = {
     "diff_files": [], "allowed_paths": [], "violations": [],
@@ -1354,6 +1717,7 @@ def write_escalate(reason, errors):
         "gate_mode_reason": "no usable gate result: escalate marker set",
         "gate_commands": [],
         "ci": mode.get("ci"),
+        "regression_runner": runner,
         "gates": [],
         "pre_existing": [],
         "under_declaration": [],
@@ -1374,9 +1738,21 @@ except Exception:
     mode = {"mode": "local", "requested": "", "reason": "gate-mode record unreadable", "ci": None}
 
 try:
+    runner = json.loads(runner_raw) if runner_raw.strip() else None
+    if not isinstance(runner, dict):
+        runner = None
+except Exception:
+    runner = None
+
+try:
     errors = json.loads(errors_raw) if errors_raw.strip() else []
     if not isinstance(errors, list):
         errors = []
+
+    # Issue #99: no usable regression runner is an escalation, not a red gate.
+    if runner_escalate.strip():
+        write_escalate(runner_escalate, errors)
+        sys.exit(0)
 
     # pre_raw is now {"results": [...], "errors": [...]}; tolerate a bare list
     # or empty/garbage. Any failure here demotes to the escalate path below.
@@ -1418,8 +1794,11 @@ try:
         "gate_mode": mode.get("mode", "local"),
         "gate_mode_requested": mode.get("requested", ""),
         "gate_mode_reason": mode.get("reason", ""),
-        "gate_commands": [g.get("command", "") for g in gates if isinstance(g, dict)],
+        "gate_commands": [g.get("command", "") for g in gates
+                          if isinstance(g, dict) and g.get("result") != "absent"],
         "ci": mode.get("ci"),
+        # Issue #99: where the regression runner came from (null in CI mode).
+        "regression_runner": runner,
         "gates": gates,
         "pre_existing": pre_existing,
         "under_declaration": under,

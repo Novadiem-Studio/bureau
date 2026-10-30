@@ -300,7 +300,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    and append `<current id>` to `conductor_agent_ids` if absent.
    A pre-spec grill checkpoint is routine for bridge machinery unless the Conductor returned
    `genuine-fork` under the existing escalation signals. Do not add a `grill` subtype.
-2. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
+2. Set `$CTX = RUN_DIR/checkpoints/NN-context/`. If `checkpoint-subtype: integration`, run the gates FIRST — the build never runs its own
    (FR14). Choose the gate mode yourself from facts, never from the Conductor's preference
    (#92; cadence in `docs/conductor-gates.md § Integration checkpoint cadence (build runs)`):
    - `--gate-mode ci` for a routine gate (`gate-point: phase` or `interval`) on a
@@ -332,10 +332,10 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      --claimed-gates "<from return block>" \
      --state-json "$RUN_DIR/state.json" \
      --gate-mode "<ci|local>" [--final] [--since-ref "<previous branch_tip>"] \
-     --out "$CTX" > "$RUN_DIR/checkpoints/NN-gate.out" 2>&1
+     --out "$RUN_DIR/checkpoints/NN-gate-sources" > "$RUN_DIR/checkpoints/NN-gate.out" 2>&1
    ```
-   It writes `integration-results.json` into `$CTX`, and each gate's stdout/stderr into
-   `$CTX/gate-output/`. Read `gate_mode` and `gate_mode_reason` back and log them: the script
+   It writes `integration-results.json` and `gate-output/` into the separate gate-source
+   directory; step 3 includes those current files in the source recipe. Read `gate_mode` and `gate_mode_reason` back and log them: the script
    falls back to local on its own for a merge since `--since-ref`, no PR, no `gh` or no checks.
    CI mode reads the PR and repo from `state.json#git` and treats a pending check as a wait,
    never a pass; at `--ci-timeout` (default 3600 s) it records red. The canonical gate set is
@@ -345,14 +345,22 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
    bounded wait, or detach it with `nohup` plus a done-marker file and poll that file with a
    deadline. A gate started with `run_in_background` or a bare `&` dies with the shell that
    launched it (1a4a checkpoint 08 lost about 40 minutes that way).
-3. Stage `$CTX = RUN_DIR/checkpoints/NN-context/` with EXACTLY the manifest (bridge v2 §9):
+3. Write `RUN_DIR/checkpoints/NN-review-sources.json` using the live sources for EXACTLY
+   the manifest below (bridge v2 §9 has the recipe format). `run-cold-reviewer.sh` rebuilds
+   `$CTX` from scratch immediately before **every** new spawn, including a re-return or
+   correction by anyone. Never supply an old staged composite as a source: list its current
+   component files instead. The helper derives framework instructions and hashes, and
+   archives the full read-set and `<spawn-id>-log-slice.md` outside `$CTX` before dispatch.
+   Use a new spawn id for each attempt; retain old archives, never put them into `$CTX`.
+   Cursor resume validates the frozen packet instead of rebuilding. A lost old slice is
+   recorded as lost, never fabricated. The resulting manifest is:
    - the artifact under review (copied by name), passed as `<artifact-basename>` below,
    - any supplementary artifacts this checkpoint also reviews (e.g. `spec.md` when the checkpoint
      is "plan.md (+ spec.md)"), copied by name. Stage every file the reviewer must judge into ONE
      packet; do not split them across reviewers, which leaves each blind to the other file.
      Every staged file outside this fixed list counts as an artifact: the helper names each in
      the prompt with its digest, so stage nothing the reviewer should not read,
-   - `log-slice.md` (this checkpoint's slice only),
+   - `log-slice.md` (source `checkpoints/NN-log-slice.md`, this checkpoint's slice only),
    - `state.json` (the scope projection the Conductor wrote before returning),
    - `bureau-agents.md` — a byte-identical content-copy of `$ROOT/AGENTS.md`, so the cold
      reviewer can satisfy the Bureau startup instruction without access to the live framework root:
@@ -368,7 +376,7 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      ```
    - `integration-results.json` — integration checkpoints only.
    - `artifact.sha256` and `artifacts.sha256` — do NOT write these yourself;
-     `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest
+     `run-cold-reviewer.sh` computes the primary artifact's digest and the whole packet's manifest from current source bytes
      and writes both into `$CTX` at spawn time (bridge v2 §9), and reports `artifact_sha256`,
      `hash_match`, `artifacts_read_complete`, `artifacts_unread` and `artifacts_unexpected` in its
      result JSON for step 7.
@@ -697,7 +705,12 @@ If non-empty:
 - Stop. Do not proceed to the five-step checklist.
 
 Escalate-marker cases: `worktree-path: (none)` (EC-B14-1); unresolvable `base-ref`
-(EC-B14-4).
+(EC-B14-4); `regression runner absent from worktree`: refreshing an untracked suite
+from the main checkout was unsafe or failed (#99), for example a symlinked suite
+directory or tracked/unignored destination content. Fix the named provisioning
+problem and re-run the gate; do not copy a runner into the worktree by hand.
+Ordinary absence is not a provisioning error: the run-directory fallback and
+absent-gate rules below still apply. A removed or broken tracked suite remains red.
 
 ### Five-step verifying checklist
 
@@ -707,26 +720,46 @@ Apply these steps in order. The first failing step determines the verdict.
 
 Read `integration-results.json#gates` (canonical gates run by the watcher —
 regression runner + manifest gates, resolved by the watcher, NOT from claimed-gates).
-For each entry: if `exit_code_branch != 0`, the gate failed.
+For each entry with `result: "absent"` and `exit_code_branch: null`: no runner
+existed, so nothing ran (issue #115). The regression runner is looked for at
+`<worktree>/.bureau/regression/run.sh`, then `RUN_DIR/regression/run.sh`; a run
+whose target repo must not carry `.bureau/` may have neither. Absent is not a
+failure and not a hidden red gate: never revise or escalate on it alone. Note it
+in Uncertainties ("regression gate absent: no runner at <runner_searched>;
+<fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
+absent, no gate evidence exists for this checkpoint: emit `escalate` with
+Escalation "no canonical gate ran: <names> absent". A runner the branch removed
+or broke is not absent: the gate records it red (`runner_source: "missing"`,
+`missing_reason`), and Step 1's failed-gate rule applies. A gate with
+`runner_source: "run-dir"` ran a runner outside the reviewed diff: note it in
+Uncertainties with its `runner_path` and `runner_sha256`.
+
+For every other entry: if `exit_code_branch != 0`, the gate failed.
 - If the entry carries `flaky: true`, flag it in Uncertainties ("known-flaky gate
   <name> failed on re-run — not blocking per known-flaky-gates list") rather than
   emitting revise. (OQ-B14-4 demotion.)
 - Otherwise, a failed gate is a blocking finding. A proceed verdict requires all
-  canonical gates to pass (exit 0) or be demoted as flaky.
+  canonical gates to pass (exit 0), be demoted as flaky, or be absent, with at
+  least one gate that ran.
 
 Also read `integration-results.json#under_declaration` (canonical gates the build
 did NOT declare in claimed-gates, FR-B14-14):
 - Any entry with `result: "red"` is a hidden failing gate → emit `escalate` with
   Escalation naming the gate and the fact the build did not declare it (EC-B14-8,
-  FR-B14-7).
-- Green entries are informational → note in Uncertainties (EC-B14-9).
+  FR-B14-7), UNLESS the entry carries `flaky: true`: then flag it in Uncertainties
+  ("known-flaky gate <name> failed and was not declared — not blocking per
+  known-flaky-gates list") and do not escalate, the same demotion as in `gates`.
+- Green and `absent` entries are informational → note in Uncertainties (EC-B14-9).
+  An absent gate could not have been declared; it is not an under-declaration.
 
 **Step 2 — Pre-existing red validation** (FR-B14-4)
 
 Read `integration-results.json#pre_existing`. For each entry:
 - If `confirmed_pre_existing: false` (passes at base, fails on branch) → emit `revise`
   with Required-changes naming the gate. A proceed verdict is impossible while any
-  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4).
+  entry has `confirmed_pre_existing: false` (EC-B14-2, AC-4), UNLESS the entry
+  carries `flaky: true` (named in known-flaky-gates): then flag it in Uncertainties
+  and do not revise on it, the same demotion as in `gates`.
 - If `confirmed_pre_existing: true` → non-blocking per FR-B14-4, UNLESS the
   severity-marker check fires (see below).
 
@@ -749,6 +782,9 @@ a keyword?" to "how bad is this?" is a boundary violation (FR-B14-9, AC-15).
 **Step 3 — Scope diff** (FR-B14-5)
 
 Read `integration-results.json#scope`:
+- If `scope_error` is present → emit `revise`, naming the error verbatim and requiring
+  scope verification to be rerun successfully. This is blocking even if a malformed or
+  older result also says `scope_diff_clean: null`; a failed check is not absent scope.
 - If `scope_diff_clean: null` → record in Uncertainties ("scope block absent in
   state.json; scope diff not run"). Not blocking (EC-B14-6).
 - If `scope_diff_clean: false` → emit `revise` with Required-changes listing
@@ -777,7 +813,8 @@ OUTER KEY MAP (snake_case in integration-results.json → PascalCase in Integrat
   pre_existing       → Pre-existing-validated
   under_declaration  → Under-declaration
   scope.scope_diff_clean → Scope-diff-clean
-  scope.violations + scope.cut_symbol_introduced (+ "parse_error: <scope.parse_error>" when present)
+  scope.violations + scope.cut_symbol_introduced
+    (+ "parse_error: <scope.parse_error>" and "scope_error: <scope.scope_error>" when present)
                      → Scope-violations (combined list of strings). Not cut_symbol_hits:
                        that list also carries informational removed/context/header hits.
   fast_forward_ok    → Fast-forward-ok
@@ -787,7 +824,7 @@ INNER KEY MAP (entries within each array — inner entry keys differ from outer 
 Within Gates-checked entries:
   name              → name
   command           → command
-  exit_code_branch  → exit-code-on-branch
+  exit_code_branch  → exit-code-on-branch   (null for an absent gate; never 0)
   result            → result
 
 Within Pre-existing-validated entries:
@@ -817,9 +854,12 @@ This `Integration-evidence` block is the ONE authoritative schema-PascalCase lis
 
 `proceed` requires ALL of the following (AC-5):
 1. All canonical gates in `Gates-checked` have `exit-code-on-branch: 0`
-   (or are demoted as flaky per OQ-B14-4).
-2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`.
-3. No `Under-declaration` entry has `result: "red"`.
+   (or are demoted as flaky per OQ-B14-4, or have `result: "absent"`), and at
+   least one gate is not absent.
+2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`
+   (or carry `flaky: true` in integration-results.json, flagged in Uncertainties).
+3. No `Under-declaration` entry has `result: "red"` (except one that carries
+   `flaky: true` in integration-results.json, flagged in Uncertainties).
 4. `Scope-diff-clean: true` (or null — absent scope is not blocking).
 5. `Scope-violations: []` (empty).
 6. `Fast-forward-ok: true`.

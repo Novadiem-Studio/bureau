@@ -13,7 +13,7 @@
 #      head-to-base with no gap. A merge commit needs no record only when every non-first
 #      parent is already on the base branch (state.json#git.base_branch); any other merge is
 #      a gap, since it can bring in code no record scanned.
-#   2. Re-scan — every non-error record is re-scanned here with the default config and the
+#   2. Re-scan — every record is re-scanned here with the default config and the
 #      run's policy ref; its result and tags must match what the record says. A record edited
 #      after the fact, or scanned with a looser config or project block, fails.
 #   3. Review — every record whose result is review, error or escalate has, after the
@@ -21,8 +21,8 @@
 #      `"status":"complete"` and attempt_id `challenger-unit-<unit>-<n>`. A `review` record may
 #      instead be covered by a log heading `## [<ts>] — RISK-TAGS waiver: unit <unit> ...`
 #      dated after the record. An `escalate` record needs the review AND, after the record,
-#      either such a waiver heading or a `WORKFLOW-SHIFT: ... to <heavier workflow>` heading:
-#      Robin's answer to the genuine-fork, not just a review.
+#      a `WORKFLOW-SHIFT: bureau-lite to execute-plan` heading and matching state entry.
+#      A waiver cannot resume lite dispatch after an escalation.
 #
 # Records are RUN_DIR/risk-tags/<unit>.json, plus <unit>+<k>.json for follow-up scans.
 #
@@ -30,6 +30,7 @@
 # that shifted to bureau-lite (state.json#workflow_shifts), from the base of the record named
 # by that shift's effective_from. If a later shift moves the run off bureau-lite, the chain
 # ends at that shift's `head` (the HEAD sha when it was made); otherwise at --head.
+# Every lite interval is checked, even after further upshifts and downshifts.
 # A WORKFLOW-SHIFT heading to bureau-lite in log.md that state.json does not record is an
 # error, so a missing state entry cannot turn the check off.
 #
@@ -170,97 +171,121 @@ def main():
         records[name] = r
     rec["records"] = len(records)
 
-    # Anchor, policy ref and end point.
-    if lite_idx is None:
-        if not git_block.get("base_sha"):
-            raise Fail("state.json#git.base_sha is not set; cannot anchor the chain")
-        anchor = resolve(git_block["base_sha"])
-    else:
-        eff = str(shifts[lite_idx].get("effective_from", ""))
-        if eff not in records:
-            raise Fail("workflow_shifts names effective_from %r but risk-tags/%s.json does not exist" % (eff, eff))
-        anchor = resolve(records[eff].get("base"))
-    if git_block.get("base_sha"):
-        policy = resolve(git_block["base_sha"])
-    elif lite_idx is not None and shifts[lite_idx].get("policy_ref"):
-        policy = resolve(shifts[lite_idx]["policy_ref"])
-    else:
-        raise Fail("no policy ref: set state.json#git.base_sha or the shift's policy_ref")
-    later = [s for s in shifts[(lite_idx + 1 if lite_idx is not None else 0):] if s.get("to") != "bureau-lite"]
-    if later:
-        if not later[0].get("head"):
-            raise Fail("the shift off bureau-lite (to %r) has no head sha; cannot end the chain" % later[0].get("to"))
-        end = resolve(later[0]["head"])
-    else:
-        end = resolve(head_ref)
-    rec["anchor"], rec["end"] = anchor, end
-    if git("merge-base", "--is-ancestor", anchor, end).returncode != 0:
-        raise Fail("anchor %s is not an ancestor of %s" % (anchor[:12], end[:12]))
+    segments = []
+    active = state.get("workflow")
+    start_idx = None
+    for idx, shift in enumerate(shifts):
+        target = shift.get("to")
+        if not target:
+            raise Fail("workflow shift has no destination")
+        if active == "bureau-lite" and target != "bureau-lite":
+            segments.append((start_idx, [shift]))
+        elif active != "bureau-lite" and target == "bureau-lite":
+            start_idx = idx
+        active = target
+    if active == "bureau-lite":
+        segments.append((start_idx, []))
 
-    base_branch = git_block.get("base_branch") or ""
-    base_tip = None
-    for cand in (base_branch, "origin/" + base_branch):
-        if base_branch:
-            r = git("rev-parse", "--verify", "--quiet", cand + "^{commit}")
-            if r.returncode == 0 and r.stdout.strip():
-                base_tip = r.stdout.strip()
-                break
+    def check_segment(lite_idx, later):
+        # Anchor, policy ref and end point.
+        if lite_idx is None:
+            if not git_block.get("base_sha"):
+                raise Fail("state.json#git.base_sha is not set; cannot anchor the chain")
+            anchor = resolve(git_block["base_sha"])
+        else:
+            eff = str(shifts[lite_idx].get("effective_from", ""))
+            if eff not in records:
+                raise Fail("workflow_shifts names effective_from %r but risk-tags/%s.json does not exist" % (eff, eff))
+            anchor = resolve(records[eff].get("base"))
+        if git_block.get("base_sha"):
+            policy = resolve(git_block["base_sha"])
+        elif lite_idx is not None and shifts[lite_idx].get("policy_ref"):
+            policy = resolve(shifts[lite_idx]["policy_ref"])
+        else:
+            raise Fail("no policy ref: set state.json#git.base_sha or the shift's policy_ref")
+        if later:
+            if not later[0].get("head"):
+                raise Fail("the shift off bureau-lite (to %r) has no head sha; cannot end the chain" % later[0].get("to"))
+            end = resolve(later[0]["head"])
+        else:
+            end = resolve(head_ref)
+        if rec["anchor"] is None:
+            rec["anchor"] = anchor
+        rec["end"] = end
+        if git("merge-base", "--is-ancestor", anchor, end).returncode != 0:
+            raise Fail("anchor %s is not an ancestor of %s" % (anchor[:12], end[:12]))
 
-    # 1. Chain over first-parent history.
-    commits = git("rev-list", "--first-parent", "--reverse", "%s..%s" % (anchor, end)).stdout.split()
-    order = [anchor] + commits
-    pos = {c: i for i, c in enumerate(order)}
-    by_base = {}
-    for r in records.values():
-        by_base.setdefault(r.get("base"), []).append(r)
-    i, used = 0, []
-    while i < len(order) - 1:
-        cur = order[i]
-        cands = [r for r in by_base.get(cur, []) if r.get("head") in pos and pos[r["head"]] > i]
-        if cands:
-            r = max(cands, key=lambda x: pos[x["head"]])
-            used.append(r)
-            i = pos[r["head"]]
-            continue
-        nxt = order[i + 1]
-        parents = git("rev-list", "--parents", "-n", "1", nxt).stdout.split()[1:]
-        if len(parents) >= 2:
-            side = parents[1:]
-            if base_tip and all(git("merge-base", "--is-ancestor", p, base_tip).returncode == 0 for p in side):
+        base_branch = git_block.get("base_branch") or ""
+        base_tip = None
+        for cand in (base_branch, "origin/" + base_branch):
+            if base_branch:
+                r = git("rev-parse", "--verify", "--quiet", cand + "^{commit}")
+                if r.returncode == 0 and r.stdout.strip():
+                    base_tip = r.stdout.strip()
+                    break
+
+        # 1. Chain over first-parent history.
+        commits = git("rev-list", "--first-parent", "--reverse", "%s..%s" % (anchor, end)).stdout.split()
+        order = [anchor] + commits
+        pos = {c: i for i, c in enumerate(order)}
+        by_base = {}
+        for r in records.values():
+            by_base.setdefault(r.get("base"), []).append(r)
+        i, used = 0, []
+        while i < len(order) - 1:
+            cur = order[i]
+            cands = [r for r in by_base.get(cur, []) if r.get("head") in pos and pos[r["head"]] > i]
+            if cands:
+                r = max(cands, key=lambda x: pos[x["head"]])
+                r = dict(r)
+                r["_upshift"] = later[0] if later else None
+                used.append(r)
+                i = pos[r["head"]]
+                continue
+            nxt = order[i + 1]
+            parents = git("rev-list", "--parents", "-n", "1", nxt).stdout.split()[1:]
+            if len(parents) >= 2:
+                side = parents[1:]
+                if base_tip and all(git("merge-base", "--is-ancestor", p, base_tip).returncode == 0 for p in side):
+                    i += 1
+                    continue
+                rec["problems"].append("gap: merge %s brings in commits not on the base branch %r and no record scans it"
+                                       % (nxt[:12], base_branch))
                 i += 1
                 continue
-            rec["problems"].append("gap: merge %s brings in commits not on the base branch %r and no record scans it"
-                                   % (nxt[:12], base_branch))
-            i += 1
-            continue
-        stop = i + 1
-        while stop < len(order) - 1 and order[stop] not in by_base:
-            stop += 1
-        rec["problems"].append("gap: commits %s..%s are in no risk-tags record" % (cur[:12], order[stop][:12]))
-        i = stop
+            stop = i + 1
+            while stop < len(order) - 1 and order[stop] not in by_base:
+                stop += 1
+            rec["problems"].append("gap: commits %s..%s are in no risk-tags record" % (cur[:12], order[stop][:12]))
+            i = stop
 
-    # 2. Re-scan every chained record with the default config and the run's policy.
-    if git("status", "--porcelain").stdout.strip():
-        raise Fail("worktree is dirty; commit or remove changes so records can be re-scanned")
-    for r in used:
-        if r.get("result") == "error":
-            continue
-        cmd = [risk_tags, "--worktree", worktree, "--base", r["base"], "--head", r["head"],
-               "--policy-ref", policy, "--config", config_path]
-        if project_context:
-            cmd += ["--project-context", project_context]
-        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
-        try:
-            fresh = json.loads(p.stdout.strip().splitlines()[-1])
-        except (ValueError, IndexError):
-            rec["problems"].append("record %s could not be re-scanned (exit %d)" % (r["_name"], p.returncode))
-            continue
-        want = (fresh.get("result"), sorted(fresh.get("review_tags", []) + fresh.get("escalate_tags", [])))
-        got = (r.get("result"), sorted((r.get("review_tags") or []) + (r.get("escalate_tags") or [])))
-        if want != got:
-            rec["problems"].append("record %s says %s %s but a re-scan with the run's policy gives %s %s"
-                                   % (r["_name"], got[0], got[1], want[0], want[1]))
-            r["result"] = fresh.get("result")  # judge the review requirement on the truth
+        # 2. Re-scan every chained record with the default config and the run's policy.
+        if git("status", "--porcelain").stdout.strip():
+            raise Fail("worktree is dirty; commit or remove changes so records can be re-scanned")
+        for r in used:
+            cmd = [risk_tags, "--worktree", worktree, "--base", r["base"], "--head", r["head"],
+                   "--policy-ref", policy, "--config", config_path]
+            if project_context:
+                cmd += ["--project-context", project_context]
+            p = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+            try:
+                fresh = json.loads(p.stdout.strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                rec["problems"].append("record %s could not be re-scanned (exit %d)" % (r["_name"], p.returncode))
+                continue
+            want = (fresh.get("result"), sorted(fresh.get("review_tags", []) + fresh.get("escalate_tags", [])))
+            got = (r.get("result"), sorted((r.get("review_tags") or []) + (r.get("escalate_tags") or [])))
+            if fresh.get("result") == "error" or p.returncode not in (0, 1, 3):
+                rec["problems"].append("record %s re-scan failed; repair and replace the record" % r["_name"])
+            if want != got:
+                rec["problems"].append("record %s says %s %s but a re-scan with the run's policy gives %s %s"
+                                       % (r["_name"], got[0], got[1], want[0], want[1]))
+                r["result"] = fresh.get("result")  # judge the review requirement on the truth
+
+        return used
+    used = []
+    for lite_idx, later in segments:
+        used.extend(check_segment(lite_idx, later))
 
     # 3. Review and decision evidence.
     reviews = {}
@@ -280,7 +305,7 @@ def main():
         if w:
             waivers.setdefault(w.group(1), []).append(ts)
         s = SHIFT.match(h)
-        if s and s.group(2) != "bureau-lite":
+        if s and s.group(1) == "bureau-lite" and s.group(2) == "execute-plan":
             heavier.append(ts)
 
     counts = {"clean": 0, "reviewed": 0, "waived": 0, "escalated": 0, "error": 0}
@@ -295,11 +320,12 @@ def main():
         waived = any(t >= at for t in waivers.get(unit, []))
         if res == "escalate":
             counts["escalated"] += 1
-            decided = waived or any(t >= at for t in heavier)
+            decided = bool(r.get("_upshift") and r["_upshift"].get("to") == "execute-plan"
+                           and any(t >= at for t in heavier))
             if not reviewed:
                 rec["problems"].append("record %s is escalate but no complete challenger-unit-%s-N review follows it" % (r["_name"], unit))
             if not decided:
-                rec["problems"].append("record %s is escalate but no later RISK-TAGS waiver or WORKFLOW-SHIFT heading records Robin's decision" % r["_name"])
+                rec["problems"].append("record %s is escalate but no later WORKFLOW-SHIFT heading and state entry record Robin's decision to upshift to execute-plan" % r["_name"])
             if reviewed:
                 counts["reviewed"] += 1
             continue

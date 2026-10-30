@@ -198,6 +198,11 @@ capabilities a read-only reviewer must not read as its own (W7 capability-contam
 - **Output:** writes `integration-results.json` to the `--out` dir, naming `gate_mode`,
   `gate_mode_reason` and `gate_commands`, and streams every gate's stdout/stderr into
   `--out/gate-output/` (kept for diagnosis; not part of the reviewer's artifact manifest).
+- **Regression runner (#99):** after canonical selection, a linked worktree's untracked
+  suite can be refreshed from the target repo's main checkout by replacing its ignored
+  `.bureau/regression/` directory, recorded in `regression_runner`. A selected run-directory
+  runner and ordinary absence retain their existing behavior; unsafe refreshes escalate,
+  and removed/broken tracked suites remain red (`scripts/README.md § Integration gate`).
 - **Deps:** POSIX `sh` + `python3` + `git` — exactly what `watcher.sh` already required, so a
   pure-v1 host gains no new dependency. CI mode also uses `gh` when present.
 
@@ -279,7 +284,43 @@ every write", AC16).
 
 ## v2 §9 — Staged manifest (per-checkpoint)
 
-For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-context/` with exactly:
+Every new reviewer spawn rebuilds `$CTX = RUN_DIR/checkpoints/NN-context/` from current
+sources. This is unconditional: Conductor re-returns, Delegate corrections, human edits, and
+retries all use the same path. A matching staged hash alone does **not** prove freshness.
+
+Before invoking `run-cold-reviewer.sh`, write
+`RUN_DIR/checkpoints/NN-review-sources.json` outside `$CTX`:
+
+```json
+{"files": {
+  "plan.md": ["/absolute/RUN_DIR/plan.md"],
+  "spec.md": ["/absolute/RUN_DIR/spec.md"],
+  "state.json": ["/absolute/RUN_DIR/state.json"],
+  "log-slice.md": ["/absolute/RUN_DIR/checkpoints/NN-log-slice.md"]
+}}
+```
+
+Each value is an ordered nonempty list of absolute **live source** paths. Prefer separate
+artifacts; a composite is rebuilt by concatenating its listed sources with one newline
+between each, never by copying an earlier composite. Sources inside `$CTX`, prior review archives, archived slices, full logs, transcripts
+or verdicts are refused. Do not include framework instructions or digest files: the
+helper derives those itself. Missing recipes/sources fail closed before a provider runs.
+For integration, run the gate into `checkpoints/NN-gate-sources/` (outside `$CTX`) and
+include its current `integration-results.json` and each retained `gate-output/` file in
+`files`; regenerate the gate for every integration review. Routine packets exclude them.
+
+`stage-cold-review.py`, called by the dispatcher, derives packet bytes and their digests
+from the same source reads, checks the sources stayed stable while building, replaces the
+old packet completely, and preserves the exact read-set in
+`checkpoints/<spawn-id>-reviewer-context/` **before** dispatch. It also archives the current
+slice at `checkpoints/<spawn-id>-log-slice.md`. Both archives are outside `$CTX` and must
+never be added to a later packet. A reused spawn id is refused; retry with a new id.
+Lost historical inputs are recorded as lost, never reconstructed and labelled original.
+Cursor `--resume` validates the frozen packet against that spawn's archive; it does not
+restage from potentially changed live sources while a Task is in flight. Readiness audits
+retain their separate sealed-packet contract.
+
+The rebuilt packet contains exactly:
 
 - **the artifact under review** (copied by name), the primary artifact named as
   `<artifact-basename>`;
@@ -295,14 +336,16 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
 - **`delegate-reviewer.md`** — the cold-reviewer-mode SECTION of `agents/delegate.md`, via the W-d
   slice (v2 §4);
 - **`integration-results.json`** — integration checkpoints only, written by `integration-gate.sh`
-  into `$CTX`. The gate's kept output sits beside it in `$CTX/gate-output/`; `run-cold-reviewer.sh`
+  into the separate gate-source directory and copied from that source recipe. The kept
+  output is staged in `$CTX/gate-output/`; `run-cold-reviewer.sh`
   leaves that directory out of the artifact manifest, like `conventions/`.
 - **`artifact.sha256`** — the artifact's SHA-256 in `sha256sum` text format, written into `$CTX` by
-  `run-cold-reviewer.sh` itself (not by the stager) immediately before the spawn. The reviewer is
+  `stage-cold-review.py` while building the packet, before archiving and dispatch. The reviewer is
   Read-only and cannot compute a digest; the task prompt tells it to copy this value verbatim into
   `Artifact-hash`. Added 2026-09-05 after a routine verdict returned an all-zeros placeholder hash
   and had to be discarded (FR9).
-- **`artifacts.sha256`**: the packet manifest, also written by `run-cold-reviewer.sh`. One
+- **`artifacts.sha256`**: the packet manifest, also written by `stage-cold-review.py`
+  during packet build, before archiving. One
   `sha256sum`-format line per artifact (primary first, then the supplementary artifacts sorted),
   packet-relative paths. The prompt names every artifact with its digest, and the verdict's
   `Artifacts-read` must list each one as `{path, sha256}` copied from this file. The helper checks
@@ -314,7 +357,9 @@ For each reviewer spawn the Delegate stages `$CTX = RUN_DIR/checkpoints/NN-conte
 
 **NEVER staged:** the full `log.md`, the full dual-mode `agents/delegate.md`, any prior
 `NN-verdict.md`. `$CTX` is the cold reviewer's only read root (v2 §3), so the manifest IS its world;
-the full `log.md` being absent is what makes the verdict cold (FR5/EC8).
+the full `log.md` being absent is what makes the verdict cold (FR5/EC8). Derived
+`*log-slice*` names are forbidden; only the root current `log-slice.md` is allowed in
+routine/integration packets. Readiness packets forbid every log-slice name.
 
 ## v2 §10 — Cold-reviewer signal backstop + named gap (FR8 / AC3)
 

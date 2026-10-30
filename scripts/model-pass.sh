@@ -8,7 +8,8 @@
 #                       outline) and the skeptic pass (after the revise step).
 #
 # Makes no routing decisions and promotes nothing: the caller supplies model, draft,
-# instruction, and out-file. The script does ONE chat-completions POST and writes the
+# instruction, and out-file. The script makes ONE model call (an OpenRouter chat-completions
+# POST, or one local `codex exec` one-shot for a codex: model) and writes the
 # candidate to <out-file> ONLY when every integrity check passes — otherwise it writes
 # nothing, errors to stderr, and exits non-zero, so "out-file exists" reliably means
 # "this candidate cleared all checks". The prior draft is never touched on failure.
@@ -17,7 +18,8 @@
 #   model-pass.sh <model-spec> <draft-file> <instruction-file> <out-file> [--run-dir RUN_DIR] [--mode improve|memo]
 #
 # Arguments:
-#   <model-spec>        provider-prefixed model id, e.g. openrouter:x-ai/grok-4.3
+#   <model-spec>        provider-prefixed model id, e.g. openrouter:x-ai/grok-4.3 or
+#                       codex:gpt-6.1-sol (the local Codex CLI, on Robin's subscription)
 #   <draft-file>        absolute path to the draft to improve (must exist, non-empty)
 #   <instruction-file>  absolute path to the instruction file (must exist, non-empty)
 #   <out-file>          absolute path to write the candidate (written only on full success;
@@ -32,19 +34,26 @@
 # Exit codes:
 #   0   candidate written to <out-file>
 #   1   bad arguments or missing input files (before any network call)
-#   2   provider error (non-2xx HTTP, curl failure, or .error in the response body)
+#   2   provider error (non-2xx HTTP, curl failure, or .error in the response body; for
+#       codex:, a non-zero `codex exec` exit or the MODEL_PASS_CODEX_TIMEOUT timeout)
 #   3   integrity check failed (finish_reason != "stop", empty/whitespace content,
 #       output bytes outside the mode's bound: 50%-300% of input for improve,
 #       300B-40000B absolute for memo; or, in improve mode, a markdown link target
 #       present in the draft is missing from the candidate — scripts/link-set-check.sh.
 #       Set MODEL_PASS_ALLOW_LINK_DROP=1 to waive the link check for a pass whose
 #       instruction deliberately permits removing links)
-#   4   OpenRouter key missing (OPENROUTER_API_KEY absent and no configured keystore)
+#   4   OpenRouter key missing (OPENROUTER_API_KEY absent and no configured keystore), or
+#       for codex:, the Codex CLI is not on PATH (override with CODEX_BIN)
 #
-# v1 routes the openrouter: provider prefix ONLY. The prefix is the extension seam:
-# an openai:/anthropic: direct arm is added only when a model OpenRouter cannot proxy
-# forces it. Body is built with `jq -n` (the draft is arbitrary markdown — never
-# string-interpolated). Bash 3.2 / macOS portable.
+# Two provider prefixes are routed. openrouter: makes the chat-completions POST; the body is
+# built with `jq -n` (the draft is arbitrary markdown — never string-interpolated). codex: runs
+# the local Codex CLI once (Robin, 2026-10-12, issue #107): `codex exec`, ephemeral, user config
+# ignored, read-only sandbox, launched from an empty temp dir so it cannot read any repo, no
+# approvals. The prompt is the instruction file, then the mode frame, then the draft, on stdin.
+# Codex reports no finish_reason, so the log records `codex-exit-0` in its place; every
+# content check below (non-empty, length bounds, link set) applies to both arms.
+# Codex knobs: MODEL_PASS_CODEX_EFFORT (default medium), MODEL_PASS_CODEX_TIMEOUT seconds
+# (default 900). Bash 3.2 / macOS portable.
 #
 # Spec refs: plan-write-article-workflow.md §1; plan.md chunk 1.
 
@@ -57,6 +66,9 @@ readonly MAX_TOKENS=8192
 readonly TEMPERATURE=0.3
 readonly MEMO_MIN_BYTES=300
 readonly MEMO_MAX_BYTES=40000
+readonly CODEX_EFFORT="${MODEL_PASS_CODEX_EFFORT:-medium}"
+readonly CODEX_TIMEOUT="${MODEL_PASS_CODEX_TIMEOUT:-900}"
+CODEX_BIN="${CODEX_BIN:-codex}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 readonly SCRIPT_DIR
 
@@ -110,7 +122,6 @@ INSTRUCTION_FILE="${POSITIONAL[2]}"
 OUT_FILE="${POSITIONAL[3]}"
 
 command -v jq >/dev/null 2>&1   || die 1 "jq is required but not found on PATH"
-command -v curl >/dev/null 2>&1 || die 1 "curl is required but not found on PATH"
 
 # ── input validation (fail fast, name the file, before any network call) ────────
 
@@ -122,24 +133,38 @@ command -v curl >/dev/null 2>&1 || die 1 "curl is required but not found on PATH
 OUT_DIR="$(dirname "$OUT_FILE")"
 [ -d "$OUT_DIR" ] || die 1 "out-file parent directory does not exist: $OUT_DIR"
 
-# Provider prefix: v1 routes openrouter: ONLY. Split on the first colon.
+# Provider prefix: openrouter: or codex:. Split on the first colon.
 case "$MODEL_SPEC" in
   openrouter:?*)
+    PROVIDER="openrouter"
     MODEL_ID="${MODEL_SPEC#openrouter:}"
     ;;
+  codex:?*)
+    PROVIDER="codex"
+    MODEL_ID="${MODEL_SPEC#codex:}"
+    ;;
   *)
-    die 1 "unroutable provider prefix in '$MODEL_SPEC' — only openrouter: supported in v1"
+    die 1 "unroutable provider prefix in '$MODEL_SPEC' — expected openrouter: or codex:"
     ;;
 esac
 
-# ── OpenRouter key (loud-fail if absent; never echo the secret) ─────────────────
+if [ "$PROVIDER" = "openrouter" ]; then
+  command -v curl >/dev/null 2>&1 || die 1 "curl is required but not found on PATH"
 
-if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -n "$KEYSTORE" ]; then
-  [ -f "$KEYSTORE" ] || die 4 "keystore not found: $KEYSTORE"
-  # shellcheck disable=SC1090
-  . "$KEYSTORE"
+  # ── OpenRouter key (loud-fail if absent; never echo the secret) ───────────────
+  if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -n "$KEYSTORE" ]; then
+    [ -f "$KEYSTORE" ] || die 4 "keystore not found: $KEYSTORE"
+    # shellcheck disable=SC1090
+    . "$KEYSTORE"
+  fi
+  [ -n "${OPENROUTER_API_KEY:-}" ] || die 4 "OPENROUTER_API_KEY empty or unset; export it or set OPENROUTER_KEYSTORE"
+else
+  command -v "$CODEX_BIN" >/dev/null 2>&1 || die 4 "Codex CLI not found: $CODEX_BIN (install it or set CODEX_BIN)"
+  command -v perl >/dev/null 2>&1 || die 1 "perl is required for the codex timeout but not found on PATH"
+  case "$CODEX_TIMEOUT" in
+    ''|*[!0-9]*) die 1 "MODEL_PASS_CODEX_TIMEOUT must be whole seconds, got '$CODEX_TIMEOUT'" ;;
+  esac
 fi
-[ -n "${OPENROUTER_API_KEY:-}" ] || die 4 "OPENROUTER_API_KEY empty or unset; export it or set OPENROUTER_KEYSTORE"
 
 # ── input byte count (load-bearing for the length-delta check) ──────────────────
 # wc -c counts bytes (not characters), which is what we compare output against.
@@ -177,6 +202,57 @@ if [ "$MODE" = "memo" ]; then
 else
   USER_FRAME="Improve the following draft:"
 fi
+
+# Temp files for either arm, removed on any exit. OUT_TMP is set before the length check.
+CODEX_DIR=""
+OUT_TMP=""
+cleanup() {
+  [ -n "$OUT_TMP" ] && rm -f "$OUT_TMP"
+  [ -n "$CODEX_DIR" ] && rm -rf "$CODEX_DIR"
+  return 0
+}
+trap cleanup EXIT
+
+if [ "$PROVIDER" = "codex" ]; then
+  # ── the one codex exec ──────────────────────────────────────────────────────────
+  # An empty temp dir is the working root, so the agent has no repo to read; read-only
+  # sandbox, no approvals, no saved session, user config ignored (auth still comes from
+  # CODEX_HOME). perl's alarm bounds the run: SIGALRM ends codex and the arm exits 2.
+  CODEX_DIR="$(mktemp -d "${TMPDIR:-/tmp}/model-pass-codex.XXXXXX")"
+  {
+    printf '%s\n\n' "You are running a single text-editing pass. Do not run commands, read files, or edit files. Reply with only the requested text and nothing else."
+    cat "$INSTRUCTION_FILE"
+    printf '\n\n%s\n\n' "$USER_FRAME"
+    cat "$DRAFT_FILE"
+  } > "$CODEX_DIR/prompt.md"
+
+  CODEX_RC=0
+  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "$CODEX_TIMEOUT" \
+    "$CODEX_BIN" --ask-for-approval never exec \
+      --ephemeral \
+      --ignore-user-config \
+      --skip-git-repo-check \
+      --color never \
+      --sandbox read-only \
+      -C "$CODEX_DIR" \
+      -m "$MODEL_ID" \
+      -c "model_reasoning_effort=\"$CODEX_EFFORT\"" \
+      -o "$CODEX_DIR/last.md" \
+      - \
+      < "$CODEX_DIR/prompt.md" \
+      > "$CODEX_DIR/events.log" \
+      2> "$CODEX_DIR/stderr.log" \
+    || CODEX_RC=$?
+
+  if [ "$CODEX_RC" -ne 0 ]; then
+    if [ "$CODEX_RC" -eq 142 ]; then
+      die_logged 2 "codex-timeout" "0" "codex exec exceeded ${CODEX_TIMEOUT}s (MODEL_PASS_CODEX_TIMEOUT)"
+    fi
+    die_logged 2 "codex-exit-$CODEX_RC" "0" "codex exec exited $CODEX_RC — stderr: $(tail -n 5 "$CODEX_DIR/stderr.log" 2>/dev/null | tr '\n' ' ')"
+  fi
+  FINISH_REASON="codex-exit-0"
+  CONTENT="$(cat "$CODEX_DIR/last.md" 2>/dev/null || true)"
+else  # openrouter arm, left unindented so its history stays readable
 
 BODY="$(jq -n \
   --arg model "$MODEL_ID" \
@@ -234,8 +310,11 @@ if [ "$FINISH_REASON" != "stop" ]; then
   die_logged 3 "$FINISH_REASON" "0" "finish_reason is '$FINISH_REASON', expected exactly 'stop' (truncation/filter/refusal → rejecting candidate)"
 fi
 
-# d. non-empty / non-whitespace content
 CONTENT="$(printf '%s' "$RESPONSE" | jq -r '.choices[0].message.content // ""' 2>/dev/null || echo "")"
+fi  # end openrouter arm
+
+# d. non-empty / non-whitespace content (both arms)
+
 if [ -z "$(printf '%s' "$CONTENT" | tr -d '[:space:]')" ]; then
   die_logged 3 "$FINISH_REASON" "0" "model returned empty or whitespace-only content"
 fi
@@ -245,8 +324,6 @@ fi
 #    Write the candidate to a temp file FIRST (this is also the atomic-write staging),
 #    measure its byte count, and only mv into place after this final check passes.
 OUT_TMP="${OUT_FILE}.tmp.$$"
-# Ensure the temp file is removed on any unexpected early exit from here on.
-trap 'rm -f "$OUT_TMP"' EXIT
 printf '%s' "$CONTENT" > "$OUT_TMP"
 OUTPUT_BYTES="$(wc -c < "$OUT_TMP" | tr -d '[:space:]')"
 
@@ -279,7 +356,7 @@ fi
 
 # ── atomic write — all checks passed; promote the temp file into place ──────────
 mv "$OUT_TMP" "$OUT_FILE"
-trap - EXIT
+OUT_TMP=""
 
 log_action "ok" "0" "$FINISH_REASON" "$OUTPUT_BYTES"
 exit 0

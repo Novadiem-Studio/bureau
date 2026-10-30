@@ -5,7 +5,8 @@
 #   run-cold-reviewer.sh [--resume <task-response-file>] \
 #     <RUN_DIR> <CTX> <checkpoint> <spawn-id> <artifact-basename> <routine|integration|readiness-audit>
 #
-# The caller stages CTX (bridge v2 §9). This script adds two files to it itself:
+# The caller supplies checkpoints/NN-review-sources.json (bridge v2 §9). This script
+# rebuilds CTX from those live sources and archives the packet before each spawn, adding:
 # $CTX/artifact.sha256, the primary artifact's digest, so a Read-only reviewer can bind its
 # verdict (FR9) by copying instead of guessing; and $CTX/artifacts.sha256, the digest of
 # every artifact in the packet (any staged file outside the fixed infrastructure set),
@@ -342,7 +343,7 @@ if raw_paths != sorted(raw_paths):
 forbidden_basenames = {"log.md", "state.json", "delegate-state.json", "log-slice.md"}
 for path, unused_hash in entries:
     basename = path.rsplit("/", 1)[-1].lower()
-    if (basename in forbidden_basenames or "transcript" in basename or
+    if (basename in forbidden_basenames or "log-slice" in basename or "transcript" in basename or
             "verdict" in basename or basename.startswith("checkpoint-")):
         reject("allowlist contains forbidden run-history basename: " + basename)
 
@@ -3468,6 +3469,14 @@ RUN_DIR="$(cd "$RUN_DIR" && pwd -P)" || fail "cannot resolve RUN_DIR"
 CHECKPOINTS_DIR="$RUN_DIR/checkpoints"
 mkdir -p "$CHECKPOINTS_DIR" || fail "cannot create checkpoints directory"
 
+# A source recipe is mandatory: a digest of an old staged copy proves no freshness.
+# Readiness has its own sealed-packet contract and dispatches before this path.
+stage_action=stage
+[ -z "$RESUME_RESPONSE" ] || stage_action=resume
+python3 "$SCRIPT_DIR/stage-cold-review.py" "$ROOT" "$RUN_DIR" "$CTX" \
+  "$CHECKPOINT" "$SPAWN_ID" "$ARTIFACT_BASE" "$REVIEW_MODE" "$stage_action" \
+  || fail "cannot rebuild or validate review packet from current sources"
+
 for required in \
   "$CTX/bureau-agents.md" \
   "$CTX/delegate-reviewer.md" \
@@ -3489,12 +3498,12 @@ fi
 if find "$CTX" -type l -print -quit 2>/dev/null | grep -q .; then
   fail "staged context contains a symlink"
 fi
-if find "$CTX" -type f \( -name 'log.md' -o -iname '*transcript*' \) -print -quit 2>/dev/null | grep -q .; then
+if find "$CTX" -type f \( -name 'log.md' -o -iname '*transcript*' -o \( -iname '*log-slice*' ! -path "$CTX/log-slice.md" \) \) -print -quit 2>/dev/null | grep -q .; then
   fail "staged context contains a forbidden full-log or transcript-like file"
 fi
 
 # Artifact digest (FR9 hash binding). The reviewer is Read-only and cannot compute a
-# SHA-256, so the harness computes it here from the STAGED artifact and stages it as
+# SHA-256, so the source stager derives it from current input bytes and publishes it as
 # $CTX/artifact.sha256 (sha256sum text format: "<hex>  <basename>"). The task prompt
 # names the file and tells the reviewer to copy the digest verbatim into Artifact-hash;
 # the Delegate still verifies the binding after the verdict returns. Without this file
@@ -3509,53 +3518,10 @@ sha256_file() {
     python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
   fi
 }
-ARTIFACT_SHA256="$(sha256_file "$CTX/$ARTIFACT_BASE")" || fail "cannot hash staged artifact"
-case "$ARTIFACT_SHA256" in
-  *[!a-f0-9]*|'') fail "artifact digest is not 64 hex chars: '$ARTIFACT_SHA256'" ;;
-esac
-[ "${#ARTIFACT_SHA256}" -eq 64 ] || fail "artifact digest length is not 64: '$ARTIFACT_SHA256'"
-printf '%s  %s\n' "$ARTIFACT_SHA256" "$ARTIFACT_BASE" > "$CTX/artifact.sha256" \
-  || fail "cannot stage artifact.sha256 into CTX"
-
-# Packet manifest (#79). Every staged file outside the fixed infrastructure set is an
-# artifact under review, and the reviewer reads only what the prompt names. The prompt
-# used to name the primary artifact alone, so a spec.md staged beside plan.md went
-# unread and the reviewer accepted spec-side fixes on the plan's evidence (rheo-stream
-# run 0d, checkpoint 02, 2026-09-25). The harness now writes $CTX/artifacts.sha256
-# (every artifact, primary first, packet-relative paths) and the prompt names each one
-# with its digest. artifact.sha256 still means the primary alone (FR9).
+# stage-cold-review.py hashes the bytes as it derives them from live sources.
+# Resume has already compared the whole packet with its frozen spawn archive.
+ARTIFACT_SHA256="$(cut -c1-64 "$CTX/artifact.sha256")"
 ARTIFACTS_MANIFEST="$CTX/artifacts.sha256"
-python3 - "$CTX" "$ARTIFACT_BASE" "$ARTIFACTS_MANIFEST" <<'PY' || fail "cannot stage artifacts.sha256 into CTX"
-import hashlib, os, sys
-ctx, primary, out = sys.argv[1:4]
-INFRA_FILES = {"bureau-agents.md", "delegate-reviewer.md", "conventions.md", "log-slice.md",
-               "state.json", "artifact.sha256", "artifacts.sha256", "integration-results.json"}
-found = []
-for root, dirs, files in os.walk(ctx):
-    rel_root = os.path.relpath(root, ctx)
-    if rel_root == ".":
-        # conventions/ is loaded on demand; gate-output/ holds the integration
-        # gate's kept stdout/stderr logs (issue #92), diagnostic evidence that
-        # integration-results.json summarises, not an artifact under review.
-        dirs[:] = [d for d in dirs if d not in ("conventions", "gate-output")]
-    for name in files:
-        rel = name if rel_root == "." else os.path.join(rel_root, name)
-        if rel in INFRA_FILES:
-            continue
-        if any(ord(c) < 0x20 or ord(c) == 0x7f for c in rel):
-            sys.stderr.write("run-cold-reviewer: staged file name has a control character: %r\n" % rel)
-            sys.exit(1)
-        found.append(rel)
-if primary not in found:
-    sys.stderr.write("run-cold-reviewer: primary artifact %s is not in the packet\n" % primary)
-    sys.exit(1)
-ordered = [primary] + sorted(p for p in found if p != primary)
-with open(out, "w") as fh:
-    for rel in ordered:
-        with open(os.path.join(ctx, rel), "rb") as src:
-            digest = hashlib.sha256(src.read()).hexdigest()
-        fh.write("%s  %s\n" % (digest, rel))
-PY
 ARTIFACTS_MANIFEST_SHA256="$(sha256_file "$ARTIFACTS_MANIFEST")" || fail "cannot hash artifacts.sha256"
 
 RUNTIME="${BUREAU_REVIEWER_HOST:-}"

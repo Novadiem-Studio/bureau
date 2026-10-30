@@ -14,14 +14,14 @@ command: |
   # bureau-lite run with an unscanned commit: the gate records a red risk-coverage gate
   printf '{"workflow":"bureau-lite","workflow_shifts":[],"scope":{},"git":{"base_sha":"%s","base_branch":"main","worktree_path":"%s"}}\n' "$BASE" "$W" > "$R/state.json"
   "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
-    --claimed-gates '[]' --state-json "$R/state.json" --out "$TMP/ctx1" >/dev/null 2>&1 || true
-  jq -e 'any(.gates[]; .name=="risk-coverage" and .result=="red" and (.problems|length>0))' "$TMP/ctx1/integration-results.json" >/dev/null \
+    --known-flaky-gates '["risk-coverage"]' --claimed-gates '[]' --state-json "$R/state.json" --out "$TMP/ctx1" >/dev/null 2>&1 || true
+  jq -e 'any(.gates[]; .name=="risk-coverage" and .result=="red" and .flaky!=true and (.problems|length>0))' "$TMP/ctx1/integration-results.json" >/dev/null \
     || { echo "FAIL: no red risk-coverage gate"; cat "$TMP/ctx1/integration-results.json"; exit 1; }
   [ -f "$TMP/ctx1/risk-coverage.json" ] || { echo "FAIL: no risk-coverage.json in the gate context"; exit 1; }
   # a feature run gets no risk-coverage gate at all
   printf '{"workflow":"feature","workflow_shifts":[],"scope":{}}\n' > "$R/state.json"
   "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
-    --claimed-gates '[]' --state-json "$R/state.json" --out "$TMP/ctx2" >/dev/null 2>&1 || true
+    --known-flaky-gates '["risk-coverage"]' --claimed-gates '[]' --state-json "$R/state.json" --out "$TMP/ctx2" >/dev/null 2>&1 || true
   jq -e '(.gates|length>0) and all(.gates[]; .name!="risk-coverage")' "$TMP/ctx2/integration-results.json" >/dev/null \
     || { echo "FAIL: risk-coverage gate on a feature run"; exit 1; }
   echo PASS

@@ -255,7 +255,14 @@ sys.exit(0 if any(isinstance(x, dict) and x.get("to") == "bureau-lite" for x in 
   USES_LITE=1
 fi
 PROMPTS_OPTIONAL=0
-if [ "$USES_LITE" -eq 1 ] && [ "$PROMPTS_MODE" = "file" ] && [ ! -f "$PROMPTS" ]; then
+ACTIVE_WORKFLOW="$WORKFLOW"
+if [ -f "$_STATE_JSON" ]; then
+  ACTIVE_WORKFLOW=$(python3 -c 'import json,sys
+s = json.load(open(sys.argv[1]))
+shifts = [x for x in (s.get("workflow_shifts") or []) if isinstance(x, dict)]
+print(shifts[-1].get("to", "") if shifts else s.get("workflow", ""))' "$_STATE_JSON" 2>/dev/null)
+fi
+if [ "$ACTIVE_WORKFLOW" = "bureau-lite" ] && [ "$PROMPTS_MODE" = "file" ] && [ ! -f "$PROMPTS" ]; then
   PROMPTS_OPTIONAL=1
 fi
 # bureau-lite close-out: once the build worktree exists, --phase final also requires
@@ -263,7 +270,9 @@ fi
 # cannot close a run whose risk routing has a gap or an unreviewed flag.
 if [ "$PHASE" = "final" ] && [ "$USES_LITE" -eq 1 ]; then
   _LITE_WT=$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("git") or {}).get("worktree_path") or "")' "$_STATE_JSON" 2>/dev/null)
-  if [ -n "$_LITE_WT" ] && [ -d "$_LITE_WT" ]; then
+  if [ -n "$_LITE_WT" ] && [ ! -d "$_LITE_WT" ]; then
+    add_defect "state.json:0 — risk-coverage — recorded build worktree is missing: $_LITE_WT"
+  elif [ -n "$_LITE_WT" ]; then
     _cov_err="$WORK/risk-coverage.err"
     if ! "$(cd "$(dirname "$0")" && pwd)/risk-coverage.sh" "$RUN_DIR" >/dev/null 2>"$_cov_err"; then
       add_defect "risk-tags/:0 — risk-coverage — $(tr '\n' ' ' < "$_cov_err" | cut -c1-600)"

@@ -10,11 +10,13 @@ command: |
   TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
   RD="$TMP/run"; SCR="$TMP/scripts"
   mkdir -p "$RD/checkpoints" "$SCR"
+  cp "$ROOT/scripts/"*.py "$SCR/"
   cp "$ROOT/scripts/"*.sh "$SCR/" 2>/dev/null
   cp -R "$ROOT/scripts/lib" "$SCR/" 2>/dev/null || true
   # run-cold-reviewer.sh derives ROOT from its own location ($SCR/..), so give the
   # copied tree the real AGENTS.md, config/ and docs/ it binds against.
-  ln -s "$ROOT/AGENTS.md" "$TMP/AGENTS.md"
+  cp "$ROOT/AGENTS.md" "$TMP/AGENTS.md"
+  ln -s "$ROOT/agents" "$TMP/agents"
   ln -s "$ROOT/config" "$TMP/config"
   ln -s "$ROOT/docs" "$TMP/docs"
   NOTED="$RD/checkpoints/notify.recorded"
@@ -61,7 +63,7 @@ command: |
 
   # the attended recovery completes the request: resume with a Task response, then verdict-write
   CTX="$RD/checkpoints/01-context"
-  printf '{"Decision":"proceed","Artifact-hash":"%s","Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" > "$RD/checkpoints/01-1-1-reviewer-task-response.json"
+  printf '{"Decision":"proceed","Artifact-hash":"%s","Artifacts-read":[{"path":"artifact.md","sha256":"%s"}],"Uncertainties":"none","Rationale":"fixture","Required-changes":"none","Escalation":"none","Ledger":"fixture"}\n' "$HASH" "$HASH" > "$RD/checkpoints/01-1-1-reviewer-task-response.json"
   META=$(bash "$ROOT/scripts/run-cold-reviewer.sh" --resume "$RD/checkpoints/01-1-1-reviewer-task-response.json" "$RD" "$CTX" 01 01-1-1 artifact.md routine 2>"$TMP/resume.err") \
     || { echo "FAIL: attended resume against the preserved packet failed"; cat "$TMP/resume.err"; exit 1; }
   VP=$(printf '%s' "$META" | jq -r .verdict_path)

@@ -313,12 +313,18 @@ def main():
     r = git("diff", "--name-status", "-z", "-M", "--no-ext-diff", base, head)
     if r.returncode != 0:
         raise Fail("git diff --name-status failed: %s" % r.stderr.strip())
-    fields = r.stdout.split("\0")
+    if r.stdout and not r.stdout.endswith("\0"):
+        raise Fail("truncated git diff --name-status record")
+    fields = r.stdout.split("\0")[:-1]
     paths = []
     i = 0
-    while i < len(fields) and fields[i]:
+    while i < len(fields):
         status = fields[i]
+        if not re.fullmatch(r"(?:[ACDMRTUXB]|[RCM][0-9]+)", status):
+            raise Fail("invalid git diff --name-status status %r" % status)
         n = 2 if status[:1] in ("R", "C") else 1
+        if len(fields) < i + 1 + n or not all(fields[i + 1:i + 1 + n]):
+            raise Fail("truncated git diff --name-status paths")
         for p in fields[i + 1:i + 1 + n]:
             if p and p not in paths:
                 paths.append(p)
@@ -372,15 +378,17 @@ def main():
             else:
                 rem_old = rem_new = 0
             if side is not None:
-                if cur is None or ignored(cur):
+                names = [n for n in (old_name, new_name) if n]
+                if not names or all(ignored(n) for n in names):
                     continue
                 body = line[1:]
                 for t in tags:
-                    if t["_scope"] is not None and not t["_scope"].search(cur):
+                    if t["_scope"] is not None and not any(t["_scope"].search(n) for n in names):
                         continue
                     for src, rx in t["_lines"]:
                         if rx.search(body):
-                            hit(t, {"kind": "line", "file": cur, "side": side, "line": ln, "pattern": src})
+                            hit(t, {"kind": "line", "file": old_name if side == "-" else new_name,
+                                    "side": side, "line": ln, "pattern": src})
                             break
                 continue
         if line.startswith("diff --git "):

@@ -385,7 +385,9 @@ while IFS= read -r _line; do
     BLOCKER_END)
       # Process this blocker
       if [ "$_bkind" = "presence" ]; then
-        if ! grep -qF "$_banchor" "$_bpath" 2>/dev/null; then
+        # `--` ends options: an anchor that starts with `-` (say `--force`) is a
+        # pattern to find, not a grep flag (issue #115).
+        if ! grep -qF -- "$_banchor" "$_bpath" 2>/dev/null; then
           echo "DEFECT: citation-not-found for blocker $_bid — anchor \"$_banchor\" not found in $_bpath"
           exit 1
         fi
