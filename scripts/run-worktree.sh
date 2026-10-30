@@ -136,6 +136,10 @@ cmd_create() {
   fi
 
   git -C "$REPO" worktree add -b "$branch" "$WORKTREE_DIR" "$BASE_BRANCH"
+  # The commit the run branch starts from. workflows/bureau-lite.md anchors its
+  # risk-tag record chain and its project risk policy here (scripts/risk-coverage.sh).
+  local base_sha
+  base_sha="$(git -C "$WORKTREE_DIR" rev-parse HEAD)"
 
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -143,6 +147,7 @@ cmd_create() {
   git_json="$(jq -n \
     --arg repo "$REPO" \
     --arg base "$BASE_BRANCH" \
+    --arg base_sha "$base_sha" \
     --arg branch "$branch" \
     --arg worktree "$WORKTREE_DIR" \
     --arg policy "$MERGE_POLICY" \
@@ -154,6 +159,7 @@ cmd_create() {
       enabled: true,
       repo: $repo,
       base_branch: $base,
+      base_sha: $base_sha,
       branch: $branch,
       worktree_path: $worktree,
       merge_policy: $policy,

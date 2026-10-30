@@ -10,8 +10,9 @@ DON'T announce themselves. Local runs normally ship through the self-gate; publi
 additional cold read because the delivery record promises reviewed evidence.
 
 **When NOT to use:**
-- A new product or feature that needs requirements or design before anyone can build → `feature`.
-  This workflow has no spec/plan/prompt phase; if you can't just build it, it isn't this.
+- A new product or feature that needs requirements or design before anyone can build → `feature`,
+  or `bureau-lite` when it needs a short spec and plan but not the full review cadence. This
+  workflow has no spec/plan/prompt phase; if you can't just build it, it isn't this.
 - A framework / canon change — anything touching `workflows/`, `agents/`, `docs/conventions*`, a
   `plans/` prompt folder, or `index.md` → the full pipeline / `execute-plan` with its gates. Canon
   changes carry the promotion + battle-test gate, which lives in the fuller review, not here.

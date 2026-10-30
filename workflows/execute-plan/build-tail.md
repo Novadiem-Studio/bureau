@@ -152,6 +152,8 @@ startup/core workflow is `workflows/execute-plan.md`; prompt-folder rules live i
      it is evidence, not argument, and it lets the cold read contest skipped findings instead of
      re-finding fixed ones. Nothing from `log.md` travels with it.
    - **The Challenger** (**strong**, fresh context required) cold-reviews that single diff against the prompt and the plan → findings.
+     Under `bureau-lite`, or once `state.json#workflow_shifts` has moved a run to it, this review
+     runs only on units `scripts/risk-tags.sh` flags (`workflows/bureau-lite.md` step 8).
    - **The Cleric (mode: review)** additionally checks UI prompts: the built screens against
      `design/manifest.md` (components, tokens, states, flow, real data). FAITHFUL or DRIFTED
      with findings; drift fixes route back to The Mage with the correctness fixes.

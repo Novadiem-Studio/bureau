@@ -126,7 +126,8 @@ and the Envoy's whole-PR pass, not from the gates (Novadiem-Studio/bureau#92). S
 1. **Every prompt keeps its review loop, unchanged.** The coder's own checkpoint (targeted tests
    plus lint/typecheck, run in the foreground), the CodeRabbit pass, and the Challenger's cold
    build-diff review, per `workflows/execute-plan/build-tail.md` step 6. Accepting a prompt is a
-   Conductor adjudication, not an integration checkpoint.
+   Conductor adjudication, not an integration checkpoint. (`bureau-lite` keeps the Challenger
+   leg only for units `scripts/risk-tags.sh` flags; its integration cadence is this one.)
 2. **Routine integration checkpoints come at plan phase boundaries.** Return one after the last
    accepted prompt of each phase (`gate-point: phase`). Phases come from the prompt folder's
    `### Phase` headings in `00-index.md`, or from the plan's own phase sections when the folder

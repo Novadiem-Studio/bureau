@@ -629,6 +629,61 @@ goes to stdout and to `--out`.
 
 ---
 
+# Risk-tag check (`risk-tags.sh`) and coverage (`risk-coverage.sh`)
+
+`risk-tags.sh` decides whether one `bureau-lite` build unit gets a cold Challenger review, by
+matching the changed paths and changed lines of `base..head` against `config/risk-tags.json`
+(plus any ` ```json risk_tags``` ` block in `project-context.md` as committed at the run's
+start). Judgement may add a review; it may not skip one this script asks for
+(`workflows/bureau-lite.md` step 8).
+
+```bash
+POLICY_REF=$(jq -er '.git.base_sha //
+  ([.workflow_shifts[]? | select(.to == "bureau-lite")][-1].policy_ref) //
+  error("missing recorded risk policy ref")' "$RUN_DIR/state.json") || exit 2
+scripts/risk-tags.sh --worktree "$WORKTREE" --base "$UNIT_BASE" \
+  --policy-ref "$POLICY_REF" \
+  --out "$RUN_DIR/risk-tags/<NN>.json"
+```
+
+- **Exit 0 `clean`:** no tag fired. The unit ships on the coder's tests + CodeRabbit.
+- **Exit 1 `review`:** a `review` tag fired. Run the cold build-diff Challenger on the unit.
+- **Exit 3 `escalate`:** a `money` or `destructive-migration` tag (or a project tag raised to
+  `escalate`) fired. Stop and checkpoint.
+- **Exit 2 `error`:** bad args, missing `python3`/`git`, a dirty worktree, a base that is not an
+  ancestor of head, an empty range, an invalid config or project block, or any internal error.
+  Fail closed: treat as review.
+
+The record names files, line numbers and the matched pattern, never the line text, and carries
+the scan time, config sha256 and policy ref. A project block may only add tags or patterns or
+raise a class; `ignore_paths`, a lower class, a `line_scope` on a default tag or a second block
+is an exit 2.
+
+`risk-coverage.sh` is the check the Conductor does not grade. `integration-gate.sh` runs it at
+every integration gate of a run that uses `bureau-lite` and records a `risk-coverage` gate in
+`integration-results.json` (record at `$OUT/risk-coverage.json`); `preflight-artifacts.sh
+--phase final` runs it again at close-out. By hand:
+
+```bash
+scripts/risk-coverage.sh "$RUN_DIR" [--worktree <path>] [--out <file>]
+```
+
+It walks first-parent history from `state.json#git.base_sha` (or, after a downshift, from the
+`effective_from` unit's record; it ends at an upshift's `head`) and exits 1 on any of: a commit
+in no record (a merge needs none only when its side parents are on the base branch), a record
+whose re-scan with the default config and the run's policy ref disagrees with it, a
+review/error/escalate record with no `"status":"complete"` challenger-role SPAWN-EVENT for
+`challenger-unit-<unit>-<n>` after the record's scan time (a `review` record may instead have a
+later `RISK-TAGS waiver: unit <unit>` log heading), or an escalate record without a later
+`WORKFLOW-SHIFT: bureau-lite to execute-plan` heading and matching state entry. Escalation
+waivers cannot resume lite dispatch. Every lite interval is checked, including those before
+an upshift and later downshift. Failed re-scans block until repaired, and `known-flaky-gates`
+cannot demote coverage failures. Exit 0 also covers a run that
+never used `bureau-lite`; exit 2 is a setup error, including a `WORKFLOW-SHIFT` to bureau-lite
+in `log.md` that `state.json` does not record.
+
+---
+
 # CodeRabbit chunk pass (`coderabbit-pass.sh`)
 
 Runs one coder chunk through CodeRabbit **before** the Challenger sees it (issue #65). A

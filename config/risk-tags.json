@@ -1,0 +1,203 @@
+{
+  "version": 2,
+  "about": "Default risk tags for scripts/risk-tags.sh (workflows/bureau-lite.md). Patterns are Python regular expressions matched case-insensitively. `paths` match a changed file's repo-relative path; `lines` match an added or removed line of the diff. A tag with `line_scope` only counts line matches inside files whose path matches line_scope. class `review` = run the cold build-diff Challenger on that unit; class `escalate` = the run is no longer a bureau-lite run, stop and checkpoint. `ignore_paths` skips prose and binary files entirely, except files matching `ignore_except` (agent, skill and instruction files, the project's risk policy), which are always scanned. A project may ADD tags or patterns through a ```json risk_tags``` block in project-context.md; it cannot remove or downgrade anything here.",
+  "ignore_paths": [
+    "\\.(md|mdx|markdown|rst|adoc)$",
+    "(^|/)(package-lock\\.json|npm-shrinkwrap\\.json|yarn\\.lock|pnpm-lock\\.yaml|bun\\.lockb?|poetry\\.lock|uv\\.lock|Pipfile\\.lock|Cargo\\.lock|Gemfile\\.lock|go\\.sum|composer\\.lock)$",
+    "\\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|mp4|mov|pdf)$"
+  ],
+  "ignore_except": [
+    "(^|/)\\.claude/",
+    "(^|/)(workflows|skills|\\.codex|\\.cursor)/",
+    "(^|/)\\.bureau/regression/",
+    "(^|/)SKILL\\.md$",
+    "(^|/)agents/(.+/)?[^/]+\\.md$",
+    "(^|/)(CLAUDE|AGENTS|CODEX|GEMINI|CURSOR|GROK)\\.md$",
+    "(^|/)project-context\\.md$"
+  ],
+  "tags": [
+    {
+      "id": "oauth-auth",
+      "class": "review",
+      "description": "OAuth flows, auth callbacks, authentication and authorization checks, tenancy filters",
+      "paths": [
+        "(^|/)(auth|oauth2?|authn|authz|login|logout|sso|saml|oidc|sessions?|permissions?|acl|rbac|policies)(/|[._-]|$)",
+        "(^|/)middleware\\.(ts|js|mjs|py)$"
+      ],
+      "lines": [
+        "oauth",
+        "authenticat",
+        "authoriz",
+        "redirect_uri|callback_url|auth_callback",
+        "\\bpkce\\b|code_verifier|code_challenge",
+        "\\bcsrf\\b|\\bxsrf\\b",
+        "\\bjwt\\b|\\bjwks?\\b|bearer\\s",
+        "\\bsaml\\b|\\boidc\\b|openid",
+        "is_admin|has_role|requires?_role|login_required|permission_required|has_perm",
+        "get_current_user|depends\\(\\s*\\w*(user|auth)",
+        "\\btenant_?id\\b|\\bowner_?id\\b|row.level.security|\\brls\\b"
+      ]
+    },
+    {
+      "id": "tokens-secrets",
+      "class": "review",
+      "description": "Token storage, secret store, credentials, keys, cookies and crypto",
+      "paths": [
+        "(^|/)(secrets?|credentials?|creds|keys|keychain|keyring|vault|tokens?|crypto)(/|[._-]|$)",
+        "(^|/)\\.env(\\.|rc$|$)",
+        "\\.(pem|key|p12|pfx|jks)$"
+      ],
+      "lines": [
+        "access_?token|refresh_?token|id_?token|auth_?token|token_?store|store_?token",
+        "client_?secret|api_?key|private_?key|signing_?key",
+        "secret",
+        "credential(?!s?[\"']?\\s*:\\s*[\"']?(include|same-origin|omit))",
+        "password|passwd|passphrase",
+        "\\bencrypt|\\bdecrypt|\\bfernet\\b|\\bhmac\\b|\\bkms\\b|\\baes\\b|\\bnacl\\b|libsodium",
+        "keyring|keychain",
+        "(local|session)storage\\.setitem|document\\.cookie|cookies\\(\\)\\.set|set_?cookie|\\.cookie\\(",
+        "[\"'](token|jwt|session)[\"']"
+      ]
+    },
+    {
+      "id": "network-egress",
+      "class": "review",
+      "description": "Outbound network calls from the server side, webhooks, host and origin allowlists",
+      "paths": [
+        "(^|/)webhooks?(/|[._-]|$)"
+      ],
+      "lines": [
+        "\\bhttpx\\b|\\baiohttp\\b|\\brequests\\.(get|post|put|patch|delete|head|request|session)\\b",
+        "urllib\\.request|urlopen|http\\.client|\\bpycurl\\b",
+        "\\baxios\\b|node-fetch|\\bundici\\b|\\bgot\\(|\\bky\\(",
+        "\\bfetch\\(\\s*([\\\"'`]https?://|`\\$\\{|[\\w.]*(url|uri|api|endpoint|host|base)[\\w.]*\\s*[,)+])",
+        "\\bhttp\\.(get|post|head|newrequest|defaultclient)\\b|\\bnet\\.dial",
+        "\\bcurl\\s|\\bwget\\s",
+        "\\bsocket\\.|websocket|\\bgrpc\\b",
+        "webhook",
+        "allowed_?hosts|allow(ed)?_?origins|allowed_?domains|trusted_?hosts|\\bcors|access-control-allow|egress"
+      ]
+    },
+    {
+      "id": "tool-allowlist",
+      "class": "review",
+      "description": "Agent tool allowlists, agent and skill tool frontmatter, MCP server config, permission rules",
+      "paths": [
+        "(^|/)\\.claude/settings[^/]*\\.json$",
+        "(^|/)\\.mcp\\.json$",
+        "(^|/)[^/]*mcp[^/]*\\.(json|ya?ml|toml)$"
+      ],
+      "lines": [
+        "allowed_?tools|disallowed_?tools|tool_?allow_?list",
+        "allow_?list|deny_?list|block_?list",
+        "--tools\\b|--allowed-tools|--disallowed-tools|permission_?mode|dangerously",
+        "mcp_?servers",
+        "^\\s*(tools|allowed-tools|disallowed-tools)\\s*:"
+      ]
+    },
+    {
+      "id": "redaction",
+      "class": "review",
+      "description": "Redaction, PII scrubbing, logging of sensitive values",
+      "paths": [
+        "(^|/)(redact|redaction|scrub|sanitize|pii)[^/]*(/|$)"
+      ],
+      "lines": [
+        "redact",
+        "\\bscrub",
+        "sanitiz",
+        "\\bpii\\b",
+        "\\bmask_|masked_|\\bunmask",
+        "\\b(log|logger|logging|console|print)\\b\\.?\\w*\\(.*(token|secret|password|authorization|cookie|api_?key|\\btok\\b)"
+      ]
+    },
+    {
+      "id": "durable-state",
+      "class": "review",
+      "description": "Additive schema migrations and DDL",
+      "paths": [
+        "(^|/)(migrations?|alembic|db/migrate)(/|\\.|$)",
+        "(^|/)(schema\\.(sql|rb|prisma)|structure\\.sql)$",
+        "\\.sql$"
+      ],
+      "lines": [
+        "\\bcreate\\s+table\\b|\\balter\\s+table\\b|\\bcreate\\s+(unique\\s+)?index\\b",
+        "\\badd_?column\\b|\\bcreate_?table\\b|\\badd_?index\\b|\\baddfield\\b|\\bcreatemodel\\b",
+        "\\bop\\.(add|alter|create)_"
+      ]
+    },
+    {
+      "id": "external-irreversible",
+      "class": "review",
+      "description": "Sends, deletes, publishes and infra mutations that cannot be pulled back",
+      "paths": [],
+      "lines": [
+        "send_?(mail|email|sms|message|notification)",
+        "\\bsendgrid\\b|\\btwilio\\b|\\bpostmark\\b|\\bmailgun\\b|\\bresend\\.|\\bnodemailer\\b|\\bsmtplib\\b",
+        "chat_?postmessage|\\bslack_sdk\\b|discord.*\\bsend\\(",
+        "sns\\.publish|\\bses\\.send|route53|dns_?record",
+        "vercel\\s+(deploy|--prod)|wrangler\\s+(deploy|publish)|kubectl\\s+(apply|delete)|terraform\\s+(apply|destroy)",
+        "push\\s+(--force|-f)\\b|gh\\s+(pr\\s+merge|release\\s+create|repo\\s+delete)|npm\\s+publish",
+        "\\brm\\s+-[a-z]*r[a-z]*f|shutil\\.rmtree|\\bunlink\\(|os\\.remove\\(|\\brmsync\\(|\\bfs\\.rm\\(|delete_?object|deleteobject"
+      ]
+    },
+    {
+      "id": "concurrency",
+      "class": "review",
+      "description": "Locks, transactions, schedulers, thread pools and read-modify-write on shared state",
+      "paths": [
+        "(^|/)(schedulers?|cron|crontabs?|celery|workers)(/|\\.[a-z]+$)",
+        "(^|/)(LaunchAgents|LaunchDaemons)/"
+      ],
+      "lines": [
+        "\\bmutex\\b|\\bsemaphore\\b|\\bflock\\b|advisory_?lock|\\.lock\\(|\\block\\(|threading\\.Lock|asyncio\\.Lock|sync\\.mutex",
+        "for\\s+update\\b|\\bbegin\\s+transaction\\b|\\.transaction\\(|\\batomic\\(|select_for_update",
+        "idempoten|compare_?and_?swap|dedup",
+        "threadpoolexecutor|processpoolexecutor|\\bmultiprocessing\\b|\\bgo\\s+func\\(",
+        "\\bcron\\b|crontab|apscheduler|\\bcelery\\b|beat_schedule|\\bscheduler\\b|StartInterval|StartCalendarInterval"
+      ]
+    },
+    {
+      "id": "risk-policy",
+      "class": "review",
+      "description": "A change to the project's own risk policy or the default tag list",
+      "paths": [
+        "(^|/)project-context\\.md$",
+        "(^|/)config/risk-tags\\.json$"
+      ],
+      "lines": []
+    },
+    {
+      "id": "money",
+      "class": "escalate",
+      "description": "Money movement and money arithmetic: payments, payouts, refunds, invoices, ledgers, billing, pricing logic, balances",
+      "paths": [
+        "(^|/)(billing|payments?|payouts?|ledgers?|invoices?|wallets?|checkout)(/|[._-]|$)",
+        "(^|/)pricing[^/]*(/.*)?\\.(py|rb|go|java|kt|cs|php|ex|exs|sql|ts|js|mjs)$"
+      ],
+      "lines": [
+        "\\bstripe\\b|payment_?intent|\\bpaypal\\b|\\bbraintree\\b",
+        "\\bpayouts?\\b|\\brefunds?\\b|\\binvoices?\\b|\\bledgers?\\b|\\bbilling\\b",
+        "amount_?cents|credit_?balance|\\bdebit\\b|\\bcharge_?(card|customer)\\b",
+        "\\bbalance\\w*\\s*[-+*/]?=(?!=)|\\b(unit_?)?price\\w*\\s*[*+]|\\btotal_?(price|amount|due)\\b"
+      ]
+    },
+    {
+      "id": "destructive-migration",
+      "class": "escalate",
+      "description": "Migrations that drop, rename, truncate or rewrite existing data",
+      "paths": [],
+      "line_scope": "(^|/)(migrations?|alembic|db/migrate|sql)(/|\\.|$)|(^|/)(schema\\.(sql|rb|prisma)|structure\\.sql)$|\\.sql$",
+      "lines": [
+        "\\bdrop\\s+(table|column|index|schema|database|constraint)\\b",
+        "\\btruncate\\b",
+        "\\bdelete\\s+from\\b",
+        "\\bupdate\\s+\\S+\\s+set\\b",
+        "\\balter\\s+table\\s+\\S+\\s+(drop|rename)\\b|\\brename\\s+(column|to)\\b",
+        "\\b(remove|drop)_?(column|table|index|field)s?\\b|\\brename_?(column|table|field|model)\\b|\\bchange_?column\\b",
+        "\\b(removefield|deletemodel|renamefield|renamemodel|runsql|runpython)\\b",
+        "\\bop\\.(drop|rename)_|\\bop\\.execute\\("
+      ]
+    }
+  ]
+}

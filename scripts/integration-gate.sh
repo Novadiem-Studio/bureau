@@ -1558,6 +1558,55 @@ PY
   # ── BRANCH TIP SHA ────────────────────────────────────────────────────
   BRANCH_TIP="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
 
+  # ── BUREAU-LITE COVERAGE GATE (workflows/bureau-lite.md step 10) ──────
+  # A run that uses bureau-lite routes its per-unit cold reviews on
+  # scripts/risk-tags.sh, which the Conductor runs. This gate is where that
+  # routing is checked by someone other than the build: risk-coverage.sh proves
+  # every commit was scanned with the run's policy and every flag was reviewed.
+  # For any other run it reports not_applicable and adds no gate record. Its
+  # RUN_DIR is the directory holding --state-json.
+  if [ -n "${STATE_JSON:-}" ] && [ -f "$STATE_JSON" ]; then
+    RISK_COV_SCRIPT="$(cd "$(dirname "$0")" && pwd)/risk-coverage.sh"
+    RISK_COV_OUT="$OUT/risk-coverage.json"
+    "$RISK_COV_SCRIPT" "$(dirname "$STATE_JSON")" --state "$STATE_JSON" --worktree "$REQ_WORKTREE_PATH" --out "$RISK_COV_OUT" \
+      >"$GATE_OUT_DIR/risk-coverage.stdout.log" 2>"$GATE_OUT_DIR/risk-coverage.stderr.log"
+    RISK_COV_EXIT=$?
+    GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$RISK_COV_OUT" "$RISK_COV_EXIT" "$GATE_OUT_DIR" <<'PY'
+import json, os, sys
+gates_raw, cov_path, rc, outdir = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+try:
+    gates = json.loads(gates_raw)
+except Exception:
+    gates = []
+try:
+    with open(cov_path) as fh:
+        cov = json.load(fh)
+except Exception:
+    cov = {"result": "error", "error": "risk-coverage.sh wrote no record (exit %d)" % rc}
+if cov.get("result") != "not_applicable":
+    def tail(name):
+        try:
+            with open(os.path.join(outdir, name), "rb") as fh:
+                return fh.read().decode("utf-8", "replace").splitlines()[-30:]
+        except OSError:
+            return []
+    gates.append({
+        "name": "risk-coverage",
+        "command": "scripts/risk-coverage.sh <RUN_DIR> --worktree <worktree>",
+        "exit_code_branch": rc,
+        "result": "green" if rc == 0 and cov.get("result") == "covered" else "red",
+        "coverage": cov.get("coverage"),
+        "problems": cov.get("problems", []) + ([cov["error"]] if cov.get("error") else []),
+        "record_path": "risk-coverage.json",
+        "stdout_path": "gate-output/risk-coverage.stdout.log",
+        "stderr_path": "gate-output/risk-coverage.stderr.log",
+        "stderr_tail": tail("risk-coverage.stderr.log"),
+    })
+print(json.dumps(gates))
+PY
+)"
+  fi
+
   # ── APPLY known-flaky-gates demotion ───────────────────────────────────
   # Any gate in the known-flaky-gates list whose result is "red" gets marked
   # "flaky: true" so the Delegate flags it in Uncertainties rather than blocking.
@@ -1577,7 +1626,8 @@ try:
     flaky_names = set(json.loads(flaky_raw))
     entries = data.get("results", []) if kind == "pre_existing" else data
     for g in entries:
-        if not isinstance(g, dict) or g.get("name") not in flaky_names or g.get("missing_reason"):
+        if (not isinstance(g, dict) or g.get("name") not in flaky_names
+                or g.get("missing_reason") or g.get("name") == "risk-coverage"):
             continue
         if kind == "pre_existing":
             # pre_existing entries carry exit codes, not a result.

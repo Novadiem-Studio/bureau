@@ -73,6 +73,17 @@ For each relevant repo / sub-app:
 {"cadence": "phase", "every_n_prompts": 4, "ci_covers_full_suite": false, "local_only_gates": []}
 ```
 
+## Risk tags (bureau-lite runs)
+> Optional. `bureau-lite` reviews a build unit cold only when `scripts/risk-tags.sh` flags its
+> diff against `config/risk-tags.json`. Add project-specific surfaces here; the script reads this
+> block as committed on the base branch. A block may add tags, add patterns to a default tag,
+> or raise a tag to `escalate`. It cannot remove or loosen anything.
+> Rules: `workflows/bureau-lite.md § Risk tags`.
+
+```json risk_tags
+{"tags": []}
+```
+
 ## Users
 [Who are the actual humans using this. Be specific — "small food producers who
 are not technical" is better than "users".]

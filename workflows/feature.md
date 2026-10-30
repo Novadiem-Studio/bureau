@@ -4,7 +4,7 @@
 a fresh requirements + architecture + design + build plan. The default for greenfield
 projects. NOT for one-line bug fixes or operational builds — those get lighter workflows.
 
-**When NOT to use:** a one-line bug fix or a runbook-driven operational build — those get lighter workflows (`bug-fix` once registered, or `operational-build`). Not for reviewing or framing copy (use `copy-review` / `message-framing`).
+**When NOT to use:** a one-line bug fix or a runbook-driven operational build — those get lighter workflows (`bug-fix` once registered, or `operational-build`). Not for reviewing or framing copy (use `copy-review` / `message-framing`). A feature whose bugs would mostly announce themselves, where one Challenger round and risk-tagged build reviews are enough, can take `bureau-lite` instead; its When NOT to use list decides.
 
 **Type:** plan (produces a spec, plan, and scoped prompts; you implement them)
 
