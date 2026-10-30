@@ -8,6 +8,7 @@
   ],
   "ignore_except": [
     "(^|/)\\.claude/",
+    "(^|/)(workflows|skills|\\.codex|\\.cursor)/",
     "(^|/)SKILL\\.md$",
     "(^|/)agents/(.+/)?[^/]+\\.md$",
     "(^|/)(CLAUDE|AGENTS|CODEX|GEMINI|CURSOR|GROK)\\.md$",

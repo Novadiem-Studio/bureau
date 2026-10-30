@@ -15,6 +15,11 @@ command: |
   [ "$rc" -eq 1 ] && jq -e '.review_tags|index("tool-allowlist")' "$TMP/agent.json" >/dev/null || { echo "FAIL agent .md (exit $rc)"; exit 1; }
   run skill "printf -- '---\nallowed-tools: Bash\n---\n' > '$W/skills/x/SKILL.md'"
   [ "$rc" -eq 1 ] && jq -e '.review_tags|index("tool-allowlist")' "$TMP/skill.json" >/dev/null || { echo "FAIL SKILL.md (exit $rc)"; exit 1; }
+  for dir in workflows skills/x .codex .cursor; do
+    mkdir -p "$W/$dir"
+    run rules "printf -- '--allowed-tools Bash,Write\n' > '$W/$dir/rules.md'"
+    [ "$rc" -eq 1 ] && jq -e '.review_tags|index("tool-allowlist")' "$TMP/rules.json" >/dev/null || { echo "FAIL $dir rules ignored (exit $rc)"; exit 1; }
+  done
   run nested "printf 'import httpx\nhttpx.post(URL)\n' > '$W/src/docs/handler.py'"
   [ "$rc" -eq 1 ] && jq -e '.review_tags|index("network-egress")' "$TMP/nested.json" >/dev/null || { echo "FAIL src/docs code (exit $rc)"; exit 1; }
   run quoted "printf 'x = 1\n' > '$W/auth/we\"ird.py'"
