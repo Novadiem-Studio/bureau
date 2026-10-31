@@ -21,10 +21,9 @@ per `CLAUDE.md § Default entrypoint`).
 - The source article path (devweb `content/articles/<slug>.mdx`) and the candidate's line from
   `~/Code/novadiem/assistant/ideas/devweb-shorts/candidates-devweb.md` (hook, receipt, visual).
 - The lesson the viewer should leave with, in one sentence.
-- **Length: as long as the message needs to be coherent, up to the platform limit** (YouTube
-  Shorts and Instagram Reels both allow up to 3 minutes). There is no house window (Robin,
-  2026-10-31: "i want to go by what the platform allows and how much we need to actually convey a
-  coherent message"). Shorter is better only when nothing the viewer needs is cut. Seconds =
+- **Length: usually 60–120 s; up to the platform cap of 3 minutes for a deeper topic** (YouTube
+  Shorts and Instagram Reels both allow 3 min). Robin, 2026-10-31: "i would say it should land between 60s and 120s usually. but if we have a cool more indepth topic then it's just the cap at 3min.. maybe later we try longer format." Inside that range, as long as
+  the message needs to be coherent: never so condensed the point gets lost, never padded. Seconds =
   words ÷ 2.85 (the series narrator, Chris on eleven_v4, measured 2.87 words/s on episode 4).
 - Series rules from `~/Code/novadiem/assistant/ideas/devweb-shorts/README.md`: no product names,
   every fact traced to the article, hook in the first 3 s, no URL on screen and nothing beyond
@@ -68,8 +67,8 @@ voice rules in `~/.claude/CLAUDE.md` (The Scribe).
 - **The cold reader never clears.** After three rounds (steps 3–6) still `HOLD`: stop and give
   Robin the last script, the open items, and a one-line view on whether the topic is too dense to
   land (a narrower point, or a different topic). Do not loop further.
-- **Clarity needs more time.** Add it. Length is set by what the message needs, up to the platform
-  limit; never cut a step the viewer needs to make a target length.
+- **Clarity needs more time.** Add it, past 120 s if the topic earns it, up to the 3-minute cap;
+  never cut a step the viewer needs to make a target length.
 - **A clearer line needs a fact the article doesn't have.** It stays out, or it is phrased as
   advice to the viewer (a general rule), never as a claim about the article's incident.
 - **The source incident is internal tooling.** Name it by what it does in plain words ("a script
