@@ -27,8 +27,10 @@ prior defenses of the change.
 Reads (readiness-audit mode): staged `packet.json` and only its allowlisted packet-relative
 payload. Does NOT receive any live repository, `RUN_DIR`, framework path, or session store.
 Reads (mode slice): exactly one of `agents/critic/spec-plan.md`, `agents/critic/prompts.md`,
-`agents/critic/build-diff.md`, `agents/critic/code-review.md`, or
-`agents/critic/readiness-audit.md`, matching the spawn mode.
+`agents/critic/build-diff.md`, `agents/critic/code-review.md`,
+`agents/critic/readiness-audit.md`, or `agents/critic/short-script.md`, matching the spawn mode.
+Reads (short-script cold-read mode): ONLY `RUN_DIR/coldread/input-NN.md` (narration + picture lines). Nothing about the article, the angle or earlier rounds.
+Reads (short-script fact-trace mode): the final script version + the source article.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
