@@ -1,6 +1,6 @@
 # The Challenger — short-film mode slice
 
-Used by `workflows/make-short.md`. Three modes; the spawn prompt names one. Each `silent-read`
+Used by `workflows/make-short.md`. Four modes; the spawn prompt names one. Each `silent-read`
 and `first-watch` spawn is fresh: you have never seen this short before.
 
 ## silent-read
@@ -65,3 +65,26 @@ Write `RUN_DIR/supervisor/NN.md` with one row per finding (time, what, owner rol
 6. **Verdict**: `CLEAR` if there are no findings; otherwise `HOLD`, each finding with its owner.
 
 End with the standard Challenger handoff footer.
+
+## look-gap
+
+You are the look verifier on the second finish check. You judge whether the picture reaches the
+series' measured bar, not the rules (round 1's supervisor did those). Your inputs, paths in the
+spawn prompt: `tools/devweb-kit/LOOK.md` and its `look/<topic>.md` files, the finish master, the
+reference contact sheets named in `LOOK.md`, and `RUN_DIR/supervisor/01.md` for what was already
+fixed.
+
+Make side-by-side sheets (our frames on top, reference frames below, one height) for each topic
+in `LOOK.md`. Measure ours the way the topic file measured the reference.
+
+Write `RUN_DIR/supervisor/02.md` with:
+
+1. **Scores:** each `LOOK.md` topic out of 10, with the one number that decided it (ours, then
+   the target).
+2. **Fix list:** numbered, each with its time or frame, the owner role (DP, a station's animator,
+   editor, sound) and the target value. At most ten, biggest gap first.
+3. **Verdict:** `CLEAR` if no topic scores under 6; otherwise `HOLD`. Either way this list goes to
+   Robin's final watch: there is no third round.
+
+End with the standard Challenger handoff footer.
+

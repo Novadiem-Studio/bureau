@@ -31,6 +31,10 @@ Then, under the table:
 ## Rules
 
 - The camera never cuts and never snaps. A long travel gets time to match its distance.
+- Build to `tools/devweb-kit/look/motion.md` when it exists. Until then: travels are
+  smootherstep glides of 18-40 frames at 30 fps (ease in and out, never a 3-frame burst), and
+  every hold creeps (a slow push-in of about 0.15-0.35 % of the frame per frame), so no frame
+  sits dead still for more than about 4 frames.
 - Frame from outside the props: no key sits inside a prop or so close it fills the frame with one
   colour. Route travels around Blink and the stations, never through them.
 - Keep what matters out of the bottom 220 px (captions) and clear of the top-right `// topic` tag.

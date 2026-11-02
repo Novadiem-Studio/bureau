@@ -28,7 +28,7 @@ you which mode you are in:
   design manifest and return design-fidelity findings.
 
 Mode appendix: if spawned as a `make-short` crew role, read the mode file your spawn prompt
-names (`agents/modes/crew-storyboard.md`, `crew-production-design.md` or `crew-dp.md`); it
+names (`agents/modes/crew-storyboard.md`, `crew-production-design.md`, `crew-dp.md` or, in `look-bible`, `crew-look.md`); it
 replaces the three modes above for that spawn.
 
 ## Inputs

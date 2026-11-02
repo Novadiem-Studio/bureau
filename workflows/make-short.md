@@ -37,6 +37,9 @@ The Conductor writes these to `RUN_DIR/brief.md` in step 0:
   commands, every "Rules learned on episode N"). The crew reads the kit README before planning.
 - **Reference build:** `devweb-ep01-oner/` (the approved oner) and the latest finished episode.
 - **House QA rules:** `~/.claude/skills/video-production/references/review-checklist.md`.
+- **Look bible:** `tools/devweb-kit/LOOK.md` and `tools/devweb-kit/look/<topic>.md`, measured from
+  references Robin picked (`workflows/look-bible.md`). The DP, the animators and the gap pass
+  build to its numbers.
 - Out of scope: making the topic list, public release (uploads are unlisted), Instagram.
 
 ## Outputs
@@ -74,7 +77,8 @@ persona still applies, the mode file's prose is authoritative for the job.
 | Animator (one per station) | The Mage | `agents/modes/crew-animator.md` |
 | Editor | The Mage | `agents/modes/crew-editor.md` |
 | Sound designer | The Mage | `agents/modes/crew-sound.md` |
-| Silent read, first watch, script supervisor | The Challenger | `agents/critic/short-film.md` |
+| Silent read, first watch, script supervisor, look gap | The Challenger | `agents/critic/short-film.md` |
+| Look analyst (series look bible) | The Cleric | `agents/modes/crew-look.md`, via `workflows/look-bible.md` |
 
 Every crew mode file ends with a **Learned** section. Step 23 adds Robin's notes there, so the
 crew carries them to the next episode.
@@ -84,8 +88,9 @@ crew carries them to the next episode.
 - Writers' room: latest cold read `CLEAR`, `facts.md` has no `FLAG`.
 - Silent read `CLEAR`: a reader who saw only the boards told the mechanism and the failure back.
 - Robin watched the animatic and said go (his words in `notes/animatic-NN.md`).
-- Script supervisor `CLEAR` on the finish: forensics, probe and flashcheck pass; nothing Robin
-  approved in the animatic got worse; every animatic note is done.
+- Script supervisor round 1 on the finish: forensics, probe and flashcheck pass; nothing Robin
+  approved in the animatic got worse; every animatic note is done. Round 2 (look gap) scored
+  against `LOOK.md`, its fix list in front of Robin.
 - Robin watched the 720p finish in session and said go; it is uploaded unlisted with a public
   title, the link reached his Telegram, and only the latest draft's renders remain.
 - `wrap.md` lists where each of Robin's notes was filed.
@@ -135,7 +140,8 @@ Sequential unless a step says parallel.
 0. **The Conductor** — set up the episode → `brief.md`, `state.json`, `log.md`
    Worktree `_wt-devweb-epNN` of rheos/secondunit-videos on branch `film/devweb-epNN`;
    `tools/devweb-kit/sync.sh devweb-epNN-<slug>`; allowlist the folder in `.gitignore`; resolve
-   `model-routing.json`; write `brief.md` from the Inputs. `ListAgents` to see which other
+   `model-routing.json`; write `brief.md` from the Inputs. If `tools/devweb-kit/LOOK.md` is
+   missing, stop and ask Robin which references to measure, then run `look-bible` first. `ListAgents` to see which other
    sessions are building.
 
 1. **The Counselor** (Showrunner, **strong**) — what the world is and why it animates → `pitch.md`, `suggested-topics.md`
@@ -219,13 +225,17 @@ Sequential unless a step says parallel.
     is fixed here, not handed to the supervisor. Remux a missing track onto the master with
     `-c:v copy` and no `-shortest` (it trims the length and probe fails on duration).
 
-19. **The Challenger** (Script supervisor, **standard**) — the finish against the animatic and the rules → `supervisor/NN.md`
-    Slice `agents/critic/short-film.md § supervisor`. Reads the finish's qa files, contact sheets,
-    the approved animatic, `notes/animatic-*.md`, the kit README and the review checklist.
+19. **The Challenger** (Script supervisor, **standard**) — the finish against the animatic, the rules and the look bible → `supervisor/NN.md`
+    Round 1: slice `agents/critic/short-film.md § supervisor`. Reads the finish's qa files, contact
+    sheets, the approved animatic, `notes/animatic-*.md`, the kit README and the review checklist.
+    Round 2: a FRESH spawn, slice `§ look-gap`, which scores the finish against `LOOK.md` and lists
+    fixes by owner.
 
-20. **Gate** — `CLEAR`: step 21. `HOLD`: route each item to its owner; patch-render the affected
-    span where the kit allows, else re-run step 18; then step 19 again. After two `HOLD`s go to
-    step 21 with the open items listed.
+20. **Gate** — Round 1 `CLEAR`: step 19 round 2. Round 1 `HOLD`: route each item to its owner by
+    resuming that owner's own agent (SendMessage keeps its context, which is cheaper than a fresh
+    spawn), patch-render the affected span where the kit allows, else re-run step 18; then
+    round 2. After round 2, go to step 21 with its fix list, `CLEAR` or `HOLD`: Robin decides
+    which of those get fixed.
 
 21. **Gate** — Robin's final watch. `[CHECKPOINT]`
     Open the 720p cut in ONE VLC window. Save his notes to `notes/final-NN.md`. On notes: route

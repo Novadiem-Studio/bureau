@@ -100,13 +100,21 @@ Spawn per `agents/orchestrator.md § How to spawn an agent`, explicit model from
    building software with AI tools who has not read the article), the moment in their own work
    when this bites them, the one rule they leave with, and every concept the script must teach,
    each with its plainest phrasing (what the machine is for, what a test checks, and so on).
-   Proposes the hook (a failure or surprise in the first 3 s).
+   Proposes the hook: a paradox stated as fact in sentence 1, no setup ("Your AI has never seen a
+   folder"), never a question or a promise of a video. Also looks in the article for a true detail
+   that is funny on its own; a checked fact makes the best joke.
 
 2. **The Scribe** (Draft, **strong**) — the script → `versions/01-draft.md`
    Reads `brief.md`, `angle.md` and the source article. Writes the beats: hook, the viewer's
    situation, what the thing was for, what broke and why, the proof from the article, what to do.
    One `Picture:` line per beat (what the viewer sees, so the picture carries what words can't).
    No term the angle didn't teach; no product names. Word count and seconds at the end.
+   Shape that held across twenty hit shorts (look-bible's pacing study): the hook; setting in one or
+   two lines; escalation, each beat a little bigger; one mystery beat; a pivot into the real
+   reason, on the series' fixed pivot phrase once Robin picks one (series README); the ironic
+   payoff as the last line, and the video ends on its last word. Never narrate what the viewer
+   already sees on screen. Spend words like seconds: no dead air, no sentence that repeats the
+   one before it.
 
 3. **The Conductor** — copy only the narration and the `Picture:` lines of the latest version into
    `RUN_DIR/coldread/input-NN.md` (no title, no notes, no article, no angle). Stop at the last

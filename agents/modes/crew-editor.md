@@ -15,7 +15,7 @@ animatic and `RUN_DIR/notes/animatic-*.md`, the kit README.
 
 - **Cues on words.** Every event that marks a spoken idea lands on its word (`VO.w`). A hit meant
   for a sung or stressed syllable sits on the voice onset, not Whisper's word start, which can run
-  early on held or repeated words.
+  early on held or repeated words. A visual reaction lands 0-3 frames before its word, never after.
 - **Overlays hold.** On screen at least 0.3 s per word plus 0.5 s, and never covered by the next
   one before that.
 - **Captions** in the bottom 220 px, in sync with the voice, one line at a time.

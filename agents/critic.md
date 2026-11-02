@@ -111,7 +111,7 @@ exactly one mode slice matching the spawn prompt. If a slice is not triggered, d
 - `agents/critic/code-review.md` — code-review workflow review of an existing diff/PR/branch.
 - `agents/critic/readiness-audit.md` — isolated staged-packet verification review.
 - `agents/critic/short-script.md` — write-short-script cold read and fact trace.
-- `agents/critic/short-film.md` — make-short silent read, first watch and script supervisor.
+- `agents/critic/short-film.md` — make-short silent read, first watch, script supervisor and look gap.
 
 Each slice is self-contained for the gates it applies. Do not repair a missing slice rule by
 reading another slice unless the Conductor explicitly changes the mode and re-spawns you.
