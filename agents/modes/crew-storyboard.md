@@ -24,8 +24,11 @@ an SVG in `RUN_DIR/boards/NN-<beat>.svg`:
 - Motion is drawn: arrows for what moves, a ghosted earlier position, a dashed camera move.
 - Overlay type exactly as it will appear on screen (the hook, a slam, a number), in Plex Sans 700.
 - Keep the bottom 220 px empty (captions live there); mark it with a faint line.
-- A strip at the top, outside the safe frame or in small grey text: board number, beat, the
-  narration word the board starts on, and the treatment letter.
+- A strip at the top, outside the safe frame or in small grey text: board number, beat and
+  treatment letter only. Never the narration or its start word: a silent reader sees these files,
+  and a word in the strip leaks the script (ep 5). Start words go in `storyboard.md`.
+- No XML comments in the SVGs: the silent reader may read the source, and a comment that explains
+  the board does its job for it.
 
 Then `RUN_DIR/boards.html`: every board in order as a contact sheet (four across), each with its
 number underneath. And `RUN_DIR/storyboard.md`: a table with one row per board (board, beat,

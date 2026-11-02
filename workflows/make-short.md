@@ -154,7 +154,7 @@ Sequential unless a step says parallel.
    kit README.
 
 4. **The Conductor** — copy only `boards/*.svg` and `boards.html` into `silentread/input-NN/`
-   (no narration, no picture lines, no pitch, no notes).
+   (no narration, no picture lines, no pitch, no notes), with every `<!-- -->` comment stripped.
 
 5. **The Challenger** (Silent read, **standard**) — tell the story from the boards alone → `silentread/NN.md`
    A FRESH spawn every round, slice `agents/critic/short-film.md § silent-read`.
@@ -215,7 +215,9 @@ Sequential unless a step says parallel.
 18. **The Conductor** — finish → `PROJECT/renders/`
     Heavy lock. `CINETIC=<cinetic clone>/skills/cinetic/scripts tools/devweb-kit/finish.sh PROJECT devweb-epNN`
     (120 fps, blended to 60 with motion blur, BT.709 tags, probe, forensics, flashcheck), then a
-    720p review cut.
+    720p review cut. Read the probe line before going on: a probe FAIL (ep 5's master had no audio)
+    is fixed here, not handed to the supervisor. Remux a missing track onto the master with
+    `-c:v copy` and no `-shortest` (it trims the length and probe fails on duration).
 
 19. **The Challenger** (Script supervisor, **standard**) — the finish against the animatic and the rules → `supervisor/NN.md`
     Slice `agents/critic/short-film.md § supervisor`. Reads the finish's qa files, contact sheets,

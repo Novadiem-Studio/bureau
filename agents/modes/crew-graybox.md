@@ -39,6 +39,12 @@ ran in your handoff so the next round repeats them.
 - Follow `camera.md` as written. If a key can't work (it sits inside a prop, it hides the
   subject), fix it, then note the change and why in your handoff for the DP.
 - In fix mode, change only what the notes name.
+- Put the sound in from the start: `<audio id="mix" src="_in/mix.wav" data-start="0"
+  data-duration="<END>" data-track-index="20" data-volume="1">` in `index.html`, as the reference
+  build has it. The animatic muxes the voice by hand, so a missing element only shows up as a
+  finish with no audio (ep 5).
+- Never kill or signal a process you did not start. If a port is taken, use another (ep 5's
+  gray box killed another session's preview server).
 
 ## Learned
 

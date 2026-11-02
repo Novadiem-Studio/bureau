@@ -109,7 +109,9 @@ Spawn per `agents/orchestrator.md § How to spawn an agent`, explicit model from
    No term the angle didn't teach; no product names. Word count and seconds at the end.
 
 3. **The Conductor** — copy only the narration and the `Picture:` lines of the latest version into
-   `RUN_DIR/coldread/input-NN.md` (no title, no notes, no article, no angle).
+   `RUN_DIR/coldread/input-NN.md` (no title, no notes, no article, no angle). Stop at the last
+   beat's `Picture:` line: revise versions end with change notes, so the Scribe and the Counselor
+   put them after a line reading `<!-- notes -->`, and the copy stops there.
 
 4. **The Challenger** (Cold read, **standard**) → `coldread/NN.md`
    A FRESH spawn every round, mode slice `agents/critic/short-script.md § cold-read`. Reads only
