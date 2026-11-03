@@ -43,6 +43,13 @@ Then, under the table:
   next station rather than drifting there.
 - The hook's subject is in frame and readable by 3 s.
 
+## Look bible targets (`tools/devweb-kit/LOOK.md`, `look/motion.md`)
+
+- Moves stay small: 150-350 px and under about 25 % zoom per move, over 40-80 frames at 120 fps (ep 5: 1175 px, 61 %, 144 f).
+- Elements carry the motion. They move in 35-45 % of frames, the camera in about 30 %. Hold longer and let the cards act.
+- Every station change follows a named element.
+- Keep Blink in frame for at least 0.75 of the film, with no absence over 6 s, at 384 px or more when acting and about 600 px on hero beats. Plan stations close enough that small moves reach them.
+
 ## Learned
 
 (Robin's notes on camera and framing, filed by `make-short` step 23.)

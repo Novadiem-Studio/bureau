@@ -184,6 +184,8 @@ Sequential unless a step says parallel.
 9. **The Conductor** — record the voice → `PROJECT/vo/voice.mp3`, `PROJECT/vo/words.js`
    Copy `script.json` to `PROJECT/vo/`. Heavy lock. `python3 -I tools/devweb-kit/vo/vo.py PROJECT`
    (paid ElevenLabs, one take; log the cost in `PROJECT/docs/SPEND.md`), then
+   `<viralvision venv python> -I tools/devweb-kit/vo/tighten.py PROJECT` (full-stop gaps to 0.22 s,
+   comma gaps to 0.15 s; Robin, 2026-11-03), then
    `<viralvision venv python> -I tools/devweb-kit/vo/align.py PROJECT`. Release the lock. This is
    the only spend before Robin's gate.
 

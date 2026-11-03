@@ -34,6 +34,13 @@ Heavy lock, then `npx hyperframes@0.8.162 snapshot` over your window at full siz
 frame where something appears, leaves or is typed; release the lock. Compare against the animatic
 frames: nothing the animatic got right may get worse.
 
+## Look bible targets (`tools/devweb-kit/LOOK.md`, `look/character.md`)
+
+- Settle: one rebound at most, done in about 25 frames. Anticipation of 10-15 % on hero moves only, never a dip on every pop.
+- Blink's blinks: about 12 frames eased (close 4, shut 2, open 6), tied to gaze shifts.
+- Elements carry the holds: something on the subject is moving while the camera creeps.
+- Idle stations stay dimmed to about a quarter of the subject's lift, and glow rests at opacity 0.03 or less; bloom is a 0.5 s event only.
+
 ## Learned
 
 (Robin's notes on animation and acting, filed by `make-short` step 23.)

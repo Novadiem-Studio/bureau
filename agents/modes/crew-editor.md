@@ -25,6 +25,12 @@ animatic and `RUN_DIR/notes/animatic-*.md`, the kit README.
 - Then `node tools/blueprint-kit/cues.mjs PROJECT` to write `PROJECT/cues.json` (the cue list
   forensics and the sound designer read).
 
+## Look bible targets (`tools/devweb-kit/LOOK.md`, `look/pacing.md`)
+
+- The voice starts by 0.12 s and the film ends at most 1.5 s after the last word.
+- Keep 1.0-1.3 picture events a second, with no still over 2 s.
+- Light moves once: about 2.5x base on the failure beat, back to base for the answer.
+
 ## Learned
 
 (Robin's notes on timing and pacing, filed by `make-short` step 23.)

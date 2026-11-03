@@ -114,7 +114,8 @@ Spawn per `agents/orchestrator.md § How to spawn an agent`, explicit model from
    reason, on the series' fixed pivot phrase once Robin picks one (series README); the ironic
    payoff as the last line, and the video ends on its last word. Never narrate what the viewer
    already sees on screen. Spend words like seconds: no dead air, no sentence that repeats the
-   one before it.
+   one before it. Sentences run a median of 10-13 words, with fragments under 10 % and 14-17 full
+   stops a minute (`tools/devweb-kit/LOOK.md`; ep 5 had 5-6 words and a third fragments).
    Four devices from the same hit shorts (mromidev's claude-animated-shorts study, 2026-11-03):
    - **Everyday analogy after the pivot**, every script: the mechanism through something the
      viewer has done outside software, often as a question ("Ever pushed a kid on a swing? Each

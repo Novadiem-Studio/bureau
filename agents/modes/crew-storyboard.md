@@ -45,6 +45,13 @@ mass-moment board.
   thing from three boards ago without bringing it back on screen.
 - In revise mode: fix every board the silent reader named. Keep the boards it understood.
 
+## Look bible targets (`tools/devweb-kit/LOOK.md`)
+
+- Blink is in shot for at least 0.75 of the film, and never gone for more than 6 s (ep 5: 0.27 and 39.5 s).
+- Blink reads at 384 px or more when acting and about 600 px on hero beats. Board it that big.
+- Colour is spent, not sprayed: under 2 % of the frame saturated outside the one colour beat on the failure.
+- One subject per hold: empty dark field around it, idle stations dimmed.
+
 ## Learned
 
 (Robin's notes on storyboards, filed by `make-short` step 23.)
