@@ -100,8 +100,9 @@ crew carries them to the next episode.
 - **A note changes the words after the VO is recorded.** A new VO take costs credits and moves
   every word time. Prefer moving the picture (the "audio frozen" rule in the review checklist);
   re-record only for a note about the words themselves, and log the spend.
-- **The cold reader or silent reader never clears** (three `HOLD`s): stop that loop and carry
-  the open items forward in the animatic package. Robin decides at step 14; do not loop further.
+- **The cold reader or silent reader never clears:** stop after the second `HOLD` (Robin,
+  2026-11-02, after ep 5's four cold reads: two reads that raise the same doubt won't be cleared by a
+  third). Carry the open items into the animatic package; Robin decides at step 14.
 - **First watch or supervisor still `HOLD` after two rounds:** go to Robin's gate anyway, with the
   open items listed first. He is the gate, not the critic.
 - **Robin drops the topic at the animatic.** Stop. Log the VO spend; keep the run dir and the
@@ -151,7 +152,8 @@ Sequential unless a step says parallel.
 
 2. **The Conductor** — run `write-short-script` steps 1-8 in this `RUN_DIR` → `script.json`
    Add `pitch.md` to the inputs of its steps 1 and 2. Its step 9 is not Robin's gate here: when
-   the cold read is `CLEAR` and `facts.md` has no `FLAG`, write `script.json` and go on.
+   the cold read is `CLEAR` and `facts.md` has no `FLAG`, write `script.json` and go on. Here its
+   cold-read loop stops after the second `HOLD`, not the third (Edge cases).
 
 ### Phase 2: pre-production
 
@@ -168,7 +170,7 @@ Sequential unless a step says parallel.
 6. **Gate** — `CLEAR`: go to step 7. `HOLD`: re-spawn the storyboard Cleric with the report
    (revise mode), then step 4 again. If a beat can't be shown without changing the narration,
    the Scribe revises it (`write-short-script` step 6) and the cold read runs again. Stop after
-   three `HOLD`s per Edge cases.
+   two `HOLD`s per Edge cases.
 
 7. **The Cleric** (Production design, **strong**) — the one world: stations, props, colour → `world-plan.md`
    Mode file `agents/modes/crew-production-design.md`. Reads the boards, `storyboard.md`,
@@ -197,7 +199,8 @@ Sequential unless a step says parallel.
 
 13. **Gate** — `CLEAR`: go to step 14. `HOLD`: route each item to its owner (camera to the DP Cleric,
     station layout to the production-design Cleric, timing or build to the gray-box Mage), re-render the
-    animatic, step 11 again. After two `HOLD`s go to step 14 with the open items listed.
+    animatic, then step 14 with what was fixed and what is still open. One first watch only: Robin is
+    the next gate, and ep 5's second watch mostly re-found the first one's items.
 
 14. **Gate** — Robin watches the animatic. `[CHECKPOINT]`
     Open `animatic/epNN-animatic-NN_720p.mp4` in ONE VLC window. Give him, in this order: what's
@@ -218,7 +221,10 @@ Sequential unless a step says parallel.
 17. **The Mage** (Sound, **standard**) — effects on events, mixed under the voice → `PROJECT/sfx/`
     Mode file `agents/modes/crew-sound.md`. Heavy lock.
 
-18. **The Conductor** — finish → `PROJECT/renders/`
+18. **The Conductor** — border check, then the finish → `PROJECT/renders/`
+    First a 30 fps draft (`render -f 30`, about 7 min) and forensics on it; route every border and
+    spike fail to its owner (camera edges to the DP) before the expensive render. Ep 5's first
+    finish failed forensics 25 times on frame edges and cost a second 41-minute render.
     Heavy lock. `CINETIC=<cinetic clone>/skills/cinetic/scripts tools/devweb-kit/finish.sh PROJECT devweb-epNN`
     (120 fps, blended to 60 with motion blur, BT.709 tags, probe, forensics, flashcheck), then a
     720p review cut. Read the probe line before going on: a probe FAIL (ep 5's master had no audio)
