@@ -115,6 +115,17 @@ Spawn per `agents/orchestrator.md § How to spawn an agent`, explicit model from
    payoff as the last line, and the video ends on its last word. Never narrate what the viewer
    already sees on screen. Spend words like seconds: no dead air, no sentence that repeats the
    one before it.
+   Four devices from the same hit shorts (mromidev's claude-animated-shorts study, 2026-11-03):
+   - **Everyday analogy after the pivot**, every script: the mechanism through something the
+     viewer has done outside software, often as a question ("Ever pushed a kid on a swing? Each
+     push is tiny, but..."). One analogy, carried to the end, not swapped midway.
+   - **Callback ending**, every script: the payoff line answers or echoes the hook, so the last
+     word lands on the first idea.
+   - **Doubters' lines** in the escalation, when the story has people in it: one or two short
+     in-character lines from the people who wave the risk away ("It's only a test file.").
+   - **Deadpan double line**, at most one per script: the same fact said twice as good news and
+     bad news ("Luckily, the river was only two feet deep. / Unluckily, the river was only two
+     feet deep."). Only where the fact really cuts both ways.
 
 3. **The Conductor** — copy only the narration and the `Picture:` lines of the latest version into
    `RUN_DIR/coldread/input-NN.md` (no title, no notes, no article, no angle). Stop at the last
