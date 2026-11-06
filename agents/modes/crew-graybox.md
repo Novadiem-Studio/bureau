@@ -25,6 +25,13 @@ reference build `devweb-ep01-oner/` for the shape of `index.html` and the world 
   their real text, overlays as plain type. No dressing, no sound.
 - `camera.md` anchors become `VO.w(word, n)` times; build `T` the way the reference build does.
 - Every transform set from `t` every frame (the kit's ep 2 rule), so seeking works.
+- **The checks.** Copy `tools/devweb-kit/templates/*.mjs` into `PROJECT/` and fill `camera-set.mjs` with this
+  episode's props as boxes and when each is on screen (episode 6's is the worked example). For them to run,
+  `world.js` keeps the camera keys between `// KEYS-BEGIN` and `// KEYS-END` as `[time, position, target, fov,
+  expected time, "subject"]`, and `timeline.js` exports `ANCHORS` as `{ name: [word, n, offset, expected time] }`
+  beside `T`. `node PROJECT/check-graybox.mjs` passes before you render: it holds the camera to about 30 % of frames
+  moving, a move in the hook's first 3 s, no dead hold over 2 s, and the framing rules, all without a render. Put its
+  output in your handoff.
 
 ## Render
 

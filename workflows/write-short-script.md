@@ -10,8 +10,8 @@ abstract and needs a rewrite. Triggers: "write the script for episode N", "run t
 the bureau", a short whose draft Robin couldn't follow.
 
 **Inside `make-short`:** this workflow is that pipeline's writers' room (its step 2). There,
-step 9 below is not Robin's gate: a `CLEAR` cold read and a clean `facts.md` write `script.json`
-and the run goes on to the storyboard.
+step 9 below is not Robin's gate (he hears the recorded take instead, `make-short` step 2c): a
+`CLEAR` cold read and a clean `facts.md` write `script.json` and the run goes on to the voice take.
 
 **When NOT to use:** a long-form article (→ `write-article`); short user-facing copy that is not
 narration (→ `message-framing` / `copy-review`); building the video itself (picture, VO recording,

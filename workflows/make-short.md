@@ -13,8 +13,8 @@ crew on D14", "make-short"). It contains `write-short-script` as its writers' ro
 episode's own session).
 
 **Type:** mixed. Phases 0-3 plan and build a gray-box animatic; phase 4 builds the finish. Run as
-**direct Conductor**: Robin sits at two gates only (the animatic, step 14, and the final watch,
-step 21). Every other gate is a cold reader's verdict.
+**direct Conductor**: Robin sits at three gates only (the voice take, step 2c; the animatic, step
+14; the final watch, step 21). Every other gate is a cold reader's verdict.
 
 ## Inputs
 
@@ -53,7 +53,7 @@ The Conductor writes these to `RUN_DIR/brief.md` in step 0:
 - Pre-production: `storyboard.md`, `boards/NN-<beat>.svg`, `boards.html`, `silentread/NN.md`,
   `world-plan.md`, `camera.md`.
 - Animatic: `PROJECT/` gray-box build, `animatic/sheet-NN.png`, `animatic/epNN-animatic-NN_720p.mp4`,
-  `firstwatch/NN.md`, `notes/animatic-NN.md` (Robin's notes, verbatim).
+  `firstwatch/NN.md`, `notes/voice-NN.md` and `notes/animatic-NN.md` (Robin's notes, verbatim).
 - Production: `PROJECT/stations/*.js`, `PROJECT/cues.json`, `PROJECT/sfx/`, the finish in
   `PROJECT/renders/`, `supervisor/NN.md`, `notes/final-NN.md`.
 - Wrap: `wrap.md`; rule additions to the crew mode files (bureau PR) and the kit README
@@ -86,6 +86,7 @@ crew carries them to the next episode.
 ## Done criteria
 
 - Writers' room: latest cold read `CLEAR`, `facts.md` has no `FLAG`.
+- Robin heard the voice take and said he follows it (his words in `notes/voice-NN.md`).
 - Silent read `CLEAR`: a reader who saw only the boards told the mechanism and the failure back.
 - Robin watched the animatic and said go (his words in `notes/animatic-NN.md`).
 - Script supervisor round 1 on the finish: forensics, probe and flashcheck pass; nothing Robin
@@ -105,8 +106,11 @@ crew carries them to the next episode.
   third). Carry the open items into the animatic package; Robin decides at step 14.
 - **First watch or supervisor still `HOLD` after two rounds:** go to Robin's gate anyway, with the
   open items listed first. He is the gate, not the critic.
-- **Robin drops the topic at the animatic.** Stop. Log the VO spend; keep the run dir and the
-  gray box on the branch; the next episode starts a new run.
+- **Robin drops the topic at the voice take or the animatic.** Stop. Log the VO spend; keep the
+  run dir and whatever is built on the branch; the next episode starts a new run.
+- **The narration changes after Robin heard it** (a silent-read `HOLD` sent a beat back to the
+  Scribe, or an animatic note is about the words). Record and align a new take, log the spend, and
+  he hears it again before anything is built on it.
 - **A crew role spots a better topic.** It goes in `suggested-topics.md`, never in place of the
   episode being made. Step 23 appends them to the series folder for Robin.
 - **Another session is rendering.** Heavy steps (VO, snapshots, renders, ffmpeg, sound) take
@@ -135,7 +139,7 @@ crew carries them to the next episode.
 ## Observability
 
 `RUN_DIR/log.md` records each spawn, every verdict with its open items, each heavy-lock take and
-release, every paid call with its cost, both of Robin's gates and the wrap. `state.json` holds the
+release, every paid call with its cost, each of Robin's gates and the wrap. `state.json` holds the
 phase and the current round of each loop. Spend goes to `PROJECT/docs/SPEND.md`.
 
 ## Steps
@@ -161,6 +165,25 @@ Sequential unless a step says parallel.
    Add `pitch.md` to the inputs of its steps 1 and 2. Its step 9 is not Robin's gate here: when
    the cold read is `CLEAR` and `facts.md` has no `FLAG`, write `script.json` and go on. Here its
    cold-read loop stops after the second `HOLD`, not the third (Edge cases).
+
+2b. **The Conductor** — record the voice → `PROJECT/vo/voice.mp3`, `PROJECT/vo/words.js`
+   Copy `script.json` to `PROJECT/vo/`. Heavy lock. `python3 -I tools/devweb-kit/vo/vo.py PROJECT`
+   (paid ElevenLabs, one take; log the cost in `PROJECT/docs/SPEND.md`), then
+   `<viralvision venv python> -I tools/devweb-kit/vo/tighten.py PROJECT`, then
+   `<viralvision venv python> -I tools/devweb-kit/vo/align.py PROJECT`. Release the lock. The pauses
+   belong to the narrator, in `script.json` `"tighten"`: 0.22 s at a stop and 0.15 s at a comma suit
+   the stock voice (Robin, 2026-11-03); his own cloned voice sounded "all cut up" at that and uses
+   0.40 s and 0.28 s (2026-11-04). A new narrator gets an A/B by ear. This is the only spend before
+   Robin's first gate.
+
+2c. **Gate** — Robin hears the voice take. `[CHECKPOINT]`
+   Open `PROJECT/vo/voice.mp3` in ONE VLC window and give him the script as a fenced block. It is
+   about 80 seconds of audio and nothing has been drawn yet. Save his words verbatim to
+   `notes/voice-NN.md`. If he can't follow it or objects to how it talks to the viewer, the
+   Scribe revises (`write-short-script` step 6), one cold read runs, a new take is recorded and he
+   hears it again. On go: phase 2. Robin asked for this after ep 6 (2026-11-06): he first met that
+   script at the animatic, after boards, a camera and a gray box had been built on words he could
+   not follow.
 
 ### Phase 2: pre-production
 
@@ -188,13 +211,10 @@ Sequential unless a step says parallel.
 
 ### Phase 3: animatic
 
-9. **The Conductor** — record the voice → `PROJECT/vo/voice.mp3`, `PROJECT/vo/words.js`
-   Copy `script.json` to `PROJECT/vo/`. Heavy lock. `python3 -I tools/devweb-kit/vo/vo.py PROJECT`
-   (paid ElevenLabs, one take; log the cost in `PROJECT/docs/SPEND.md`), then
-   `<viralvision venv python> -I tools/devweb-kit/vo/tighten.py PROJECT` (full-stop gaps to 0.22 s,
-   comma gaps to 0.15 s; Robin, 2026-11-03), then
-   `<viralvision venv python> -I tools/devweb-kit/vo/align.py PROJECT`. Release the lock. This is
-   the only spend before Robin's gate.
+9. **The Conductor** — the voice Robin heard is the voice the film is built on → `PROJECT/vo/words.js`
+   The take was recorded at step 2b. Check that `PROJECT/vo/script.json` is still the final
+   `script.json`. If phase 2 changed the narration, record, tighten and align again as in step 2b
+   and repeat step 2c before the gray box is built (Edge cases).
 
 10. **The Mage** (Gray box, **strong**) — the world in boxes on the real word times → `PROJECT/`, `animatic/`
     Mode file `agents/modes/crew-graybox.md`. Reads `world-plan.md`, `camera.md`, `storyboard.md`,
@@ -210,8 +230,8 @@ Sequential unless a step says parallel.
     station layout to the production-design Cleric, timing or build to the gray-box Mage), re-render the
     animatic, then step 14 with what was fixed and what is still open. One first watch only: Robin is
     the next gate, and ep 5's second watch mostly re-found the first one's items.
-    Before step 14, measure the gray box in node (ep 6's `camera-check.mjs` is the model; the
-    gray-box Mage copies and re-points it for the episode): the share of frames in which
+    Before step 14, measure the gray box in node (`node PROJECT/check-graybox.mjs`, which runs the
+    kit's `tools/devweb-kit/camera-check.mjs` on the episode's `camera-set.mjs`): the share of frames in which
     the camera moves (about 30 %), a move in the hook's first 3 s, and that the main prop changes on
     every word where the narrator says it changed. A film Robin can follow can still be dull, and no
     cold watcher flagged ep 6's still needle or its parked camera. Fix what falls short first.
@@ -251,8 +271,13 @@ Sequential unless a step says parallel.
     `-c:v copy` and no `-shortest` (it trims the length and probe fails on duration).
 
 19. **The Challenger** (Script supervisor, **standard**) — the finish against the animatic, the rules and the look bible → `supervisor/NN.md`
-    Round 1: slice `agents/critic/short-film.md § supervisor`. Reads the finish's qa files, contact
-    sheets, the approved animatic, `notes/animatic-*.md`, the kit README and the review checklist.
+    The Conductor first fills `supervisor/input-NN/`: a frame every 0.5 s of the 720p finish, the
+    word-timed transcript (from `vo/words.js`), and `motion.txt`, the output of
+    `node PROJECT/camera-check.mjs --moves` (camera share, longest hold, one row per move). One-per-second
+    sheets hid ep 6's still needle and parked camera from two supervisor rounds; Robin saw both in one watch.
+    Round 1: slice `agents/critic/short-film.md § supervisor`. Reads that folder, the finish's qa
+    files, the approved animatic, `notes/voice-*.md` and `notes/animatic-*.md`, the kit README and
+    the review checklist.
     Round 2: a FRESH spawn, slice `§ look-gap`, which scores the finish against `LOOK.md` and lists
     fixes by owner.
 

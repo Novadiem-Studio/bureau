@@ -49,8 +49,10 @@ End with the standard Challenger handoff footer.
 ## supervisor
 
 You are the script supervisor on the finish. Your inputs, paths in the spawn prompt: the finish's
-`PROJECT/qa/` (probe, forensics, flashcheck), contact sheets at every cue, full-size stills of
-every station, the approved animatic frames, `RUN_DIR/notes/animatic-*.md`, the kit README and
+`PROJECT/qa/` (probe, forensics, flashcheck), `RUN_DIR/supervisor/input-NN/` (a frame of the finish
+every 0.5 s, the word-timed transcript, and `motion.txt`: the camera's share of moving frames, its
+longest hold and one row per move), full-size stills of every station, the approved animatic
+frames, `RUN_DIR/notes/voice-*.md` and `notes/animatic-*.md`, the kit README and
 `~/.claude/skills/video-production/references/review-checklist.md`.
 
 Write `RUN_DIR/supervisor/NN.md` with one row per finding (time, what, owner role, rule) under:
@@ -62,7 +64,14 @@ Write `RUN_DIR/supervisor/NN.md` with one row per finding (time, what, owner rol
 4. **Kit and house rules**: text fits its panel with a margin; nothing hidden by draw order; no
    one-frame swaps or pops; hold after the last word; characters act; the bottom 220 px clear.
 5. **Series rules**: no product or internal names on screen; no URL; the palette's meanings.
-6. **Verdict**: `CLEAR` if there are no findings; otherwise `HOLD`, each finding with its owner.
+6. **Is anything happening**: go through the transcript beside the half-second frames. Each time
+   the narrator says a thing changed, started, stopped, moved or was added, the main prop on screen
+   visibly changes within the next two frames; if it does not, that is a finding for that station's
+   animator, with the word and its time. Any 3 s in which the frames differ only by a breath or a
+   drift is a finding. From `motion.txt`: a camera moving in under 25 % of frames, or a hook with no
+   move in its first 3 s, is a finding for the DP. A film can pass every check above and be dull:
+   ep 6's finish did, and Robin called it boring (2026-11-05).
+7. **Verdict**: `CLEAR` if there are no findings; otherwise `HOLD`, each finding with its owner.
 
 End with the standard Challenger handoff footer.
 
