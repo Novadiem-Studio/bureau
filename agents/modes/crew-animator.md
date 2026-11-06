@@ -44,3 +44,12 @@ frames: nothing the animatic got right may get worse.
 ## Learned
 
 (Robin's notes on animation and acting, filed by `make-short` step 23.)
+
+- **The picture acts out the narration (Robin, 2026-11-05, ep 6 finish d3):** "even the needle which is front and
+  center does not move to the other side.. even when the narrator says that it started doing the other search it
+  stays on default." When the narrator says a thing changed, the main prop visibly changes on that word, and goes
+  back when the story does. Never hold a prop still to make a point: stillness reads as nothing happening.
+- **A prop several stations watch runs on one schedule.** Put its times in `timeline.js` (ep 6: `NEEDLE_SWINGS`,
+  `needlePos(t)`) so the prop, Blink's reactions and the sound cues all read the same numbers.
+- **Blink plays to the main prop.** It looks, flinches, sags or grins when the prop changes. A Blink that only
+  breathes beside a moving prop looks switched off.

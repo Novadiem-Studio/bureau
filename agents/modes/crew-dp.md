@@ -53,3 +53,10 @@ Then, under the table:
 ## Learned
 
 (Robin's notes on camera and framing, filed by `make-short` step 23.)
+
+- **The camera moves on the story's beats (Robin, 2026-11-05, ep 6 finish d3):** "the camera is supposed to be
+  moving around and stuff.. this is very poor engagement." A push or a travel on each beat, and a move inside the
+  hook's first 3 s. Count the frames in which the camera moved and write the share in `camera.md`: about 30 %. Ep 6's
+  first camera was a set of poses re-aimed from a script that had since been rewritten.
+- **A rewritten script gets a new camera.** If the script changes after this step, run the whole pass again on the
+  new words. Never re-aim the old keys at the new props.

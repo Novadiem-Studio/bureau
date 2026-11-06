@@ -55,3 +55,11 @@ mass-moment board.
 ## Learned
 
 (Robin's notes on storyboards, filed by `make-short` step 23.)
+
+- **Labels are plain words (Robin, 2026-11-04, ep 6 animatic 02):** "i see that I have no clue what this is even
+  talking about again. I was hoping the illustrations would help but the definitely did not." Every word on a prop
+  is one a developer outside the project reads at once (`keywords (old)`, `meaning (new)`), never a parameter, an
+  API name or the source's own term. One idea per hold.
+- **A board never rests on "it doesn't move".** Ep 6's boards said "the pointer doesn't move" and the finished film
+  was called boring (2026-11-05). If the point is that something stayed the same, show what was expected to change
+  trying and failing, or show what moved instead.

@@ -40,3 +40,7 @@ every prop is made of, and which kit pieces carry it.
 ## Learned
 
 (Robin's notes on the world and props, filed by `make-short` step 23.)
+
+- **Blink wears the harness only when the film shows it working (Robin, 2026-11-04, ep 6):** "i don't want blinky
+  wearing that harness if we aren't actually demonstrating it for some reason". No belt, buckle, gear loop or tether
+  unless the episode is about the harness running tools. A request card just comes out from Blink; still no hands.

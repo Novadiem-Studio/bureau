@@ -75,6 +75,11 @@ voice rules in `~/.claude/CLAUDE.md` (The Scribe).
   never cut a step the viewer needs to make a target length.
 - **A clearer line needs a fact the article doesn't have.** It stays out, or it is phrased as
   advice to the viewer (a general rule), never as a claim about the article's incident.
+- **The script uses a term the film never explains.** Say it in the viewer's own words or cut the
+  line. Ep 6's script 07 cleared its cold reads with `mode`, `FTS`, `hybrid` and argument keys in
+  it, and Robin could not follow the animatic (2026-11-04: "i see that I have no clue what this is
+  even talking about again"). The version he followed was a first-person tip in plain words: "a
+  smarter search", "the old one".
 - **The source incident is internal tooling.** Name it by what it does in plain words ("a script
   that logs what each AI job cost"), never by its internal name.
 

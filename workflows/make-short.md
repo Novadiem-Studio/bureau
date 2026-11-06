@@ -112,6 +112,13 @@ crew carries them to the next episode.
 - **Another session is rendering.** Heavy steps (VO, snapshots, renders, ffmpeg, sound) take
   `mkdir /Users/robin/tmp/devweb-heavy.lock` first and `rm -r` it after. Only one video build
   renders on this Mac at a time.
+- **The app restarted mid-run.** Before resuming any agent or editing a file, list the running
+  sessions and look for a second copy of this one. On ep 6 a restart left two Conductors on the
+  same run, and both resumed the same DP with different briefs (2026-11-05). One carries on; the
+  other stops and hands over its edits.
+- **Robin's final-watch notes change the picture.** Fix, then show him a 30 fps draft before the
+  long finish render. Ep 6's finish d3 passed every check and two supervisor rounds and he called
+  it boring; the rework went to him as a 4-minute draft first, and only then to the 45-minute master.
 - **A board shows something the kit can't draw** (it needs a full 3D render, hands on Blink, a
   cut). The production designer replaces it with a kit-drawable picture of the same idea and
   says so in `world-plan.md`.
@@ -203,6 +210,10 @@ Sequential unless a step says parallel.
     station layout to the production-design Cleric, timing or build to the gray-box Mage), re-render the
     animatic, then step 14 with what was fixed and what is still open. One first watch only: Robin is
     the next gate, and ep 5's second watch mostly re-found the first one's items.
+    Before step 14, measure the gray box (`PROJECT/camera-check.mjs`): the share of frames in which
+    the camera moves (about 30 %), a move in the hook's first 3 s, and that the main prop changes on
+    every word where the narrator says it changed. A film Robin can follow can still be dull, and no
+    cold watcher flagged ep 6's still needle or its parked camera. Fix what falls short first.
 
 14. **Gate** — Robin watches the animatic. `[CHECKPOINT]`
     Open `animatic/epNN-animatic-NN_720p.mp4` in ONE VLC window. Give him, in this order: what's
@@ -227,6 +238,11 @@ Sequential unless a step says parallel.
     First a 30 fps draft (`render -f 30`, about 7 min) and forensics on it; route every border and
     spike fail to its owner (camera edges to the DP) before the expensive render. Ep 5's first
     finish failed forensics 25 times on frame edges and cost a second 41-minute render.
+    The 120 fps render runs on GitHub, not the Mac (ep 6: the Mac's swap was full):
+    `CR_MASTER=1 CR_FPS=120 tools/cloud-render/cloud-render.sh --tall PROJECT index.html 0 <end> <raw.mp4> 10`,
+    then `RAW=<raw.mp4>` in front of the finish command below, which then only blends and checks.
+    A fix after a finish is a patch: render the changed seconds only, splice them into the raw by
+    frame number, finish again. The owner proves in node that frames outside the window did not change.
     Heavy lock. `CINETIC=<cinetic clone>/skills/cinetic/scripts tools/devweb-kit/finish.sh PROJECT devweb-epNN`
     (120 fps, blended to 60 with motion blur, BT.709 tags, probe, forensics, flashcheck), then a
     720p review cut. Read the probe line before going on: a probe FAIL (ep 5's master had no audio)
