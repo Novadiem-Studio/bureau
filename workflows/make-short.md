@@ -210,7 +210,8 @@ Sequential unless a step says parallel.
     station layout to the production-design Cleric, timing or build to the gray-box Mage), re-render the
     animatic, then step 14 with what was fixed and what is still open. One first watch only: Robin is
     the next gate, and ep 5's second watch mostly re-found the first one's items.
-    Before step 14, measure the gray box (`PROJECT/camera-check.mjs`): the share of frames in which
+    Before step 14, measure the gray box in node (ep 6's `camera-check.mjs` is the model; the
+    gray-box Mage copies and re-points it for the episode): the share of frames in which
     the camera moves (about 30 %), a move in the hook's first 3 s, and that the main prop changes on
     every word where the narrator says it changed. A film Robin can follow can still be dull, and no
     cold watcher flagged ep 6's still needle or its parked camera. Fix what falls short first.
