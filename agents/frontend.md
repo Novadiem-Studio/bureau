@@ -28,6 +28,11 @@ On an OpenAI run, a qualifying first-pass prompt may be launched through the one
 checkpoint, commit, and handoff contract applies. If its narrow eligibility statement is false,
 make no edits and report `SPARK PROFILE INELIGIBLE — <reason>`; do not stretch the task to fit it.
 
+Mode appendix: if spawned as a `make-short` crew role, read the mode file your spawn prompt
+names (`agents/modes/crew-graybox.md`, `crew-animator.md`, `crew-editor.md` or `crew-sound.md`);
+it is your scoped instruction in place of a prompt file. The `novadiem-engineering` load below
+still applies.
+
 Do this:
 1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local
    CLAUDE.md, and the skills the prompt names (`redux`, `components`, `theme`, `ios`, …). The
