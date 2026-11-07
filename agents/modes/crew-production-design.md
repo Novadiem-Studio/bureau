@@ -44,3 +44,27 @@ every prop is made of, and which kit pieces carry it.
 - **Blink wears the harness only when the film shows it working (Robin, 2026-11-04, ep 6):** "i don't want blinky
   wearing that harness if we aren't actually demonstrating it for some reason". No belt, buckle, gear loop or tether
   unless the episode is about the harness running tools. A request card just comes out from Blink; still no hands.
+- **A main prop is a real 3D machine, complex and fun (Robin, 2026-11-06, ep 6's search crate):** "this is supposed
+  to be a 3D work and it looks very 2D and boring". The crate was a box seen face-on with flat planes on its front.
+  He pointed at picture-book contraptions (lumpy bodies, IN and OUT, gears, bellows, slides, pipes, springs, steam):
+  "not totally seussian but maybe just more complex and fun", then "consider the vocabulary of novadiem already..
+  which is kind of retro future style" (precision instruments, 1970s panels, vector sci-fi, circuit cyan or filament
+  gold, not synthwave). Build it in Blink's language (rounded toon volumes, ink outline), show its mechanism
+  working, stand it on the floor, frame it from three-quarter angles. Design it as stills in the real engine
+  (ep 6: `design/machine-test.html` served by `design/serve.py`) before the boards draw it.
+- **The prop shows the real mechanism (Robin, 2026-11-06, on a study with two output slides and cards falling from
+  above):** "is that really the way it works though? ... it's more a switch that you have to choose to throw ...
+  it's not just dropping in from the sky." Before designing, write down from the fact trace who acts, what they
+  choose, and what comes back, and draw exactly that: requests come from whoever sends them, a default is something
+  that holds unless the caller acts (ep 6: a lever a spring holds on the old search, thrown only by a request that
+  carries a tab), one tool has one result. A fun shape that shows the wrong mechanism is worse than a dull one.
+- **Blink's messages come out of an emitter, not his head (Robin, 2026-11-06, ep 6 motion test):** "it's weird how
+  they just emerge from his head like that.. makes no sense? are they paper? are they holographic? either way it
+  would require some kind of emitter that could just form for the moments it's needed?" He chose, from two tests,
+  the beam from the visor: a cone of pale mint light opens, the card condenses inside it from sparks, then flies as
+  paper; a result flies back into the beam and dissolves; Blink tips his face up while it is on. Reference code:
+  ep 6 `stations/beam.js`. Every object Blink sends or receives goes through the beam.
+- **The stage is a floor with a vanishing point, not a void (Robin, 2026-11-06):** "maybe instead of just a blank
+  black void he should be on more of a gid with a vanishing point? so you can seee the 3D of the space more?"
+  Every base frame shows the ground running away under the props. Lines only, no glow floor; ep 6's is a honeycomb,
+  cells 1.1 wide, painted by a shader (`stations/floor.js`), chosen from stills over a square grid.

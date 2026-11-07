@@ -60,3 +60,11 @@ Then, under the table:
   first camera was a set of poses re-aimed from a script that had since been rewritten.
 - **A rewritten script gets a new camera.** If the script changes after this step, run the whole pass again on the
   new words. Never re-aim the old keys at the new props.
+- **The camera sits high enough to see the floor (Robin, 2026-11-06, ep 6):** he asked for a floor with a vanishing
+  point so the 3D of the space reads. A level camera at Blink's height shows a black void whatever the floor does;
+  ep 6's base poses sit 3.4 up and 13 out, about 5 degrees down, and the ground runs to the horizon under every prop.
+- **Judge a new element on a frame made the runner's way.** The cloud render draws WebGL on SwiftShader, which drops
+  GL lines running in depth: ep 6's grid came back as parallel stripes, the DP read them as "faint" and raised the
+  opacity, and the Conductor read them as a grid. Before calling a floor, a line prop or a glow "faint", screenshot
+  the film page under `chrome --headless --use-angle=swiftshader` (ep 6: `design/seek-frame.html?t=`) and count what
+  is there.

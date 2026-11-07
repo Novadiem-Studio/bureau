@@ -126,6 +126,15 @@ crew carries them to the next episode.
 - **A board shows something the kit can't draw** (it needs a full 3D render, hands on Blink, a
   cut). The production designer replaces it with a kit-drawable picture of the same idea and
   says so in `world-plan.md`.
+- **A draft looks weaker than the code says.** The cloud render draws on SwiftShader, which drops
+  GL lines that run in depth (ep 6's `GridHelper` floor came back as parallel stripes, read by two
+  roles as "faint" and "a grid"). Make one frame of the film page the runner's way
+  (`chrome --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --screenshot=...`,
+  ep 6 `design/seek-frame.html?t=`), count what is there, and paint lines in a shader on a mesh.
+- **Robin picks a look by eye** (a floor pattern, a voice, an emitter). Every candidate gets its
+  own file and its own button; never a stitched comparison clip, never a picker that leaves one
+  out (ep 6 voice A/B/C: "weird that you didn't even give me B as an option.. also weird that you
+  didn't just make 3 files", 2026-11-06).
 
 ## Fallback behavior
 
@@ -174,7 +183,10 @@ Sequential unless a step says parallel.
    belong to the narrator, in `script.json` `"tighten"`: 0.22 s at a stop and 0.15 s at a comma suit
    the stock voice (Robin, 2026-11-03); his own cloned voice sounded "all cut up" at that and uses
    0.40 s and 0.28 s (2026-11-04). A new narrator gets an A/B by ear. This is the only spend before
-   Robin's first gate.
+   Robin's first gate. A cloned take gets Adobe Enhance Speech v2 (his Chrome, free plan, strength
+   50 %, from a 48 kHz WAV) before align: ep 6's went up uncleaned, Robin called the voice quality
+   bad and picked the enhanced clip over the take and a plain EQ ("B is way better", 2026-11-06).
+   Timing is unchanged by it; level-match to the take and check the lag is 0 ms.
 
 2c. **Gate** — Robin hears the voice take. `[CHECKPOINT]`
    Open `PROJECT/vo/voice.mp3` in ONE VLC window and give him the script as a fenced block. It is
@@ -204,7 +216,11 @@ Sequential unless a step says parallel.
 
 7. **The Cleric** (Production design, **strong**) — the one world: stations, props, colour → `world-plan.md`
    Mode file `agents/modes/crew-production-design.md`. Reads the boards, `storyboard.md`,
-   `pitch.md`, the kit README and the reference build.
+   `pitch.md`, the kit README and the reference build. A new main prop (the thing the episode is
+   about) is built as stills in the real engine first (a study page served from `PROJECT/design/`,
+   viewed in the Browser pane) and shown to Robin, then as a short silent motion test at his
+   watch, before the boards draw it: ep 6's crate was boarded, built, finished and uploaded before
+   he saw it was "very 2D and boring" (2026-11-06), and the rebuild cost a second production.
 
 8. **The Cleric** (DP, **strong**) — the camera, keyed to narration words → `camera.md`
    Mode file `agents/modes/crew-dp.md`. Reads `world-plan.md`, the boards, the final script.
