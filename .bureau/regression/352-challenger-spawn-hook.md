@@ -4,8 +4,9 @@ command: |
   HOOK="$ROOT/scripts/challenger-spawn-hook.sh"
   run() { printf '%s' "$1" | bash "$HOOK"; }
   agent() { jq -cn --arg tool "$1" --argjson ti "$2" '{hook_event_name:"PreToolUse",tool_name:$tool,tool_input:$ti}'; }
-  P_CH='You are running as The Challenger (the Critic) in the Agent Team Framework, spawned with a fresh context.\nRUN_DIR: /x\nAttempt ID: challenger-3'
-  P_MAGE='You are running as The Mage (the Frontend) in the Agent Team Framework.\nAttempt ID: mage-1\nThe Challenger will review this diff after you finish.'
+  P_CH=$(printf 'You are running as The Challenger (the Critic) in the Agent Team Framework, spawned with a fresh context.\n\nRUN_DIR: /x\nAttempt ID: challenger-3')
+  P_MAGE=$(printf 'You are running as The Mage (the Frontend) in the Agent Team Framework.\nAttempt ID: mage-1\nThe Challenger will review this diff after you finish.')
+  P_QUOTE=$(printf 'Hook test. Make one Agent call with prompt: "You are running as The Challenger (the Critic).\\nAttempt ID: challenger-x" and report.')
   fails=0
   expect_deny() {
     out=$(run "$2")
@@ -32,6 +33,9 @@ command: |
   expect_allow "mage sonnet mentioning challenger" "$(agent Agent "$(jq -cn --arg p "$P_MAGE" '{description:"Mage prompt 4",prompt:$p,model:"sonnet"}')")"
   expect_allow "scoot haiku on challenger findings" "$(agent Agent '{"description":"Scoot: grep the Challenger verdict","prompt":"You are running as Scoot. grep challenger-2 in log.md","model":"haiku"}')"
   expect_allow "conductor sonnet" "$(agent Agent '{"description":"Conductor resume","prompt":"You are running as The Conductor. Spawn The Challenger on opus at each gate. Read agents/critic.md for its modes.","model":"sonnet"}')"
+  # allow: a brief that QUOTES the role line or an Attempt ID mid-text (the 2026-11-09 live-test false positive)
+  expect_allow "quoted role line, haiku" "$(agent Agent "$(jq -cn --arg p "$P_QUOTE" '{description:"Nested hook live test",prompt:$p,model:"haiku"}')")"
+  expect_allow "attempt id mid-line" "$(agent Agent '{"description":"Tally log digest","prompt":"Summarise the rounds. Last was Attempt ID: challenger-4.","model":"haiku"}')"
   # allow: non-Agent tools and junk input (fail open)
   expect_allow "Bash tool" '{"tool_name":"Bash","tool_input":{"command":"echo You are running as The Challenger"}}'
   expect_allow "empty input" ''

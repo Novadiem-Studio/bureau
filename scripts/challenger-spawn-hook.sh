@@ -11,8 +11,9 @@
 #
 # A spawn counts as a Challenger when any of these hold (orchestrator.md § How to spawn):
 #   - subagent_type is "challenger" or "critic"
-#   - the prompt opens a role line "You are running as The Challenger"
-#   - the prompt carries "Attempt ID: challenger-..." or "Attempt ID: critic-..."
+#   - the prompt OPENS with the role line "You are running as The Challenger" (quoted
+#     elsewhere in a prompt it does not count: a test or Conductor brief may quote it)
+#   - a line of the prompt starts "Attempt ID: challenger-..." or "Attempt ID: critic-..."
 #   - the description starts with "Challenger" or "The Challenger"
 # Every other spawn passes untouched.
 #
@@ -39,8 +40,8 @@ is_challenger="$(printf '%s' "$hook_input" | jq -r '
   | (($t.prompt // "") | tostring) as $p
   | (($t.description // "") | tostring) as $d
   | if ($st == "challenger" or $st == "critic")
-      or ($p | test("You are running as The Challenger"; "i"))
-      or ($p | test("Attempt ID:[ \t]*`?(challenger|critic)-"; "i"))
+      or ($p | test("\\A\\s*You are running as The Challenger"; "i"))
+      or ($p | test("(\\A|\\n)[ \\t]*Attempt ID:[ \\t]*`?(challenger|critic)-"; "i"))
       or ($d | test("^[ \t]*(the[ \t]+)?challenger\\b"; "i"))
     then "yes" else "no" end' 2>/dev/null)" || exit 0
 [ "$is_challenger" = "yes" ] || exit 0
