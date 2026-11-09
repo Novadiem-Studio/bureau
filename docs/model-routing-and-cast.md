@@ -16,6 +16,13 @@ excellent for first-pass planning, critique, and implementation. Don't burn fron
 work a strong/standard model can do; don't cheap out when critique, architecture, data integrity,
 or product judgment is actually failing.
 
+**Reviewer floor (no exceptions):** the Challenger and the Delegate's cold reviewer never run
+below `strong`. Quota pressure, a downgraded Conductor, "proportionate review" and lite modes do
+not lower it. A run that cannot afford a strong-tier review pauses and raises a checkpoint; it
+does not review cheaper. `run-cold-reviewer.sh` refuses a sub-strong reviewer model and
+`preflight-artifacts.sh` flags any sub-strong Challenger spawn on both phases (Robin,
+2026-11-09, issue #133: Maven step3 ran six Sonnet Challengers that approved an authorization gap).
+
 ### Model policy (v2 routing)
 
 Per-role routing resolves from provider-neutral policy plus a runtime adapter:

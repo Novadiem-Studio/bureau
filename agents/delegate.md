@@ -126,7 +126,9 @@ To start a new Delegate-run:
    specialist-spawn nonce source. The Conductor subagent reads it privately before spawning
    specialists; the Delegate must never echo, log, or pass that bare nonce.
 2. Resolve Claude affordability once, after `model-routing.json` exists and before choosing the
-   Conductor model. This is a best-effort bootstrap heuristic and must never block startup:
+   Conductor model. The downgrade below applies to the Conductor only; tell a downgraded
+   Conductor that its Challengers stay on `strong` (the reviewer floor, issue #133). This is a
+   best-effort bootstrap heuristic and must never block startup:
    ```sh
    # DELEGATE-AFFORDABILITY-SELECTION:BEGIN
    _delegate_conductor_attempt_id="conductor-bootstrap-1"
