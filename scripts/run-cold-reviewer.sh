@@ -3867,12 +3867,18 @@ if [ "$RUNTIME" = "cursor" ]; then
   # pid is dead and whose response is this same response takes it over atomically
   # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
   # one for a different response, is refused with the recovery hint.
-  # A claim is taken over only on CONFIRMED death: a numeric pid that `ps` cannot find.
-  # Anything unprobeable (empty, non-numeric, 0) or still present (including pid 1, or a
-  # process owned by another user, where kill -0 would mislead) counts as alive.
+  # A claim is taken over only on CONFIRMED death: a numeric pid that `kill -0` reports as
+  # "No such process". Anything unprobeable (empty, non-numeric, 0) counts as alive, and so
+  # does a live process this user may not signal (pid 1, another user's process), where
+  # kill -0 fails with EPERM: a signal that lands, a permission refusal, or a /proc entry
+  # all prove life. `ps -p` is not used: on GitHub's ubuntu-26.04 runner it returned
+  # non-zero for a live sibling pid and two replays both took the claim (issue #131).
   claim_pid_dead() {
     case "$1" in ''|*[!0-9]*|0) return 1 ;; esac
-    ! ps -p "$1" >/dev/null 2>&1
+    kill -0 "$1" 2>/dev/null && return 1
+    case "$(kill -0 "$1" 2>&1)" in *[Pp]ermitted*|*EPERM*) return 1 ;; esac
+    [ -d "/proc/$1" ] && return 1
+    return 0
   }
   if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
     claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
