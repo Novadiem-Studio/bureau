@@ -47,6 +47,28 @@ jobs:
           ps -p $$; echo "ps -p self: rc=$?"
           ps -p 999999 >/dev/null 2>&1; echo "ps -p dead: rc=$?"; kill -0 999999 2>/dev/null; echo "kill -0 dead: rc=$?"
           ps -p 1 >/dev/null 2>&1; echo "ps -p 1: rc=$?"; kill -0 1 2>/dev/null; echo "kill -0 1: rc=$?"
+      - name: Probe mkdir and ln exclusivity under a race
+        run: |
+          set +e
+          echo "mkdir=$(readlink -f "$(command -v mkdir)")"; mkdir --version | head -1; dpkg -S "$(readlink -f "$(command -v mkdir)")"
+          echo "ln=$(readlink -f "$(command -v ln)")"; ln --version | head -1
+          echo "sequential: mkdir twice"; d=$(mktemp -d); mkdir "$d/x"; echo "first rc=$?"; mkdir "$d/x"; echo "second rc=$?"
+          both=0; for i in $(seq 1 300); do
+            ( mkdir "$d/r$i" 2>/dev/null; echo $? > "$d/a$i" ) & ( mkdir "$d/r$i" 2>/dev/null; echo $? > "$d/b$i" ) & wait
+            [ "$(cat "$d/a$i")" = 0 ] && [ "$(cat "$d/b$i")" = 0 ] && both=$((both + 1))
+          done; echo "mkdir race: both succeeded in $both of 300"
+          : > "$d/src"; both=0; for i in $(seq 1 300); do
+            ( ln "$d/src" "$d/l$i" 2>/dev/null; echo $? > "$d/c$i" ) & ( ln "$d/src" "$d/l$i" 2>/dev/null; echo $? > "$d/d$i" ) & wait
+            [ "$(cat "$d/c$i")" = 0 ] && [ "$(cat "$d/d$i")" = 0 ] && both=$((both + 1))
+          done; echo "ln race: both succeeded in $both of 300"
+          both=0; for i in $(seq 1 300); do
+            ( python3 -c "import os,sys; os.mkdir(sys.argv[1])" "$d/p$i" 2>/dev/null; echo $? > "$d/e$i" ) & ( python3 -c "import os,sys; os.mkdir(sys.argv[1])" "$d/p$i" 2>/dev/null; echo $? > "$d/f$i" ) & wait
+            [ "$(cat "$d/e$i")" = 0 ] && [ "$(cat "$d/f$i")" = 0 ] && both=$((both + 1))
+          done; echo "python os.mkdir race: both succeeded in $both of 300"
+          both=0; for i in $(seq 1 300); do
+            ( set -C; : > "$d/n$i" 2>/dev/null; echo $? > "$d/g$i" ) & ( set -C; : > "$d/n$i" 2>/dev/null; echo $? > "$d/h$i" ) & wait
+            [ "$(cat "$d/g$i")" = 0 ] && [ "$(cat "$d/h$i")" = 0 ] && both=$((both + 1))
+          done; echo "noclobber race: both succeeded in $both of 300"
       - name: Run fixture 296 alone, three times, with the replays' stderr
         run: |
           export ROOT="$PWD"
