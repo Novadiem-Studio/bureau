@@ -923,3 +923,12 @@ appends a line to `~/.novadiem/copilot-usage.jsonl`. The billing API reports Cop
 as one aggregate SKU. The "since last run" delta is the cost of one task only when a single
 session ran between the two snapshots; otherwise it is their combined spend. The web AI usage
 page is still the only per-model breakdown.
+
+**`scripts/challenger-spawn-hook.sh` (issue #135).** A PreToolUse hook on the Agent tool that
+denies any Challenger spawn whose `model` is not opus or fable, including an omitted model. It
+fails open on bad input and never touches other roles. Wiring, in `~/.claude/settings.json`:
+
+```json
+"PreToolUse": [{ "matcher": "Agent|Task", "hooks": [{ "type": "command", "timeout": 5,
+  "command": "/bin/sh -c '[ -x \"$0\" ] && exec \"$0\"; exit 0' /Users/robin/Code/novadiem/bureau/scripts/challenger-spawn-hook.sh" }] }]
+```
