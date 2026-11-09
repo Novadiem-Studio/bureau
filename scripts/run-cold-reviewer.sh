@@ -3910,6 +3910,7 @@ PYDEAD
     claim_pid="$(jq -r '.pid // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
     claim_sha="$(jq -r '.responseSha256 // empty' "$CLAIM_DIR/claim.json" 2>/dev/null)"
     if [ "$RESUME_REPLAY" -eq 1 ] && [ "$claim_sha" = "$RESPONSE_SHA256" ] && claim_pid_dead "$claim_pid"; then
+      echo "DBG $$ taking over claim pid=$claim_pid sha=$claim_sha" >&2
       takeover="$CLAIM_DIR.takeover.$$"
       mv "$CLAIM_DIR" "$takeover" 2>/dev/null \
         || fail "spawn $SPAWN_ID: another replay took over the dead claim first; retry"
@@ -3921,6 +3922,7 @@ PYDEAD
     fi
   fi
   RESUME_CLAIMED=1
+  echo "DBG $$ claimed at $(date -u +%H:%M:%S.%N)" >&2
   jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
     '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
@@ -3980,6 +3982,7 @@ PYDEAD
 
   # Audit BEFORE marking, keyed on the spawn id so a replay never writes it twice.
   AUDIT_KEY="Cold reviewer resume — spawn: $SPAWN_ID,"
+  echo "DBG $$ at audit $(date -u +%H:%M:%S.%N): grep -Fc=$(grep -Fc "$AUDIT_KEY" "$RUN_DIR/log.md" 2>/dev/null) lines=$(wc -l < "$RUN_DIR/log.md")" >&2
   if ! grep -Fq "$AUDIT_KEY" "$RUN_DIR/log.md" 2>/dev/null; then
     bash "$SCRIPT_DIR/log-append.sh" "$RUN_DIR" \
       "$AUDIT_KEY runtime: cursor, model: $MODEL, response: $RESUME_RESPONSE (sha256 $RESPONSE_SHA256), verdict: $VERDICT_PATH" \

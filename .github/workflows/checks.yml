@@ -29,6 +29,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  diag:
+    name: Diagnostic (issue 131)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Probe pid liveness tools
+        run: |
+          uname -a; head -2 /etc/os-release
+          echo "ps=$(command -v ps)"; ps --version 2>&1 | head -1; dpkg -l procps 2>/dev/null | tail -1
+          echo "sh=$(readlink -f /bin/sh)  bash=$(bash --version | head -1)  python3=$(python3 --version)"
+          mount | grep ' /proc '
+          sh -c 'sleep 5 & p=$!; ps -p $p >/dev/null 2>&1; echo "ps -p live child: rc=$?"; kill -0 $p 2>/dev/null; echo "kill -0 live child: rc=$?"; [ -d /proc/$p ]; echo "/proc live child: rc=$?"; python3 -c "import os,sys; os.kill($p,0)"; echo "python kill live child: rc=$?"; ps -p $p; wait'
+          ps -p $$; echo "ps -p self: rc=$?"
+          ps -p 999999 >/dev/null 2>&1; echo "ps -p dead: rc=$?"; kill -0 999999 2>/dev/null; echo "kill -0 dead: rc=$?"
+          ps -p 1 >/dev/null 2>&1; echo "ps -p 1: rc=$?"; kill -0 1 2>/dev/null; echo "kill -0 1: rc=$?"
+      - name: Run fixture 296 alone, three times, with the replays' stderr
+        run: |
+          export ROOT="$PWD"
+          f=.bureau/regression/296-cursor-cold-reviewer-resume.md
+          cmd=$(awk '/^command:[[:space:]]*\|[[:space:]]*$/ { blk = 1; next } blk == 1 { if ($0 ~ /^[[:space:]]/ || $0 == "") { sub(/^  /, ""); print; next } blk = 0 }' "$f")
+          for i in 1 2 3; do echo "##### iteration $i"; sh -c "$cmd"; echo "##### iteration $i rc=$?"; done
+
   regression:
     name: Regression suite
     runs-on: ubuntu-latest

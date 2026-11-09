@@ -249,6 +249,7 @@ command: |
   wait "$Q2"; S2=$?
   set -e
   [ $((S1 + S2)) -le 1 ] || { echo "FAIL: concurrent replays: rc $S1 and $S2"; cat "$TMPF/r1.err" "$TMPF/r2.err"; exit 1; }
+  echo "== DIAG rcs S1=$S1 S2=$S2"; echo "== r1.err"; cat "$TMPF/r1.err"; echo "== r2.err"; cat "$TMPF/r2.err"; echo "== log.md"; cat "$RD/log.md"; echo "== checkpoints"; ls -la "$CP" | grep 01-1-9
   [ "$(grep -c 'Cold reviewer resume — spawn: 01-1-9,' "$RD/log.md")" = "1" ] || { echo "FAIL: concurrent replays wrote the audit line $(grep -c 'Cold reviewer resume — spawn: 01-1-9,' "$RD/log.md") times"; exit 1; }
   [ "$(jq -r .status "$P9")" = "resumed" ] || { echo "FAIL: concurrent replays did not mark the plan"; exit 1; }
   [ ! -e "$CP/01-1-9-reviewer-task-plan.claim" ] || { echo "FAIL: concurrent replays left a claim"; exit 1; }
