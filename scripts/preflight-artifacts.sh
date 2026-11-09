@@ -1010,6 +1010,58 @@ if [ "$PHASE" = "final" ]; then
   check_fable_override "$LOG"
 fi
 
+# ── Check: reviewer-tier-floor ────────────────────────────────────────────────
+#
+# A Challenger SPAWN-EVENT (role challenger, or the persona-stem alias critic)
+# must never run on a model that serves only the cheap/standard tiers. There is
+# no override escape: quota pressure, "proportionate review" and lite modes all
+# pause and raise a checkpoint instead of dropping the reviewer's tier.
+# Runs both phases, so a sub-strong review is caught at the next checkpoint
+# rather than after the merge.
+#
+# Robin, 2026-11-09 (issue #133): Maven regos-api-step3 (Oct 30) ran six
+# build-diff Challengers on sonnet at 12% weekly left; they approved diffs whose
+# live DB proof then found a contract bug and an authorization gap.
+check_reviewer_tier_floor() {
+  rf_log="$1"
+  [ -f "$rf_log" ] || return 0
+
+  rf_models="$WORK/rf_models.txt"
+  : > "$rf_models"
+
+  # Sub-strong model names: from the run's resolved routing when it carries a
+  # tiers map; haiku and sonnet otherwise (the Claude runtime's cheap/standard
+  # models). A model that also serves strong or above is not sub-strong.
+  if [ -f "$RUN_DIR/model-routing.json" ] && jq -e '.tiers | type == "object" and length > 0' \
+       "$RUN_DIR/model-routing.json" >/dev/null 2>&1; then
+    jq -r '
+      def names(ks): [ks[] as $k | .tiers[$k].model?] | map(select(type == "string" and length > 0));
+      (names(["cheap", "standard"]) - names(["strong", "frontier", "escalated"])) | unique | .[]' \
+      "$RUN_DIR/model-routing.json" 2>/dev/null > "$rf_models"
+  else
+    printf 'haiku\nsonnet\n' > "$rf_models"
+  fi
+  [ -s "$rf_models" ] || return 0
+
+  grep -n '^SPAWN-EVENT:' "$rf_log" 2>/dev/null | while IFS= read -r rf_numbered; do
+    rf_lineno=${rf_numbered%%:*}
+    rf_json=${rf_numbered#*:}
+    rf_json=${rf_json#SPAWN-EVENT:}
+    rf_fields=$(printf '%s' "$rf_json" | jq -r '
+      select(type == "object")
+      | select(.status == "started")
+      | select((.role // "") == "challenger" or (.role // "") == "critic")
+      | "\(.attempt_id // "")\t\(.actual_model // "")"' 2>/dev/null)
+    [ -n "$rf_fields" ] || continue
+    rf_aid=${rf_fields%%	*}
+    rf_act=${rf_fields#*	}
+    grep -Fxq "$rf_act" "$rf_models" 2>/dev/null || continue
+    add_defect "log.md:$rf_lineno — reviewer-tier-floor — Challenger spawn '$rf_aid' ran on '$rf_act', a sub-strong model; the Challenger never runs below strong, including under quota pressure (pause and raise a checkpoint instead); re-run this review on the strong tier before its verdict counts (config/model-policy.v2.json roles.challenger, issue #133)"
+  done
+}
+
+check_reviewer_tier_floor "$LOG"
+
 # ── Check: nonce-exposure ─────────────────────────────────────────────────────
 #
 # The run-scope nonce (agents/orchestrator.md § Run-scope nonce lifecycle)
