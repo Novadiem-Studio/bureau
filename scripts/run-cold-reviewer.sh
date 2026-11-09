@@ -3561,6 +3561,22 @@ if [ -f "$ROUTING" ]; then
     fail "reviewer model '$MODEL' is not in hostPolicy.allowed_spawn_models for runtime '$RUNTIME'"
   fi
 fi
+# The reviewer never runs below strong, including under quota pressure (issue #133).
+# Sub-strong = models that serve only the cheap/standard tiers in the run's routing;
+# haiku/sonnet on Claude when the routing carries no tiers map. Refused before any
+# spawn: a starved run pauses and raises a checkpoint, it does not review cheaper.
+substrong_models=""
+if [ -f "$ROUTING" ] && jq -e '.tiers | type == "object" and length > 0' "$ROUTING" >/dev/null 2>&1; then
+  substrong_models="$(jq -r '
+    def names(ks): [ks[] as $k | .tiers[$k].model?] | map(select(type == "string" and length > 0));
+    (names(["cheap", "standard"]) - names(["strong", "frontier", "escalated"])) | unique | .[]' \
+    "$ROUTING" 2>/dev/null)"
+elif [ "$RUNTIME" = "claude" ]; then
+  substrong_models="$(printf 'haiku\nsonnet')"
+fi
+if [ -n "$substrong_models" ] && printf '%s\n' "$substrong_models" | grep -Fxq -- "$MODEL"; then
+  fail "reviewer model '$MODEL' is below the strong tier; the cold reviewer never runs below strong, even under quota pressure; raise a checkpoint instead (issue #133)"
+fi
 
 VERDICT_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-verdict.json"
 ENVELOPE_PATH="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-envelope.json"
@@ -3867,12 +3883,27 @@ if [ "$RUNTIME" = "cursor" ]; then
   # pid is dead and whose response is this same response takes it over atomically
   # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
   # one for a different response, is refused with the recovery hint.
-  # A claim is taken over only on CONFIRMED death: a numeric pid that `ps` cannot find.
-  # Anything unprobeable (empty, non-numeric, 0) or still present (including pid 1, or a
-  # process owned by another user, where kill -0 would mislead) counts as alive.
+  # A claim is taken over only on CONFIRMED death: a numeric pid whose kill(2) probe fails
+  # with ESRCH. Anything unprobeable (empty, non-numeric, 0) counts as alive, and so does a
+  # live process this user may not signal (pid 1, another user's process), where the probe
+  # fails with EPERM: a signal that lands, a /proc entry, or any error other than ESRCH all
+  # count as life. The errno is read in python3 (already required above), not parsed from
+  # a localized message. `ps -p` is not used: on GitHub's ubuntu-26.04 runner it returned
+  # non-zero for a live sibling pid and two replays both took the claim (issue #131).
   claim_pid_dead() {
     case "$1" in ''|*[!0-9]*|0) return 1 ;; esac
-    ! ps -p "$1" >/dev/null 2>&1
+    kill -0 "$1" 2>/dev/null && return 1
+    [ -d "/proc/$1" ] && return 1
+    python3 - "$1" <<'PYDEAD' 2>/dev/null
+import os, sys
+try:
+    os.kill(int(sys.argv[1]), 0)
+except ProcessLookupError:
+    sys.exit(0)          # ESRCH: confirmed dead
+except Exception:
+    sys.exit(1)          # EPERM or anything else: a process is there, or we cannot know
+sys.exit(1)
+PYDEAD
   }
   if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
     claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"

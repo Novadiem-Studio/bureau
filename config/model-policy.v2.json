@@ -131,7 +131,6 @@
       "agent": "The Challenger",
       "default_tier": "strong",
       "allowed": [
-        "standard",
         "strong",
         "frontier",
         "escalated"
@@ -142,10 +141,8 @@
         "second_critic_loop",
         "prior_review_missed_issue"
       ],
-      "deescalate_when": [
-        "low_risk_docs_review_with_frontier_followup"
-      ],
-      "note": "Cold review is bought by FRESH CONTEXT: a reviewer that has not seen the design argued gives real objections. fresh_context_required is the invariant. QA runs on a sufficiently capable tier and escalates only on a demonstrated miss. Robin, 2026-09-16. Regression specs 13 and 295 assert this shape; do not reintroduce author-derived routing."
+      "deescalate_when": [],
+      "note": "Cold review is bought by FRESH CONTEXT: a reviewer that has not seen the design argued gives real objections. fresh_context_required is the invariant. QA runs on a sufficiently capable tier and escalates only on a demonstrated miss. Robin, 2026-09-16. FLOOR: the Challenger never runs below strong, including under quota pressure; a starved run pauses and raises a checkpoint instead (Robin, 2026-11-09, issue #133: Maven step3 ran six Sonnet Challengers that missed an authorization gap). run-cold-reviewer.sh and preflight-artifacts.sh enforce it. Regression specs 13 and 295 assert this shape; do not reintroduce author-derived routing."
     },
     "architect": {
       "agent": "The Architect",
