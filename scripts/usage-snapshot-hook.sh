@@ -48,15 +48,18 @@ now="$(date -u +%s)"
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
 
 # Throttle. Parallel PostToolUse hooks can start together, so the check and the
-# stamp update run under an mkdir lock (atomic); a loser just exits. A lock left
-# by a killed run is cleared after 30 s.
+# stamp update run under a lock; a loser just exits. The lock is a directory whose
+# owner file is written under noclobber (O_EXCL): mkdir alone cannot decide the
+# race, because Rust coreutils mkdir (Ubuntu 26.04) can report success to two
+# concurrent callers (issue #131). A lock left by a killed run is cleared after 30 s.
 mkdir -p "$(dirname "$STAMP")" 2>/dev/null || exit 0
 LOCK="$STAMP.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
-  [ $(( now - $(mtime "$LOCK") )) -gt 30 ] && rmdir "$LOCK" 2>/dev/null
+  [ $(( now - $(mtime "$LOCK") )) -gt 30 ] && rm -rf "$LOCK" 2>/dev/null
   exit 0
 fi
-trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+( set -C; echo "$$" > "$LOCK/owner" ) 2>/dev/null || exit 0
+trap 'rm -rf "$LOCK" 2>/dev/null' EXIT
 if [ -f "$STAMP" ] && [ $(( now - $(mtime "$STAMP") )) -lt "$INTERVAL" ]; then
   exit 0
 fi

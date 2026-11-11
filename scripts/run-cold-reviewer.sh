@@ -3878,8 +3878,12 @@ if [ "$RUNTIME" = "cursor" ]; then
   fi
 
   # Every resume, first or replay, holds the claim while it publishes, audits and marks,
-  # so the audit line of record is appended at most once under any interleaving. mkdir
-  # succeeds for exactly one caller. A replay that meets a claim left by a resume whose
+  # so the audit line of record is appended at most once under any interleaving. The
+  # claim is a directory, but mkdir alone does not decide the race: Rust coreutils mkdir
+  # (Ubuntu 26.04) can report success to two concurrent callers (issue #131), so the
+  # claim record inside it is written under noclobber (O_EXCL), which the kernel grants
+  # to exactly one caller; a caller whose record write fails lost the claim and leaves
+  # the directory alone. A replay that meets a claim left by a resume whose
   # pid is dead and whose response is this same response takes it over atomically
   # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
   # one for a different response, is refused with the recovery hint.
@@ -3920,11 +3924,13 @@ PYDEAD
       fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
     fi
   fi
+  # The record write is the real claim: `set -C` opens claim.json with O_EXCL, so of two
+  # callers that both passed mkdir exactly one gets here with its record on disk.
+  ( set -C; jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+      '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" ) 2>/dev/null \
+    || fail "spawn $SPAWN_ID is already claimed by another resume that won the race; retry once it has finished"
   RESUME_CLAIMED=1
-  jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
-    '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
-    || fail "cannot record the resume claim"
 
   # Derive every output from the response. This is deterministic, so on replay the
   # derived files are compared byte-for-byte with whatever was already published.
