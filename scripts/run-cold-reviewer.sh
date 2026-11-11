@@ -3843,11 +3843,12 @@ if [ "$RUNTIME" = "cursor" ]; then
   VERDICT_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.json.$$.tmp"
   VERDICT_RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.raw.$$.tmp"
   ENVELOPE_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-envelope.json.$$.tmp"
+  CLAIM_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.claim.$$.tmp"
   # Temp names carry $$: a concurrent loser's cleanup must never remove the winner's files.
   RESUME_CLAIMED=0
   RESUME_PUBLISHED=0
   cleanup_resume() {
-    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
+    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP" "$CLAIM_TMP"
     # a refusal before publication must leave the plan resumable
     # (a replay that refused before touching outputs also releases; the claim it holds
     #  is its own, taken by mkdir or takeover)
@@ -3924,12 +3925,17 @@ PYDEAD
       fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
     fi
   fi
-  # The record write is the real claim: `set -C` opens claim.json with O_EXCL, so of two
-  # callers that both passed mkdir exactly one gets here with its record on disk.
-  ( set -C; jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
-      '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" ) 2>/dev/null \
+  # The record write is the real claim. The record is built in a temp file first, so a
+  # jq failure is its own error and never leaves a half-written claim.json behind; then
+  # `set -C` opens claim.json with O_EXCL, so of two callers that both passed mkdir
+  # exactly one gets its record on disk and the other has lost the race.
+  jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
+    '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_TMP" \
+    || fail "cannot record the resume claim"
+  ( set -C; cat "$CLAIM_TMP" > "$CLAIM_DIR/claim.json" ) 2>/dev/null \
     || fail "spawn $SPAWN_ID is already claimed by another resume that won the race; retry once it has finished"
+  rm -f "$CLAIM_TMP"
   RESUME_CLAIMED=1
 
   # Derive every output from the response. This is deterministic, so on replay the

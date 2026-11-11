@@ -31,10 +31,13 @@ command: |
   JSON
   # A mkdir that never refuses: the behaviour measured on GitHub's ubuntu-26.04 runner
   # (uutils coreutils 0.10.0 mkdir, both of two racers exit 0 in 10 of 300 rounds),
-  # made deterministic. Every script run below sees it first on PATH.
+  # made deterministic. It also pauses inside mkdir for the claim path, so two racers
+  # that enter it milliseconds apart both leave it together and both reach the record
+  # write while neither has finished: the collision is forced, not hoped for. Every
+  # script run below sees it first on PATH.
   REAL_MKDIR=$(command -v mkdir)
   mkdir -p "$TMPF/shim"
-  printf '#!/bin/sh\nexec "%s" -p "$@"\n' "$REAL_MKDIR" > "$TMPF/shim/mkdir"
+  printf '#!/bin/sh\ncase "$*" in *reviewer-task-plan.claim) sleep 0.5 ;; esac\nexec "%s" -p "$@"\n' "$REAL_MKDIR" > "$TMPF/shim/mkdir"
   chmod +x "$TMPF/shim/mkdir"
   d="$TMPF/shim-check"; PATH="$TMPF/shim:$PATH" mkdir "$d" && PATH="$TMPF/shim:$PATH" mkdir "$d" || { echo "FAIL: shim mkdir still refuses an existing dir"; exit 1; }
   run() { PATH="$TMPF/shim:$PATH" bash "$ROOT/scripts/run-cold-reviewer.sh" "$@"; }
@@ -90,4 +93,4 @@ command: |
   strip "$ROOT/scripts/watcher.sh" | grep -Fq 'set -C; echo "$$" > "$lock_dir/pid"' || { echo "FAIL: watcher.sh lock_dir pid write is not under noclobber"; exit 1; }
   strip "$ROOT/scripts/usage-snapshot-hook.sh" | grep -Fq 'set -C; echo "$$" > "$LOCK/owner"' || { echo "FAIL: usage-snapshot-hook.sh lock owner write is not under noclobber"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". With a mkdir that never refuses an existing directory (the uutils coreutils race on Ubuntu 26.04 made deterministic), two concurrent first resumes of one plan and two concurrent same-response replays each append the audit line of record exactly once, mark the plan resumed, and leave no claim; a resume that meets a claim dir holding a live record is refused and leaves that record intact; watcher.sh and usage-snapshot-hook.sh write their lock records under `set -C` in real (non-comment) code. Mutation: drop the `set -C` around the claim.json write in run-cold-reviewer.sh → both racers claim and the audit line is written twice (the exact ubuntu-26.04 failure of fixture 296); make the record-write failure fall through instead of `fail` → the same; drop the noclobber from watcher.sh or usage-snapshot-hook.sh → the static guard fails.
+expected: exit 0; stdout "PASS". With a mkdir that never refuses an existing directory and pauses inside the claim mkdir so both racers reach the record write together (the uutils coreutils race on Ubuntu 26.04 made deterministic), two concurrent first resumes of one plan and two concurrent same-response replays each append the audit line of record exactly once, mark the plan resumed, and leave no claim; a resume that meets a claim dir holding a live record is refused and leaves that record intact; watcher.sh and usage-snapshot-hook.sh write their lock records under `set -C` in real (non-comment) code. Mutation: drop the `set -C` around the claim.json write in run-cold-reviewer.sh → both racers claim and the audit line is written twice (the exact ubuntu-26.04 failure of fixture 296); make the record-write failure fall through instead of `fail` → the same; drop the noclobber from watcher.sh or usage-snapshot-hook.sh → the static guard fails.

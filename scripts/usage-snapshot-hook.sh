@@ -55,7 +55,12 @@ mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; 
 mkdir -p "$(dirname "$STAMP")" 2>/dev/null || exit 0
 LOCK="$STAMP.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
-  [ $(( now - $(mtime "$LOCK") )) -gt 30 ] && rm -rf "$LOCK" 2>/dev/null
+  # Steal-by-rename: only the instance that was renamed is removed, so a lock
+  # another hook creates after the rename is never swept away with it.
+  if [ $(( now - $(mtime "$LOCK") )) -gt 30 ]; then
+    stale="$LOCK.stale.$$"
+    mv "$LOCK" "$stale" 2>/dev/null && rm -rf "$stale"
+  fi
   exit 0
 fi
 ( set -C; echo "$$" > "$LOCK/owner" ) 2>/dev/null || exit 0
