@@ -45,6 +45,9 @@ For a plan at `<dir>/<NN>-<name>.md`, create `<dir>/<NN>-<name>/` beside it.
   instead of expanding scope.
 - `## Do` — numbered, concrete steps naming **exact file paths**, what to clone/mirror, and the
   specifics (columns, method signatures, params).
+- `## If the code disagrees with this prompt` — the standard stop-and-report section, verbatim
+  from the template in `agents/prompt-engineer.md` (see § Give the coder a way out), plus any
+  specific known risk. It sits before the checkpoint.
 - `## Checkpoint (green before NN+1)` — starts with `Seams under test: <named public
   seam(s)>` or `Seams under test: none — <short reason>`, then lists the exact tests /
   verification that must pass. For non-`none` seams, tell the coder to load
