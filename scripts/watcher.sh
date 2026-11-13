@@ -187,13 +187,19 @@ process_request() {
     rm -rf "$reclaiming"
   fi
 
-  # Atomic claim: mkdir succeeds for exactly one caller. If it fails, another
-  # watcher (or a racing poll pass) won the request — skip it. This is the
-  # re-entrancy guarantee: a request is staged and spawned by exactly one claim.
+  # Atomic claim. mkdir fails for a late caller, but mkdir alone does not decide a
+  # race: Rust coreutils mkdir (Ubuntu 26.04) can report success to two concurrent
+  # callers (issue #131). The pid file is the claim: `set -C` opens it with O_EXCL,
+  # which the kernel grants to exactly one caller. A caller whose pid write fails
+  # lost the request to another watcher (or a racing poll pass) and leaves the lock
+  # dir alone. This is the re-entrancy guarantee: a request is staged and spawned
+  # by exactly one claim.
   if ! mkdir "$lock_dir" 2>/dev/null; then
     return 0
   fi
-  echo "$$" > "$lock_dir/pid"
+  if ! ( set -C; echo "$$" > "$lock_dir/pid" ) 2>/dev/null; then
+    return 0
+  fi
 
   # Parse the request file.
   REQ_ARTIFACT="$(req_artifact "$request_file")"
