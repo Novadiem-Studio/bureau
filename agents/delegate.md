@@ -520,7 +520,14 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
 - **resume-token mismatch on Conductor resume:** the Conductor must echo the return block's
   `resume-token` on resume; a missing or wrong echo means the transcript did NOT survive (R3 / A1
   failure mode). Log it and attempt ONE re-spawn with `state.json` context.
-- **Cold reviewer unavailable / over-budget / failed spawn (FR6 / AC11):** ESCALATE TO ROBIN.
+- **Cold reviewer stopped by its turn limit:** the spawn ran out of turns (`DELEGATE_MAX_TURNS`,
+  default 200). `run-cold-reviewer.sh` then fails with "stopped at the turn limit" (the CLI's
+  `error_max_turns`); a reviewer that wraps up early on its own shows as
+  `artifacts_read_complete: false` instead. Either way, that is not a decision for Robin. Discard the verdict as a gate, log it, and re-spawn with a new spawn
+  id and `DELEGATE_MAX_TURNS` raised. Escalate only if a raised re-spawn also stops short.
+  Never put a review limit to Robin as a cost: he is on a subscription, and the CLI's
+  `total_cost_usd` and any dollar figure are not his bill (Robin, 2026-11-14, #141).
+- **Cold reviewer unavailable / failed spawn (FR6 / AC11):** ESCALATE TO ROBIN.
   NEVER self-grade. The correct path is to surface the failure to Robin with the checkpoint
   details and ask how to proceed. There is no "degenerate case" fallback that lets the warm
   manager emit a verdict from its own reasoning — every gating verdict comes from a cold reviewer

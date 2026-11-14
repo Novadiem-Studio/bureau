@@ -20,9 +20,8 @@
 # Environment (set by delegate-launcher.sh):
 #   RUN_DIR           absolute path to the run dir (also accepted as $1)
 #   ROOT              absolute path to the agent-framework root
-#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 5.00; headroom, a runaway
-#                     backstop not a throttle. On a subscription the dollars are notional;
-#                     the cap exists only to stop a stuck spawn, never to throttle a real review.)
+#   DELEGATE_MAX_TURNS per-spawn reviewer turn limit (default 200). A backstop for a stuck
+#                     spawn, never a throttle on a real review.
 #   REVISION_CAP      revision cap integer (default 2)
 #
 # Usage:
@@ -63,13 +62,13 @@ if [ ! -d "$ROOT" ]; then
   exit 1
 fi
 
-DELEGATE_MAX_USD="${DELEGATE_MAX_USD:-5.00}"
+DELEGATE_MAX_TURNS="${DELEGATE_MAX_TURNS:-200}"
 REVISION_CAP="${REVISION_CAP:-2}"
-# Per-checkpoint spawn-failure ceiling (money-safety). --max-budget-usd caps the
-# spend of ONE spawn but NOT the number of spawns. If the Delegate persistently
+# Per-checkpoint spawn-failure ceiling. --max-turns caps the length of ONE spawn
+# but NOT the number of spawns. If the Delegate persistently
 # emits invalid/empty JSON, verdict-write.sh fails closed (no verdict) and the
 # poll loop would otherwise re-spawn the selected provider every poll — unbounded
-# spend. After this many consecutive failed spawns for one NN, give up on that
+# re-spawns. After this many consecutive failed spawns for one NN, give up on that
 # request: escalate, mark it failed, and stop re-spawning.
 MAX_SPAWN_FAILURES="${MAX_SPAWN_FAILURES:-3}"
 
@@ -153,7 +152,7 @@ process_request() {
 
   # Skip a request that has been given up on (W1 poison marker): the Delegate
   # failed to produce a valid verdict MAX_SPAWN_FAILURES times in a row, so we
-  # stopped re-spawning to bound spend. Attended intervention is needed.
+  # stopped re-spawning. Attended intervention is needed.
   if [ -f "$failed_marker" ]; then
     return 0
   fi
@@ -376,7 +375,7 @@ PYSOURCES
   # envelope. The reviewer never receives a live-run path in its prompt.
   review_meta="$(
     ROOT="$ROOT" \
-    DELEGATE_MAX_USD="$DELEGATE_MAX_USD" \
+    DELEGATE_MAX_TURNS="$DELEGATE_MAX_TURNS" \
     bash "$SCRIPT_DIR/run-cold-reviewer.sh" \
       "$RUN_DIR" "$CTX" "$REQ_CHECKPOINT" "$spawn_id" "$artifact_base" "$review_mode"
   )"
@@ -435,8 +434,8 @@ PYSOURCES
     # Success: a verdict was written. Clear any prior failcount for this NN.
     rm -f "$failcount_file"
   else
-    # Failure: no verdict written. Bound total spend by counting consecutive
-    # spawn failures per NN (W1). A per-spawn budget guard does not cap the
+    # Failure: no verdict written. Bound re-spawns by counting consecutive
+    # spawn failures per NN (W1). A per-spawn turn limit does not cap the
     # retry count, so without this the loop could re-spawn a provider forever.
     echo "watcher: verdict-write.sh reported a validation failure for $NN (held; no verdict written)" >&2
     failcount=0
@@ -467,7 +466,7 @@ PYSOURCES
 mkdir -p "$CHECKPOINTS_DIR"
 reclaim_stale_locks
 
-echo "watcher: polling $CHECKPOINTS_DIR (interval ${POLL_INTERVAL}s, cap ${REVISION_CAP}, max \$${DELEGATE_MAX_USD}/checkpoint)" >&2
+echo "watcher: polling $CHECKPOINTS_DIR (interval ${POLL_INTERVAL}s, cap ${REVISION_CAP}, max ${DELEGATE_MAX_TURNS} turns/spawn)" >&2
 
 while [ "$watcher_running" -eq 1 ]; do
   for request_file in "$CHECKPOINTS_DIR"/*-request.md; do
