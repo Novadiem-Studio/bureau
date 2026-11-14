@@ -2858,7 +2858,7 @@ PY
     task_prompt="$(build_readiness_prompt "$CTX")"
     raw_claude="$readiness_tmp/claude-raw.json"
     system_prompt="You are The Challenger in readiness-audit verification mode. The staged packet is your entire review world. Do not load CLAUDE.md or act as the Conductor."
-    budget="${CHALLENGER_MAX_USD:-${DELEGATE_MAX_USD:-5.00}}"
+    max_turns="${CHALLENGER_MAX_TURNS:-${DELEGATE_MAX_TURNS:-200}}"
     (
       cd "$CTX" &&
       "$claude_bin" -p \
@@ -2870,10 +2870,13 @@ PY
         --add-dir "$CTX" \
         --setting-sources "" \
         --no-session-persistence \
-        --max-budget-usd "$budget" \
+        --max-turns "$max_turns" \
         "$task_prompt" < /dev/null
     ) > "$raw_claude" 2> "$provider_stderr"
     cli_rc=$?
+    if [ "$cli_rc" -ne 0 ] && [ "$(jq -r '.subtype // empty' "$raw_claude" 2>/dev/null)" = "error_max_turns" ]; then
+      fail "Claude readiness reviewer stopped at the turn limit ($max_turns turns); re-spawn with CHALLENGER_MAX_TURNS or DELEGATE_MAX_TURNS raised"
+    fi
     [ "$cli_rc" -eq 0 ] || fail "Claude readiness reviewer exited $cli_rc"
     extract_claude_candidate "$raw_claude" "$provider_candidate" \
       || fail "Claude readiness reviewer returned no structured candidate"
@@ -4024,7 +4027,7 @@ elif [ "$RUNTIME" = "claude" ]; then
   audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
   RAW_CLAUDE="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-claude-raw.json"
   SYSTEM_PROMPT="You are The Delegate cold reviewer. Do not load CLAUDE.md. Do not act as the Conductor."
-  BUDGET="${DELEGATE_MAX_USD:-5.00}"
+  MAX_TURNS="${DELEGATE_MAX_TURNS:-200}"
 
   (
     cd "$CTX" &&
@@ -4037,10 +4040,13 @@ elif [ "$RUNTIME" = "claude" ]; then
       --add-dir "$CTX" \
       --setting-sources "" \
       --no-session-persistence \
-      --max-budget-usd "$BUDGET" \
+      --max-turns "$MAX_TURNS" \
       "$TASK_PROMPT" < /dev/null
   ) > "$RAW_CLAUDE" 2> "$STDERR_PATH"
   cli_rc=$?
+  if [ "$cli_rc" -ne 0 ] && [ "$(jq -r '.subtype // empty' "$RAW_CLAUDE" 2>/dev/null)" = "error_max_turns" ]; then
+    fail "Claude reviewer stopped at the turn limit ($MAX_TURNS turns, see $RAW_CLAUDE); re-spawn with DELEGATE_MAX_TURNS raised"
+  fi
   if [ "$cli_rc" -ne 0 ]; then
     fail "Claude reviewer exited $cli_rc (see $STDERR_PATH)"
   fi
