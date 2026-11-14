@@ -24,6 +24,7 @@ their rules.
                    Does NOT receive:  unrelated spec/plan internals — judge the message on its audience, not the design.
 **mode: review** — Reads (handed):  the existing copy (inline or path); audience description (inline).
                    Does NOT receive:  unrelated spec/plan internals — judge the copy on its audience, not the design history.
+**mode: showrunner** — `make-short` step 1 only: read `agents/modes/crew-showrunner.md`.
 
 Convention: docs/conventions.md
 Convention: docs/conventions/tool-discipline.md
