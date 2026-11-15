@@ -43,6 +43,14 @@ Check for:
 - Project-specific checks present and green (or honestly reported), not replaced by generic
   "looks good" claims.
 - Fowler-floor smells that create real maintenance risk in the changed hunks.
+- **Hand-rolled what already exists** (novadiem-engineering §1): new code that reimplements
+  something the codebase, the standard library, the platform, or an already-installed
+  dependency provides, or a new dependency added for a few lines. Name the existing thing
+  (`path:Symbol`, the stdlib/platform API, or the package) or there is no finding. Validation
+  at trust boundaries, data-loss error handling, security, and accessibility are never the
+  removable part.
+- **The coder's `Skipped / not checked` line:** anything listed there that the prompt or
+  `repro.md` required is a spec-fidelity finding, not a disclosed limitation.
 
 ### CodeRabbit findings file (when the Conductor names one)
 

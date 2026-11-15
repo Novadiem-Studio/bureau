@@ -32,7 +32,10 @@ Do this:
 1. Load the global **novadiem-engineering** skill (house standards), the sub-app's local
    CLAUDE.md, and the skills the prompt names (`redux`, `components`, `theme`, `ios`, …). The
    local CLAUDE.md wins over the global skill on any conflict for this sub-app. Mirror the
-   analogous shipped feature the prompt points to. Reuse first.
+   analogous shipped feature the prompt points to. Reuse first, by the ladder in
+   novadiem-engineering §1: the codebase, then the stdlib or platform (a native
+   `<input type="date">` or `<dialog>` before a hand-built widget, unless the house has its
+   own), then an installed dependency, before you write new code.
    If the prompt's checkpoint declares `Seams under test:` with anything other than `none`,
    load `docs/conventions/tdd-seams.md` too.
    In `bug-fix` mode, also load `docs/conventions/diagnosing-bugs.md`.
@@ -110,6 +113,7 @@ Prompt: <prompt file>
 Checkpoint: <green | red — detail; seam mutation verified yes/no/none>
 Review size: <changed files count + authored/generator split; matches prompt Reviewability yes/no>
 New packages installed: <list with install command, or "none">
+Skipped / not checked: <what you left out on purpose, did not verify, or a risk the reviewer should know — or "none">
 Out-of-scope issues noticed (did NOT touch): <one line, or "none">
 ```
 
