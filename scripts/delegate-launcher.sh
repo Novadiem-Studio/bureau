@@ -16,20 +16,21 @@
 #   Conductor session start; this script's smoke test does NOT cover that path.
 #
 # Usage:
-#   delegate-launcher.sh <RUN_DIR> [task-brief] [--revision-cap N] [--max-usd F]
+#   delegate-launcher.sh <RUN_DIR> [task-brief] [--revision-cap N] [--max-turns N]
 #
 # Arguments:
 #   $1              absolute path to the run dir (must contain state.json)
 #   $2              task brief text (optional positional; may be omitted if only
 #                   flags are needed, but then the brief defaults to empty)
 #   --revision-cap N  override the revision cap (default 2)
-#   --max-usd F       override the per-checkpoint spend ceiling (default 5.00)
+#   --max-turns N     override the per-spawn reviewer turn limit (default 200; a backstop
+#                     for a stuck spawn, never a throttle on a real review)
 #
 # Environment set / exported:
 #   RUN_DIR           absolute path to the run dir
 #   ROOT              absolute path to the agent-framework root
 #   REVISION_CAP      revision cap integer (default 2, overridable)
-#   DELEGATE_MAX_USD  per-checkpoint spend ceiling (default 5.00, overridable)
+#   DELEGATE_MAX_TURNS per-spawn reviewer turn limit (default 200, overridable)
 #
 # Exit codes:
 #   0   clean exit (watcher exited normally or SIGTERM received)
@@ -41,14 +42,14 @@
 
 # Defaults
 revision_cap=2
-max_usd="5.00"
+max_turns=200
 task_brief=""
 run_dir_arg=""
 brief_parsed=0
 
 # $1 must be the RUN_DIR (positional, required).
 if [ "$#" -eq 0 ]; then
-  echo "Usage: delegate-launcher.sh <RUN_DIR> [task-brief] [--revision-cap N] [--max-usd F]" >&2
+  echo "Usage: delegate-launcher.sh <RUN_DIR> [task-brief] [--revision-cap N] [--max-turns N]" >&2
   exit 1
 fi
 
@@ -69,15 +70,15 @@ while [ "$#" -gt 0 ]; do
       revision_cap="$1"
       shift
       ;;
-    --max-usd)
+    --max-turns)
       shift
       case "$1" in
-        '' | *[!0-9.]* | *.*.*)
-          echo "delegate-launcher: --max-usd requires a non-negative number (e.g. 0.50), got: '$1'" >&2
+        '' | *[!0-9]* | 0)
+          echo "delegate-launcher: --max-turns requires a positive integer, got: '$1'" >&2
           exit 1
           ;;
       esac
-      max_usd="$1"
+      max_turns="$1"
       shift
       ;;
     --)
@@ -122,7 +123,7 @@ export RUN_DIR="$run_dir_arg"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export ROOT="${ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 export REVISION_CAP="$revision_cap"
-export DELEGATE_MAX_USD="$max_usd"
+export DELEGATE_MAX_TURNS="$max_turns"
 
 # ── create checkpoints dir ───────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 python3 - "$RUN_DIR/delegate-session.json" \
           "$CONDUCTOR_PID" "$WATCHER_PID" "$conductor_session_id" \
-          "$RUN_DIR" "$started_at" "$REVISION_CAP" "$DELEGATE_MAX_USD" <<'PY'
+          "$RUN_DIR" "$started_at" "$REVISION_CAP" "$DELEGATE_MAX_TURNS" <<'PY'
 import json, sys
 out_path      = sys.argv[1]
 cond_pid      = int(sys.argv[2])
@@ -193,7 +194,7 @@ cond_sess     = sys.argv[4]
 run_dir       = sys.argv[5]
 started_at    = sys.argv[6]
 rev_cap       = int(sys.argv[7])
-max_usd       = float(sys.argv[8])
+max_turns     = int(sys.argv[8])
 
 record = {
     "conductor_pid":        cond_pid,
@@ -202,7 +203,7 @@ record = {
     "run_dir":              run_dir,
     "started_at":           started_at,
     "revision_cap":         rev_cap,
-    "delegate_max_usd":     max_usd,
+    "delegate_max_turns":   max_turns,
 }
 with open(out_path, "w") as fh:
     json.dump(record, fh, indent=2)

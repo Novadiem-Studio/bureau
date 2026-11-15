@@ -15,7 +15,9 @@ command: |
   strip "$SCRIPT" | grep -Fq 'mkdir "$lock_dir"' && \
   # 2. The dead-PID reclaim that lets a crashed watcher's lock be re-taken: `kill -0`
   strip "$SCRIPT" | grep -q 'kill -0' && \
+  # 3. The O_EXCL pid write that decides the race when mkdir cannot (uutils mkdir, #131)
+  strip "$SCRIPT" | grep -Fq 'set -C; echo "$$" > "$lock_dir/pid"' && \
   echo "lock-guard-present"
-expected: prints "lock-guard-present" — watcher.sh's real (non-comment) code contains both the atomic `mkdir "$lock_dir"` claim and the `kill -0` dead-PID reclaim (both greps exit 0). Deleting either half from the code fails the guard even though the header comments still mention both.
+expected: prints "lock-guard-present" — watcher.sh's real (non-comment) code contains the `mkdir "$lock_dir"` claim, the `kill -0` dead-PID reclaim, and the noclobber (`set -C`) pid write that makes the claim exclusive where mkdir is not (Rust coreutils mkdir on Ubuntu 26.04 can report success to two racers, issue #131). Deleting any of the three from the code fails the guard even though the header comments still mention them.
 phase: 12 · principal-delegate
 owner: scripts/watcher.sh

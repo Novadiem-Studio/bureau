@@ -2858,7 +2858,7 @@ PY
     task_prompt="$(build_readiness_prompt "$CTX")"
     raw_claude="$readiness_tmp/claude-raw.json"
     system_prompt="You are The Challenger in readiness-audit verification mode. The staged packet is your entire review world. Do not load CLAUDE.md or act as the Conductor."
-    budget="${CHALLENGER_MAX_USD:-${DELEGATE_MAX_USD:-5.00}}"
+    max_turns="${CHALLENGER_MAX_TURNS:-${DELEGATE_MAX_TURNS:-200}}"
     (
       cd "$CTX" &&
       "$claude_bin" -p \
@@ -2870,10 +2870,13 @@ PY
         --add-dir "$CTX" \
         --setting-sources "" \
         --no-session-persistence \
-        --max-budget-usd "$budget" \
+        --max-turns "$max_turns" \
         "$task_prompt" < /dev/null
     ) > "$raw_claude" 2> "$provider_stderr"
     cli_rc=$?
+    if [ "$cli_rc" -ne 0 ] && [ "$(jq -r '.subtype // empty' "$raw_claude" 2>/dev/null)" = "error_max_turns" ]; then
+      fail "Claude readiness reviewer stopped at the turn limit ($max_turns turns); re-spawn with CHALLENGER_MAX_TURNS or DELEGATE_MAX_TURNS raised"
+    fi
     [ "$cli_rc" -eq 0 ] || fail "Claude readiness reviewer exited $cli_rc"
     extract_claude_candidate "$raw_claude" "$provider_candidate" \
       || fail "Claude readiness reviewer returned no structured candidate"
@@ -3843,11 +3846,12 @@ if [ "$RUNTIME" = "cursor" ]; then
   VERDICT_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.json.$$.tmp"
   VERDICT_RAW_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-verdict.raw.$$.tmp"
   ENVELOPE_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-envelope.json.$$.tmp"
+  CLAIM_TMP="$CHECKPOINTS_DIR/.${SPAWN_ID}-reviewer-task-plan.claim.$$.tmp"
   # Temp names carry $$: a concurrent loser's cleanup must never remove the winner's files.
   RESUME_CLAIMED=0
   RESUME_PUBLISHED=0
   cleanup_resume() {
-    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP"
+    rm -f "$RAW_TMP" "$VERDICT_TMP" "$VERDICT_RAW_TMP" "$ENVELOPE_TMP" "$CLAIM_TMP"
     # a refusal before publication must leave the plan resumable
     # (a replay that refused before touching outputs also releases; the claim it holds
     #  is its own, taken by mkdir or takeover)
@@ -3878,17 +3882,36 @@ if [ "$RUNTIME" = "cursor" ]; then
   fi
 
   # Every resume, first or replay, holds the claim while it publishes, audits and marks,
-  # so the audit line of record is appended at most once under any interleaving. mkdir
-  # succeeds for exactly one caller. A replay that meets a claim left by a resume whose
+  # so the audit line of record is appended at most once under any interleaving. The
+  # claim is a directory, but mkdir alone does not decide the race: Rust coreutils mkdir
+  # (Ubuntu 26.04) can report success to two concurrent callers (issue #131), so the
+  # claim record inside it is written under noclobber (O_EXCL), which the kernel grants
+  # to exactly one caller; a caller whose record write fails lost the claim and leaves
+  # the directory alone. A replay that meets a claim left by a resume whose
   # pid is dead and whose response is this same response takes it over atomically
   # (steal-by-rename, the idiom watcher.sh uses for dead locks); a live claim, or a dead
   # one for a different response, is refused with the recovery hint.
-  # A claim is taken over only on CONFIRMED death: a numeric pid that `ps` cannot find.
-  # Anything unprobeable (empty, non-numeric, 0) or still present (including pid 1, or a
-  # process owned by another user, where kill -0 would mislead) counts as alive.
+  # A claim is taken over only on CONFIRMED death: a numeric pid whose kill(2) probe fails
+  # with ESRCH. Anything unprobeable (empty, non-numeric, 0) counts as alive, and so does a
+  # live process this user may not signal (pid 1, another user's process), where the probe
+  # fails with EPERM: a signal that lands, a /proc entry, or any error other than ESRCH all
+  # count as life. The errno is read in python3 (already required above), not parsed from
+  # a localized message. `ps -p` is not used: on GitHub's ubuntu-26.04 runner it returned
+  # non-zero for a live sibling pid and two replays both took the claim (issue #131).
   claim_pid_dead() {
     case "$1" in ''|*[!0-9]*|0) return 1 ;; esac
-    ! ps -p "$1" >/dev/null 2>&1
+    kill -0 "$1" 2>/dev/null && return 1
+    [ -d "/proc/$1" ] && return 1
+    python3 - "$1" <<'PYDEAD' 2>/dev/null
+import os, sys
+try:
+    os.kill(int(sys.argv[1]), 0)
+except ProcessLookupError:
+    sys.exit(0)          # ESRCH: confirmed dead
+except Exception:
+    sys.exit(1)          # EPERM or anything else: a process is there, or we cannot know
+sys.exit(1)
+PYDEAD
   }
   if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
     claim_info="$(cat "$CLAIM_DIR/claim.json" 2>/dev/null || printf 'no claim record')"
@@ -3905,11 +3928,18 @@ if [ "$RUNTIME" = "cursor" ]; then
       fail "spawn $SPAWN_ID is already claimed by another resume ($claim_info); if that process is gone and $RAW_CURSOR does not exist, remove $CLAIM_DIR and retry"
     fi
   fi
-  RESUME_CLAIMED=1
+  # The record write is the real claim. The record is built in a temp file first, so a
+  # jq failure is its own error and never leaves a half-written claim.json behind; then
+  # `set -C` opens claim.json with O_EXCL, so of two callers that both passed mkdir
+  # exactly one gets its record on disk and the other has lost the race.
   jq -cn --arg pid "$$" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg response "$RESUME_RESPONSE" --arg sha "$RESPONSE_SHA256" \
-    '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_DIR/claim.json" \
+    '{pid: $pid, at: $at, response: $response, responseSha256: $sha}' > "$CLAIM_TMP" \
     || fail "cannot record the resume claim"
+  ( set -C; cat "$CLAIM_TMP" > "$CLAIM_DIR/claim.json" ) 2>/dev/null \
+    || fail "spawn $SPAWN_ID is already claimed by another resume that won the race; retry once it has finished"
+  rm -f "$CLAIM_TMP"
+  RESUME_CLAIMED=1
 
   # Derive every output from the response. This is deterministic, so on replay the
   # derived files are compared byte-for-byte with whatever was already published.
@@ -3997,7 +4027,7 @@ elif [ "$RUNTIME" = "claude" ]; then
   audit_task_prompt "$RUNTIME" "$TASK_PROMPT"
   RAW_CLAUDE="$CHECKPOINTS_DIR/${SPAWN_ID}-reviewer-claude-raw.json"
   SYSTEM_PROMPT="You are The Delegate cold reviewer. Do not load CLAUDE.md. Do not act as the Conductor."
-  BUDGET="${DELEGATE_MAX_USD:-5.00}"
+  MAX_TURNS="${DELEGATE_MAX_TURNS:-200}"
 
   (
     cd "$CTX" &&
@@ -4010,10 +4040,13 @@ elif [ "$RUNTIME" = "claude" ]; then
       --add-dir "$CTX" \
       --setting-sources "" \
       --no-session-persistence \
-      --max-budget-usd "$BUDGET" \
+      --max-turns "$MAX_TURNS" \
       "$TASK_PROMPT" < /dev/null
   ) > "$RAW_CLAUDE" 2> "$STDERR_PATH"
   cli_rc=$?
+  if [ "$cli_rc" -ne 0 ] && [ "$(jq -r '.subtype // empty' "$RAW_CLAUDE" 2>/dev/null)" = "error_max_turns" ]; then
+    fail "Claude reviewer stopped at the turn limit ($MAX_TURNS turns, see $RAW_CLAUDE); re-spawn with DELEGATE_MAX_TURNS raised"
+  fi
   if [ "$cli_rc" -ne 0 ]; then
     fail "Claude reviewer exited $cli_rc (see $STDERR_PATH)"
   fi
