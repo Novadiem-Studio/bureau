@@ -22,6 +22,9 @@ not lower it. A run that cannot afford a strong-tier review pauses and raises a 
 does not review cheaper. `run-cold-reviewer.sh` refuses a sub-strong reviewer model and
 `preflight-artifacts.sh` flags any sub-strong Challenger spawn on both phases (Robin,
 2026-11-09, issue #133: Maven step3 ran six Sonnet Challengers that approved an authorization gap).
+On Claude, `scripts/challenger-spawn-hook.sh` (a PreToolUse hook on the Agent tool, wired in
+`~/.claude/settings.json`) denies a Challenger spawn whose `model` is not opus or fable, an
+omitted model included, so the review never starts (issue #135).
 
 ### Model policy (v2 routing)
 
