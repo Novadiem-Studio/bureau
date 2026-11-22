@@ -4,7 +4,8 @@
 `agents/critic/surface-review.md`, `agents/critic/surface/`, `scripts/surface-review-reduce.py`
 **Persona matrix (#143 surface-review slice and briefs):** `agents/battle-test.md`
 **Promotion to canon:** yes (declared by The Conductor per `docs/conventions/canon-promotion.md`)
-**Status:** EXECUTED 4/4 — promotion re-run below; the four routing verdicts were independently
+**Status:** EXECUTED. Run 2026-11-21 (#143 promotion): 5/5 matrix cases and 4/4 regression
+re-checks pass. Run 2026-07-09 (promotion): 4/4; its four routing verdicts were independently
 hand-verified twice (Mechanic author + Challenger `ae9ef74c` cold build-diff, five concrete diffs).
 
 ## Run 2026-11-21 (promotion, #143 surface fan-out)
@@ -40,6 +41,8 @@ stale, not the routing. All four slow: human judgment required (prose).
 Notes (nits, not failures): `eligible_fanout` and `fanout_requested` are defined only by the SURFACE-GATE example
 line in step 3, with no prose definition; the 2026-07-09 block below cites stale step numbers (gate was step 2 then,
 step 3 now), though its routing still holds.
+Untested: the partner-note route (collected at step 7, judged at step 9 with a `PARTNER-NOTE:` line and the
+`rerun` / `escalated` outcomes) was added after canon `71ea141` and has no matrix case; the follow-up eval should cover it.
 
 
 ## Run 2026-07-09 (promotion)

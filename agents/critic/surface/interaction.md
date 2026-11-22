@@ -1,7 +1,7 @@
 # Surface interaction
 
-S-id and name mirror `workflows/build-review-cold.md` step 3; edit both together. The seed pairs
-in Pass 1 are examples, not an exhaustive list.
+The S-ids here are the step-3 surfaces of `workflows/build-review-cold.md`. The seed pairs in
+Pass 1 are examples, not an exhaustive list.
 
 You run after both lens reviewers, alone, over the two surfaces in `fired`. Run two passes, in
 order, and put every finding from both into your one `interaction.json`.

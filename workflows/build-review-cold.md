@@ -211,7 +211,9 @@ restate them.
      base_ref="$base_sha"
      ```
      The file opens with this fixed `key: value` header, one key per line and in this order, ended
-     by one blank line; then comes the one question, then the diff:
+     by one blank line; then comes the lens question (step 5's one-surface question, **"what
+     here corrupts, leaks, or miscounts WITHOUT announcing it?"**; the interaction reviewer takes
+     its questions from its brief), then the diff:
      ```
      round: <N>
      base_ref: <base_sha>
@@ -226,16 +228,24 @@ restate them.
      the full diff from the run base, not the fix delta. Reviewers copy the values; they never
      recompute them.
    - **The round's set.** Round 1: the two fired lenses. Round N >= 2: the prior
-     `final.json#rerun_lenses`, plus any fired surface step 9's fix-delta scan fired. In a
-     readiness-only fix round (every open blocker an `R` finding) the set is empty and this step
-     spawns nothing unless the fix-delta scan adds a lens.
+     `final.json#rerun_lenses`, plus any fired surface step 9's fix-delta scan fired, plus the
+     lens a prior-round partner note logged `rerun` names. In a readiness-only fix round (every
+     open blocker an `R` finding) the set is empty and this step spawns nothing unless the
+     fix-delta scan or a `rerun` partner note adds a lens.
    - **Spawn primitive.** The host spawn in `agents/orchestrator.md § How to spawn an agent`: on
-     Claude the Agent tool, a fresh spawn (never a fork), with `model` passed explicitly as the
-     string at `RUN_DIR/model-routing.json .roles.challenger.model`. The prompt opens `You are running as The
+     Claude the Agent tool, a fresh spawn (never a fork), with `model` passed explicitly. Rounds 1
+     and 2 use the string at `RUN_DIR/model-routing.json .roles.challenger.model`. Round 3 and any
+     later round follow the second fix loop, which is `second_critic_loop` in
+     `.roles.challenger.escalateWhen`: those reviewers spawn on `.tiers.escalated.model`, the
+     `escalated` tier `docs/model-routing-and-cast.md` § Escalation ladder names for that
+     trigger, and the Conductor appends one hand-written `MODEL-OVERRIDE:` line per such spawn
+     (format in `docs/run-accounting.md` § MODEL-OVERRIDE, `configured` the challenger model,
+     `actual` the escalated one, `reason` naming `second_critic_loop`). The prompt opens `You are running as The
      Challenger`, carries the `Attempt ID:` line and the run's nonce line as every specialist spawn
      does, then `Role mode: surface-lens S<k>`. It names the slice, exactly one brief,
      `r<N>/diff-context.md`, and for N >= 2 only the closure packet `final` wrote for this
-     reviewer (`r<N-1>/closure-s<k>.json`; a lens the fix-delta scan added has none). This is NOT
+     reviewer (`r<N-1>/closure-s<k>.json`; a lens the fix-delta scan or a partner note added has
+     none). This is NOT
      the step-5 recipe: `scripts/run-cold-reviewer.sh` and `claude -p --tools "Read"` cannot
      write, and each reviewer writes its own findings file, `.md` and verdict record. A reviewer
      may read tracked worktree files read-only and never edits the worktree (step 7 checks).
@@ -269,7 +279,10 @@ restate them.
    a. **Verdict gate.** For each lens attempt of the round,
       `bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"`, the required pre-adjudication gate
       (the bold label **Pre-adjudication gate** in `docs/conductor-gates.md`). A DEFECT is never
-      adjudicated.
+      adjudicated. Then check the findings file belongs to that attempt:
+      `jq -e --arg a "$attempt_id" '.attempt_id == $a' "$RUN_DIR/surface-review/r<N>/lens-s<k>.json" >/dev/null`.
+      A non-zero exit (a mismatch, or a file that is missing or not JSON) is treated as a gate
+      DEFECT.
    b. **Worktree check.** `git -C "$R" rev-parse HEAD` equals the staged `target_ref`, and
       `git -C "$R" status --porcelain` is empty. The reviewers are write-capable, so this proves
       none of them changed the code it read. If either fails, do not reduce: log the porcelain
@@ -283,9 +296,12 @@ restate them.
       input) wrote nothing and printed one stderr line, `surface-review-reduce: <where>: <rule>`.
       Never edit a reviewer's file to make it pass.
 
-   **One re-spawn per reviewer per round**, whatever the cause. A gate DEFECT, or a reduce exit 2
-   or 3 whose `<where>` is that reviewer's file, re-spawns that reviewer once under its `-2`
-   attempt, then a, b and c run again. A coldness flag (the reviewer's `.md` is the single
+   **One re-spawn per reviewer per round**, whatever the cause. A gate DEFECT (an `attempt_id`
+   mismatch included), or a reduce exit 2 or 3 whose `<where>` is that reviewer's file,
+   re-spawns that reviewer once under its `-2` attempt, then a, b and c run again. Before the
+   re-spawn the Conductor moves the failed attempt's files (`lens-s<k>.json` and `lens-s<k>.md`,
+   or `interaction.json` and `interaction.md`) into `r<N>/attempt-1/`, so the `-2` attempt
+   cannot read or reuse them and the reduce never sees them. A coldness flag (the reviewer's `.md` is the single
    `CHALLENGER FLAG:` line) is copied to `log.md` and the prohibited input removed before the
    re-spawn. A second failure for the same reviewer is `[CHECKPOINT]`.
 
@@ -312,8 +328,9 @@ restate them.
 
    - **Before `final`:** read `R`, `target_ref` and `diff_sha` back from the `diff-context.md`
      header as step 7 does, run
-     `bash scripts/verdict-gate.sh "$RUN_DIR" challenger-interaction-r<N>` (or its `-2` attempt),
-     and repeat step 7's worktree check, with step 7's one re-spawn and `[CHECKPOINT]` rules.
+     `bash scripts/verdict-gate.sh "$RUN_DIR" challenger-interaction-r<N>` (or its `-2` attempt)
+     and step 7's `attempt_id` check on `interaction.json`, and repeat step 7's worktree check,
+     with step 7's one re-spawn (failed files moved to `r<N>/attempt-1/`) and `[CHECKPOINT]` rules.
    - **Run:** `scripts/surface-review-reduce.py final "$RUN_DIR/surface-review/r<N>" --lenses <set> --diff-sha "$diff_sha" --max-fix-rounds "$(jq -r .max_critic_loops "$RUN_DIR/state.json")"`,
      adding `--overrides "$RUN_DIR/surface-review/r<N>/overrides.json"` when the Conductor has
      overridden a blocker. `--lenses` is the same set as step 7. On route `fix` it writes the
@@ -321,8 +338,13 @@ restate them.
      round dir, so the packets on disk always match the latest `final.json`.
    - **Partner notes, after `final`:** the Conductor judges each note step 7 collected on its
      merits, against this round's `final.json`. Its outcome is `covered` when a `final.json`
-     finding at that `file:line` lists the named surface in `surfaces`, `dismissed` when the
-     Conductor can give a reason it is not a risk, and otherwise `escalated`. For each note it
+     finding at that `file:line` lists the named surface in `surfaces`, and `dismissed` when the
+     Conductor can give a reason it is not a risk. `covered` cannot happen when the named lens
+     did not run this round, so a note that is neither is `rerun` when `final.json#route` is
+     `fix`: the named lens joins round N+1's set (as a lens the fix-delta scan adds does, with no
+     closure packet, which the script accepts). On any other route (`ship`, `checkpoint` once the
+     cap is reached, or `escalate`) it is `escalated`. A note already logged `rerun` is judged
+     again against round N+1's `final.json` and cannot be `rerun` a second time. For each note it
      writes one machine line to `log.md`, composed with `jq -cn` and appended through
      `scripts/log-append.sh "$RUN_DIR" "<heading>" -` with the line on stdin, as the
      `SURFACE-GATE:` line is (no new emit-event type). These are the keys, in this order:
@@ -332,8 +354,8 @@ restate them.
      ```
 
      `round` is N; `from` is the lens whose `.md` carries the note; `about` is the note's
-     `<S-id>`; `file` and `line` are its `file:line`; `outcome` is `covered`, `dismissed` or
-     `escalated`; `reason` is never empty. One `escalated` note sends the run down the
+     `<S-id>`; `file` and `line` are its `file:line`; `outcome` is `covered`, `dismissed`,
+     `rerun` or `escalated`; `reason` is never empty. One `escalated` note sends the run down the
      `escalate` route below, whatever `final.json#route` says, with this round's `final.json`
      open blockers and the note itself as the hand-over.
    - **Route on `final.json#route`:**

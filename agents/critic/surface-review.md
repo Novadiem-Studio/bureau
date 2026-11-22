@@ -58,9 +58,10 @@ hold prior-round findings there.
 A closure packet is a verification list in the sense of `critic.md § Re-reviews`, limited to the
 ids you own. It is a named input, not a prohibited prior-round finding.
 
-Prohibited: `log.md`; the build rationale or the coder's reasoning; any other reviewer's `.json`
-or `.md`; any `merged.json` or `final.json` of an earlier round; any other closure packet; any
-earlier `diff-context.md`.
+Prohibited: `log.md`; the build rationale or the coder's reasoning, including commit messages and
+`git log`, `git show` and `git blame` output (they carry the coder's reasoning); any other
+reviewer's `.json` or `.md`; any `merged.json` or `final.json` of an earlier round; any other
+closure packet; any earlier `diff-context.md`.
 
 If you were handed a prohibited input, do not review. Write no C1 file and no verdict record, and
 make your own `.md` (`lens-s<k>.md` or `interaction.md` in the round dir) the single line:
