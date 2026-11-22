@@ -9,10 +9,10 @@ command: |
   # still fails on the PASS count instead of exiting 0.
   finish() {
     rm -rf "$T"
-    if [ "$fail" -eq 0 ] && [ "$pass" -eq 88 ]; then
+    if [ "$fail" -eq 0 ] && [ "$pass" -eq 90 ]; then
       echo "ALL PASS ($pass cases)"
     else
-      echo "FAIL guard: pass=$pass fail=$fail, want pass=88 fail=0"; exit 1
+      echo "FAIL guard: pass=$pass fail=$fail, want pass=90 fail=0"; exit 1
     fi
   }
   trap finish EXIT
@@ -323,6 +323,12 @@ command: |
   # Round 1: --lenses must name both fired lenses (lens-s4.json absent, so only that rule can fire).
   mk_round "$T/q-r1-lenses/r1"; rm "$T/q-r1-lenses/r1/lens-s4.json"
   bad q-r1-lenses 2 "arguments" "--lenses must name both fired lenses in round 1" lenses "$T/q-r1-lenses/r1" --lenses S1 --diff-sha "$SHA"
+  # Check order: that rule is step 3, so it wins over a missing reviewer file (step 4, exit 3).
+  mk_round "$T/q-r1-lenses-order/r1"; rm "$T/q-r1-lenses-order/r1/lens-s1.json" "$T/q-r1-lenses-order/r1/lens-s4.json"
+  bad q-r1-lenses-order 2 "arguments" "--lenses must name both fired lenses in round 1" lenses "$T/q-r1-lenses-order/r1" --lenses S1 --diff-sha "$SHA"
+  # Round N >= 2: a --lenses entry outside the prior round's fired is refused (step 3).
+  mk_r2 "$T/q-lens-outside-fired"
+  bad q-lens-outside-fired 2 "r1/final.json" "--lenses S5 is not in fired S1,S4" lenses "$T/q-lens-outside-fired/r2" --lenses S4,S5 --diff-sha "$SHA"
   # A destination that cannot be replaced (a directory at final.json) is refused before the
   # closure packets, which come first in the write order, are replaced.
   mk_round "$T/q-dest-dir/r1"; mkdir "$T/q-dest-dir/r1/final.json"
@@ -342,7 +348,7 @@ command: |
   ov override-not-in-round r1-S4-9 "Accepted." "override id 'r1-S4-9' is not a blocker finding in this round"
   ov override-empty-reason r1-S4-1 "" "override reason for 'r1-S4-1' is empty"
 
-  [ "$fail" -eq 0 ] && [ "$pass" -eq 88 ]
+  [ "$fail" -eq 0 ] && [ "$pass" -eq 90 ]
   # Mutation note: each case line pins one rule of scripts/surface-review-reduce.py. Removing
   # the (file, line) merge or the surfaces union fails a; sorting by anything but (file, line),
   # or writing the round dir's path, fails b; dropping the missing-file exit 3 fails c; skipping
@@ -360,7 +366,10 @@ command: |
   # a-stdout and e-stdout. The *-nested rows fail (a TypeError traceback, exit 1) when a set()
   # runs before the string check; q-dest-dir fails when the destination check before the first
   # replace is dropped. Keeping closure packets that the latest final did not write fails
-  # stale-lens and stale-route. A column-0 line in the command block truncates it, and the EXIT guard
+  # stale-lens and stale-route. Dropping the step-3 round-1 lens count fails q-r1-lenses, and
+  # checking it after the reviewer files (step 4 or 5) fails q-r1-lenses-order; dropping the
+  # step-3 subset-of-prior-fired rule fails q-lens-outside-fired. A column-0 line in the
+  # command block truncates it, and the EXIT guard
   # then fails on the PASS count.
-expected: exit 0; the last stdout line is "ALL PASS (88 cases)"; 88 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
+expected: exit 0; the last stdout line is "ALL PASS (90 cases)"; 90 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
 phase: 01 · execute-plan (run 20261121-parallel-surface-review, issue #143)

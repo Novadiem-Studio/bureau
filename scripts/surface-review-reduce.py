@@ -470,6 +470,12 @@ def run(argv):
         for lens in lenses:
             if lens not in prior_fired:
                 reject(prior[0], "--lenses %s is not in fired %s" % (lens, ",".join(prior_fired)))
+    elif len(lenses) != 2:
+        # Round 1 runs both fired lenses. fired is in the files, so only the count is checked
+        # here; step 5 (each lens in its file's fired, fired two ids and the same in every
+        # file) then makes --lenses equal to fired.
+        reject("arguments", "--lenses must name both fired lenses in round 1 (got %s)"
+               % ",".join(lenses))
     for fname in sorted(os.listdir(round_dir)):
         if re.fullmatch(r"lens-s.*\.json", fname) and fname not in [lens_file(l) for l in lenses]:
             reject(here + "/" + fname, "lens file for a lens not in --lenses")
@@ -496,9 +502,6 @@ def run(argv):
             name, data, lens, n, sha, ref, packets.get(lens, set()))
         if ref is None:
             ref = (name, f_fired)
-            if lenses != f_fired:
-                reject("arguments", "--lenses must name both fired lenses in round 1 (fired %s)"
-                       % ",".join(f_fired))
         gate_miss.update(f_gate)
         closed_all.extend(dict(c, lens=lens) for c in f_closures)
         findings.extend(f_findings)
