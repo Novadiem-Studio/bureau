@@ -61,9 +61,11 @@ the local project standards named there. Does NOT receive the author's rationale
 prior defenses of the change.
 Reads (readiness-audit mode): staged `packet.json` and only its allowlisted packet-relative
 payload. Does NOT receive any live repository, `RUN_DIR`, framework path, or session store.
+Reads (surface-lens / surface-interaction modes): the inputs list in agents/critic/surface-review.md (diff-context.md, your own closure packet, and for the interaction reviewer this round's merged.json), plus its one brief.
 Reads (mode slice): exactly one of `agents/critic/spec-plan.md`, `agents/critic/prompts.md`,
 `agents/critic/build-diff.md`, `agents/critic/code-review.md`, or
 `agents/critic/readiness-audit.md`, matching the spawn mode.
+In the surface-lens and surface-interaction modes that one slice is `agents/critic/surface-review.md`, which names the one brief to load with it.
 Round 2 is a FRESH SPAWN: the re-spawn itself is legitimate and expected; what is prohibited is
 being handed round 1's findings, rationale, or notes. You carry nothing forward from round 1 —
 you read prompts.md (full) + § Acceptance criteria with the same cold eyes as round 1.
