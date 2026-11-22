@@ -113,18 +113,24 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
    Robin's literal answer at the fork below turns it on. Nothing an agent writes (the brief, the
    Delegate's own summary, a spawn prompt) can enable it.
    - **Eligible** only when all hold: exactly 2 surfaces fired; not high-blast-radius; no design
-     needed; the diff touches no canon/process surface (`docs/conductor-gates.md § The
-     canon/process surfaces`).
+     needed; the diff touches no canon/process surface (the bold label **The canon/process
+     surfaces** in `docs/conductor-gates.md`).
    - **Eligible, with `Surface fan-out: requested`:** stage
      `RUN_DIR/surface-review/r1/diff-context.md` as step 6 describes, then return a genuine fork
-     (`docs/delegate-bridge/v2-integrated.md § v2 §1`) with `return-type: genuine-fork`,
+     (`docs/delegate-bridge/v2-integrated.md`, heading `v2 §1`, the Conductor return-block
+     schemas) with `return-type: genuine-fork`,
      `signal-fired: 3`, `artifact` = `RUN_DIR/surface-review/r1/diff-context.md` and
      `artifact-hash` = its `shasum -a 256`, asking: "Escalate to execute-plan (default) or run the
-     surface fan-out trial on S<a>+S<b>?" The Delegate appends it to the ledger as record `NN.Fk`
-     and asks Robin; `scripts/ledger-set-robins-call.sh` writes his literal answer. Go to step 6
-     only when that `Robin's call:` line says to run the fan-out. On a direct-Conductor run, quote
-     Robin's own chat reply verbatim in the `log.md` entry and go to step 6 only on that reply. On
-     a no, escalate; the staged file stays as the record of what was offered.
+     surface fan-out trial on S<a>+S<b>?" The Delegate appends the fork to the ledger
+     `RUN_DIR/delegate-decisions.md` as record `<NN>.F<k>` (for example `03.F1`, header
+     `## 03.F1 — <timestamp>`) and asks Robin; `scripts/ledger-set-robins-call.sh <NN>.F<k>`
+     writes his literal answer into that record's `Robin's call:` line. When the Conductor
+     resumes, it reads that `Robin's call:` value from the ledger itself, never from the
+     Delegate's relay text, and goes to step 6 only when it says to run the fan-out. Either way
+     `fanout_source` is `ledger:<NN>.F<k>`. On a direct-Conductor run there is no ledger: Robin's
+     own chat reply is quoted verbatim in the `log.md` entry, the Conductor goes to step 6 only on
+     that reply, and `fanout_source` is `chat`. On a no, escalate; the staged file stays as the
+     record of what was offered.
    - **Eligible without a request:** escalate as before, with no fork. There is no fork without a
      request.
    - **Not eligible** (3-5 fired, high-blast-radius, needs design, or a canon/process diff):
@@ -140,8 +146,10 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
    ```
 
    `at_round` is 0 here and N when a fan-out round escalates (step 9). `fanout` is `on` or `off`.
-   `fanout_source` is `ledger:<record>`, `chat`, or `none`. `route` is `ship`, `single`, `fanout`
-   or `escalate` (this step's vocabulary, separate from the reduce routes; `single` is any step-5
+   `fanout_source` names where the answer to the fork lives whenever a fork ran, whatever Robin
+   answered (a no included): `ledger:<NN>.F<k>` or `chat`. It is `none` only when no fork ran (0
+   or 1 fired, not eligible, or eligible without a request). A step-9 escalation line repeats the
+   step-3 value. `route` is `ship`, `single`, `fanout` or `escalate` (this step's vocabulary, separate from the reduce routes; `single` is any step-5
    review, the GitHub readiness one included, and `ship` is step 4). `escalated_to` is null
    unless `route` is `escalate`, then
    `{"run_dir":"<absolute RUN_DIR carrying the escalated review>","workflow":"execute-plan|feature"}`.
@@ -180,30 +188,43 @@ fork a `Surface fan-out: requested` line raised (round 1), or step 9 routed `fix
 Each round lives in `RUN_DIR/surface-review/r<N>/`. Every reviewer loads `agents/critic.md` core,
 the shared slice `agents/critic/surface-review.md` (inputs, coldness, the findings and
 closure-packet contracts, write locations, the verdict record) and exactly one brief from
-`agents/critic/surface/`. The file shapes live in that slice and the CLI in
-`scripts/README.md § Surface review reduce`; this file does not restate them.
+`agents/critic/surface/`. The file shapes live in that slice and the CLI in `scripts/README.md`
+under the heading "Surface review reduce (`surface-review-reduce.py`)"; this file does not
+restate them.
 
 6. **The Challenger** (Surface lens, **strong**) — one fresh-context Challenger per lens in the round's set, both spawned in ONE message → `surface-review/r<N>/lens-s<k>.json`
 
-   - **Stage `r<N>/diff-context.md`** (round 1's was staged at step 3 for the fork). It holds the
-     diff, `base_ref`, `base_sha`, `target_ref`, `diff_sha`, the absolute `worktree` path, the
-     round, `fired`, and the one question. The Conductor computes the four binding values once,
-     with the committed-range invocation, where `$R` is the run worktree:
+   - **Stage `r<N>/diff-context.md`** (round 1's was staged at step 3 for the fork). The
+     Conductor computes the four binding values once, with the committed-range invocation, where
+     `$R` is the absolute run worktree path:
      ```sh
      base_sha=$(git -C "$R" rev-parse "$(jq -r .git.base_sha "$RUN_DIR/state.json")")
      target_ref=$(git -C "$R" rev-parse HEAD)   # the round head, after the round's fix commit
      diff_sha=$(git -C "$R" diff "$base_sha" "$target_ref" | shasum -a 256 | awk '{print $1}')
      base_ref="$base_sha"
      ```
-     Every round reviews the full diff from the run base, not the fix delta. Reviewers copy these
-     values; they never recompute them.
+     The file opens with this fixed `key: value` header, one key per line and in this order, ended
+     by one blank line; then comes the one question, then the diff:
+     ```
+     round: <N>
+     base_ref: <base_sha>
+     base_sha: <base_sha>
+     target_ref: <round head, full SHA>
+     diff_sha: <64 lowercase hex>
+     worktree: <absolute $R>
+     fired: S<a>,S<b>
+     ```
+     Shell variables do not survive between the Conductor's calls, so every later step reads these
+     values back from this header (step 7 shows how) instead of reusing them. Every round reviews
+     the full diff from the run base, not the fix delta. Reviewers copy the values; they never
+     recompute them.
    - **The round's set.** Round 1: the two fired lenses. Round N >= 2: the prior
      `final.json#rerun_lenses`, plus any fired surface step 9's fix-delta scan fired. In a
      readiness-only fix round (every open blocker an `R` finding) the set is empty and this step
      spawns nothing unless the fix-delta scan adds a lens.
    - **Spawn primitive.** The host spawn in `agents/orchestrator.md § How to spawn an agent`: on
-     Claude the Agent tool, a fresh spawn (never a fork), with `model` passed explicitly from
-     `RUN_DIR/model-routing.json .roles.challenger`. The prompt opens `You are running as The
+     Claude the Agent tool, a fresh spawn (never a fork), with `model` passed explicitly as the
+     string at `RUN_DIR/model-routing.json .roles.challenger.model`. The prompt opens `You are running as The
      Challenger`, carries the `Attempt ID:` line and the run's nonce line as every specialist spawn
      does, then `Role mode: surface-lens S<k>`. It names the slice, exactly one brief,
      `r<N>/diff-context.md`, and for N >= 2 only the closure packet `final` wrote for this
@@ -223,12 +244,25 @@ closure-packet contracts, write locations, the verdict record) and exactly one b
 
 7. **The Conductor** (Reduce) — run `scripts/surface-review-reduce.py lenses` → `surface-review/r<N>/merged.json`
 
-   In this order, once every lens in the round's set has returned (in a readiness-only fix round
-   with no added lens there is nothing to gate, and c uses `--lenses none`):
+   First read the round's values back from the `diff-context.md` header (the lines before its
+   first blank line), in the same call as the commands that use them:
+   ```sh
+   CTX="$RUN_DIR/surface-review/r<N>/diff-context.md"
+   R=$(sed -n '1,/^$/s/^worktree: //p' "$CTX")
+   target_ref=$(sed -n '1,/^$/s/^target_ref: //p' "$CTX")
+   diff_sha=$(sed -n '1,/^$/s/^diff_sha: //p' "$CTX")
+   ```
+   `$attempt_id` is a reviewer's attempt id exactly as its `started` SPAWN-EVENT logged it
+   (`challenger-lens-s<k>-r<N>`, or `challenger-lens-s<k>-r<N>-2` after a re-spawn).
+
+   Then, in this order, once every lens in the round's set has returned. In a readiness-only fix
+   round with no added lens there are no lens files, so a has nothing to gate, but b still runs,
+   and c uses `--lenses none`.
 
    a. **Verdict gate.** For each lens attempt of the round,
       `bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"`, the required pre-adjudication gate
-      (`docs/conductor-gates.md § Pre-adjudication gate`). A DEFECT is never adjudicated.
+      (the bold label **Pre-adjudication gate** in `docs/conductor-gates.md`). A DEFECT is never
+      adjudicated.
    b. **Worktree check.** `git -C "$R" rev-parse HEAD` equals the staged `target_ref`, and
       `git -C "$R" status --porcelain` is empty. The reviewers are write-capable, so this proves
       none of them changed the code it read. If either fails, do not reduce: log the porcelain
@@ -249,9 +283,12 @@ closure-packet contracts, write locations, the verdict record) and exactly one b
    re-spawn. A second failure for the same reviewer is `[CHECKPOINT]`.
 
    **Partner notes.** A lens `### Warnings` line that starts `partner <S-id>:` names a risk the
-   lens saw on the other fired surface. It is for the Conductor, never for another reviewer: if
-   the partner lens raised nothing at that `file:line`, log the note in `log.md` and adjudicate
-   it as a warning.
+   lens saw on the other fired surface. It is for the Conductor, never for another reviewer, and
+   the Conductor judges each one on its merits; none is silently capped. If the partner lens's
+   findings in `merged.json` already cover that `file:line`, drop the note with a logged reason.
+   Otherwise, a note the Conductor cannot dismiss with a logged reason is treated like a gate
+   miss: the review escalates as step 9's `escalate` route does, and the open blockers go with
+   the escalation.
 
 8. **The Challenger** (Surface interaction, **strong**) — reads the diff and this round's merged findings; hunts cross-surface failures, then runs the readiness pass → `surface-review/r<N>/interaction.json`
 
@@ -268,9 +305,10 @@ closure-packet contracts, write locations, the verdict record) and exactly one b
 
 9. **The Conductor** (Gate) — run `scripts/surface-review-reduce.py final` and route on its route field → `surface-review/r<N>/final.json`
 
-   - **Before `final`:** run `bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"` on the
-     interaction attempt and repeat step 7's worktree check, with step 7's one re-spawn and
-     `[CHECKPOINT]` rules.
+   - **Before `final`:** read `R`, `target_ref` and `diff_sha` back from the `diff-context.md`
+     header as step 7 does, run
+     `bash scripts/verdict-gate.sh "$RUN_DIR" challenger-interaction-r<N>` (or its `-2` attempt),
+     and repeat step 7's worktree check, with step 7's one re-spawn and `[CHECKPOINT]` rules.
    - **Run:** `scripts/surface-review-reduce.py final "$RUN_DIR/surface-review/r<N>" --lenses <set> --diff-sha "$diff_sha" --max-fix-rounds "$(jq -r .max_critic_loops "$RUN_DIR/state.json")"`,
      adding `--overrides "$RUN_DIR/surface-review/r<N>/overrides.json"` when the Conductor has
      overridden a blocker. `--lenses` is the same set as step 7. On route `fix` it writes the
@@ -284,7 +322,8 @@ closure-packet contracts, write locations, the verdict record) and exactly one b
        five-surface scan over the fix delta (round-N head to the new head). A surface firing
        outside `fired` means escalate, since the count would be 3. Otherwise go to round N+1:
        step 6 stages a new `diff-context.md` at the new head.
-     - `escalate` (a `gate_miss`, a fix-delta surface outside `fired`, or checkpoint option A):
+     - `escalate` (a `gate_miss`, a fix-delta surface outside `fired`, checkpoint option A, or,
+       Conductor-raised, a partner note it could not dismiss in step 7):
        append a `workflow_shifts` entry to `state.json` (`docs/run-protocol.md`; any role may
        shift to a heavier cadence), write a `SURFACE-GATE:` line with `at_round` N, `route`
        `escalate` and `escalated_to`, and hand the open blockers in the last `final.json` to the
