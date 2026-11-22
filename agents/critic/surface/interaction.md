@@ -29,10 +29,15 @@ Seed pairs:
   filter is unchanged), so the record leaks to every tenant.
 - S1+S2 migration/reprice drift: a migration changes what a stored value means while pricing code
   still reads the old meaning.
-- S4+S1 send before commit: the message goes out, the write rolls back, and the record the
-  recipient was told about does not exist.
-- S3+S4 send to the wrong recipient: a recipient resolved outside the access scope gets someone
-  else's message.
+- S4+S1 send before the real commit: the send follows a commit call (S4 sees the order as right),
+  but that commit is a savepoint inside an outer transaction (S1's write path), so an outer
+  rollback removes the record after the message about it went out.
+- S3+S4 send to the wrong recipient: recipients are scoped correctly for the requesting user (S3
+  sees the check pass), but the send runs later in a job under a service identity that resolves
+  them again without that scope (S4 sees a valid address), so another tenant's users get it.
+
+The two S5 seeds are a backstop for a race the S5 lens may have missed, not new ground: file one
+only when `merged.json` lacks it.
 
 ## Pass 2: readiness
 
@@ -42,6 +47,8 @@ this pass: step 5 readiness covers visible correctness too.
 
 - Never re-file a lens finding from `merged.json`, or a Pass 1 finding, as an `R` finding.
 - A silent-failure risk on a surface outside `fired` goes in `gate_miss`, not in an `R` finding.
+- A silent-failure risk on a fired surface that its lens missed (absent from `merged.json`, and
+  not cross-surface) goes in an `R` finding under Risks.
 
 The questions:
 

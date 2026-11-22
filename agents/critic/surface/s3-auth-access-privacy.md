@@ -32,6 +32,8 @@ out. A user wrongly let in sees nothing unusual.
 out of lens: a risk on another surface goes in `gate_miss`, never in `findings`.
 If that other surface is in `fired`, its own lens owns it: put it in neither list. `gate_miss`
 names only surfaces outside `fired`.
+So it is not lost, add one line under `### Warnings` in your `.md`: start it `partner <S-id>:`
+in place of a finding id, then its `file:line`, for that lens and the Conductor.
 
 For example, how a leaked record got persisted belongs to S1, and a message sent to the wrong
 person to S4. How a fired pair combines is the interaction reviewer's; stay on yours.
