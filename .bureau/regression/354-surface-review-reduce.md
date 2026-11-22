@@ -9,10 +9,10 @@ command: |
   # still fails on the PASS count instead of exiting 0.
   finish() {
     rm -rf "$T"
-    if [ "$fail" -eq 0 ] && [ "$pass" -eq 72 ]; then
+    if [ "$fail" -eq 0 ] && [ "$pass" -eq 77 ]; then
       echo "ALL PASS ($pass cases)"
     else
-      echo "FAIL guard: pass=$pass fail=$fail, want pass=72 fail=0"; exit 1
+      echo "FAIL guard: pass=$pass fail=$fail, want pass=77 fail=0"; exit 1
     fi
   }
   trap finish EXIT
@@ -250,9 +250,11 @@ command: |
   fired-one~r1~lenses~lens-s1.json~.fired = ["S1"]~fired must be exactly two distinct S-ids
   fired-three~r1~lenses~lens-s1.json~.fired = ["S1","S4","S5"]~fired must be exactly two distinct S-ids
   fired-duplicate~r1~lenses~lens-s1.json~.fired = ["S1","S1"]~fired must be exactly two distinct S-ids
+  fired-nested~r1~lenses~lens-s1.json~.fired = [["S1"],"S4"]~fired must be exactly two distinct S-ids
   fired-differs~r1~lenses~lens-s4.json~.fired = ["S2","S4"]~fired differs from r1/lens-s1.json
   lens-not-in-fired~r1~lenses~lens-s1.json~.fired = ["S2","S4"]~lens S1 not in fired
   gate-miss-in-fired~r1~lenses~lens-s1.json~.gate_miss = ["S1"]~gate_miss S1 is in fired
+  gate-miss-nested~r1~lenses~lens-s1.json~.gate_miss = [["S3"]]~gate_miss must be distinct S-ids
   id-round-prefix~r1~lenses~lens-s1.json~.findings[0].id = "r2-S1-1"~wrong round prefix
   id-lens~r1~lenses~lens-s1.json~.findings[0].id = "r1-S2-1"~id lens of 'r1-S2-1' must be S1
   id-number-zero~r1~lenses~lens-s1.json~.findings[0].id = "r1-S1-0"~id number of 'r1-S1-0' must be >= 1
@@ -273,6 +275,7 @@ command: |
   x-interacts-one~r1~final~interaction.json~.findings[0].interacts = ["S1"]~must be two or more distinct S-ids
   x-interacts-duplicate~r1~final~interaction.json~.findings[0].interacts = ["S1","S1"]~must be two or more distinct S-ids
   x-interacts-not-fired~r1~final~interaction.json~.findings[0].interacts = ["S1","S2"]~interacts id S2
+  x-interacts-nested~r1~final~interaction.json~.findings[0].interacts = [["S1"],"S4"]~must be two or more distinct S-ids
   reraises-on-warning~r1~lenses~lens-s1.json~.findings[0].reraises = "r1-S1-9"~reraises only allowed on a blocker
   reraises-round1~r1~lenses~lens-s4.json~.findings[0].reraises = "r0-S4-1"~reraises must be null in round 1
   closures-round1~r1~lenses~lens-s1.json~.closures = [{"id":"r0-S1-1","file":"app/a.py","line":1,"evidence":"x"}]~closures must be [] in round 1
@@ -286,6 +289,15 @@ command: |
   bad q-unlisted-lens 2 "r1/lens-s5.json" "not in --lenses" lenses "$T/q-unlisted-lens/r1" --lenses S1,S4 --diff-sha "$SHA"
   mk_r2 "$T/q-prior-ship"; mut "$T/q-prior-ship/r1/final.json" '.route = "ship"'
   bad q-prior-ship 2 "r1/final.json" "route is ship, not fix" lenses "$T/q-prior-ship/r2" --lenses S4 --diff-sha "$SHA"
+  mk_r2 "$T/q-prior-fired-nested"; mut "$T/q-prior-fired-nested/r1/final.json" '.fired = [["S1"],"S4"]'
+  bad q-prior-fired-nested 2 "r1/final.json" "fired must be exactly two distinct S-ids" lenses "$T/q-prior-fired-nested/r2" --lenses S4 --diff-sha "$SHA"
+  # A destination that cannot be replaced (a directory at final.json) is refused before the
+  # closure packets, which come first in the write order, are replaced.
+  mk_round "$T/q-dest-dir/r1"; mkdir "$T/q-dest-dir/r1/final.json"
+  red final "$T/q-dest-dir/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2; rc=$?
+  if [ "$rc" -eq 2 ] && [ -d "$T/q-dest-dir/r1/final.json" ] && ! ls "$T/q-dest-dir/r1"/closure-*.json >/dev/null 2>&1 &&
+    grep -qF "r1/final.json: destination exists and is not a regular file" "$T/err"
+  then ok q-dest-dir; else no q-dest-dir "exit $rc, partial write or wrong rule: $(cat "$T/err")"; fi
   mk_round "$T/q-mfr-missing/r1"
   bad q-mfr-missing 2 "arguments" "--max-fix-rounds is required" final "$T/q-mfr-missing/r1" --lenses S1,S4 --diff-sha "$SHA"
   mk_round "$T/q-mfr-nonint/r1"
@@ -298,7 +310,7 @@ command: |
   ov override-not-in-round r1-S4-9 "Accepted." "override id 'r1-S4-9' is not a blocker finding in this round"
   ov override-empty-reason r1-S4-1 "" "override reason for 'r1-S4-1' is empty"
 
-  [ "$fail" -eq 0 ] && [ "$pass" -eq 72 ]
+  [ "$fail" -eq 0 ] && [ "$pass" -eq 77 ]
   # Mutation note: each case line pins one rule of scripts/surface-review-reduce.py. Removing
   # the (file, line) merge or the surfaces union fails a; sorting by anything but (file, line),
   # or writing the round dir's path, fails b; dropping the missing-file exit 3 fails c; skipping
@@ -312,7 +324,9 @@ command: |
   # current-round files before the prior final.json fails o;
   # ignoring --max-fix-rounds on a re-run fails p; each q-<label> line fails when its rule in the
   # ROWS table (or the inline rows after it) is removed; changing the stdout template fails
-  # a-stdout and e-stdout. A column-0 line in the command block truncates it, and the EXIT guard
+  # a-stdout and e-stdout. The *-nested rows fail (a TypeError traceback, exit 1) when a set()
+  # runs before the string check; q-dest-dir fails when the destination check before the first
+  # replace is dropped. A column-0 line in the command block truncates it, and the EXIT guard
   # then fails on the PASS count.
-expected: exit 0; the last stdout line is "ALL PASS (72 cases)"; 72 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
+expected: exit 0; the last stdout line is "ALL PASS (77 cases)"; 77 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
 phase: 01 · execute-plan (run 20261121-parallel-surface-review, issue #143)

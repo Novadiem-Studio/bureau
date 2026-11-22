@@ -98,6 +98,15 @@ def check_line(name, value, where):
         reject(name, "line must be an integer >= 1 in %s (got %r)" % (where, value))
 
 
+def s_ids(value):
+    """A list of S-id strings. Checked before any set() so a nested list is exit 2, not a crash."""
+    return isinstance(value, list) and all(isinstance(v, str) and v in LENSES for v in value)
+
+
+def two_s_ids(value):
+    return s_ids(value) and len(value) == 2 and len(set(value)) == 2
+
+
 def text(value):
     return isinstance(value, str) and value.strip() != ""
 
@@ -196,10 +205,9 @@ def load_prior(round_dir, n):
         reject(name, "route is %s, not fix; round %d cannot follow it" % (route, n))
     fired = final.get("fired")
     rerun = final.get("rerun_lenses")
-    if (not isinstance(fired, list) or len(fired) != 2 or len(set(fired)) != 2
-            or not all(f in LENSES for f in fired)):
+    if not two_s_ids(fired):
         reject(name, "fired must be exactly two distinct S-ids")
-    if not isinstance(rerun, list) or not all(r in fired for r in rerun):
+    if not isinstance(rerun, list) or not all(isinstance(r, str) and r in fired for r in rerun):
         reject(name, "rerun_lenses must be S-ids from fired")
 
     # Only lenses in rerun_lenses (and the interaction reviewer) have a packet. Any other
@@ -247,8 +255,7 @@ def validate_reviewer(name, data, lens, n, sha, fired_ref, packet):
         reject(name, "diff_sha does not match --diff-sha")
 
     fired = data["fired"]
-    if (not isinstance(fired, list) or len(fired) != 2 or len(set(fired)) != 2
-            or not all(f in LENSES for f in fired)):
+    if not two_s_ids(fired):
         reject(name, "fired must be exactly two distinct S-ids")
     fired = sorted(fired, key=ORDER.get)
     if fired_ref is not None and fired != fired_ref[1]:
@@ -257,8 +264,7 @@ def validate_reviewer(name, data, lens, n, sha, fired_ref, packet):
         reject(name, "lens %s not in fired" % lens)
 
     gate_miss = data["gate_miss"]
-    if (not isinstance(gate_miss, list) or not all(g in LENSES for g in gate_miss)
-            or len(set(gate_miss)) != len(gate_miss)):
+    if not s_ids(gate_miss) or len(set(gate_miss)) != len(gate_miss):
         reject(name, "gate_miss must be distinct S-ids")
     for g in gate_miss:
         if g in fired:
@@ -317,9 +323,9 @@ def validate_reviewer(name, data, lens, n, sha, fired_ref, packet):
             reject(name, "verdict of %s must be confirmed or plausible" % fid)
         interacts = f["interacts"]
         if surface == "X":
-            if (not isinstance(interacts, list) or len(interacts) < 2
-                    or len(set(interacts)) != len(interacts)
-                    or not all(isinstance(s, str) for s in interacts)):
+            if (not isinstance(interacts, list)
+                    or not all(isinstance(s, str) for s in interacts)
+                    or len(interacts) < 2 or len(set(interacts)) != len(interacts)):
                 reject(name, "interacts of %s must be two or more distinct S-ids" % fid)
             for s in interacts:
                 if s not in fired:
@@ -411,8 +417,18 @@ def dump(obj):
     return json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
-def publish(round_dir, outputs):
-    """Write every output to a temp file first, then os.replace each; the record goes last."""
+def publish(round_dir, here, outputs):
+    """Write every output to a temp file first, then os.replace each; the record goes last.
+
+    Every destination is checked before the first replace, so a destination that cannot be
+    replaced (a directory at final.json) is exit 2 with nothing written. shortcut: a rename
+    that fails after that check (a concurrent writer in the round dir) is not rolled back;
+    add rollback if the round dir ever gets a second writer.
+    """
+    for fname, _ in outputs:
+        dest = os.path.join(round_dir, fname)
+        if os.path.lexists(dest) and (os.path.islink(dest) or not os.path.isfile(dest)):
+            reject(here + "/" + fname, "destination exists and is not a regular file")
     temps = []
     try:
         for fname, body in outputs:
@@ -505,7 +521,7 @@ def run(argv):
     line = "surface-review %s %s: %d findings, %d blockers" % (
         here, stage, len(record["findings"]), blockers)
     if stage == "lenses":
-        publish(round_dir, [("merged.json", dump(record))])
+        publish(round_dir, here, [("merged.json", dump(record))])
         return line
 
     open_blockers = sorted((f for f in findings
@@ -540,7 +556,7 @@ def run(argv):
             outputs.append(("closure-s%s.json" % lens[1:], packet(lens, (lens,))))
         outputs.append(("closure-x.json", packet("X", ("X", "R"))))
     outputs.append(("final.json", dump(record)))
-    publish(round_dir, outputs)
+    publish(round_dir, here, outputs)
     return line + ", route " + route
 
 
