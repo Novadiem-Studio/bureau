@@ -425,6 +425,9 @@ def publish(round_dir, here, outputs, stale=()):
     cannot be replaced or removed (a directory at final.json) is exit 2 with nothing
     written. shortcut: a rename that fails after that check (a concurrent writer in the
     round dir) is not rolled back; add rollback if the round dir ever gets a second writer.
+    Likewise an unlink of a stale closure packet that fails after the replaces exits 2 with
+    final.json already written. That is harmless: load_prior reads only the packets the
+    prior rerun_lenses asks for (plus closure-x.json), so a leftover packet is ignored.
     """
     for fname in [o[0] for o in outputs] + list(stale):
         dest = os.path.join(round_dir, fname)

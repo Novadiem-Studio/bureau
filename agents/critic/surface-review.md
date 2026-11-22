@@ -51,6 +51,9 @@ worktree staged there, read-only, to refute a candidate or copy a citation ancho
 the reviewed codebase, not an extra input: prior-round findings and reviewer output live in
 `RUN_DIR`, outside it, so reading it does not break coldness. You still never edit it (see
 "Hands off the worktree" below).
+Run directories are excluded even when tracked: never open anything under `.bureau/runs/`,
+`.bureau/archive/` or `output/runs/` in the worktree, since a repo that tracks run artifacts can
+hold prior-round findings there.
 
 A closure packet is a verification list in the sense of `critic.md § Re-reviews`, limited to the
 ids you own. It is a named input, not a prohibited prior-round finding.
@@ -185,7 +188,8 @@ Your `.md` uses these headings, in this order:
 ### Solid
 ```
 
-Each blocker and warning line starts with its finding id and `file:line`. `### Closures` lists each
+Each blocker and warning line starts with its finding id and `file:line`. The one exception is the
+lens briefs' `partner <S-id>:` line under `### Warnings`, which has no finding id. `### Closures` lists each
 packet id as `closed` or `re-raised as <id>` (round 1: `none`). `### Gate miss` lists each S-id with
 its `file:line` (or `none`).
 

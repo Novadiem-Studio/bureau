@@ -132,7 +132,7 @@ for f in agents/critic.md docs/conventions/agent-contracts.md; do
 done
 while IFS='|' read -r sid sname sfile; do
   PATH="/usr/bin:$PATH" grep -Fq "**${sid} — ${sname}:**" "$surface_wf" \
-    || err "${sid}: $surface_wf step 3 missing bold label '**${sid} — ${sname}:**'"
+    || err "${sid}: $surface_wf missing bold label '**${sid} — ${sname}:**'"
   sbrief="agents/critic/surface/${sfile}.md"
   if [[ ! -f "$sbrief" ]]; then
     err "${sid}: missing lens brief $sbrief"
@@ -141,7 +141,7 @@ while IFS='|' read -r sid sname sfile; do
   sfirst=""
   IFS= read -r sfirst < "$sbrief" || true
   [[ "$sfirst" == "# ${sid} — ${sname}" ]] \
-    || err "${sid}: $sbrief first line should be '# ${sid} — ${sname}' (got '${sfirst}')"
+    || err "${sid}: $sbrief first line should be '# ${sid} — ${sname}' (got $(printf %q "$sfirst"))"
   PATH="/usr/bin:$PATH" grep -Fq "$surface_lens_line" "$sbrief" \
     || err "${sid}: $sbrief missing the line: $surface_lens_line"
 done <<'SURFACES'
@@ -158,7 +158,7 @@ else
   sfirst=""
   IFS= read -r sfirst < "$surface_interaction" || true
   [[ "$sfirst" == "# Surface interaction" ]] \
-    || err "$surface_interaction first line should be '# Surface interaction' (got '${sfirst}')"
+    || err "$surface_interaction first line should be '# Surface interaction' (got $(printf %q "$sfirst"))"
 fi
 for needle in scripts/surface-review-reduce.py scripts/verdict-gate.sh 'Surface fan-out: requested' 'SURFACE-GATE:'; do
   PATH="/usr/bin:$PATH" grep -Fq -- "$needle" "$surface_wf" \

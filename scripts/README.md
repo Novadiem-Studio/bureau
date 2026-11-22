@@ -720,7 +720,16 @@ Exit codes:
   a prior route other than `fix`, a bad override, an output path that is not a regular file).
   Nothing written; one stderr line names the file and the rule. All checks run before the first
   `os.replace`; a rename that fails after them (only a second writer in the round dir could
-  cause one) is not rolled back.
+  cause one) is not rolled back. An unlink of a stale closure packet that fails after the
+  replaces also exits 2, with `final.json` already written. That is harmless: the next round
+  reads only the packets the prior `rerun_lenses` asks for, so a leftover packet is ignored.
+- **Check order** (C2): arguments, then prior-round inputs (step 2), then the `--lenses` rules
+  (step 3), then this round's reviewer files exist (step 4), then C1 validation (step 5). In
+  round 1, step 3 checks only the `--lenses` count (exactly two); identity against `fired` is
+  enforced at step 5 through the C1 rules (each lens in its file's `fired`, `fired` the same in
+  every file). So a round-1 `--lenses` with a wrong id whose reviewer file is missing exits 3
+  (step 4), not 2. (If the fired lens it left out already has its file in the round dir, step 3
+  refuses that file as not in `--lenses` and exits 2.)
 - **Exit 3:** a missing input (a reviewer file, the prior `final.json`, a required closure
   packet, the overrides file). Nothing written. Prior-round inputs are checked first.
 

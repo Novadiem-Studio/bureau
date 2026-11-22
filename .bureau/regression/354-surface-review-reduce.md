@@ -300,7 +300,7 @@ command: |
   closure-evidence-empty~r2~lenses~lens-s4.json~.closures[0].evidence = ""~closure evidence is empty
   closed-and-reraised~r2~lenses~lens-s4.json~.findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"}]~r1-S4-1: both closed and re-raised
   closure-not-in-packet~r2~lenses~lens-s4.json~.closures += [{"id":"r1-S4-9","file":"app/b.py","line":22,"evidence":"Also fixed."}]~closure id 'r1-S4-9' not in closure packet
-  reraises-not-in-packet~r2~lenses~lens-s4.json~.closures = [] | .findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-9"}]~reraises 'r1-S4-9' not in closure packet
+  reraises-not-in-packet~r2~lenses~lens-s4.json~.findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-9"}]~reraises 'r1-S4-9' not in closure packet
   closed-twice~r2~lenses~lens-s4.json~.closures += .closures~r1-S4-1: closed twice
   reraised-twice~r2~lenses~lens-s4.json~.closures = [] | .findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"},{"id":"r2-S4-2","surface":"S4","file":"app/b.py","line":21,"failure_scenario":"Also fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"}]~r1-S4-1: re-raised twice
   ROWS
@@ -362,7 +362,8 @@ command: |
   # empty-packet accounting fails n2, and dropping the required-packet exit 3 fails n3; checking
   # current-round files before the prior final.json fails o;
   # ignoring --max-fix-rounds on a re-run fails p; each q-<label> line fails when its rule in the
-  # ROWS table (or the inline rows after it) is removed; changing the stdout template fails
+  # ROWS table (or the inline rows after it) is removed (q-reraises-not-in-packet keeps the
+  # r1-S4-1 closure, so without its rule the stage exits 0, not 2 on another rule); changing the stdout template fails
   # a-stdout and e-stdout. The *-nested rows fail (a TypeError traceback, exit 1) when a set()
   # runs before the string check; q-dest-dir fails when the destination check before the first
   # replace is dropped. Keeping closure packets that the latest final did not write fails
