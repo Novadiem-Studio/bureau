@@ -145,6 +145,12 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
    SURFACE-GATE: {"at_round":0,"fired":["S1","S4"],"count":2,"high_blast_radius":false,"needs_design":false,"eligible_fanout":true,"fanout_requested":true,"fanout":"on","fanout_source":"ledger:03.F1","route":"fanout","escalated_to":null}
    ```
 
+   `count` is the length of `fired`; `high_blast_radius` and `needs_design` are the step-3
+   judgments the eligibility list names. `eligible_fanout` is true only when every **Eligible**
+   condition above holds (exactly 2 fired, not high-blast-radius, no design needed, not a
+   canon/process diff, and otherwise in scope for this workflow), whatever Robin answers, and
+   `fanout_requested` is true when the task or brief carries `Surface fan-out: requested` or
+   `Surface fan-out: on`.
    `at_round` is 0 here and N when a fan-out round escalates (step 9). `fanout` is `on` or `off`.
    `fanout_source` names where the answer to the fork lives whenever a fork ran, whatever Robin
    answered (a no included): `ledger:<NN>.F<k>` or `chat`. It is `none` only when no fork ran (0
@@ -153,7 +159,8 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
    review, the GitHub readiness one included, and `ship` is step 4). `escalated_to` is null
    unless `route` is `escalate`, then
    `{"run_dir":"<absolute RUN_DIR carrying the escalated review>","workflow":"execute-plan|feature"}`.
-   The eval reads both arms from this line, so a zero-surface ship writes one too.
+   The eval reads both arms from this line (its control arm selects on `eligible_fanout`), so a
+   zero-surface ship writes one too.
 
 4. **The Conductor** (**strong**) — local-delivery close-out when the self-gate returned NO → `log.md`,
    `state.json`. Close out at the `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`):
@@ -192,7 +199,7 @@ closure-packet contracts, write locations, the verdict record) and exactly one b
 under the heading "Surface review reduce (`surface-review-reduce.py`)"; this file does not
 restate them.
 
-6. **The Challenger** (Surface lens, **strong**) — one fresh-context Challenger per lens in the round's set, both spawned in ONE message → `surface-review/r<N>/lens-s<k>.json`
+6. **The Challenger** (Surface lens, **strong**) — one fresh-context Challenger per lens in the round's set, every lens in the set spawned in ONE message → `surface-review/r<N>/lens-s<k>.json`
 
    - **Stage `r<N>/diff-context.md`** (round 1's was staged at step 3 for the fork). The
      Conductor computes the four binding values once, with the committed-range invocation, where
@@ -234,8 +241,8 @@ restate them.
      may read tracked worktree files read-only and never edits the worktree (step 7 checks).
    - **Accounting.** Role `challenger`, attempt id `challenger-lens-s<k>-r<N>`. Two `SPAWN-EVENT`
      lines per spawn, each composed with `scripts/emit-event.sh spawn-event` and appended by the
-     Conductor only: both lenses' `started` lines before the one spawn message, then one terminal
-     line each, `complete` (returned, findings file exists), `no-handoff` (returned without one, a
+     Conductor only: a `started` line for every lens in the round's set before the one spawn
+     message (two in round 1; one, two or none in a later round), then one terminal line each, `complete` (returned, findings file exists), `no-handoff` (returned without one, a
      coldness flag included) or `failed` (the spawn errored). A re-spawn takes the suffix `-2`
      (`challenger-lens-s<k>-r<N>-2`), `attempt: 2`, and its own `started` line before dispatch. No
      `rework` key.
@@ -283,12 +290,10 @@ restate them.
    re-spawn. A second failure for the same reviewer is `[CHECKPOINT]`.
 
    **Partner notes.** A lens `### Warnings` line that starts `partner <S-id>:` names a risk the
-   lens saw on the other fired surface. It is for the Conductor, never for another reviewer, and
-   the Conductor judges each one on its merits; none is silently capped. If the partner lens's
-   findings in `merged.json` already cover that `file:line`, drop the note with a logged reason.
-   Otherwise, a note the Conductor cannot dismiss with a logged reason is treated like a gate
-   miss: the review escalates as step 9's `escalate` route does, and the open blockers go with
-   the escalation.
+   lens saw on the other fired surface. It is for the Conductor, never handed to another
+   reviewer. Here the Conductor only collects the round's partner notes from the lens `.md`
+   files; it judges and logs them in step 9, after `final` has run, so the round's `final.json`
+   exists when a note escalates. None is silently capped.
 
 8. **The Challenger** (Surface interaction, **strong**) — reads the diff and this round's merged findings; hunts cross-surface failures, then runs the readiness pass → `surface-review/r<N>/interaction.json`
 
@@ -314,6 +319,23 @@ restate them.
      overridden a blocker. `--lenses` is the same set as step 7. On route `fix` it writes the
      closure packets for round N+1. A successful `final` removes stale `closure-*.json` in its
      round dir, so the packets on disk always match the latest `final.json`.
+   - **Partner notes, after `final`:** the Conductor judges each note step 7 collected on its
+     merits, against this round's `final.json`. Its outcome is `covered` when a `final.json`
+     finding at that `file:line` lists the named surface in `surfaces`, `dismissed` when the
+     Conductor can give a reason it is not a risk, and otherwise `escalated`. For each note it
+     writes one machine line to `log.md`, composed with `jq -cn` and appended through
+     `scripts/log-append.sh "$RUN_DIR" "<heading>" -` with the line on stdin, as the
+     `SURFACE-GATE:` line is (no new emit-event type). These are the keys, in this order:
+
+     ```
+     PARTNER-NOTE: {"round":1,"from":"S1","about":"S4","file":"app/b.py","line":20,"outcome":"covered","reason":"r1-S4-1 is a blocker at app/b.py:20"}
+     ```
+
+     `round` is N; `from` is the lens whose `.md` carries the note; `about` is the note's
+     `<S-id>`; `file` and `line` are its `file:line`; `outcome` is `covered`, `dismissed` or
+     `escalated`; `reason` is never empty. One `escalated` note sends the run down the
+     `escalate` route below, whatever `final.json#route` says, with this round's `final.json`
+     open blockers and the note itself as the hand-over.
    - **Route on `final.json#route`:**
      - `ship`: close out as step 5's Close out does. On GitHub delivery, publish the `final.json`
        summary as the review summary.
@@ -323,7 +345,7 @@ restate them.
        outside `fired` means escalate, since the count would be 3. Otherwise go to round N+1:
        step 6 stages a new `diff-context.md` at the new head.
      - `escalate` (a `gate_miss`, a fix-delta surface outside `fired`, checkpoint option A, or,
-       Conductor-raised, a partner note it could not dismiss in step 7):
+       Conductor-raised, a partner note logged `escalated` above):
        append a `workflow_shifts` entry to `state.json` (`docs/run-protocol.md`; any role may
        shift to a heavier cadence), write a `SURFACE-GATE:` line with `at_round` N, `route`
        `escalate` and `escalated_to`, and hand the open blockers in the last `final.json` to the

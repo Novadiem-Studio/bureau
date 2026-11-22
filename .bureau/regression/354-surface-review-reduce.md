@@ -1,5 +1,5 @@
 name: surface-review-reduce.py enforces the findings file (C1), the closure packet (C1b) and the reduce CLI (C2) for the parallel surface review
-owner: scripts/surface-review-reduce.py; plan C1, C1b, C2 of run 20261121-parallel-surface-review (issue #143)
+owner: scripts/surface-review-reduce.py; C1 and C1b in agents/critic/surface-review.md, C2 in the scripts/README.md section "Surface review reduce" (issue #143)
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   PY="$ROOT/scripts/surface-review-reduce.py"

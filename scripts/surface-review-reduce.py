@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Reduce one round of parallel surface-review findings (issue #143, contracts C1, C1b, C2).
 
+C1 (findings file) and C1b (closure packet) are stated verbatim in
+agents/critic/surface-review.md; C2 (this CLI) is documented in scripts/README.md under
+"Surface review reduce (`surface-review-reduce.py`)".
+
   surface-review-reduce.py lenses <ROUND_DIR> --lenses S1,S4|none --diff-sha <hex>
   surface-review-reduce.py final  <ROUND_DIR> --lenses S1,S4|none --diff-sha <hex> \
       --max-fix-rounds <M> [--overrides <file>]

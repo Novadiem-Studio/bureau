@@ -689,8 +689,9 @@ in `log.md` that `state.json` does not record.
 The deterministic reduce step of the opt-in parallel surface review (issue #143). It validates
 the reviewers' findings files, merges them by exact `(file, line)`, checks that every re-run
 reviewer closed or re-raised each blocker in its closure packet, and computes the route and the
-round cap, so the Conductor does not grade its own stop. The contracts are C1 (findings file),
-C1b (closure packet) and C2 (this CLI) in the plan of run `20261121-parallel-surface-review`.
+round cap, so the Conductor does not grade its own stop. The contracts are C1 (findings file)
+and C1b (closure packet), stated verbatim in `agents/critic/surface-review.md`, and C2 (this
+CLI), which this section documents.
 
 ```bash
 scripts/surface-review-reduce.py lenses "$RUN_DIR/surface-review/r<N>" --lenses S1,S4 --diff-sha <hex>
