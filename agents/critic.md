@@ -256,13 +256,14 @@ Produced: RUN_DIR/log.md (review written there) | RUN_DIR/surface-review/r<N>/ f
 Passing forward:
 - <one line the Conductor must act on, e.g. a blocker to address>
 - <…or: none>
-Reviewed: <what was reviewed — round 1: spec+plan | round 2: prompts | build-diff | code-review>
+Reviewed: <what was reviewed — round 1: spec+plan | round 2: prompts | build-diff | code-review | surface-lens S<k> r<N> | surface-interaction r<N>>
 BLOCKERS (would build the wrong thing):
 - <issue> — <why it matters> — rooted in: <requirements | architecture | prompts>
 WARNINGS (real but survivable):
 - <issue> — <why> — <suggested fix>
 For build-diff mode only, group the two lists by `Spec-fidelity:` and `Standards:` so both
 axes are visible without cross-axis reranking.
+Surface-lens and surface-interaction reviewers do not use that axis split, even though their verdict record says `review_mode: build-diff`; they report under the headings in `agents/critic/surface-review.md`.
 SOLID:
 - <what genuinely holds up>
 ```

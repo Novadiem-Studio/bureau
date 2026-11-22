@@ -79,6 +79,9 @@ Does NOT receive:  log.md, prior-round Challenger findings, the Architect's desi
                    naming which prohibited input you got, and stop. Produce no findings.
                    Accepted target-repo ADRs are allowed durable project ground truth, not
                    current-run rationale.
+                   Surface-mode carve-out: in the surface-lens and surface-interaction modes, your own closure packet (`closure-s<k>.json` / `closure-x.json`) and, for the interaction reviewer, the same round's `merged.json` are named inputs, not prohibited prior-round findings.
+                   Every other reviewer's output and every earlier `merged.json` / `final.json` stay prohibited.
+                   In those modes the coldness flag goes to your own `.md` in the round dir, not to `log.md`.
 ```
 
 ---

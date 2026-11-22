@@ -46,9 +46,11 @@ The interaction reviewer reads only the same core, this slice and its brief, plu
 - this round's `RUN_DIR/surface-review/r<N>/merged.json`;
 - for N >= 2, `RUN_DIR/surface-review/r<N-1>/closure-x.json`.
 
-The code under review is the diff in `diff-context.md`. You may open the files that diff touches,
-read-only, under the worktree path staged there, to refute a candidate or copy a citation anchor.
-They are the reviewed artifact, not an extra input.
+The code under review is the diff in `diff-context.md`. You may open any tracked file in the
+worktree staged there, read-only, to refute a candidate or copy a citation anchor. The worktree is
+the reviewed codebase, not an extra input: prior-round findings and reviewer output live in
+`RUN_DIR`, outside it, so reading it does not break coldness. You still never edit it (see
+"Hands off the worktree" below).
 
 A closure packet is a verification list in the sense of `critic.md § Re-reviews`, limited to the
 ids you own. It is a named input, not a prohibited prior-round finding.
@@ -117,8 +119,12 @@ Rules (the reduce script enforces every one; a violation fails the stage):
   or config outside the diff, which the scenario names); `interacts` is two or more distinct S-ids
   from `fired` for an `X` finding and `[]` otherwise; `reraises` is `null` or the id of a
   prior-round blocker from your closure packet, allowed only on a `blocker` finding.
+- In the interaction file every finding id uses the `X` prefix, `R` (readiness) findings included:
+  `r<N>-X-<n>`. The id prefix is the file's `lens`, not the finding's `surface`; the script rejects
+  `r1-R-1`.
 - `closures` entries: `id` from your closure packet; `file`/`line` the post-fix line that closes
-  it; `evidence` non-empty.
+  it, where `file` is repo-relative by the same rule as a finding's `file` (never the absolute
+  worktree path a verdict-record citation uses); `evidence` non-empty.
 - **Closure accounting.** Round 1: `closures` is `[]` and every `reraises` is `null`. Round
   N >= 2: the ids in your closure packet are exactly the union of `closures[].id` and the non-null
   `reraises` values, each id once. An id in neither fails the stage
@@ -214,7 +220,10 @@ never adjudicated, and you are re-spawned.
 ### How your file is judged
 
 The Conductor runs `scripts/surface-review-reduce.py` (contract C2, documented in
-`scripts/README.md`). Exit 2 is a rule break and exit 3 a missing input; either way nothing is written and one
-stderr line reads `surface-review-reduce: <rN/file|arguments|<overrides basename>>: <rule>`. A
-reviewer whose file fails is re-spawned once per round; a second failure goes to Robin. You do not
-run the script.
+`scripts/README.md`). Exit 2 is a rule break and exit 3 a missing input; either way nothing is
+written and one stderr line reads `surface-review-reduce: <where>: <rule>`, where `<where>` is
+`r<N>/<file>` (a reviewer file, closure packet or prior `final.json`, with that round's N),
+`arguments`, the round dir's bare basename as given (for a misnamed or missing round dir), or the
+overrides file's basename. An I/O error prints
+`surface-review-reduce: io: <error>` and exits 2. A reviewer whose file fails is re-spawned once
+per round; a second failure goes to Robin. You do not run the script.
