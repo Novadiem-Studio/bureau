@@ -1,6 +1,8 @@
 # Battle-test: build-review-cold
 
-**Canon surface touched:** `workflows/build-review-cold.md`, `workflows/index.md`
+**Canon surface touched:** `workflows/build-review-cold.md`, `workflows/index.md`,
+`agents/critic/surface-review.md`, `agents/critic/surface/`, `scripts/surface-review-reduce.py`
+**Persona matrix (#143 surface-review slice and briefs):** `agents/battle-test.md`
 **Promotion to canon:** yes (declared by The Conductor per `docs/conventions/canon-promotion.md`)
 **Status:** EXECUTED 4/4 — promotion re-run below; the four routing verdicts were independently
 hand-verified twice (Mechanic author + Challenger `ae9ef74c` cold build-diff, five concrete diffs).

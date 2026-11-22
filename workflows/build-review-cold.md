@@ -2,9 +2,12 @@
 
 **When to use:** a self-contained change in existing code that you can just build — no fresh
 requirements to settle, no plan to decompose — where you want the framework's speed-first third
-gear: **build solo, then run at most ONE cold diff review.** GitHub delivery always uses that one
-review as its readiness gate; local delivery runs it only if the diff can fail silently. This is the
-right size for the common case where a bug would announce itself (a crash, a broken feature, a
+gear: **build solo, then run zero or one cold diff review**, or, for a diff on exactly two
+silent-failure surfaces where Robin opts in, one fan-out set of cold reviews (steps 6-9).
+GitHub delivery always gets one cold readiness read: the step-5 review, or on the fan-out path the
+interaction reviewer's readiness pass (step 8). Local delivery runs a cold review only if the diff
+can fail silently. This is the right size for the common case where a bug would announce itself
+(a crash, a broken feature, a
 visibly wrong result), so the only review worth paying for is the one that catches the bugs that
 DON'T announce themselves. Local runs normally ship through the self-gate; public PRs pay for one
 additional cold read because the delivery record promises reviewed evidence.
@@ -16,18 +19,20 @@ additional cold read because the delivery record promises reviewed evidence.
 - A framework / canon change — anything touching `workflows/`, `agents/`, `docs/conventions*`, a
   `plans/` prompt folder, or `index.md` → the full pipeline / `execute-plan` with its gates. Canon
   changes carry the promotion + battle-test gate, which lives in the fuller review, not here.
-- A diff touching MULTIPLE silent-failure surfaces at once, or a genuinely high-blast-radius change
-  (a migration that also re-prices a ledger, an authz rewrite spanning a tenancy boundary) →
-  escalate to `execute-plan` (or `feature` if it needs design). One cold reviewer on a wide,
-  interacting diff is under-powered.
+- A diff touching 3 or more silent-failure surfaces, a genuinely high-blast-radius change (a
+  migration that also re-prices a ledger, an authz rewrite spanning a tenancy boundary), or a diff
+  that needs design → escalate to `execute-plan` (or `feature` if it needs design). A diff on
+  exactly 2 surfaces escalates too, unless Robin turned on the surface fan-out for this diff (step
+  3, then step 6). One cold reviewer on a wide, interacting diff is under-powered.
 - A known defect to reproduce → repair → verify with a captured repro test → `bug-fix` (that
   workflow captures a repro and re-runs it; this one gates on the diff's failure surface instead).
 
 This is the speed-first gear. Speed is the point, so the guard above matters: when a task fits two
 workflows and one of them is this, take this ONLY if it clearly clears the four bars above.
 
-**Type:** mixed (builds solo, then runs zero or one cold review and adjudicates, in one run.
-No `spec.md`, no `plan.md`, no `prompts.md`, no reconciliation, no per-diff critic loop.)
+**Type:** mixed (builds solo, then runs zero or one cold review, or, opt-in for exactly 2 fired
+surfaces, one fan-out set of cold reviews per round, and adjudicates, in one run. No `spec.md`, no
+`plan.md`, no `prompts.md`, no reconciliation, no per-diff critic loop.)
 
 **Inputs:** the change to build (inline, or a short description); the target repo / sub-app; in
 existing projects, the workspace orientation (see "Existing-project mode" in
@@ -36,8 +41,11 @@ prompt folder.
 
 **Outputs:** under `RUN_DIR` (see `docs/run-protocol.md`): `log.md`, `state.json`. When the
 self-gate or GitHub readiness gate fires, `diff-context.md` — the diff + the review question, handed to the cold
-Challenger so it reviews cold (the diff, not the build session). The change itself lands in an
-isolated worktree and is delivered through a linked PR for public GitHub repositories (or the
+Challenger so it reviews cold (the diff, not the build session). When the surface fan-out runs
+(steps 6-9), `surface-review/r<N>/` per round: its `diff-context.md`, each reviewer's `.json` and
+`.md`, `merged.json`, `final.json`, the closure packets a `fix` route writes, and `overrides.json`
+when the Conductor overrides a blocker. The change itself lands in an isolated worktree and is
+delivered through a linked PR for public GitHub repositories (or the
 recorded local fallback) to the dev/integration branch. No `spec.md`, no `plan.md`, no `prompts.md`.
 
 **Leans on skills:** **novadiem-engineering** (cross-project coding standards — loaded by the
@@ -71,8 +79,9 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
    to shared data — where a wrong result would NOT announce itself in use?** Scan ALL FIVE surfaces
    (do NOT stop at the first YES) and count how many fire, then route on the count: **0 fire, ship
    (step 4 for local delivery; step 5 for GitHub delivery, whose readiness requires a cold review);
-   exactly 1 fires, run the ONE cold build-diff review (step 5); 2 or more fire, or a single
-   high-blast-radius change, escalate to fuller review (see When NOT to use).**
+   exactly 1 fires, run the ONE cold build-diff review (step 5); exactly 2 fire, escalate unless
+   Robin turns on the surface fan-out (below); 3 or more fire, or a single high-blast-radius change,
+   escalate to fuller review (see When NOT to use).**
    - **S1 — Durable state:** a DB migration/schema change; a write to a persisted record, ledger
      row, or stored document; a change to how persisted data is serialized, keyed, or de-duplicated.
    - **S2 — Money / value:** code that computes, moves, credits, debits, prices, or reconciles a
@@ -91,10 +100,52 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
      does something visibly break, or does it quietly do the wrong thing?" A crash / broken screen /
      wrong-but-visible number is self-announcing, so that surface does NOT fire. Silent corruption /
      silent leak / silent miscount / irreversible side effect / silent race fires. Scan all five and
-     count: 0 fired, ship locally or run the GitHub-readiness cold review; exactly 1 fired, run the ONE cold review; 2 or more fired (or a single
-     high-blast-radius change), do NOT run the single cold review, escalate (see When NOT to use),
-     because the failure modes interact across surfaces and one refute-first reviewer under-powers it.
-     `[CHECKPOINT]` if the operator can't decide the gate cleanly.
+     count: 0 fired, ship locally or run the GitHub-readiness cold review; exactly 1 fired, run the
+     ONE cold review; 2 or more fired (or a single high-blast-radius change), do NOT run the single
+     cold review. The failure modes interact across surfaces and one refute-first reviewer
+     under-powers it, so 3 or more escalate (see When NOT to use), and 2 escalate too unless the
+     fan-out route below applies. The same interaction is why the fan-out path carries its own
+     interaction reviewer (step 8). `[CHECKPOINT]` if the operator can't decide the gate cleanly.
+
+   **Exactly 2 fired: the opt-in surface fan-out.** The default is off: a 2-surface diff escalates
+   exactly as it always has. A task or brief line `Surface fan-out: requested` only makes the
+   Conductor ask; a line reading `Surface fan-out: on` is read as a request, never as on. Only
+   Robin's literal answer at the fork below turns it on. Nothing an agent writes (the brief, the
+   Delegate's own summary, a spawn prompt) can enable it.
+   - **Eligible** only when all hold: exactly 2 surfaces fired; not high-blast-radius; no design
+     needed; the diff touches no canon/process surface (`docs/conductor-gates.md § The
+     canon/process surfaces`).
+   - **Eligible, with `Surface fan-out: requested`:** stage
+     `RUN_DIR/surface-review/r1/diff-context.md` as step 6 describes, then return a genuine fork
+     (`docs/delegate-bridge/v2-integrated.md § v2 §1`) with `return-type: genuine-fork`,
+     `signal-fired: 3`, `artifact` = `RUN_DIR/surface-review/r1/diff-context.md` and
+     `artifact-hash` = its `shasum -a 256`, asking: "Escalate to execute-plan (default) or run the
+     surface fan-out trial on S<a>+S<b>?" The Delegate appends it to the ledger as record `NN.Fk`
+     and asks Robin; `scripts/ledger-set-robins-call.sh` writes his literal answer. Go to step 6
+     only when that `Robin's call:` line says to run the fan-out. On a direct-Conductor run, quote
+     Robin's own chat reply verbatim in the `log.md` entry and go to step 6 only on that reply. On
+     a no, escalate; the staged file stays as the record of what was offered.
+   - **Eligible without a request:** escalate as before, with no fork. There is no fork without a
+     request.
+   - **Not eligible** (3-5 fired, high-blast-radius, needs design, or a canon/process diff):
+     escalate.
+
+   **`SURFACE-GATE:` line, every case.** Once the route is settled (after Robin's answer when a
+   fork ran), the Conductor writes one machine line to `log.md`, composed with `jq -cn` and
+   appended through `scripts/log-append.sh "$RUN_DIR" "<heading>" -` with the line on stdin (the
+   `GRILL-TRIGGER:` precedent). These are the keys, in this order:
+
+   ```
+   SURFACE-GATE: {"at_round":0,"fired":["S1","S4"],"count":2,"high_blast_radius":false,"needs_design":false,"eligible_fanout":true,"fanout_requested":true,"fanout":"on","fanout_source":"ledger:03.F1","route":"fanout","escalated_to":null}
+   ```
+
+   `at_round` is 0 here and N when a fan-out round escalates (step 9). `fanout` is `on` or `off`.
+   `fanout_source` is `ledger:<record>`, `chat`, or `none`. `route` is `ship`, `single`, `fanout`
+   or `escalate` (this step's vocabulary, separate from the reduce routes; `single` is any step-5
+   review, the GitHub readiness one included, and `ship` is step 4). `escalated_to` is null
+   unless `route` is `escalate`, then
+   `{"run_dir":"<absolute RUN_DIR carrying the escalated review>","workflow":"execute-plan|feature"}`.
+   The eval reads both arms from this line, so a zero-surface ship writes one too.
 
 4. **The Conductor** (**strong**) — local-delivery close-out when the self-gate returned NO → `log.md`,
    `state.json`. Close out at the `[DEV-VERIFIED CHECKPOINT]` (format in `agents/orchestrator.md`):
@@ -123,6 +174,143 @@ Run these as spawned subagents where named (see "How to spawn an agent" and "Mod
      and objection resolutions, mark the PR ready, get human go, then GitHub/local fallback merge +
      worktree removal, append to `log.md`, then `scripts/account-run.sh <RUN_DIR>` last. The run
      ends at dev-verified.
+
+Steps 6-9 run only on the surface fan-out path: step 3 routed here on Robin's recorded yes to the
+fork a `Surface fan-out: requested` line raised (round 1), or step 9 routed `fix` (round N+1).
+Each round lives in `RUN_DIR/surface-review/r<N>/`. Every reviewer loads `agents/critic.md` core,
+the shared slice `agents/critic/surface-review.md` (inputs, coldness, the findings and
+closure-packet contracts, write locations, the verdict record) and exactly one brief from
+`agents/critic/surface/`. The file shapes live in that slice and the CLI in
+`scripts/README.md § Surface review reduce`; this file does not restate them.
+
+6. **The Challenger** (Surface lens, **strong**) — one fresh-context Challenger per lens in the round's set, both spawned in ONE message → `surface-review/r<N>/lens-s<k>.json`
+
+   - **Stage `r<N>/diff-context.md`** (round 1's was staged at step 3 for the fork). It holds the
+     diff, `base_ref`, `base_sha`, `target_ref`, `diff_sha`, the absolute `worktree` path, the
+     round, `fired`, and the one question. The Conductor computes the four binding values once,
+     with the committed-range invocation, where `$R` is the run worktree:
+     ```sh
+     base_sha=$(git -C "$R" rev-parse "$(jq -r .git.base_sha "$RUN_DIR/state.json")")
+     target_ref=$(git -C "$R" rev-parse HEAD)   # the round head, after the round's fix commit
+     diff_sha=$(git -C "$R" diff "$base_sha" "$target_ref" | shasum -a 256 | awk '{print $1}')
+     base_ref="$base_sha"
+     ```
+     Every round reviews the full diff from the run base, not the fix delta. Reviewers copy these
+     values; they never recompute them.
+   - **The round's set.** Round 1: the two fired lenses. Round N >= 2: the prior
+     `final.json#rerun_lenses`, plus any fired surface step 9's fix-delta scan fired. In a
+     readiness-only fix round (every open blocker an `R` finding) the set is empty and this step
+     spawns nothing unless the fix-delta scan adds a lens.
+   - **Spawn primitive.** The host spawn in `agents/orchestrator.md § How to spawn an agent`: on
+     Claude the Agent tool, a fresh spawn (never a fork), with `model` passed explicitly from
+     `RUN_DIR/model-routing.json .roles.challenger`. The prompt opens `You are running as The
+     Challenger`, carries the `Attempt ID:` line and the run's nonce line as every specialist spawn
+     does, then `Role mode: surface-lens S<k>`. It names the slice, exactly one brief,
+     `r<N>/diff-context.md`, and for N >= 2 only the closure packet `final` wrote for this
+     reviewer (`r<N-1>/closure-s<k>.json`; a lens the fix-delta scan added has none). This is NOT
+     the step-5 recipe: `scripts/run-cold-reviewer.sh` and `claude -p --tools "Read"` cannot
+     write, and each reviewer writes its own findings file, `.md` and verdict record. A reviewer
+     may read tracked worktree files read-only and never edits the worktree (step 7 checks).
+   - **Accounting.** Role `challenger`, attempt id `challenger-lens-s<k>-r<N>`. Two `SPAWN-EVENT`
+     lines per spawn, each composed with `scripts/emit-event.sh spawn-event` and appended by the
+     Conductor only: both lenses' `started` lines before the one spawn message, then one terminal
+     line each, `complete` (returned, findings file exists), `no-handoff` (returned without one, a
+     coldness flag included) or `failed` (the spawn errored). A re-spawn takes the suffix `-2`
+     (`challenger-lens-s<k>-r<N>-2`), `attempt: 2`, and its own `started` line before dispatch. No
+     `rework` key.
+   - **`log.md`.** The Conductor is its only writer: after each reviewer returns it appends one
+     summary line for that reviewer. Reviewers write their own `.md` in the round dir.
+
+7. **The Conductor** (Reduce) — run `scripts/surface-review-reduce.py lenses` → `surface-review/r<N>/merged.json`
+
+   In this order, once every lens in the round's set has returned (in a readiness-only fix round
+   with no added lens there is nothing to gate, and c uses `--lenses none`):
+
+   a. **Verdict gate.** For each lens attempt of the round,
+      `bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"`, the required pre-adjudication gate
+      (`docs/conductor-gates.md § Pre-adjudication gate`). A DEFECT is never adjudicated.
+   b. **Worktree check.** `git -C "$R" rev-parse HEAD` equals the staged `target_ref`, and
+      `git -C "$R" status --porcelain` is empty. The reviewers are write-capable, so this proves
+      none of them changed the code it read. If either fails, do not reduce: log the porcelain
+      output and raise `[CHECKPOINT]`, because the Conductor cannot tell which state the reviewers
+      read.
+   c. **Reduce.**
+      `scripts/surface-review-reduce.py lenses "$RUN_DIR/surface-review/r<N>" --lenses <set> --diff-sha "$diff_sha"`.
+      Round 1 names exactly the two fired lenses (for example `--lenses S1,S4`). `--lenses none`
+      is only for a readiness-only fix round (N >= 2, prior `rerun_lenses` empty), where it writes
+      an empty `merged.json`. Exit 0 wrote the record; exit 2 (invalid input) and exit 3 (missing
+      input) wrote nothing and printed one stderr line, `surface-review-reduce: <where>: <rule>`.
+      Never edit a reviewer's file to make it pass.
+
+   **One re-spawn per reviewer per round**, whatever the cause. A gate DEFECT, or a reduce exit 2
+   or 3 whose `<where>` is that reviewer's file, re-spawns that reviewer once under its `-2`
+   attempt, then a, b and c run again. A coldness flag (the reviewer's `.md` is the single
+   `CHALLENGER FLAG:` line) is copied to `log.md` and the prohibited input removed before the
+   re-spawn. A second failure for the same reviewer is `[CHECKPOINT]`.
+
+   **Partner notes.** A lens `### Warnings` line that starts `partner <S-id>:` names a risk the
+   lens saw on the other fired surface. It is for the Conductor, never for another reviewer: if
+   the partner lens raised nothing at that `file:line`, log the note in `log.md` and adjudicate
+   it as a warning.
+
+8. **The Challenger** (Surface interaction, **strong**) — reads the diff and this round's merged findings; hunts cross-surface failures, then runs the readiness pass → `surface-review/r<N>/interaction.json`
+
+   Runs after step 7's `lenses` stage, alone, and re-runs every `fix` round, because a fix to one
+   surface is how a new interaction appears. Same spawn primitive and accounting as step 6, with
+   attempt id `challenger-interaction-r<N>` (re-spawn `-2`) and `Role mode: surface-interaction`;
+   its brief is `agents/critic/surface/interaction.md`. The spawn names `r<N>/diff-context.md`,
+   `r<N>/merged.json`, and for N >= 2 only its own closure packet `r<N-1>/closure-x.json`. The
+   first pass hunts failures that exist only where the two fired surfaces meet. The second is the
+   readiness pass: step 5's zero-surface questions (correctness, scope, tests, risks, rollback),
+   asked on every fan-out run, local or GitHub, with findings marked `surface: "R"`. Every id in
+   this file is `X`-prefixed, readiness findings included. On GitHub delivery this pass is the
+   run's one cold readiness read.
+
+9. **The Conductor** (Gate) — run `scripts/surface-review-reduce.py final` and route on its route field → `surface-review/r<N>/final.json`
+
+   - **Before `final`:** run `bash scripts/verdict-gate.sh "$RUN_DIR" "$attempt_id"` on the
+     interaction attempt and repeat step 7's worktree check, with step 7's one re-spawn and
+     `[CHECKPOINT]` rules.
+   - **Run:** `scripts/surface-review-reduce.py final "$RUN_DIR/surface-review/r<N>" --lenses <set> --diff-sha "$diff_sha" --max-fix-rounds "$(jq -r .max_critic_loops "$RUN_DIR/state.json")"`,
+     adding `--overrides "$RUN_DIR/surface-review/r<N>/overrides.json"` when the Conductor has
+     overridden a blocker. `--lenses` is the same set as step 7. On route `fix` it writes the
+     closure packets for round N+1. A successful `final` removes stale `closure-*.json` in its
+     round dir, so the packets on disk always match the latest `final.json`.
+   - **Route on `final.json#route`:**
+     - `ship`: close out as step 5's Close out does. On GitHub delivery, publish the `final.json`
+       summary as the review summary.
+     - `fix`: send the open blockers to the coder and increment `critic_loops`
+       (`docs/conductor-gates.md`); the coder commits. Then run the fix-delta scan, step 3's
+       five-surface scan over the fix delta (round-N head to the new head). A surface firing
+       outside `fired` means escalate, since the count would be 3. Otherwise go to round N+1:
+       step 6 stages a new `diff-context.md` at the new head.
+     - `escalate` (a `gate_miss`, a fix-delta surface outside `fired`, or checkpoint option A):
+       append a `workflow_shifts` entry to `state.json` (`docs/run-protocol.md`; any role may
+       shift to a heavier cadence), write a `SURFACE-GATE:` line with `at_round` N, `route`
+       `escalate` and `escalated_to`, and hand the open blockers in the last `final.json` to the
+       escalated pipeline's coder as known defects to fix. They are build input there, never
+       reviewer input.
+     - `checkpoint`: raise exactly this block.
+       ```
+       [CHECKPOINT] — Human input needed
+       Phase: build-review-cold step 9 (surface fan-out), round r<N>
+       Issue: <B> blocker(s) survive <M> fix rounds (max_critic_loops). Fired: S<a>, S<b>.
+         Record: RUN_DIR/surface-review/r<N>/final.json
+         - <id> <file>:<line> [<surfaces>] <one-line scenario>
+       Options:
+         A) Escalate to execute-plan (feature if a blocker needs design); the worktree and diff carry over
+         B) Accept the named risk: the Conductor writes one override per blocker and closes out
+         C) Allow one more fix round (raises max_critic_loops for this run only)
+       Awaiting your response before continuing.
+       ```
+       On A, escalate as above. On B the Conductor writes one override per blocker into
+       `overrides.json` and re-runs `final`, which then routes `ship`. On C it raises
+       `state.json#max_critic_loops` by one and re-runs `final` on the same round dir with the
+       raised `--max-fix-rounds` before round N+1; that rewrites `final.json` to `fix` and writes
+       the closure packets.
+   - A blocker whose fix needs a design or requirements decision escalates instead of looping.
+     The Conductor may override a blocker only with a logged reason written to `overrides.json`
+     (`{"overrides":[{"id","reason"}]}`), then re-runs `final`.
 
 > **Production boundary — hard stop (non-negotiable).** This workflow's finish line is the change
 > **built, verified, and green on the dev/integration branch**. The Conductor does NOT deploy beyond
