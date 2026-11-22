@@ -22,18 +22,21 @@ not run, a constraint error) is self-announcing; leave it out.
 - A de-duplication or natural key that changed, so existing rows stop matching: duplicates get
   inserted, or distinct records collapse onto one.
 - An upsert or replace that overwrites fields the caller did not supply with null or a default.
-- A failed write whose error is swallowed (catch-and-log, an ignored return code, `|| true`), so
-  the caller reports success with nothing persisted.
-- A delete or cascade that now removes more rows than intended: a widened filter, a new cascade.
+- A failed write whose error is swallowed (catch-and-log, an ignored return code, an error forced
+  to success), so the caller reports success with nothing persisted.
+- A delete or cascade on local persisted rows that now removes more than intended: a widened
+  filter, a new cascade. A delete sent to an external system is S4.
 - A file replaced in place instead of written to a temp path and renamed, so an interruption
   leaves it truncated.
 
 ## Out of lens
 
 out of lens: a risk on another surface goes in `gate_miss`, never in `findings`.
+If that other surface is in `fired`, its own lens owns it: put it in neither list. `gate_miss`
+names only surfaces outside `fired`.
 
-A wrong amount in a stored ledger row is S2; two writers racing on the same row is S5. When the
-other fired surface is involved, the interaction reviewer hunts how the two combine; stay on yours.
+For example, a wrong amount in a stored ledger row belongs to S2, and two writers racing on the
+same row to S5. How a fired pair combines is the interaction reviewer's; stay on yours.
 
 ## Anchoring
 

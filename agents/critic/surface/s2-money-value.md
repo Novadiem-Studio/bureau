@@ -24,17 +24,19 @@ negative price that errors) is self-announcing; leave it out.
 - A price or rate read at the wrong moment: today's price applied to an old order, a reprice
   applied retroactively.
 - Integer division or truncation in proration, discounts, or splits that drops the remainder.
-- A limit or quota check off by one (`<` for `<=`), or checked before the deduction it guards, so
-  usage runs past the cap.
+- A limit or quota check that compares current usage against the cap without adding the amount
+  being deducted, or treats reaching the cap as still under it, so usage lands past the cap. Two
+  callers racing past a correct check is S5.
 - A reconciliation that skips or defaults unmatched rows instead of flagging them.
 
 ## Out of lens
 
 out of lens: a risk on another surface goes in `gate_miss`, never in `findings`.
+If that other surface is in `fired`, its own lens owns it: put it in neither list. `gate_miss`
+names only surfaces outside `fired`.
 
-How the ledger row is stored or migrated is S1; a double debit from two concurrent requests is S5.
-When the other fired surface is involved, the interaction reviewer hunts how the two combine; stay
-on yours.
+For example, how the ledger row is stored or migrated belongs to S1, and a double debit from two
+concurrent requests to S5. How a fired pair combines is the interaction reviewer's; stay on yours.
 
 ## Anchoring
 

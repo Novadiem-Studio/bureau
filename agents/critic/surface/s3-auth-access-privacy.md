@@ -30,9 +30,11 @@ out. A user wrongly let in sees nothing unusual.
 ## Out of lens
 
 out of lens: a risk on another surface goes in `gate_miss`, never in `findings`.
+If that other surface is in `fired`, its own lens owns it: put it in neither list. `gate_miss`
+names only surfaces outside `fired`.
 
-How a leaked record got persisted is S1; a message sent to the wrong person is S4. When the other
-fired surface is involved, the interaction reviewer hunts how the two combine; stay on yours.
+For example, how a leaked record got persisted belongs to S1, and a message sent to the wrong
+person to S4. How a fired pair combines is the interaction reviewer's; stay on yours.
 
 ## Anchoring
 

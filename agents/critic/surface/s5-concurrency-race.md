@@ -19,8 +19,9 @@ once, without announcing it? Single-threaded tests rarely reach these paths.
   update, so concurrent writers lose updates.
 - Check-then-act: an existence or limit check followed by a separate insert or deduction, with
   nothing stopping two callers from both passing the check.
-- A job, queue consumer, or webhook handler that is not idempotent under redelivery, so an
-  at-least-once message is processed twice.
+- A job, queue consumer, or webhook handler that two workers can claim at the same time (no lease
+  or claim marker), so one message is processed twice in parallel. A sequential retry or
+  redelivery that repeats an external action is S4.
 - A lock that is not exclusive on every platform it runs on, is released in the wrong scope, or is
   not released on the error path.
 - An ordering assumption broken by the change (a removed await, a reordered callback, parallel
@@ -32,10 +33,12 @@ once, without announcing it? Single-threaded tests rarely reach these paths.
 ## Out of lens
 
 out of lens: a risk on another surface goes in `gate_miss`, never in `findings`.
+If that other surface is in `fired`, its own lens owns it: put it in neither list. `gate_miss`
+names only surfaces outside `fired`.
 
-A wrong amount computed by one caller alone is S2; an action that fires before commit with no race
-involved is S4. When the other fired surface is involved, the interaction reviewer hunts how the
-two combine; stay on yours.
+For example, a wrong amount computed by one caller alone belongs to S2, and an action that fires
+before commit with no race involved to S4. How a fired pair combines is the interaction reviewer's;
+stay on yours.
 
 ## Anchoring
 
