@@ -130,9 +130,14 @@ for f in agents/critic.md docs/conventions/agent-contracts.md; do
   PATH="/usr/bin:$PATH" grep -Fq "$surface_slice" "$f" \
     || err "$f should name $surface_slice"
 done
+# Step 3 is the text from its numbered lead line ("3. **") up to step 4's ("4. **"), so a
+# label moved out of step 3 fails. awk stops at the first step-4 lead line.
+surface_step3=$(awk 'f && /^4\. \*\*/ { exit } /^3\. \*\*/ { f = 1 } f' "$surface_wf" 2>/dev/null || true)
+[[ -n "$surface_step3" ]] \
+  || err "$surface_wf: no step 3 found (want a '3. **' lead line before a '4. **' one)"
 while IFS='|' read -r sid sname sfile; do
-  PATH="/usr/bin:$PATH" grep -Fq "**${sid} — ${sname}:**" "$surface_wf" \
-    || err "${sid}: $surface_wf missing bold label '**${sid} — ${sname}:**'"
+  PATH="/usr/bin:$PATH" grep -Fq -- "**${sid} — ${sname}:**" <<<"$surface_step3" \
+    || err "${sid}: $surface_wf step 3 missing bold label '**${sid} — ${sname}:**'"
   sbrief="agents/critic/surface/${sfile}.md"
   if [[ ! -f "$sbrief" ]]; then
     err "${sid}: missing lens brief $sbrief"
