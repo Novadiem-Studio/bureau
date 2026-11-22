@@ -9,10 +9,10 @@ command: |
   # still fails on the PASS count instead of exiting 0.
   finish() {
     rm -rf "$T"
-    if [ "$fail" -eq 0 ] && [ "$pass" -eq 77 ]; then
+    if [ "$fail" -eq 0 ] && [ "$pass" -eq 88 ]; then
       echo "ALL PASS ($pass cases)"
     else
-      echo "FAIL guard: pass=$pass fail=$fail, want pass=77 fail=0"; exit 1
+      echo "FAIL guard: pass=$pass fail=$fail, want pass=88 fail=0"; exit 1
     fi
   }
   trap finish EXIT
@@ -141,6 +141,10 @@ command: |
   if red final "$T/f/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2 &&
     jq -e '.route == "escalate" and .gate_miss == ["S3"] and .rerun_lenses == [] and .rerun_interaction == false' "$T/f/r1/final.json" >/dev/null
   then ok f; else no f "gate_miss did not route escalate"; fi
+  # gate_miss also beats the cap: r1 with --max-fix-rounds 0 has K >= M, and still escalates.
+  if red final "$T/f/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 0 &&
+    jq -e '.route == "escalate" and .max_fix_rounds == 0' "$T/f/r1/final.json" >/dev/null
+  then ok f-cap0; else no f-cap0 "checkpoint took precedence over a gate miss: $(cat "$T/err")"; fi
 
   # (g) r3 with an open blocker and --max-fix-rounds 2: checkpoint, no packets.
   mk_r2 "$T/g"
@@ -168,6 +172,20 @@ command: |
     jq -e '.from_round == 3 and [.blockers[].id] == ["r3-S4-1"]' "$T/g/r3/closure-s4.json" >/dev/null &&
     jq -e '.blockers == []' "$T/g/r3/closure-x.json" >/dev/null
   then ok p; else no p "raised cap did not route fix with packets: $(cat "$T/err")"; fi
+
+  # Stale packets: a final re-run that drops S1 from rerun_lenses removes closure-s1.json;
+  # one that routes ship removes every closure packet.
+  mk_round "$T/s/r1"; mut "$T/s/r1/lens-s1.json" '.findings[0].severity = "blocker"'
+  printf '{"overrides":[{"id":"r1-S1-1","reason":"Accepted."}]}\n' >"$T/s/ov1.json"
+  printf '{"overrides":[{"id":"r1-S1-1","reason":"Accepted."},{"id":"r1-S4-1","reason":"Accepted."}]}\n' >"$T/s/ov2.json"
+  if red final "$T/s/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2 && [ -f "$T/s/r1/closure-s1.json" ] &&
+    red final "$T/s/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2 --overrides "$T/s/ov1.json" &&
+    jq -e '.route == "fix" and .rerun_lenses == ["S4"]' "$T/s/r1/final.json" >/dev/null &&
+    [ ! -e "$T/s/r1/closure-s1.json" ] && [ -f "$T/s/r1/closure-s4.json" ] && [ -f "$T/s/r1/closure-x.json" ]
+  then ok stale-lens; else no stale-lens "a dropped lens kept its packet: $(cat "$T/err")"; fi
+  if red final "$T/s/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2 --overrides "$T/s/ov2.json" &&
+    jq -e '.route == "ship"' "$T/s/r1/final.json" >/dev/null && ! ls "$T/s/r1"/closure-*.json >/dev/null 2>&1
+  then ok stale-route; else no stale-route "route ship left closure packets: $(cat "$T/err")"; fi
 
   # (i) r2 where lens-s4.json neither closes nor re-raises r1-S4-1: exit 2 naming it.
   mk_r2 "$T/i"; fj "$T/i/r2/lens-s4.json" S4 2 ""
@@ -282,6 +300,9 @@ command: |
   closure-evidence-empty~r2~lenses~lens-s4.json~.closures[0].evidence = ""~closure evidence is empty
   closed-and-reraised~r2~lenses~lens-s4.json~.findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"}]~r1-S4-1: both closed and re-raised
   closure-not-in-packet~r2~lenses~lens-s4.json~.closures += [{"id":"r1-S4-9","file":"app/b.py","line":22,"evidence":"Also fixed."}]~closure id 'r1-S4-9' not in closure packet
+  reraises-not-in-packet~r2~lenses~lens-s4.json~.closures = [] | .findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-9"}]~reraises 'r1-S4-9' not in closure packet
+  closed-twice~r2~lenses~lens-s4.json~.closures += .closures~r1-S4-1: closed twice
+  reraised-twice~r2~lenses~lens-s4.json~.closures = [] | .findings = [{"id":"r2-S4-1","surface":"S4","file":"app/b.py","line":20,"failure_scenario":"Still fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"},{"id":"r2-S4-2","surface":"S4","file":"app/b.py","line":21,"failure_scenario":"Also fires early.","severity":"blocker","verdict":"confirmed","interacts":[],"reraises":"r1-S4-1"}]~r1-S4-1: re-raised twice
   ROWS
 
   # (q) rows that need more than a one-file mutation.
@@ -291,6 +312,17 @@ command: |
   bad q-prior-ship 2 "r1/final.json" "route is ship, not fix" lenses "$T/q-prior-ship/r2" --lenses S4 --diff-sha "$SHA"
   mk_r2 "$T/q-prior-fired-nested"; mut "$T/q-prior-fired-nested/r1/final.json" '.fired = [["S1"],"S4"]'
   bad q-prior-fired-nested 2 "r1/final.json" "fired must be exactly two distinct S-ids" lenses "$T/q-prior-fired-nested/r2" --lenses S4 --diff-sha "$SHA"
+  mk_r2 "$T/q-prior-round"; mut "$T/q-prior-round/r1/final.json" '.round = 5'
+  bad q-prior-round 2 "r1/final.json" "round must be 1" lenses "$T/q-prior-round/r2" --lenses S4 --diff-sha "$SHA"
+  # C1b packet rules: one mutation to r1/closure-s4.json, read by the r2 lenses stage.
+  pk() { mk_r2 "$T/q-$1"; mut "$T/q-$1/r1/closure-s4.json" "$2"
+    bad "q-$1" 2 "r1/closure-s4.json" "$3" lenses "$T/q-$1/r2" --lenses S4 --diff-sha "$SHA"; }
+  pk packet-schema '.schema = "surface-closure/2"' "schema must be surface-closure/1"
+  pk packet-from-round '.from_round = 2' "from_round must be 1"
+  pk packet-lens '.lens = "S1"' "lens must be S4"
+  # Round 1: --lenses must name both fired lenses (lens-s4.json absent, so only that rule can fire).
+  mk_round "$T/q-r1-lenses/r1"; rm "$T/q-r1-lenses/r1/lens-s4.json"
+  bad q-r1-lenses 2 "arguments" "--lenses must name both fired lenses in round 1" lenses "$T/q-r1-lenses/r1" --lenses S1 --diff-sha "$SHA"
   # A destination that cannot be replaced (a directory at final.json) is refused before the
   # closure packets, which come first in the write order, are replaced.
   mk_round "$T/q-dest-dir/r1"; mkdir "$T/q-dest-dir/r1/final.json"
@@ -310,12 +342,13 @@ command: |
   ov override-not-in-round r1-S4-9 "Accepted." "override id 'r1-S4-9' is not a blocker finding in this round"
   ov override-empty-reason r1-S4-1 "" "override reason for 'r1-S4-1' is empty"
 
-  [ "$fail" -eq 0 ] && [ "$pass" -eq 77 ]
+  [ "$fail" -eq 0 ] && [ "$pass" -eq 88 ]
   # Mutation note: each case line pins one rule of scripts/surface-review-reduce.py. Removing
   # the (file, line) merge or the surfaces union fails a; sorting by anything but (file, line),
   # or writing the round dir's path, fails b; dropping the missing-file exit 3 fails c; skipping
   # the diff_sha check fails d; dropping X interacts from rerun_lenses or the packet writes fails
-  # e; letting gate_miss lose precedence fails f; dropping K >= M fails g; ignoring overrides
+  # e; ranking fix above escalate fails f, and ranking checkpoint above escalate fails f-cap0
+  # (K >= M at r1 with --max-fix-rounds 0); dropping K >= M fails g; ignoring overrides
   # fails h; dropping the closure-accounting absent check fails i, and over-strict accounting
   # fails j; dropping the rerun_lenses superset rule fails k; refusing --lenses none or writing
   # closure-s packets for R blockers fails l1-l3; dropping the none-only-where-allowed rule or the
@@ -326,7 +359,8 @@ command: |
   # ROWS table (or the inline rows after it) is removed; changing the stdout template fails
   # a-stdout and e-stdout. The *-nested rows fail (a TypeError traceback, exit 1) when a set()
   # runs before the string check; q-dest-dir fails when the destination check before the first
-  # replace is dropped. A column-0 line in the command block truncates it, and the EXIT guard
+  # replace is dropped. Keeping closure packets that the latest final did not write fails
+  # stale-lens and stale-route. A column-0 line in the command block truncates it, and the EXIT guard
   # then fails on the PASS count.
-expected: exit 0; the last stdout line is "ALL PASS (77 cases)"; 77 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
+expected: exit 0; the last stdout line is "ALL PASS (88 cases)"; 88 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
 phase: 01 · execute-plan (run 20261121-parallel-surface-review, issue #143)

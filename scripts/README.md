@@ -708,6 +708,8 @@ scripts/surface-review-reduce.py final  "$RUN_DIR/surface-review/r<N>" --lenses 
   `closure-x.json` (`surface-closure/1`). Sorted-key JSON through a temp file and `os.replace`;
   no timestamps or absolute paths, so the same inputs give the same bytes. One stdout line:
   `surface-review r<N> <stage>: <F> findings, <B> blockers[, route <route>]`.
+- A successful `final` also removes every other `closure-*.json` in the round dir, so after a
+  re-run (an override, a raised cap) the packets on disk match the latest `final.json`.
 - The script reads nothing else: no git, no `log.md`, no `state.json` (M arrives as
   `--max-fix-rounds`).
 

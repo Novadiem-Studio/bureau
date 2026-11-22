@@ -417,15 +417,16 @@ def dump(obj):
     return json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
-def publish(round_dir, here, outputs):
+def publish(round_dir, here, outputs, stale=()):
     """Write every output to a temp file first, then os.replace each; the record goes last.
+    Then remove each `stale` file (closure packets a previous `final` left behind).
 
-    Every destination is checked before the first replace, so a destination that cannot be
-    replaced (a directory at final.json) is exit 2 with nothing written. shortcut: a rename
-    that fails after that check (a concurrent writer in the round dir) is not rolled back;
-    add rollback if the round dir ever gets a second writer.
+    Every destination and stale path is checked before the first replace, so one that
+    cannot be replaced or removed (a directory at final.json) is exit 2 with nothing
+    written. shortcut: a rename that fails after that check (a concurrent writer in the
+    round dir) is not rolled back; add rollback if the round dir ever gets a second writer.
     """
-    for fname, _ in outputs:
+    for fname in [o[0] for o in outputs] + list(stale):
         dest = os.path.join(round_dir, fname)
         if os.path.lexists(dest) and (os.path.islink(dest) or not os.path.isfile(dest)):
             reject(here + "/" + fname, "destination exists and is not a regular file")
@@ -438,6 +439,8 @@ def publish(round_dir, here, outputs):
                 handle.write(body)
         for tmp, (fname, _) in zip(temps, outputs):
             os.replace(tmp, os.path.join(round_dir, fname))
+        for fname in stale:
+            os.unlink(os.path.join(round_dir, fname))
     finally:
         for tmp in temps:
             if os.path.exists(tmp):
@@ -556,7 +559,12 @@ def run(argv):
             outputs.append(("closure-s%s.json" % lens[1:], packet(lens, (lens,))))
         outputs.append(("closure-x.json", packet("X", ("X", "R"))))
     outputs.append(("final.json", dump(record)))
-    publish(round_dir, here, outputs)
+    # Packets from an earlier `final` on this round dir that this run does not rewrite are
+    # removed, so the packets on disk always match the latest final.json.
+    written = {o[0] for o in outputs}
+    stale = [f for f in sorted(os.listdir(round_dir))
+             if re.fullmatch(r"closure-.*\.json", f) and f not in written]
+    publish(round_dir, here, outputs, stale)
     return line + ", route " + route
 
 
