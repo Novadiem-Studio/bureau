@@ -119,6 +119,59 @@ grep -Fq 'agents/critic/prompts.md' docs/external-action-boundary.md \
   || err "docs/external-action-boundary.md reciprocal note should name critic prompts slice"
 grep -Fq 'agents/critic/build-diff.md' docs/conductor-gates.md \
   || err "docs/conductor-gates.md reciprocal note should name critic build-diff slice"
+# Parallel surface review (#143): the step-3 S-id labels in build-review-cold.md, the lens
+# brief H1s, the shared slice, the reduce script and the workflow must keep naming each other.
+# grep is pinned to /usr/bin because ugrep can shadow it and false-fail patterns.
+surface_slice=agents/critic/surface-review.md
+surface_wf=workflows/build-review-cold.md
+surface_lens_line='out of lens: a risk on another surface goes in `gate_miss`, never in `findings`'
+[[ -f "$surface_slice" ]] || err "missing $surface_slice"
+for f in agents/critic.md docs/conventions/agent-contracts.md; do
+  PATH="/usr/bin:$PATH" grep -Fq "$surface_slice" "$f" \
+    || err "$f should name $surface_slice"
+done
+while IFS='|' read -r sid sname sfile; do
+  PATH="/usr/bin:$PATH" grep -Fq "**${sid} — ${sname}:**" "$surface_wf" \
+    || err "${sid}: $surface_wf step 3 missing bold label '**${sid} — ${sname}:**'"
+  sbrief="agents/critic/surface/${sfile}.md"
+  if [[ ! -f "$sbrief" ]]; then
+    err "${sid}: missing lens brief $sbrief"
+    continue
+  fi
+  sfirst=""
+  IFS= read -r sfirst < "$sbrief" || true
+  [[ "$sfirst" == "# ${sid} — ${sname}" ]] \
+    || err "${sid}: $sbrief first line should be '# ${sid} — ${sname}' (got '${sfirst}')"
+  PATH="/usr/bin:$PATH" grep -Fq "$surface_lens_line" "$sbrief" \
+    || err "${sid}: $sbrief missing the line: $surface_lens_line"
+done <<'SURFACES'
+S1|Durable state|s1-durable-state
+S2|Money / value|s2-money-value
+S3|Auth / access / privacy|s3-auth-access-privacy
+S4|Irreversible external action|s4-irreversible-external-action
+S5|Concurrency / race|s5-concurrency-race
+SURFACES
+surface_interaction=agents/critic/surface/interaction.md
+if [[ ! -f "$surface_interaction" ]]; then
+  err "missing $surface_interaction"
+else
+  sfirst=""
+  IFS= read -r sfirst < "$surface_interaction" || true
+  [[ "$sfirst" == "# Surface interaction" ]] \
+    || err "$surface_interaction first line should be '# Surface interaction' (got '${sfirst}')"
+fi
+for needle in scripts/surface-review-reduce.py scripts/verdict-gate.sh 'Surface fan-out: requested' 'SURFACE-GATE:'; do
+  PATH="/usr/bin:$PATH" grep -Fq -- "$needle" "$surface_wf" \
+    || err "$surface_wf should name $needle"
+done
+surface_gate_refs=$(PATH="/usr/bin:$PATH" grep -cF 'verdict-gate.sh' "$surface_wf" || true)
+[[ "${surface_gate_refs:-0}" -ge 2 ]] \
+  || err "$surface_wf names verdict-gate.sh on ${surface_gate_refs:-0} line(s); steps 7 and 9 both need it (at least 2)"
+if [[ ! -f scripts/surface-review-reduce.py ]]; then
+  err "missing scripts/surface-review-reduce.py"
+elif [[ ! -x scripts/surface-review-reduce.py ]]; then
+  err "scripts/surface-review-reduce.py is not executable; run: chmod +x scripts/surface-review-reduce.py"
+fi
 for module in agent-contracts workflow-authoring regression-fixtures grilling tdd-seams fowler-smell-baseline canon-promotion failure-signatures adr-records diagnosing-bugs; do
   [[ -f "docs/conventions/${module}.md" ]] \
     || err "missing docs/conventions/${module}.md"
