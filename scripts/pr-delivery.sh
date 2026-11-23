@@ -392,6 +392,16 @@ cmd_review() {
   echo "Recorded $VERDICT cold review on PR #$pr ($review_mode)"
 }
 
+# Print a markdown file with fenced blocks (``` or ~~~) and closed inline `code` spans
+# removed. An unclosed backtick is left in place, so text after it is still linted.
+strip_code_spans() {
+  awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    { gsub(/`[^`]*`/, ""); print }
+  ' "$1"
+}
+
 cmd_ready() {
   require_worktree
   require_github_delivery
@@ -402,7 +412,12 @@ cmd_ready() {
     || die "cold review has not been accepted"
   [[ -f "$evidence" ]] || die "evidence file missing: $evidence"
   [[ -z "$(git -C "$WORKTREE" status --porcelain)" ]] || die "worktree has uncommitted changes"
-  if grep -Eq 'Pending —|<[^>]+>|(^|[^[:alnum:]_])(TBD|TODO)([^[:alnum:]_]|$)' "$evidence"; then
+  # Angle brackets are placeholders only outside code: `x<k>` in an inline span or a fenced
+  # block is literal syntax (issue #146). TBD/TODO/Pending still scan the raw file.
+  # Process substitution, not a pipe: under pipefail an early `grep -q` exit could SIGPIPE
+  # awk and turn a found placeholder into a pass.
+  if grep -Eq 'Pending —|(^|[^[:alnum:]_])(TBD|TODO)([^[:alnum:]_]|$)' "$evidence" \
+    || grep -Eq '<[^>]+>' < <(strip_code_spans "$evidence"); then
     die "evidence still contains placeholder text; complete $evidence before ready"
   fi
   cmd_refresh

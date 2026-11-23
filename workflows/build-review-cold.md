@@ -348,7 +348,14 @@ restate them.
      accepts). On any other route (`ship`, `checkpoint` once the cap is reached, or `escalate`)
      it is `escalated`. A note already logged `rerun` is judged again against round N+1's
      `final.json` and cannot be `rerun` a second time: if it is still neither `covered` nor
-     `dismissed`, it is `escalated`, whatever that round's route. For each note it
+     `dismissed`, it is `escalated`, whatever that round's route. Before that `covered` match,
+     the Conductor maps the note's round-N `file:line` onto round N+1's revision, because the
+     fix commit may have moved the code: from `git -C "$R" diff -U0 <r<N> target_ref> <r<N+1>
+     target_ref> -- <file>` (both read from the rounds' `diff-context.md` headers), it shifts the
+     line by the net lines added or removed in hunks wholly above it. When the line sits inside a
+     changed hunk, the file was renamed or deleted, or the diff cannot be read, there is no
+     mapping and the note cannot be `covered`. The note's `PARTNER-NOTE` line for round N+1
+     records the mapped line, or the original one when there is no mapping. For each note it
      writes one machine line to `log.md`, composed with `jq -cn` and appended through
      `scripts/log-append.sh "$RUN_DIR" "<heading>" -` with the line on stdin, as the
      `SURFACE-GATE:` line is (no new emit-event type). These are the keys, in this order:

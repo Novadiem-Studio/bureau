@@ -193,7 +193,7 @@ usually the only CodeRabbit read before merge.
 `scripts/coderabbit-gate.sh` and not by the `reviewDecision` check above.
 
 **Why it needs its own gate.** CodeRabbit posts as an *issue comment* from
-`coderabbitai[bot]`, never as a formal review. On a reviewed PR, `gh pr view --json reviews`
+`coderabbitai[bot]`, usually not as a formal review. On a reviewed PR, `gh pr view --json reviews`
 returns `[]` and `reviewDecision` is `""` — so the `reviewDecision != CHANGES_REQUESTED`
 precondition is structurally blind to it and cannot fail on a CodeRabbit finding, ever.
 
@@ -209,7 +209,10 @@ not a usable test:
 Only the reviewed **commit range** is evidence. A real review reports
 `Reviewing files that changed ... between <base> and <head>`; the gate compares that head
 against the PR's current head, so a review of an earlier commit fails as stale rather than
-passing.
+passing. When the summary carries no range at all (auto-review paused, or after
+`@coderabbitai resume`), the gate reads `pulls/{n}/reviews` instead and accepts a review by
+`coderabbitai[bot]` whose `commit_id` is the current head (issue #146). A review of another
+commit, or by any other login, does not count.
 
 **What the gate requires to pass:** a review whose reported head equals the PR's current head,
 and either zero actionable findings or a disposition recorded in `log.md` for that exact head:
@@ -217,6 +220,13 @@ and either zero actionable findings or a disposition recorded in `log.md` for th
 ```
 CODERABBIT-EVENT: {"head":"<sha>","findings":<n>,"disposition":"addressed|overruled","note":"<why>"}
 ```
+
+`findings` is the **cumulative total dispositioned for that head**, a JSON number. The gate
+takes the largest `findings` over the events whose `head` is the current head and clears only
+when it is at least the open count, so addressing 7 of 10 and logging `"findings":7` still
+fails with 3 open; log `"findings":10` once the rest are addressed or overruled. It takes the
+largest, not the sum, so a line logged twice cannot inflate the total. A missing or
+non-numeric `findings` never clears.
 
 A disposition keyed to a different head does not clear findings on this one — same discipline as
 the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.

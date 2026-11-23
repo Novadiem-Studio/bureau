@@ -10,16 +10,20 @@
 #   --comments-file FILE   bot comment bodies, as the API would return them
 #   --head SHA             the PR head to compare the reviewed range against
 #   --inline-count N       number of inline review comments from the bot
+#   --reviews-file FILE    optional; the PR's formal reviews as the API returns them
+#                          (a JSON array; default []). Offline mode only.
 #
 # Exit codes (mirrors preflight-artifacts.sh / spawn-gate.sh):
 #   0  + "coderabbit: clean"   reviewed at the current head; findings zero or dispositioned
 #   1  + DEFECT line(s)        not reviewed, stale, or findings left undispositioned
 #   2                          cannot run (bad args, no PR recorded, gh/jq missing)
 #
-# WHY THIS EXISTS. CodeRabbit posts as an ISSUE COMMENT from coderabbitai[bot], never
-# as a formal review: `gh pr view --json reviews` returns [] and reviewDecision is "".
-# pr-delivery.sh's `reviewDecision != CHANGES_REQUESTED` check therefore can NEVER see
-# a CodeRabbit finding. This gate reads the bot's comments directly instead.
+# WHY THIS EXISTS. CodeRabbit usually posts as an ISSUE COMMENT from coderabbitai[bot],
+# not a formal review: `gh pr view --json reviews` returns [] and reviewDecision is "".
+# pr-delivery.sh's `reviewDecision != CHANGES_REQUESTED` check therefore cannot see
+# a CodeRabbit finding. This gate reads the bot's comments directly instead. When the
+# summary reports no range (auto-review paused, or after '@coderabbitai resume'), a
+# formal review from the bot whose commit_id is the head is accepted as the proof (#146).
 #
 # THE TRAP THIS GATE EXISTS TO AVOID. CodeRabbit comments even when it has NOT reviewed:
 #   - draft PRs        -> "skip review by coderabbit.ai"  (Bureau opens every PR --draft)
@@ -32,9 +36,10 @@
 PATH=/usr/bin:$PATH  # EC 10 — ugrep guard
 
 RUN_DIR=""; REPO=""; PR=""; LOG_MD=""
-COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""
+COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""; REVIEWS_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --reviews-file)  REVIEWS_FILE="$2";    shift 2 ;;
     --repo)          REPO="$2";            shift 2 ;;
     --pr)            PR="$2";              shift 2 ;;
     --log)           LOG_MD="$2";          shift 2 ;;
@@ -56,6 +61,10 @@ if [ -n "$COMMENTS_FILE" ] || [ -n "$HEAD_OVERRIDE" ] || [ -n "$INLINE_OVERRIDE"
   OFFLINE=1
   [ -n "$REPO" ] || REPO="offline/offline"
   [ -n "$PR" ] || PR="0"
+fi
+if [ -n "$REVIEWS_FILE" ]; then
+  [ "$OFFLINE" -eq 1 ] || { echo "coderabbit-gate: --reviews-file needs the offline seam (--comments-file, --head, --inline-count)" >&2; exit 2; }
+  [ -r "$REVIEWS_FILE" ] || { echo "coderabbit-gate: unreadable --reviews-file" >&2; exit 2; }
 fi
 
 [ "$OFFLINE" -eq 1 ] || command -v gh >/dev/null 2>&1 || { echo "coderabbit-gate: gh required" >&2; exit 2; }
@@ -138,7 +147,23 @@ if [ -n "$reviewed_sha" ]; then
     defect "CodeRabbit's review is STALE: it reviewed ${reviewed_sha}, the PR head is ${head_sha}. Commits landed after the review, so the merged tree was never seen. Push-triggered re-review, or '@coderabbitai review'."
   fi
 elif [ -s "$bodies" ]; then
-  defect "CodeRabbit commented on PR #$PR but never reported a reviewed commit range, so no review of any commit is evidenced. Treat as unreviewed."
+  # No range in the summary (auto-review paused, or after '@coderabbitai resume'). A formal
+  # review by the bot on exactly this head is the proof instead; one on another commit, or
+  # by another login, is not (#146).
+  review_shas="$WORK/review-shas.txt"
+  if [ "$OFFLINE" -eq 1 ]; then
+    if [ -n "$REVIEWS_FILE" ]; then
+      jq -r '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' "$REVIEWS_FILE" > "$review_shas" 2>/dev/null
+    else
+      : > "$review_shas"
+    fi
+  else
+    gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+      --jq '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' > "$review_shas" 2>/dev/null
+  fi
+  if ! grep -Fxq "$head_sha" "$review_shas" 2>/dev/null; then
+    defect "CodeRabbit commented on PR #$PR but never reported a reviewed commit range, and has no formal review on head ${head_sha}, so no review of this head is evidenced. Treat as unreviewed."
+  fi
 fi
 
 # ── Findings, and whether they were dispositioned ─────────────────────────────
@@ -159,12 +184,26 @@ findings=$inline
 if [ "$findings" -gt 0 ] 2>/dev/null; then
   # Adjudication, mirroring the BLOCKER-EVENT ledger: the Conductor records a
   # disposition keyed to the head it applies to. Nothing else clears findings.
+  # An event's `findings` is the cumulative total dispositioned for that head. Take the
+  # MAX over parsed events whose .head is exactly this head, not the sum, so a replayed
+  # line cannot inflate the total; a non-numeric or missing count never clears (#146).
   disposed=0
   if [ -n "$LOG_MD" ] && [ -r "$LOG_MD" ]; then
-    grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null | grep -Fq "\"head\":\"$head_sha\"" && disposed=1
+    disposed=$(grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null \
+      | sed 's/^.*CODERABBIT-EVENT:[[:space:]]*//' \
+      | jq -nR --arg h "$head_sha" '
+          [inputs | (try fromjson catch null)
+           | select(type == "object" and .head == $h)
+           | .findings | select(type == "number" and . >= 0 and . == floor)]
+          | max // 0' 2>/dev/null)
+    [ -n "$disposed" ] || disposed=0
   fi
-  if [ "$disposed" -ne 1 ]; then
-    defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and none are dispositioned for head ${head_sha}. Address them, or record an explicit overrule, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
+  if ! [ "$disposed" -ge "$findings" ] 2>/dev/null; then
+    if [ "$disposed" -gt 0 ] 2>/dev/null; then
+      defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and only $disposed of $findings are dispositioned for head ${head_sha}. Address or overrule the rest, then append to log.md the cumulative total for this head: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
+    else
+      defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and none are dispositioned for head ${head_sha}. Address them, or record an explicit overrule, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
+    fi
   fi
 fi
 
