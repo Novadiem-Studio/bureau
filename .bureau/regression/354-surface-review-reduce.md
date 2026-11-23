@@ -9,10 +9,10 @@ command: |
   # still fails on the PASS count instead of exiting 0.
   finish() {
     rm -rf "$T"
-    if [ "$fail" -eq 0 ] && [ "$pass" -eq 92 ]; then
+    if [ "$fail" -eq 0 ] && [ "$pass" -eq 93 ]; then
       echo "ALL PASS ($pass cases)"
     else
-      echo "FAIL guard: pass=$pass fail=$fail, want pass=92 fail=0"; exit 1
+      echo "FAIL guard: pass=$pass fail=$fail, want pass=93 fail=0"; exit 1
     fi
   }
   trap finish EXIT
@@ -352,13 +352,18 @@ command: |
   mk_round "$T/q-lone-surrogate/r1"
   sed 's/lands twice\./lands twice \\ud800./' "$T/q-lone-surrogate/r1/lens-s1.json" >"$T/m" && mv "$T/m" "$T/q-lone-surrogate/r1/lens-s1.json"
   bad q-lone-surrogate 2 "r1/lens-s1.json" "unpaired surrogate" final "$T/q-lone-surrogate/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2
+  # The same check runs on dict keys: an extra top-level key "\ud800" must also exit 2 naming the
+  # surrogate, not reach the later unknown-key check.
+  mk_round "$T/q-key-surrogate/r1"
+  sed 's/"schema":/"\\ud800":1,"schema":/' "$T/q-key-surrogate/r1/lens-s1.json" >"$T/m" && mv "$T/m" "$T/q-key-surrogate/r1/lens-s1.json"
+  bad q-key-surrogate 2 "r1/lens-s1.json" "unpaired surrogate" final "$T/q-key-surrogate/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2
   mk_round "$T/q-non-ascii/r1"
   sed 's/lands twice\./lands twice caf\\u00e9 \\ud83d\\ude00./' "$T/q-non-ascii/r1/lens-s1.json" >"$T/m" && mv "$T/m" "$T/q-non-ascii/r1/lens-s1.json"
   if red final "$T/q-non-ascii/r1" --lenses S1,S4 --diff-sha "$SHA" --max-fix-rounds 2 &&
     jq -e '[.. | strings | select(contains("caf\u00e9 \ud83d\ude00"))] | length >= 1' "$T/q-non-ascii/r1/final.json" >/dev/null
   then ok q-non-ascii; else no q-non-ascii "valid non-ASCII text refused or lost: $(cat "$T/err")"; fi
 
-  [ "$fail" -eq 0 ] && [ "$pass" -eq 92 ]
+  [ "$fail" -eq 0 ] && [ "$pass" -eq 93 ]
   # Mutation note: each case line pins one rule of scripts/surface-review-reduce.py. Removing
   # the (file, line) merge or the surfaces union fails a; sorting by anything but (file, line),
   # or writing the round dir's path, fails b; dropping the missing-file exit 3 fails c; skipping
@@ -381,8 +386,10 @@ command: |
   # checking it after the reviewer files (step 4 or 5) fails q-r1-lenses-order; dropping the
   # step-3 subset-of-prior-fired rule fails q-lens-outside-fired. Dropping the unpaired-surrogate
   # check in load_json fails q-lone-surrogate (a UnicodeEncodeError traceback, exit 1), and
+  # dropping the no_surrogates(key) call in its dict branch fails q-key-surrogate (the later
+  # unknown-key check still exits 2, but its message lacks "unpaired surrogate"), and
   # rejecting all non-ASCII text fails q-non-ascii. A column-0 line in the
   # command block truncates it, and the EXIT guard
   # then fails on the PASS count.
-expected: exit 0; the last stdout line is "ALL PASS (92 cases)"; 92 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
+expected: exit 0; the last stdout line is "ALL PASS (93 cases)"; 93 "PASS <case>" lines and no "FAIL" line. Covers cases (a)-(q) of prompt 01 and the stdout template on a and e.
 phase: 01 · execute-plan (run 20261121-parallel-surface-review, issue #143)
