@@ -392,13 +392,45 @@ cmd_review() {
   echo "Recorded $VERDICT cold review on PR #$pr ($review_mode)"
 }
 
-# Print a markdown file with fenced blocks (``` or ~~~) and closed inline `code` spans
-# removed. An unclosed backtick is left in place, so text after it is still linted.
+# Print a markdown file with fenced blocks and closed inline `code` spans removed.
+# A fence closes only on a line of the opener's character, at least as long, with nothing
+# but whitespace after it; an unclosed fence is printed as-is. A backtick run closes only
+# on a run of the same length; an unmatched run stays, so text after it is still linted.
 strip_code_spans() {
   awk '
-    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
-    fence { next }
-    { gsub(/`[^`]*`/, ""); print }
+    function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
+    function strip_inline(s,   out, i, n, r, k, m, found) {
+      out = ""; i = 1; n = length(s)
+      while (i <= n) {
+        if (substr(s, i, 1) != "`") { out = out substr(s, i, 1); i++; continue }
+        r = run_len(s, i, "`"); k = i + r; found = 0
+        while (k <= n) {
+          if (substr(s, k, 1) != "`") { k++; continue }
+          m = run_len(s, k, "`")
+          if (m == r) { found = 1; break }
+          k += m
+        }
+        if (found) { i = k + m } else { out = out substr(s, i, r); i += r }
+      }
+      return out
+    }
+    {
+      t = $0; sub(/^[[:space:]]*/, "", t); c = substr(t, 1, 1)
+      if (fence) {
+        buf = buf $0 "\n"
+        if (c == fc) {
+          l = run_len(t, 1, c)
+          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = "" }
+        }
+        next
+      }
+      if (c == "`" || c == "~") {
+        l = run_len(t, 1, c)
+        if (l >= 3) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+      }
+      print strip_inline($0)
+    }
+    END { if (fence) printf "%s", buf }
   ' "$1"
 }
 
@@ -414,10 +446,13 @@ cmd_ready() {
   [[ -z "$(git -C "$WORKTREE" status --porcelain)" ]] || die "worktree has uncommitted changes"
   # Angle brackets are placeholders only outside code: `x<k>` in an inline span or a fenced
   # block is literal syntax (issue #146). TBD/TODO/Pending still scan the raw file.
-  # Process substitution, not a pipe: under pipefail an early `grep -q` exit could SIGPIPE
-  # awk and turn a found placeholder into a pass.
+  # The strip is captured, not piped: a failed strip must refuse, not lint empty text, and
+  # under pipefail an early `grep -q` exit could SIGPIPE awk and turn a placeholder into a pass.
+  local stripped
+  stripped="$(strip_code_spans "$evidence")" \
+    || die "code-span strip failed on $evidence; cannot lint it for placeholder text"
   if grep -Eq 'Pending —|(^|[^[:alnum:]_])(TBD|TODO)([^[:alnum:]_]|$)' "$evidence" \
-    || grep -Eq '<[^>]+>' < <(strip_code_spans "$evidence"); then
+    || grep -Eq '<[^>]+>' <<<"$stripped"; then
     die "evidence still contains placeholder text; complete $evidence before ready"
   fi
   cmd_refresh

@@ -170,8 +170,17 @@ fi
 if [ "$OFFLINE" -eq 1 ]; then
   inline="$INLINE_OVERRIDE"
 else
-  inline=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate \
-    --jq '[.[] | select(.user.login=="coderabbitai[bot]")] | length' 2>/dev/null)
+  # --paginate --jq prints one count per page, so sum them. A failed request is an
+  # error, not zero findings: a gate that cannot count findings cannot pass.
+  if ! inline_pages=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate \
+      --jq '[.[] | select(.user.login=="coderabbitai[bot]")] | length' 2>"$WORK/inline.err"); then
+    echo "coderabbit-gate: cannot read inline review comments for PR #$PR in $REPO: $(head -1 "$WORK/inline.err")" >&2
+    exit 2
+  fi
+  if ! inline=$(printf '%s\n' "$inline_pages" | jq -s 'add // 0' 2>/dev/null); then
+    echo "coderabbit-gate: unreadable inline review comment counts for PR #$PR in $REPO" >&2
+    exit 2
+  fi
 fi
 [ -n "$inline" ] || inline=0
 actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
