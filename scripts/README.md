@@ -684,6 +684,70 @@ in `log.md` that `state.json` does not record.
 
 ---
 
+# Surface review reduce (`surface-review-reduce.py`)
+
+The deterministic reduce step of the opt-in parallel surface review (issue #143). It validates
+the reviewers' findings files, merges them by exact `(file, line)`, checks that every re-run
+reviewer closed or re-raised each blocker in its closure packet, and computes the route and the
+round cap, so the Conductor does not grade its own stop. The contracts are C1 (findings file)
+and C1b (closure packet), stated verbatim in `agents/critic/surface-review.md`, and C2 (this
+CLI), which this section documents.
+
+```bash
+scripts/surface-review-reduce.py lenses "$RUN_DIR/surface-review/r<N>" --lenses S1,S4 --diff-sha <hex>
+scripts/surface-review-reduce.py final  "$RUN_DIR/surface-review/r<N>" --lenses S1,S4 --diff-sha <hex> \
+  --max-fix-rounds "$(jq -r .max_critic_loops "$RUN_DIR/state.json")" [--overrides <file>]
+```
+
+- **Inputs:** `r<N>/lens-s<k>.json` for each lens in `--lenses`; `interaction.json` (`final`
+  only). For N >= 2 also `../r<N-1>/final.json` (route must be `fix`), its `closure-x.json`, and
+  `closure-s<k>.json` for every lens in its `rerun_lenses`. `--lenses` must include every prior
+  `rerun_lenses` entry and may add a fired lens (which then has nothing to close).
+  `--lenses none` is the readiness-only fix round (N >= 2, prior `rerun_lenses` empty).
+- **Outputs:** `lenses` writes `merged.json` (`surface-merged/1`); `final` writes `final.json`
+  (`surface-final/1`) and, on route `fix`, `closure-s<k>.json` per lens in `rerun_lenses` plus
+  `closure-x.json` (`surface-closure/1`). Sorted-key JSON through a temp file and `os.replace`;
+  no timestamps or absolute paths, so the same inputs give the same bytes. One stdout line:
+  `surface-review r<N> <stage>: <F> findings, <B> blockers[, route <route>]`.
+- A successful `final` also removes every other `closure-*.json` in the round dir, so after a
+  re-run (an override, a raised cap) the packets on disk match the latest `final.json`.
+- The script reads nothing else: no git, no `log.md`, no `state.json` (M arrives as
+  `--max-fix-rounds`).
+
+Exit codes:
+
+- **Exit 0:** the record was written.
+- **Exit 2:** usage or invalid input (a C1/C1b rule, closure accounting, a skipped re-run lens,
+  a prior route other than `fix`, a bad override, a string holding an unpaired surrogate such
+  as `\ud800`, an output path that is not a regular file).
+  Nothing written; one stderr line names the file and the rule. All checks run before the first
+  `os.replace`; a rename that fails after them (only a second writer in the round dir could
+  cause one) is not rolled back. An unlink of a stale closure packet that fails after the
+  replaces also exits 2, with `final.json` already written. That is harmless: the next round
+  reads only the packets the prior `rerun_lenses` asks for, so a leftover packet is ignored.
+- **Check order** (C2): arguments, then prior-round inputs (step 2), then the `--lenses` rules
+  (step 3), then this round's reviewer files exist (step 4), then C1 validation (step 5). In
+  round 1, step 3 checks only the `--lenses` count (exactly two); identity against `fired` is
+  enforced at step 5 through the C1 rules (each lens in its file's `fired`, `fired` the same in
+  every file). So a round-1 `--lenses` with a wrong id whose reviewer file is missing exits 3
+  (step 4), not 2. (If the fired lens it left out already has its file in the round dir, step 3
+  refuses that file as not in `--lenses` and exits 2.)
+- **Exit 3:** a missing input (a reviewer file, the prior `final.json`, a required closure
+  packet, the overrides file). Nothing written. Prior-round inputs are checked first.
+
+Route (`final`), first match wins, with K = N - 1 fix rounds used and M = `--max-fix-rounds`:
+
+| Condition | `route` | Next |
+|---|---|---|
+| any `gate_miss` | `escalate` | a third surface fired; escalate as today, blockers travel in `final.json` |
+| open blocker and K >= M | `checkpoint` | `[CHECKPOINT]` to Robin |
+| open blocker | `fix` | coder fixes; `rerun_lenses` and the interaction reviewer re-run in r<N+1> |
+| none | `ship` | done |
+
+An open blocker is one not listed in `--overrides` (`{"overrides":[{"id","reason"}]}`).
+
+---
+
 # CodeRabbit chunk pass (`coderabbit-pass.sh`)
 
 Runs one coder chunk through CodeRabbit **before** the Challenger sees it (issue #65). A
