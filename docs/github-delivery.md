@@ -215,18 +215,26 @@ passing. When the summary carries no range at all (auto-review paused, or after
 commit, or by any other login, does not count.
 
 **What the gate requires to pass:** a review whose reported head equals the PR's current head,
-and either zero actionable findings or a disposition recorded in `log.md` for that exact head:
+and every open finding **named by id** in a disposition recorded in `log.md` for that exact head:
 
 ```
-CODERABBIT-EVENT: {"head":"<sha>","findings":<n>,"disposition":"addressed|overruled","note":"<why>"}
+CODERABBIT-EVENT: {"head":"<sha>","disposition":"addressed|overruled","ids":["<id>", ...],"note":"<why>"}
 ```
 
-`findings` is the **cumulative total dispositioned for that head**, a JSON number. The gate
-takes the largest `findings` over the events whose `head` is the current head and clears only
-when it is at least the open count, so addressing 7 of 10 and logging `"findings":7` still
-fails with 3 open; log `"findings":10` once the rest are addressed or overruled. It takes the
-largest, not the sum, so a line logged twice cannot inflate the total. A missing or
-non-numeric `findings` never clears.
+Findings are dispositioned one by one, by id (issue #146). The open set is:
+
+- every top-level inline review comment by `coderabbitai[bot]` (`pulls/{n}/comments`, any
+  commit; a reply in a thread is not a finding), by its numeric comment id;
+- every entry in the "Outside diff range comments (N)" section of a bot review on the head.
+  These have no comment id, so the gate derives `b<review id>-<first 12 hex of the sha256 of
+  "<file:lines>|<title>">`. If it cannot parse exactly N entries, it fails closed.
+
+The gate prints the open ids and a ready-to-fill event line. Ids compare as strings, so
+`4662945345` and `"4662945345"` match; one event or several may name them, with `addressed` or
+`overruled`. A count clears nothing: an event that names no ids (the old
+`"findings":<n>` shape) dispositions no finding, however large the number, so a matching
+total can never cover a finding nobody named. A summary that claims more actionable comments
+than the gate found ids for also fails closed, as does a failed or unreadable lookup.
 
 A disposition keyed to a different head does not clear findings on this one — same discipline as
 the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.

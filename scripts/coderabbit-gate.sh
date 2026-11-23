@@ -9,9 +9,18 @@
 # Offline test seam (no network; all three must be given together):
 #   --comments-file FILE   bot comment bodies, as the API would return them
 #   --head SHA             the PR head to compare the reviewed range against
-#   --inline-count N       number of inline review comments from the bot
+#   --inline-file FILE     the PR's inline review comments as the API returns them
+#                          (a JSON array), or instead:
+#   --inline-count N       N inline findings with no ids (they can never be dispositioned,
+#                          so N > 0 always fails; N = 0 means none)
 #   --reviews-file FILE    optional; the PR's formal reviews as the API returns them
 #                          (a JSON array; default []). Offline mode only.
+#
+# Findings are dispositioned BY ID (#146). The open set is every top-level inline comment
+# by coderabbitai[bot] (its numeric comment id) plus every entry in the "Outside diff range
+# comments (N)" section of a bot review on the head (id b<review id>-<first 12 hex of the
+# sha256 of "<file:lines>|<title>">). Each must be named in the `ids` of a CODERABBIT-EVENT
+# for the head; a count never clears anything. The gate prints the open ids.
 #
 # Exit codes (mirrors preflight-artifacts.sh / spawn-gate.sh):
 #   0  + "coderabbit: clean"   reviewed at the current head; findings zero or dispositioned
@@ -36,10 +45,11 @@
 PATH=/usr/bin:$PATH  # EC 10 — ugrep guard
 
 RUN_DIR=""; REPO=""; PR=""; LOG_MD=""
-COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""; REVIEWS_FILE=""
+COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""; REVIEWS_FILE=""; INLINE_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --reviews-file)  REVIEWS_FILE="$2";    shift 2 ;;
+    --inline-file)   INLINE_FILE="$2";     shift 2 ;;
     --repo)          REPO="$2";            shift 2 ;;
     --pr)            PR="$2";              shift 2 ;;
     --log)           LOG_MD="$2";          shift 2 ;;
@@ -52,18 +62,23 @@ while [ $# -gt 0 ]; do
 done
 
 OFFLINE=0
-if [ -n "$COMMENTS_FILE" ] || [ -n "$HEAD_OVERRIDE" ] || [ -n "$INLINE_OVERRIDE" ]; then
-  if [ -z "$COMMENTS_FILE" ] || [ -z "$HEAD_OVERRIDE" ] || [ -z "$INLINE_OVERRIDE" ]; then
-    echo "coderabbit-gate: --comments-file, --head and --inline-count must be given together" >&2
+if [ -n "$COMMENTS_FILE" ] || [ -n "$HEAD_OVERRIDE" ] || [ -n "$INLINE_OVERRIDE" ] || [ -n "$INLINE_FILE" ]; then
+  if [ -z "$COMMENTS_FILE" ] || [ -z "$HEAD_OVERRIDE" ] || { [ -z "$INLINE_OVERRIDE" ] && [ -z "$INLINE_FILE" ]; }; then
+    echo "coderabbit-gate: --comments-file, --head and --inline-file (or --inline-count) must be given together" >&2
     exit 2
   fi
+  if [ -n "$INLINE_OVERRIDE" ] && [ -n "$INLINE_FILE" ]; then
+    echo "coderabbit-gate: give --inline-file or --inline-count, not both" >&2; exit 2
+  fi
   [ -r "$COMMENTS_FILE" ] || { echo "coderabbit-gate: unreadable --comments-file" >&2; exit 2; }
+  [ -z "$INLINE_FILE" ] || [ -r "$INLINE_FILE" ] || { echo "coderabbit-gate: unreadable --inline-file" >&2; exit 2; }
+  case "$INLINE_OVERRIDE" in *[!0-9]*) echo "coderabbit-gate: --inline-count must be a whole number" >&2; exit 2 ;; esac
   OFFLINE=1
   [ -n "$REPO" ] || REPO="offline/offline"
   [ -n "$PR" ] || PR="0"
 fi
 if [ -n "$REVIEWS_FILE" ]; then
-  [ "$OFFLINE" -eq 1 ] || { echo "coderabbit-gate: --reviews-file needs the offline seam (--comments-file, --head, --inline-count)" >&2; exit 2; }
+  [ "$OFFLINE" -eq 1 ] || { echo "coderabbit-gate: --reviews-file needs the offline seam (--comments-file, --head, --inline-file or --inline-count)" >&2; exit 2; }
   [ -r "$REVIEWS_FILE" ] || { echo "coderabbit-gate: unreadable --reviews-file" >&2; exit 2; }
 fi
 
@@ -136,6 +151,24 @@ if grep -q 'rate limited by coderabbit.ai' "$bodies" 2>/dev/null; then
   defect "CodeRabbit was RATE LIMITED and did not review (plan limit or exhausted credits). Re-trigger with an '@coderabbitai review' PR comment once capacity returns; do not merge on the assumption it passed."
 fi
 
+# ── The PR's formal reviews (no-range proof, and body-only findings) ──────────
+# A failed or unreadable lookup is an error: body-only findings live here, so a gate that
+# cannot read them cannot pass.
+reviews="$WORK/reviews.json"
+if [ "$OFFLINE" -eq 1 ]; then
+  if [ -n "$REVIEWS_FILE" ]; then cp "$REVIEWS_FILE" "$reviews"; else echo '[]' > "$reviews"; fi
+else
+  if ! gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[]' > "$WORK/reviews.lines" 2>"$WORK/reviews.err"; then
+    echo "coderabbit-gate: cannot read formal reviews for PR #$PR in $REPO: $(head -1 "$WORK/reviews.err")" >&2
+    exit 2
+  fi
+  jq -s '.' "$WORK/reviews.lines" > "$reviews" 2>/dev/null || : > "$reviews"
+fi
+if ! jq -e 'type == "array"' "$reviews" >/dev/null 2>&1; then
+  echo "coderabbit-gate: unreadable formal reviews for PR #$PR in $REPO" >&2
+  exit 2
+fi
+
 # ── Did it review THIS head? ──────────────────────────────────────────────────
 # A real review names its commit range: "between <base_sha> and <head_sha>".
 # Last occurrence wins — the bot edits its summary in place on each new push.
@@ -151,68 +184,99 @@ elif [ -s "$bodies" ]; then
   # review by the bot on exactly this head is the proof instead; one on another commit, or
   # by another login, is not (#146).
   review_shas="$WORK/review-shas.txt"
-  if [ "$OFFLINE" -eq 1 ]; then
-    if [ -n "$REVIEWS_FILE" ]; then
-      jq -r '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' "$REVIEWS_FILE" > "$review_shas" 2>/dev/null
-    else
-      : > "$review_shas"
-    fi
-  else
-    gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
-      --jq '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' > "$review_shas" 2>/dev/null
-  fi
+  jq -r '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' "$reviews" > "$review_shas" 2>/dev/null
   if ! grep -Fxq "$head_sha" "$review_shas" 2>/dev/null; then
     defect "CodeRabbit commented on PR #$PR but never reported a reviewed commit range, and has no formal review on head ${head_sha}, so no review of this head is evidenced. Treat as unreviewed."
   fi
 fi
 
-# ── Findings, and whether they were dispositioned ─────────────────────────────
-if [ "$OFFLINE" -eq 1 ]; then
-  inline="$INLINE_OVERRIDE"
+# ── Findings, by id, and whether each was dispositioned ───────────────────────
+# Open inline findings: top-level comments by the bot (a reply in a thread is not a new
+# finding), across every commit, each by its numeric comment id. A failed or unreadable
+# lookup is an error, not zero findings: a gate that cannot list findings cannot pass.
+open_ids="$WORK/open-ids.txt"; : > "$open_ids"
+INLINE_JQ='.[] | select(.user.login == "coderabbitai[bot]" and (.in_reply_to_id // null) == null) | .id'
+anon=0
+if [ "$OFFLINE" -eq 1 ] && [ -n "$INLINE_OVERRIDE" ]; then
+  anon="$INLINE_OVERRIDE"
+elif [ "$OFFLINE" -eq 1 ]; then
+  jq -r "$INLINE_JQ" "$INLINE_FILE" > "$WORK/inline.ids" 2>/dev/null \
+    || { echo "coderabbit-gate: unreadable --inline-file" >&2; exit 2; }
 else
-  # --paginate --jq prints one count per page, so sum them. A failed request is an
-  # error, not zero findings: a gate that cannot count findings cannot pass.
-  if ! inline_pages=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate \
-      --jq '[.[] | select(.user.login=="coderabbitai[bot]")] | length' 2>"$WORK/inline.err"); then
+  if ! gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq "$INLINE_JQ" > "$WORK/inline.ids" 2>"$WORK/inline.err"; then
     echo "coderabbit-gate: cannot read inline review comments for PR #$PR in $REPO: $(head -1 "$WORK/inline.err")" >&2
     exit 2
   fi
-  if ! inline=$(printf '%s\n' "$inline_pages" | jq -s 'add // 0' 2>/dev/null); then
-    echo "coderabbit-gate: unreadable inline review comment counts for PR #$PR in $REPO" >&2
+fi
+if [ -s "$WORK/inline.ids" ]; then
+  if grep -vqE '^[0-9]+$' "$WORK/inline.ids"; then
+    echo "coderabbit-gate: unreadable inline review comment ids for PR #$PR in $REPO" >&2
     exit 2
   fi
+  cat "$WORK/inline.ids" >> "$open_ids"
 fi
-[ -n "$inline" ] || inline=0
+if [ "$anon" -gt 0 ]; then
+  defect "$anon inline finding(s) on PR #$PR were given only as a count (--inline-count), with no ids, so none can be dispositioned. Use --inline-file."
+fi
+
+# Body-only findings: entries in the "Outside diff range comments (N)" section of a bot
+# review on the head have no comment id. Each gets b<review id>-<12 hex of the sha256 of
+# "<file:lines>|<title>">. If the N entries cannot all be parsed, fail closed.
+jq -r --arg h "$head_sha" '
+  .[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h) | . as $r
+  | (($r.body // "") | split("\n")) as $L
+  | ([$L | to_entries[] | select(.value | test("Outside diff range comments \\([0-9]+\\)")) | .key] | first) as $i
+  | select($i != null)
+  | ($L[$i] | capture("Outside diff range comments \\((?<n>[0-9]+)\\)").n | tonumber) as $n
+  | ([$L | to_entries[] | select(.key > $i and (.value | startswith(">") | not)) | .key] | first // ($L | length)) as $k
+  | [$L[$i + 1:$k][] | select(test("^> *<summary><strong>"))
+     | (capture(" · (?<title>.+) · <code>(?<loc>[^<]+)</code></summary>") // null)] as $e
+  | if ($e | length) == $n and all($e[]; . != null)
+    then ($e[] | ["ID", ($r.id | tostring), .loc, .title] | @tsv)
+    else ["BAD", ($r.id | tostring), ($n | tostring), ([$e[] | select(. != null)] | length | tostring)] | @tsv
+    end' "$reviews" > "$WORK/body.tsv" 2>/dev/null \
+  || { echo "coderabbit-gate: cannot parse formal review bodies for PR #$PR in $REPO" >&2; exit 2; }
+tab=$(printf '\t')
+while IFS="$tab" read -r kind rid f3 f4; do
+  case "$kind" in
+    ID)  printf 'b%s-%s\n' "$rid" "$(printf '%s|%s' "$f3" "$f4" | shasum -a 256 | cut -c1-12)" >> "$open_ids" ;;
+    BAD) defect "CodeRabbit review $rid on head ${head_sha} lists \"Outside diff range comments ($f3)\" but only $f4 entr(ies) could be parsed, so those findings have no reliable ids and cannot be dispositioned. Read the review body; this gate fails closed until it parses." ;;
+  esac
+done < "$WORK/body.tsv"
+
+# A summary that claims more actionable comments than there are finding ids leaves some
+# finding unnamed; fail closed rather than guess which.
+total=$(grep -c . "$open_ids")
 actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
   | tail -1 | grep -oE '[0-9]+$')
 [ -n "$actionable" ] || actionable=0
+if [ "$actionable" -gt $((total + anon)) ]; then
+  defect "CodeRabbit reports $actionable actionable comment(s) on PR #$PR but only $((total + anon)) finding id(s) were found, so some findings cannot be named. Read the PR's review comments."
+fi
 
-findings=$inline
-[ "$actionable" -gt "$findings" ] 2>/dev/null && findings=$actionable
-
-if [ "$findings" -gt 0 ] 2>/dev/null; then
-  # Adjudication, mirroring the BLOCKER-EVENT ledger: the Conductor records a
-  # disposition keyed to the head it applies to. Nothing else clears findings.
-  # An event's `findings` is the cumulative total dispositioned for that head. Take the
-  # MAX over parsed events whose .head is exactly this head, not the sum, so a replayed
-  # line cannot inflate the total; a non-numeric or missing count never clears (#146).
-  disposed=0
+if [ "$total" -gt 0 ]; then
+  # Adjudication, mirroring the BLOCKER-EVENT ledger: an event for exactly this head, with
+  # disposition addressed or overruled, names the finding ids it covers. Ids compare as
+  # strings, so 4662945345 and "4662945345" match. A count (`findings`) clears nothing.
+  disposed="$WORK/disposed-ids.txt"; : > "$disposed"
   if [ -n "$LOG_MD" ] && [ -r "$LOG_MD" ]; then
-    disposed=$(grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null \
+    grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null \
       | sed 's/^.*CODERABBIT-EVENT:[[:space:]]*//' \
-      | jq -nR --arg h "$head_sha" '
-          [inputs | (try fromjson catch null)
-           | select(type == "object" and .head == $h)
-           | .findings | select(type == "number" and . >= 0 and . == floor)]
-          | max // 0' 2>/dev/null)
-    [ -n "$disposed" ] || disposed=0
+      | jq -nrR --arg h "$head_sha" '
+          inputs | (try fromjson catch null)
+          | select(type == "object" and .head == $h
+                   and (.disposition == "addressed" or .disposition == "overruled"))
+          | .ids | select(type == "array") | .[]
+          | select(type == "string" or type == "number") | tostring' > "$disposed" 2>/dev/null
   fi
-  if ! [ "$disposed" -ge "$findings" ] 2>/dev/null; then
-    if [ "$disposed" -gt 0 ] 2>/dev/null; then
-      defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and only $disposed of $findings are dispositioned for head ${head_sha}. Address or overrule the rest, then append to log.md the cumulative total for this head: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
-    else
-      defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and none are dispositioned for head ${head_sha}. Address them, or record an explicit overrule, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
-    fi
+  # FILENAME, not NR == FNR: with no dispositions the first file is empty, and NR == FNR
+  # would then read the open ids as dispositioned.
+  awk 'FILENAME == ARGV[1] { done[$0] = 1; next } !($0 in done) && !seen[$0]++' "$disposed" "$open_ids" > "$WORK/undisposed.txt"
+  if [ -s "$WORK/undisposed.txt" ]; then
+    n_open=$(grep -c . "$WORK/undisposed.txt")
+    list=$(tr '\n' ' ' < "$WORK/undisposed.txt" | sed 's/ $//')
+    ids_json=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$WORK/undisposed.txt")
+    defect "CodeRabbit has $n_open of $total finding(s) on PR #$PR not dispositioned for head ${head_sha} (open: $list). Address or overrule each, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"disposition\":\"addressed|overruled\",\"ids\":$ids_json,\"note\":\"<why>\"}"
   fi
 fi
 
@@ -221,5 +285,5 @@ if [ -s "$DEFECTS" ]; then
   exit 1
 fi
 
-echo "coderabbit: clean (reviewed ${head_sha}, ${findings} finding(s) dispositioned or none)"
+echo "coderabbit: clean (reviewed ${head_sha}, ${total} finding(s), each dispositioned by id, or none)"
 exit 0
