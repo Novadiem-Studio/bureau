@@ -67,13 +67,29 @@ def load_json(path, name):
     def constant(token):
         reject(name, "invalid JSON constant " + token)
 
+    def no_surrogates(value):
+        # A JSON escape like "\ud800" with no partner parses to a lone surrogate, which
+        # cannot be written back as UTF-8. Reject it here so the error names this file.
+        if isinstance(value, str):
+            if any("\ud800" <= ch <= "\udfff" for ch in value):
+                reject(name, "string contains an unpaired surrogate (not valid Unicode)")
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                no_surrogates(key)
+                no_surrogates(item)
+        elif isinstance(value, list):
+            for item in value:
+                no_surrogates(item)
+
     try:
         with open(path, encoding="utf-8") as handle:
-            return json.load(handle, object_pairs_hook=pairs, parse_constant=constant)
+            data = json.load(handle, object_pairs_hook=pairs, parse_constant=constant)
     except Fail:
         raise
     except ValueError as exc:
         reject(name, "invalid JSON (%s)" % str(exc).splitlines()[0])
+    no_surrogates(data)
+    return data
 
 
 def closed(name, obj, keys, where):

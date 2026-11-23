@@ -338,19 +338,23 @@ restate them.
      round dir, so the packets on disk always match the latest `final.json`.
    - **Partner notes, after `final`:** the Conductor judges each note step 7 collected on its
      merits, against this round's `final.json`. Its outcome is `covered` when a `final.json`
-     finding at that `file:line` lists the named surface in `surfaces`, and `dismissed` when the
-     Conductor can give a reason it is not a risk. `covered` cannot happen when the named lens
-     did not run this round, so a note that is neither is `rerun` when `final.json#route` is
-     `fix`: the named lens joins round N+1's set (as a lens the fix-delta scan adds does, with no
-     closure packet, which the script accepts). On any other route (`ship`, `checkpoint` once the
-     cap is reached, or `escalate`) it is `escalated`. A note already logged `rerun` is judged
-     again against round N+1's `final.json` and cannot be `rerun` a second time. For each note it
+     finding at that `file:line` lists the named surface in `surfaces` and describes the same
+     failure mechanism the note names. Two risks can share a `file:line`, so a finding there
+     about a different failure does not cover the note, and when the Conductor cannot say the two
+     match, the note is not `covered`. It is `dismissed` when the Conductor can give a reason it
+     is not a risk. `covered` cannot happen when the named lens did not run this round, so a note
+     that is neither is `rerun` when `final.json#route` is `fix`: the named lens joins round
+     N+1's set (as a lens the fix-delta scan adds does, with no closure packet, which the script
+     accepts). On any other route (`ship`, `checkpoint` once the cap is reached, or `escalate`)
+     it is `escalated`. A note already logged `rerun` is judged again against round N+1's
+     `final.json` and cannot be `rerun` a second time: if it is still neither `covered` nor
+     `dismissed`, it is `escalated`, whatever that round's route. For each note it
      writes one machine line to `log.md`, composed with `jq -cn` and appended through
      `scripts/log-append.sh "$RUN_DIR" "<heading>" -` with the line on stdin, as the
      `SURFACE-GATE:` line is (no new emit-event type). These are the keys, in this order:
 
      ```
-     PARTNER-NOTE: {"round":1,"from":"S1","about":"S4","file":"app/b.py","line":20,"outcome":"covered","reason":"r1-S4-1 is a blocker at app/b.py:20"}
+     PARTNER-NOTE: {"round":1,"from":"S1","about":"S4","file":"app/b.py","line":20,"outcome":"covered","reason":"r1-S4-1 at app/b.py:20 is the same double send the note names"}
      ```
 
      `round` is N; `from` is the lens whose `.md` carries the note; `about` is the note's

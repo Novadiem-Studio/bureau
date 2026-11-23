@@ -718,7 +718,8 @@ Exit codes:
 
 - **Exit 0:** the record was written.
 - **Exit 2:** usage or invalid input (a C1/C1b rule, closure accounting, a skipped re-run lens,
-  a prior route other than `fix`, a bad override, an output path that is not a regular file).
+  a prior route other than `fix`, a bad override, a string holding an unpaired surrogate such
+  as `\ud800`, an output path that is not a regular file).
   Nothing written; one stderr line names the file and the rule. All checks run before the first
   `os.replace`; a rename that fails after them (only a second writer in the round dir could
   cause one) is not rolled back. An unlink of a stale closure packet that fails after the
