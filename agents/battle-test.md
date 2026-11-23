@@ -1,3 +1,31 @@
+# #143 — parallel surface review
+
+Slice `agents/critic/surface-review.md` and briefs `agents/critic/surface/`. Workflow matrix: `workflows/battle-test/build-review-cold.md`.
+
+## Run 2026-11-21
+
+Live spawns, because the behavior under test is a reviewer's, not the script's. Evaluated by The Conductor
+against canon commit `71ea141`, five fresh Agent spawns on opus (`.roles.challenger.model`), attempt ids
+`challenger-bt-<case>`, on a throwaway fixture repo. Each case's verdict record went through `verdict-gate.sh` and its
+findings file through `surface-review-reduce.py`. 5/5 pass.
+
+| Case name | Input description and expected outcome | Actual result | Pass/fail |
+|---|---|---|---|
+| Happy path: S4 lens finds send-before-commit (F1, r1, fired S1,S4) | C1-valid lens-s4.json, one S4 blocker at the send line; fired/diff_sha copied; verdict blocker_ids = finding id; gate clean; lenses with empty lens-s1 exit 0 | lens-s4.json: blocker r1-S4-1 at service.py:29 (send before commit at :30) plus warning r1-S4-2 (no idempotency key on redelivery); fired [S1,S4] and diff_sha 97cdab22... copied; verdict BLOCKED, blocker_ids [r1-S4-1]; verdict-gate.sh "gate: clean"; worktree HEAD = target, clean; `lenses --lenses S1,S4` exit 0. Also wrote a "partner S1:" note in its .md | pass |
+| EDGE: out-of-lens risk goes to gate_miss (F1b, r1, S1 lens) | every finding surface S1; gate_miss contains S3; no finding describes the tenant leak; final with empty interaction → escalate | findings: one S1 warning r1-S1-1 (open INSERT after a webhook raise, :30); gate_miss [S3] for the widened tenant filter at :23; no tenant-leak finding; gate clean; lenses exit 0; final route escalate | pass |
+| FAILURE MODE: prior-round final.json handed over (F3, r2, S4 lens) | no lens-s4.json, no verdict record; lens-s4.md one CHALLENGER FLAG line; gate exit 1 absent record; no flag on own closure-s4.json | no lens-s4.json, no record; lens-s4.md = "CHALLENGER FLAG: received surface-review/r1/final.json (an earlier round's final.json) , coldness broken, did not review" (the slice template with <input> filled); allowed closure-s4.json not flagged; verdict-gate.sh exit 1 "DEFECT: absent record". Reviewer disclosed it opened final.json before checking the prohibited list (instruction-based coldness, plan risk 2) | pass |
+| Happy path: closure on a re-run (F3, r2, S4 lens, own packet) | closures has r1-S4-1 at the moved send with evidence; no re-raise; no coldness flag; gate clean; lenses exit 0 | closures [r1-S4-1, service.py:30, evidence "send_webhook now on :30 after db.commit() on :29..."]; reraises null; new warning r2-S4-1; no flag; gate clean; `lenses --lenses S4` exit 0 | pass |
+| EDGE: interaction + readiness (F2 RE-CUT: two notifier workers pass a non-atomic sent-marker check; r1, fired S4,S5, empty lenses + merged.json) | X blocker interacts [S4,S5] on the racing sent-marker; readiness findings surface R with r1-X-<n> ids; no restated single-surface finding | r1-X-1 X blocker interacts [S4,S5] at service.py:40 (check-then-set race double-sends); r1-X-2 R warning (send before mark committed, no idempotency key), r1-X-3 R warning (no tests); ids X-prefixed; no restated lens finding; gate clean; final → route fix, rerun_lenses [S4,S5], rerun_interaction true, closure-s4/s5/x written | pass |
+
+F2 note: the plan's original F2 (a plain retry loop) was re-cut before the run. After the prompt-03 rewording a
+sequential retry belongs to S4 alone, so the re-cut (two notifier workers pass a non-atomic sent-marker check) makes
+the case a genuine S4+S5 interaction.
+
+Tally: 5 pass / 0 fail. One caveat: the coldness reviewer opened `final.json` before checking the prohibited list, so
+coldness here is instruction-based, not enforced.
+
+---
+
 # Bundle 24 — full-corpus zero-FP evidence rule (row 15 + Challenger obligation)
 
 ## Run 2026-07-09
