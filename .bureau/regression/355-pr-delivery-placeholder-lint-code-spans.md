@@ -122,6 +122,14 @@ command: |
     echo "FAIL: R9 a failing strip must refuse ready"; exit 1
   fi
   grep -Fq 'code-span strip failed' "$TMPF/out" || { echo "FAIL: R9 refused for another reason: $(cat "$TMPF/out")"; exit 1; }
+  # R10: a backslash-escaped backtick does not open a code span (CommonMark), so the
+  # placeholder between two escaped backticks is plain text.
+  printf '%s\n' '## Testing performed' '' 'Ran \`<placeholder>\`.' > "$EV"
+  must_fail "R10 escaped backticks"
+  # R11: a backtick fence's info string cannot hold a backtick, so this line opens no fence
+  # and the placeholder below it is plain text.
+  printf '%s\n' '## Testing performed' '' '```bad`info' 'Then <placeholder>.' '```' 'example' '```' > "$EV"
+  must_fail "R11 backtick in fence info"
 
   # P1: angle brackets inside an inline code span (the issue #146 case).
   printf '## Testing performed\n\n- Attempt ids look like `challenger-lens-s<k>-r<N>`.\n- Ran ``a `<b>` c`` too.\n' > "$EV"
@@ -132,6 +140,10 @@ command: |
   # P3: a shorter ``` inside a ```` block does not close it; the ```` close does.
   printf '## Testing performed\n\n````md\n<x>\n```\n<y>\n````\n\nAll green.\n' > "$EV"
   must_pass "P3 longer fence"
+  # P4: a language-tagged backtick fence and a tilde fence whose info string holds a backtick
+  # still open fences; a backslash inside a real span stays literal (`C:\dir<k>\` is a span).
+  printf '%s\n' '## Testing performed' '' '```sh' 'run --lens <k>' '```' '' '~~~a`b' '<x>' '~~~' '' '- Path `C:\dir<k>\` here.' > "$EV"
+  must_pass "P4 tagged fences and backslash in span"
 
   echo PASS
-expected: exit 0; stdout "PASS". cmd_ready refuses evidence with a bare <placeholder> (R1), a <...> after an unclosed backtick (R2), TBD (R3), "Pending —" (R4), or a bare <...> next to a code span (R5), a placeholder after a ``` block that holds a ~~~ line (R6), after an unclosed fence (R7), or after an unmatched ``` run (R8), each with the "placeholder text" message, and refuses with "code-span strip failed" when the strip itself fails (R9); it accepts <...> inside inline code spans (P1), fenced blocks (P2), and a ```` block holding a shorter ``` line (P3). Mutation: restore the raw-file `<[^>]+>` grep in cmd_ready → P1 is refused and the fixture fails.
+expected: exit 0; stdout "PASS". cmd_ready refuses evidence with a bare <placeholder> (R1), a <...> after an unclosed backtick (R2), TBD (R3), "Pending —" (R4), or a bare <...> next to a code span (R5), a placeholder after a ``` block that holds a ~~~ line (R6), after an unclosed fence (R7), or after an unmatched ``` run (R8), each with the "placeholder text" message, and refuses with "code-span strip failed" when the strip itself fails (R9), and refuses a placeholder between backslash-escaped backticks (R10) or under a backtick "fence" whose info string holds a backtick (R11); it accepts <...> inside inline code spans (P1), fenced blocks (P2), a ```` block holding a shorter ``` line (P3), and a language-tagged backtick fence, a tilde fence with a backtick in its info string, and a span ending in a backslash (P4). Mutation: restore the raw-file `<[^>]+>` grep in cmd_ready → P1 is refused and the fixture fails.

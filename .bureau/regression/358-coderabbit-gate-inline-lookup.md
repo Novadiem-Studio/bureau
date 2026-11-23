@@ -1,6 +1,6 @@
-name: coderabbit-gate live inline-comment lookup sums paginated counts and fails loudly when the request fails
-phase: bug-fix (run 20261122-gate-surface-gaps, issue #146 CodeRabbit round 2, findings D and E)
-owner: scripts/coderabbit-gate.sh (live `gh api repos/$REPO/pulls/$PR/comments --paginate` path)
+name: coderabbit-gate live path reads finding ids from every page and fails loudly when a lookup fails
+phase: bug-fix (run 20261122-gate-surface-gaps, issue #146 CodeRabbit rounds 2-4)
+owner: scripts/coderabbit-gate.sh (live `gh api .../pulls/$PR/comments --paginate` and `.../reviews` lookups; gh resolved from the caller's PATH)
 command: |
   ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
   TMPF=$(mktemp -d)
@@ -17,9 +17,11 @@ command: |
     "pr view") printf '{"headRefOid":"%s","isDraft":false,"state":"OPEN","url":"u"}\n' "$HEAD" ;;
     "api repos/acme/demo/issues/7/comments") printf 'Reviewing files that changed from the base of the PR and between %s and %s.\n' "$BASE" "$HEAD" ;;
     "api repos/acme/demo/pulls/7/comments")
-      # The live --jq emits one bot comment id per line, across all pages.
+      # The live --jq emits one bot comment id per line. All 31 come back only with
+      # --paginate; without it, gh returns the first page of 30.
+      case "$*" in *--paginate*) n=31 ;; *) n=30 ;; esac
       case "$INLINE_MODE" in
-        pages) i=1; while [ $i -le 31 ]; do echo $((1000 + i)); i=$((i + 1)); done ;;
+        pages) i=1; while [ $i -le $n ]; do echo $((1000 + i)); i=$((i + 1)); done ;;
         empty) : ;;
         fail)  echo 'HTTP 502: Bad Gateway' >&2; exit 1 ;;
       esac ;;
@@ -57,4 +59,4 @@ command: |
   printf '%s' "$out" | grep -q 'formal reviews' || { echo "FAIL: D3 should name the failed lookup: $out"; exit 1; }
 
   echo PASS
-expected: exit 0; stdout "PASS". With a stubbed gh on the live path, bot inline comment ids from every page are open findings, so naming 30 of 31 fails and lists 1031 (E1) and naming all 31 passes (E2); a failing pulls/comments request exits 2 naming the inline lookup and never prints "clean" (D1); a successful empty response is no findings and passes (D2); a failing pulls/reviews request exits 2 (D3). Mutation: drop the exit-status check on the inline lookup → D1 fails; on the reviews lookup → D3 fails. (Round 2's per-page count sum is gone with the count rule; ids need no summing.)
+expected: exit 0; stdout "PASS". With a stubbed gh on the live path, bot inline comment ids from every page are open findings, so naming 30 of 31 fails and lists 1031 (E1) and naming all 31 passes (E2); a failing pulls/comments request exits 2 naming the inline lookup and never prints "clean" (D1); a successful empty response is no findings and passes (D2); a failing pulls/reviews request exits 2 (D3). The stub returns all 31 ids only when --paginate is passed, so a gate that drops it fails E1. The stub must be the gh the gate runs: the gate resolves gh from the caller's PATH before its /usr/bin grep guard, because on Linux runners a real gh in /usr/bin would otherwise shadow the stub. Mutation: drop --paginate from the inline lookup → E1 fails; drop the exit-status check on the inline lookup → D1 fails; on the reviews lookup → D3 fails. (Round 2's per-page count sum is gone with the count rule; ids need no summing.)

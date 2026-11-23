@@ -112,6 +112,43 @@ command: |
   rv 6017987303 "$OTHER" 2 > "$TMPF/r4.json"
   want "B4 body on other commit" "$TMPF/s2.md" 0 "$TMPF/r4.json"
 
+  # N1: an id with an embedded newline is one value: ["101\n102"] clears neither 101 nor 102.
+  printf 'Reviewing files that changed from the base of the PR and between %s and %s.\n' "$BASE" "$HEAD" > "$TMPF/c0.txt"
+  printf '[{"id":101,"user":{"login":"coderabbitai[bot]"}},{"id":102,"user":{"login":"coderabbitai[bot]"}}]\n' > "$TMPF/i2.json"
+  printf 'CODERABBIT-EVENT: {"head":"%s","disposition":"addressed","ids":["101\\n102"]}\n' "$HEAD" > "$TMPF/n1.md"
+  out=$(bash "$G" --comments-file "$TMPF/c0.txt" --head "$HEAD" --inline-file "$TMPF/i2.json" --log "$TMPF/n1.md" 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || { echo "FAIL: N1 newline id want rc=1 got rc=$rc: $out"; exit 1; }
+  [ "$(open_list)" = "open: 101 102" ] || { echo "FAIL: N1 open list: $out"; exit 1; }
+
+  # I1-I4: --inline-file must be exactly one JSON array; anything else cannot run (exit 2).
+  # I5: [] is a valid empty lookup.
+  printf '{}\n' > "$TMPF/i-obj.json"; : > "$TMPF/i-empty.json"; printf '[] []\n' > "$TMPF/i-two.json"; printf '"x"\n' > "$TMPF/i-str.json"
+  for k in obj empty two str; do
+    out=$(bash "$G" --comments-file "$TMPF/c0.txt" --head "$HEAD" --inline-file "$TMPF/i-$k.json" 2>&1); rc=$?
+    [ "$rc" -eq 2 ] || { echo "FAIL: I inline-file '$k' want rc=2 got rc=$rc: $out"; exit 1; }
+  done
+  printf '[]\n' > "$TMPF/i-none.json"
+  out=$(bash "$G" --comments-file "$TMPF/c0.txt" --head "$HEAD" --inline-file "$TMPF/i-none.json" 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || { echo "FAIL: I5 [] want rc=0 got rc=$rc: $out"; exit 1; }
+
+  # H1: with shasum absent from the caller's PATH, body ids fall back to sha256sum and are
+  # identical to B1's. H2: with neither tool, the gate cannot derive ids and fails closed.
+  # The caller's PATH holds only symlinked tools the gate needs (some live in /bin on macOS),
+  # never shasum or sha256sum, except the one put in only256.
+  BASH_BIN=$(command -v bash)
+  mkdir -p "$TMPF/tools" "$TMPF/only256"
+  for t in cat cp rm mkdir mktemp grep sed awk jq head tail tr cut sort; do
+    p=$(command -v "$t") && ln -s "$p" "$TMPF/tools/$t"
+  done
+  if command -v sha256sum >/dev/null 2>&1; then ln -s "$(command -v sha256sum)" "$TMPF/only256/sha256sum"
+  else printf '#!/bin/sh\nexec %s -a 256 "$@"\n' "$(command -v shasum)" > "$TMPF/only256/sha256sum"; chmod +x "$TMPF/only256/sha256sum"; fi
+  out=$(PATH="$TMPF/only256:$TMPF/tools" "$BASH_BIN" "$G" --comments-file "$TMPF/c.txt" --head "$HEAD" --inline-file "$TMPF/inline.json" --reviews-file "$TMPF/r2.json" --log "$TMPF/b1.md" 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || { echo "FAIL: H1 sha256sum fallback want rc=1 got rc=$rc: $out"; exit 1; }
+  [ "$(printf '%s' "$out" | grep -oE 'b6017987303-[0-9a-f]{12}' | sort -u)" = "$BIDS" ] || { echo "FAIL: H1 ids differ from shasum ids: $out"; exit 1; }
+  out=$(PATH="$TMPF/tools" "$BASH_BIN" "$G" --comments-file "$TMPF/c.txt" --head "$HEAD" --inline-file "$TMPF/inline.json" --reviews-file "$TMPF/r2.json" --log "$TMPF/b2.md" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] || { echo "FAIL: H2 no digest tool want rc=2 got rc=$rc: $out"; exit 1; }
+  printf '%s' "$out" | grep -q 'sha256' || { echo "FAIL: H2 should name the missing digest tool: $out"; exit 1; }
+
   echo PASS
-expected: exit 0; stdout "PASS". The open set is the top-level coderabbitai[bot] inline comment ids plus the ids derived from the head review's "Outside diff range comments (N)" entries. S1 (the 548488f silent pass: a count of 4 matching 4 open, three of them unnamed) fails and lists exactly 4662945353, 4663583256 and 4663583272. All named passes (S2, and split events with string ids, S7). One missing (S3), another head (S4), a count-only event (S5), a duplicated partial line (S6), a disposition other than addressed or overruled (S8), the head only inside a note (S9), and a summary claiming more actionable comments than there are ids even with every id named (S10) all fail. Body ids are listed and stable (B1), pass once named (B2), fail closed when the header count does not match the parsed entries (B3), and are not open when the review is of another commit (B4). Mutation: reinstate a count compare (event `findings` >= number of open ids clears) → S1 passes and the fixture fails.
+expected: exit 0; stdout "PASS". The open set is the top-level coderabbitai[bot] inline comment ids plus the ids derived from the head review's "Outside diff range comments (N)" entries. S1 (the 548488f silent pass: a count of 4 matching 4 open, three of them unnamed) fails and lists exactly 4662945353, 4663583256 and 4663583272. All named passes (S2, and split events with string ids, S7). One missing (S3), another head (S4), a count-only event (S5), a duplicated partial line (S6), a disposition other than addressed or overruled (S8), the head only inside a note (S9), and a summary claiming more actionable comments than there are ids even with every id named (S10) all fail. Body ids are listed and stable (B1), pass once named (B2), fail closed when the header count does not match the parsed entries (B3), and are not open when the review is of another commit (B4). An id holding a newline clears neither id it spells (N1); an --inline-file that is not exactly one JSON array exits 2, while [] is valid (I1-I5); body ids fall back to sha256sum with identical values (H1) and fail closed with no digest tool (H2). Mutation: reinstate a count compare (event `findings` >= number of open ids clears) → S1 passes and the fixture fails.
 Mutation: delete the `actionable -gt total+anon` block in scripts/coderabbit-gate.sh → S10 passes (rc 0) and the fixture fails.
