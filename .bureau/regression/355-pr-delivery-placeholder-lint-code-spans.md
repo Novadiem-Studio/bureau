@@ -102,6 +102,25 @@ command: |
   # R5: brackets in code are fine, but a bare one elsewhere in the same file still fails.
   printf '## Testing performed\n\n- Attempt ids look like `challenger-lens-s<k>-r<N>`.\n- Then <fill me in>.\n' > "$EV"
   must_fail "R5 mixed span and bare"
+  # R6: a ~~~ line inside a ``` block does not close it, so the real close is not read
+  # as an opener that hides the placeholder after it.
+  printf '## Testing performed\n\n```\ncode\n~~~\nmore\n```\n\nThen <placeholder>.\n' > "$EV"
+  must_fail "R6 mismatched fence"
+  # R7: an unclosed fence does not hide the rest of the file.
+  printf '## Testing performed\n\n```\ncode\nThen <placeholder>.\n' > "$EV"
+  must_fail "R7 unclosed fence"
+  # R8: a backtick run pairs only with a run of the same length; an unmatched ``` stays
+  # visible and does not swallow the text up to the next single backtick.
+  printf '## Testing performed\n\n- Ran ```. Then <placeholder> and `x`.\n' > "$EV"
+  must_fail "R8 unmatched run"
+  # R9: if the code-span strip itself fails, ready refuses instead of linting empty text.
+  mkdir -p "$TMPF/badawk"
+  printf '#!/bin/sh\nexit 2\n' > "$TMPF/badawk/awk"; chmod +x "$TMPF/badawk/awk"
+  printf '## Testing performed\n\n- Ran <placeholder>.\n' > "$EV"
+  if PATH="$TMPF/badawk:$BIN:$PATH" "$ROOT/scripts/pr-delivery.sh" ready --run-dir "$RUN" >"$TMPF/out" 2>&1; then
+    echo "FAIL: R9 a failing strip must refuse ready"; exit 1
+  fi
+  grep -Fq 'code-span strip failed' "$TMPF/out" || { echo "FAIL: R9 refused for another reason: $(cat "$TMPF/out")"; exit 1; }
 
   # P1: angle brackets inside an inline code span (the issue #146 case).
   printf '## Testing performed\n\n- Attempt ids look like `challenger-lens-s<k>-r<N>`.\n- Ran ``a `<b>` c`` too.\n' > "$EV"
@@ -109,6 +128,9 @@ command: |
   # P2: angle brackets inside a fenced block.
   printf '## Testing performed\n\n```\nscripts/run.sh --run-dir <RUN_DIR> --lens <k>\n```\n\n~~~sh\necho <x>\n~~~\n\nAll green.\n' > "$EV"
   must_pass "P2 fenced block"
+  # P3: a shorter ``` inside a ```` block does not close it; the ```` close does.
+  printf '## Testing performed\n\n````md\n<x>\n```\n<y>\n````\n\nAll green.\n' > "$EV"
+  must_pass "P3 longer fence"
 
   echo PASS
-expected: exit 0; stdout "PASS". cmd_ready refuses evidence with a bare <placeholder> (R1), a <...> after an unclosed backtick (R2), TBD (R3), "Pending —" (R4), or a bare <...> next to a code span (R5), each with the "placeholder text" message; it accepts <...> inside inline code spans (P1) and fenced blocks (P2). Mutation: restore the raw-file `<[^>]+>` grep in cmd_ready → P1 is refused and the fixture fails.
+expected: exit 0; stdout "PASS". cmd_ready refuses evidence with a bare <placeholder> (R1), a <...> after an unclosed backtick (R2), TBD (R3), "Pending —" (R4), or a bare <...> next to a code span (R5), a placeholder after a ``` block that holds a ~~~ line (R6), after an unclosed fence (R7), or after an unmatched ``` run (R8), each with the "placeholder text" message, and refuses with "code-span strip failed" when the strip itself fails (R9); it accepts <...> inside inline code spans (P1), fenced blocks (P2), and a ```` block holding a shorter ``` line (P3). Mutation: restore the raw-file `<[^>]+>` grep in cmd_ready → P1 is refused and the fixture fails.
