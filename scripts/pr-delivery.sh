@@ -399,10 +399,14 @@ cmd_review() {
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    function strip_inline(s,   out, i, n, r, k, m, found) {
+    function strip_inline(s,   out, i, n, r, k, m, found, b) {
       out = ""; i = 1; n = length(s)
       while (i <= n) {
         if (substr(s, i, 1) != "`") { out = out substr(s, i, 1); i++; continue }
+        # An odd run of backslashes before an opener escapes its first backtick, so it is
+        # literal text, not a span opener (CommonMark). Closers are not escapable.
+        b = 0; while (i - b - 1 >= 1 && substr(s, i - b - 1, 1) == "\\") b++
+        if (b % 2 == 1) { out = out "`"; i++; continue }
         r = run_len(s, i, "`"); k = i + r; found = 0
         while (k <= n) {
           if (substr(s, k, 1) != "`") { k++; continue }
@@ -426,7 +430,8 @@ strip_code_spans() {
       }
       if (c == "`" || c == "~") {
         l = run_len(t, 1, c)
-        if (l >= 3) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+        # A backtick fence info string cannot hold a backtick; such a line opens no fence.
+        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
       }
       print strip_inline($0)
     }

@@ -42,7 +42,22 @@
 #
 # Bash 3.2 + gh + jq; macOS portable. No set -e (we inspect exit codes).
 
+# Resolve gh and the sha256 tool from the CALLER's PATH before the guard below. The guard
+# is for grep (ugrep); it must not swap in a different gh or digest tool. On Linux runners
+# a real gh lives in /usr/bin and would shadow a caller's (or a test's) gh (#146).
+GH_BIN=$(command -v gh 2>/dev/null)
+SHASUM_BIN=$(command -v shasum 2>/dev/null)
+SHA256SUM_BIN=$(command -v sha256sum 2>/dev/null)
 PATH=/usr/bin:$PATH  # EC 10 — ugrep guard
+gh() { "$GH_BIN" "$@"; }
+# First 12 hex of the sha256 of stdin, or nothing (status 1) when no tool works.
+digest12() {
+  local d
+  if [ -n "$SHASUM_BIN" ]; then d=$("$SHASUM_BIN" -a 256 | cut -c1-12)
+  elif [ -n "$SHA256SUM_BIN" ]; then d=$("$SHA256SUM_BIN" | cut -c1-12)
+  else return 1; fi
+  case "$d" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) printf '%s\n' "$d" ;; *) return 1 ;; esac
+}
 
 RUN_DIR=""; REPO=""; PR=""; LOG_MD=""
 COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""; REVIEWS_FILE=""; INLINE_FILE=""
@@ -82,7 +97,7 @@ if [ -n "$REVIEWS_FILE" ]; then
   [ -r "$REVIEWS_FILE" ] || { echo "coderabbit-gate: unreadable --reviews-file" >&2; exit 2; }
 fi
 
-[ "$OFFLINE" -eq 1 ] || command -v gh >/dev/null 2>&1 || { echo "coderabbit-gate: gh required" >&2; exit 2; }
+[ "$OFFLINE" -eq 1 ] || [ -n "$GH_BIN" ] || { echo "coderabbit-gate: gh required" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "coderabbit-gate: jq required" >&2; exit 2; }
 
 if [ -n "$RUN_DIR" ]; then
@@ -200,6 +215,10 @@ anon=0
 if [ "$OFFLINE" -eq 1 ] && [ -n "$INLINE_OVERRIDE" ]; then
   anon="$INLINE_OVERRIDE"
 elif [ "$OFFLINE" -eq 1 ]; then
+  # Exactly one JSON value, an array: {} or empty input would otherwise yield no ids and
+  # read as no findings. [] stays a valid empty lookup.
+  jq -s -e 'length == 1 and (.[0] | type == "array")' "$INLINE_FILE" >/dev/null 2>&1 \
+    || { echo "coderabbit-gate: --inline-file must hold exactly one JSON array" >&2; exit 2; }
   jq -r "$INLINE_JQ" "$INLINE_FILE" > "$WORK/inline.ids" 2>/dev/null \
     || { echo "coderabbit-gate: unreadable --inline-file" >&2; exit 2; }
 else
@@ -239,7 +258,10 @@ jq -r --arg h "$head_sha" '
 tab=$(printf '\t')
 while IFS="$tab" read -r kind rid f3 f4; do
   case "$kind" in
-    ID)  printf 'b%s-%s\n' "$rid" "$(printf '%s|%s' "$f3" "$f4" | shasum -a 256 | cut -c1-12)" >> "$open_ids" ;;
+    ID)  # Never an id from an empty digest: those would collapse into one id (#146).
+         dg=$(printf '%s|%s' "$f3" "$f4" | digest12) \
+           || { echo "coderabbit-gate: no working sha256 tool (shasum or sha256sum) to derive body finding ids" >&2; exit 2; }
+         printf 'b%s-%s\n' "$rid" "$dg" >> "$open_ids" ;;
     BAD) defect "CodeRabbit review $rid on head ${head_sha} lists \"Outside diff range comments ($f3)\" but only $f4 entr(ies) could be parsed, so those findings have no reliable ids and cannot be dispositioned. Read the review body; this gate fails closed until it parses." ;;
   esac
 done < "$WORK/body.tsv"
@@ -267,7 +289,12 @@ if [ "$total" -gt 0 ]; then
           | select(type == "object" and .head == $h
                    and (.disposition == "addressed" or .disposition == "overruled"))
           | .ids | select(type == "array") | .[]
-          | select(type == "string" or type == "number") | tostring' > "$disposed" 2>/dev/null
+          | select(type == "string" or type == "number") | tostring
+          | select(length > 0 and (test("[^0-9A-Za-z-]") | not))' > "$disposed" 2>/dev/null
+  # The last select keeps only ids in the id grammar (digits, or b<digits>-<hex>). An id
+  # holding a newline or other control character would otherwise print as several lines
+  # and clear several ids it does not name (#146). A negated class, not ^...$, because
+  # those anchors match at line breaks.
   fi
   # FILENAME, not NR == FNR: with no dispositions the first file is empty, and NR == FNR
   # would then read the open ids as dispositioned.

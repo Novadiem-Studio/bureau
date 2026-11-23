@@ -231,7 +231,8 @@ Findings are dispositioned one by one, by id (issue #146). The open set is:
 
 The gate prints the open ids and a ready-to-fill event line. Ids compare as strings, so
 `4662945345` and `"4662945345"` match; one event or several may name them, with `addressed` or
-`overruled`. A count clears nothing: an event that names no ids (the old
+`overruled`. An id outside the id grammar (digits, or `b<digits>-<hex>`), such as one holding
+a newline, names nothing. A count clears nothing: an event that names no ids (the old
 `"findings":<n>` shape) dispositions no finding, however large the number, so a matching
 total can never cover a finding nobody named. A summary that claims more actionable comments
 than the gate found ids for also fails closed, as does a failed or unreadable lookup.
