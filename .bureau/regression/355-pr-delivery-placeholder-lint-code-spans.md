@@ -103,8 +103,9 @@ command: |
   printf '## Testing performed\n\n- Attempt ids look like `challenger-lens-s<k>-r<N>`.\n- Then <fill me in>.\n' > "$EV"
   must_fail "R5 mixed span and bare"
   # R6: a ~~~ line inside a ``` block does not close it, so the real close is not read
-  # as an opener that hides the placeholder after it.
-  printf '## Testing performed\n\n```\ncode\n~~~\nmore\n```\n\nThen <placeholder>.\n' > "$EV"
+  # as an opener that hides the placeholder after it. The later real fence closes that
+  # false opener, so the unclosed-fence rule (R7) cannot catch this on its own.
+  printf '## Testing performed\n\n```\ncode\n~~~\nmore\n```\n\nThen <placeholder>.\n\n```\nlater\n```\n' > "$EV"
   must_fail "R6 mismatched fence"
   # R7: an unclosed fence does not hide the rest of the file.
   printf '## Testing performed\n\n```\ncode\nThen <placeholder>.\n' > "$EV"
