@@ -398,7 +398,9 @@ cmd_review() {
 # an unclosed fence is printed as-is. A backtick run closes only on a run of the same
 # length; an unmatched run stays, so text after it is still linted. A span may wrap one
 # line break inside a paragraph, never a blank line, a fence line, or the start of a list
-# item, block quote, table row or heading (issue #149).
+# item, block quote or heading (issue #149). Indented code lines, table rows (any line
+# with a pipe, and what follows it to a blank line) and HTML block lines (a line starting
+# with <, and what follows it to a blank line, printed raw) never join another line.
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
@@ -452,11 +454,20 @@ strip_code_spans() {
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { flush(); fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
       }
       # Paragraph lines are buffered so a span can wrap a line break. A blank line ends the
-      # paragraph; a heading is one line of its own; a list item, block quote or table row
-      # starts a new block, so no span pairs across those boundaries.
-      if (t ~ /^[[:space:]]*$/) { flush(); print; next }
+      # paragraph; a heading is one line of its own; a list item or block quote starts a new
+      # block, so no span pairs across those boundaries. When unsure whether a line ends a
+      # paragraph, it stands alone: a span that fails to strip only over-lints.
+      # A line starting with < may open an HTML block, where backticks are literal: it and
+      # every line after it up to a blank line are printed raw. A line holding a pipe may be
+      # a table row (GFM rows need no leading pipe, and a pipe-less line after a row is a
+      # row too): it and every line after it up to a blank line are stripped one by one.
+      # An indented line (4+ columns) is indented code and is stripped on its own.
+      if (t ~ /^[[:space:]]*$/) { flush(); solo = ""; print; next }
+      if (solo == "html" || (col <= 3 && c == "<")) { flush(); solo = "html"; print; next }
+      if (solo == "table" || index($0, "|") > 0) { flush(); solo = "table"; print strip_inline($0); next }
+      if (col >= 4) { flush(); print strip_inline($0); next }
       if (col <= 3 && t ~ /^#+([ \t]|$)/) { flush(); print strip_inline($0); next }
-      if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^[>|]/)) flush()
+      if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^>/)) flush()
       para = have ? para "\n" $0 : $0; have = 1
     }
     END { flush(); if (fence) printf "%s", buf }
