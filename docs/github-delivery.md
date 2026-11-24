@@ -228,6 +228,9 @@ Findings are dispositioned one by one, by id (issue #146). The open set is:
 - every entry in the "Outside diff range comments (N)" section of a bot review on the head.
   These have no comment id, so the gate derives `b<review id>-<first 12 hex of the sha256 of
   "<file:lines>|<title>">` (the text as the gate's @tsv step escapes it, so copy ids from the gate's own output, not by hand). If it cannot parse exactly N entries, it fails closed.
+  When one review lists the same file:lines and title more than once, the first keeps that id
+  and each later repeat hashes the same text plus a tab and its ordinal (2, 3, ...), so every
+  repeat is its own open finding with a stable id (issue #149).
 
 The gate prints the open ids and a ready-to-fill event line. Ids compare as strings, so
 `4662945345` and `"4662945345"` match; one event or several may name them, with `addressed` or

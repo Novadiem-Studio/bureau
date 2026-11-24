@@ -240,7 +240,9 @@ fi
 
 # Body-only findings: entries in the "Outside diff range comments (N)" section of a bot
 # review on the head have no comment id. Each gets b<review id>-<12 hex of the sha256 of
-# "<file:lines>|<title>">. If the N entries cannot all be parsed, fail closed.
+# "<file:lines>|<title>">; the k-th (k >= 2) repeat of the same file:lines and title in one
+# review hashes "<file:lines>|<title><TAB>k" instead, so each is its own finding (#149).
+# If the N entries cannot all be parsed, fail closed.
 jq -r --arg h "$head_sha" '
   .[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h) | . as $r
   | (($r.body // "") | split("\n")) as $L
@@ -251,15 +253,21 @@ jq -r --arg h "$head_sha" '
   | [$L[$i + 1:$k][] | select(test("^> *<summary><strong>"))
      | (capture(" · (?<title>.+) · <code>(?<loc>[^<]+)</code></summary>") // null)] as $e
   | if ($e | length) == $n and all($e[]; . != null)
-    then ($e[] | ["ID", ($r.id | tostring), .loc, .title] | @tsv)
+    then ($e | to_entries[] | .key as $j | .value as $v
+          | ([$e[0:$j][] | select(.loc == $v.loc and .title == $v.title)] | length + 1) as $ord
+          | ["ID", ($r.id | tostring), $v.loc, $v.title, ($ord | tostring)] | @tsv)
     else ["BAD", ($r.id | tostring), ($n | tostring), ([$e[] | select(. != null)] | length | tostring)] | @tsv
     end' "$reviews" > "$WORK/body.tsv" 2>/dev/null \
   || { echo "coderabbit-gate: cannot parse formal review bodies for PR #$PR in $REPO" >&2; exit 2; }
 tab=$(printf '\t')
-while IFS="$tab" read -r kind rid f3 f4; do
+while IFS="$tab" read -r kind rid f3 f4 f5; do
   case "$kind" in
     ID)  # Never an id from an empty digest: those would collapse into one id (#146).
-         dg=$(printf '%s|%s' "$f3" "$f4" | digest12) \
+         # f5 is the entry's ordinal among same loc+title entries of this review. The first
+         # keeps the legacy hash input, so dispositions already logged still match; a later
+         # duplicate adds a tab (which @tsv never leaves in a field) and its ordinal (#149).
+         if [ "$f5" = 1 ]; then dg=$(printf '%s|%s' "$f3" "$f4" | digest12)
+         else dg=$(printf '%s|%s\t%s' "$f3" "$f4" "$f5" | digest12); fi \
            || { echo "coderabbit-gate: no working sha256 tool (shasum or sha256sum) to derive body finding ids" >&2; exit 2; }
          printf 'b%s-%s\n' "$rid" "$dg" >> "$open_ids" ;;
     BAD) defect "CodeRabbit review $rid on head ${head_sha} lists \"Outside diff range comments ($f3)\" but only $f4 entr(ies) could be parsed, so those findings have no reliable ids and cannot be dispositioned. Read the review body; this gate fails closed until it parses." ;;
