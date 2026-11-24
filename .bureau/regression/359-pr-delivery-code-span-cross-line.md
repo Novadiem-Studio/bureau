@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip checks each line on its own and lets a code span wrap one line break only between two plain lines (an ASCII letter or digit first) with no non-plain line since the last blank line, none after a line starting with < behind any indent or list and quote markers, none above a delimiter row, none from a line with a < before its first backtick left after its own closed spans, and only when the wrapped span's text is <>-balanced (design A, plain whitelist, inline precedence, balanced span)
+name: pr-delivery.sh placeholder strip never matches a code span across a line break (each line stripped on its own, as main a2d4029); a span that wraps a break stays visible as a fail-safe over-lint tracked in issue #153, and no join can hide a placeholder
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 1)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -13,28 +13,30 @@ command: |
   visible() { strip "$1"; grep -Fq "$2" "$T/out" || { echo "FAIL: $1: $2 was stripped"; cat "$T/out"; exit 1; }; }
   hidden() { strip "$1"; if grep -Fq "$2" "$T/out"; then echo "FAIL: $1: $2 was not stripped"; cat "$T/out"; exit 1; fi; }
 
-  # P1: a closed span that wraps one line break is code (the issue #149 case).
+  # No span is matched across a line break: every line is stripped on its own, as on main
+  # a2d4029. A positive below that says "over-lint, issue #153" pins a span CommonMark does
+  # wrap (GitHub renders it as code) whose <k> stays visible, so the lint refuses it. That is
+  # fail-safe and tracked in issue #153; every guard keeps a real <real> visible.
+  # P1 (over-lint, issue #153): a closed span that wraps one line break is not stripped.
   printf 'see `foo <k>\nbar` for details\n' > "$T/in.md"
-  hidden "P1 span across one line break" '<k>'
-  # P2: text outside the wrapped span is still linted.
+  visible "P1 over-lint: span across one line break" '<k>'
+  # P2: text after a backtick that would close a wrapped span is still linted.
   printf 'see `foo <k>\nbar` then <real>\n' > "$T/in.md"
   visible "P2 text after a wrapped span" '<real>'
-  # R1: a span never crosses a blank line (a paragraph break).
+  # R1: a backtick never pairs across a blank line.
   printf 'see `foo <real>\n\nbar` x\n' > "$T/in.md"
   visible "R1 blank line" '<real>'
-  # R2: a span crosses at most one line break.
+  # R2: nor across two line breaks.
   printf 'a `x <real>\nmiddle\nb` c\n' > "$T/in.md"
   visible "R2 second line break" '<real>'
-  # R3: a fence line ends the paragraph, so a backtick after the fence closes nothing before it.
+  # R3: nor across a fence.
   printf 'a `x <real>\n~~~\ncode\n~~~\nb` c\n' > "$T/in.md"
   visible "R3 fence between" '<real>'
-  # R4: a new list item starts a new block.
+  # R4-R6: nor from a list item, block quote or heading line into the next line.
   printf -- '- ran `x <real>\n- then` y\n' > "$T/in.md"
   visible "R4 next list item" '<real>'
-  # R5: a block quote line starts a new block.
   printf 'a `x <real>\n> b` c\n' > "$T/in.md"
   visible "R5 block quote" '<real>'
-  # R6: a heading is one line; the next line cannot close a span opened in it.
   printf '# a `x <real>\nb` c\n' > "$T/in.md"
   visible "R6 heading" '<real>'
   # R7: an unclosed span in a multi-line paragraph at end of file is printed whole.
@@ -43,65 +45,61 @@ command: |
   # R8: a backslash-escaped backtick opens no span, even with a backtick on the next line.
   printf 'Ran \\`<real>\nb` c\n' > "$T/in.md"
   visible "R8 escaped opener" '<real>'
-  # B1: an indented code line (4+ columns) stands alone; it never joins the next line.
+  # B1: an indented code line (4+ columns) never pairs with the next line.
   printf 'intro\n\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "B1 indented code line" '<real>'
-  # T1: table rows without a leading pipe stand alone, so a span cannot pair across rows.
+  # T1, T2: table rows, with or without a pipe, never pair a backtick across rows.
   printf 'a | b\n--- | ---\nx ` <real> | y\nz ` | w\n' > "$T/in.md"
   visible "T1 table rows without a leading pipe" '<real>'
-  # T2: a pipe-less line after a table row is still a row (GFM) and stands alone too.
   printf 'a | b\n--- | ---\nx ` <real>\nz ` w\n' > "$T/in.md"
   visible "T2 pipe-less row after a table" '<real>'
   # T3: a span inside one table row is still stripped.
   printf 'a | b\n--- | ---\n`x <k>` | y\n' > "$T/in.md"
   hidden "T3 span inside a row" '<k>'
-  # T4: a blank line ends the table, so a wrapped span after it is stripped again.
+  # T4 (over-lint, issue #153): a wrapped span after a table, past a blank line, is not stripped.
   printf 'a | b\n--- | ---\nx | y\n\nsee `foo <k>\nbar` end\n' > "$T/in.md"
-  hidden "T4 wrapped span after a table" '<k>'
-  # H1: a line starting with < starts an HTML block; a span never pairs into it.
+  visible "T4 over-lint: wrapped span after a table" '<k>'
+  # H1, H2: a backtick never pairs into, or inside, an HTML block.
   printf 'text `\n<div> <real> ` tail\n' > "$T/in.md"
   visible "H1 HTML block start" '<real>'
-  # H2: lines inside an HTML block (up to the blank line) never pair a span either.
   printf '<div>\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
   visible "H2 inside an HTML block" '<real>'
-  # L1 (over-lint, issue #153): an indented line is not plain, so a span does not wrap onto
-  # a lazy continuation line, though CommonMark would close it there.
+  # L1 (over-lint, issue #153): a span wrapping onto a lazy indented continuation line is
+  # not stripped, though CommonMark closes it there.
   printf 'see `foo <k>\n    bar` end\n' > "$T/in.md"
   visible "L1 over-lint: lazy indented continuation" '<k>'
-  # G1: a bare list or quote marker is not paragraph text, so the indented line after it is code.
+  # G1, G1b: indented code after a bare list or quote marker never pairs with the next line.
   printf -- '-\n      cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G1 indented code after a bare list marker" '<real>'
   printf '>\n      cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G1b indented code after a bare quote marker" '<real>'
-  # G2: an indented line that starts a block (a nested list item) never joins.
+  # G2: nor does a nested list item.
   printf -- '- a `x <real>\n    - b` c\n' > "$T/in.md"
   visible "G2 indented nested list item" '<real>'
-  # P3 (over-lint, issue #153): a line holding a pipe is not plain, even in prose.
+  # P3 (over-lint, issue #153): a span wrapping after a line holding a pipe is not stripped.
   printf 'ran `cat x <k> |\ngrep y` done\n' > "$T/in.md"
   visible "P3 over-lint: prose with a pipe" '<k>'
-  # G3: a header line holding a pipe is not plain, so a span opened on the line before it
-  # cannot close in it.
+  # G3: a backtick opened before a table header never closes in it.
   printf 'see `x <real>\na ` | b\n--- | ---\n' > "$T/in.md"
   visible "G3 header split from the line before" '<real>'
-  # G4: a table inside a block quote: every line is a quote line and stands alone.
+  # G4: nor after a table inside a block quote.
   printf '> a | b\n> --- | ---\n> x | y\n> z ` | w\nnext <real> ` tail\n' > "$T/in.md"
   visible "G4 table in a block quote" '<real>'
-  # G5: rows after a pipe header stand alone up to a blank line, pipe or no pipe.
+  # G5-G8: rows under a table header, pipe or no pipe, hashes or a heading among them,
+  # never pair a backtick.
   printf '| a |\n---\nx ` <real>\ny ` z\n' > "$T/in.md"
   visible "G5 pipe-less delimiter under a pipe header" '<real>'
-  # T5 (over-lint, issue #153): only a blank line ends the stand-alone run, not a heading.
+  # T5 (over-lint, issue #153): a span wrapping after a table and a heading is not stripped.
   printf 'a | b\n--- | ---\nx | y\n# Next\nsee `foo <k>\nbar` end\n' > "$T/in.md"
   visible "T5 over-lint: heading after a table" '<k>'
-  # G6, G7: rows after a table stand alone up to a blank line, whatever lines come between.
   printf 'a | b\n--- | ---\n####### x\np ` <real>\nq ` r\n' > "$T/in.md"
   visible "G6 seven hashes stay a row" '<real>'
   printf 'a | b\n--- | ---\n#x\np ` <real>\nq ` r\n' > "$T/in.md"
   visible "G7 hash without a blank stays a row" '<real>'
-  # G8: a heading line stands alone.
   printf 'a | b\n--- | ---\n# h `x <real>\nb` c\n' > "$T/in.md"
   visible "G8 heading after a table stands alone" '<real>'
-  # G10-G13: an indented line (code) after a setext underline, a thematic break, or a
-  # heading or rule inside a list item stands alone.
+  # G10-G13: indented code after a setext underline, a thematic break, or a heading or
+  # rule inside a list item never pairs with the next line.
   printf 'title\n---\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G10 indented code after a setext underline" '<real>'
   printf 'para\n***\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
@@ -110,22 +108,21 @@ command: |
   visible "G12 indented code after a list-item heading" '<real>'
   printf -- '- a\n    ***\n      cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G13 indented code after a list-item rule" '<real>'
-  # G14: rows of a table inside a list item stand alone up to a blank line.
+  # G14, G15: table rows inside a list item never pair.
   printf -- '- x\n    a | b\n    --|--\n  p ` <real> | y\n  z ` | w\n' > "$T/in.md"
   visible "G14 indented table in a list item" '<real>'
-  # G15: the same after a pipe-less delimiter under a solo pipe header.
   printf -- '- x\n    | a |\n    ---\n  p ` <real>\n  z ` w\n' > "$T/in.md"
   visible "G15 pipe-less delimiter under a solo pipe header" '<real>'
-  # G16: CRLF line ends change none of the plain line tests.
+  # G16, G16b: CRLF line ends change nothing.
   printf 'a | b\r\n--- | ---\r\nx ` <real>\r\nz ` w\r\n' > "$T/in.md"
   visible "G16 CRLF table" '<real>'
   printf -- '-\r\n      cmd `\r\nsee <real> ` tail\r\n' > "$T/in.md"
   visible "G16b CRLF bare list marker" '<real>'
-  # G9: lines of an HTML block stand alone up to a blank line, a heading among them or not.
+  # G9: lines of an HTML block never pair, a heading among them or not.
   printf '<div>\n# h\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
   visible "G9 heading inside an HTML block" '<real>'
-  # LM1-LM13: a list marker or quote line is not plain; the next line never closes a span
-  # opened in it, and lines after it stand alone up to a blank line (LM5).
+  # LM1-LM13: a backtick on a list marker or quote line never closes on the next line, and
+  # the lines after it (LM5) never pair.
   printf -- '- # a `x <real>\nb` c\n' > "$T/in.md"
   visible "LM1 heading after a list marker" '<real>'
   printf -- '- ~~~ `x <real>\nb` c\n' > "$T/in.md"
@@ -152,56 +149,53 @@ command: |
   visible "LM12 list marker at 3 columns" '<real>'
   printf -- '> # a `x <real>\nb` c\n' > "$T/in.md"
   visible "LM13 heading in a block quote" '<real>'
-  # LH1 (over-lint, issue #153): a list item line is not plain, so its span does not wrap
-  # onto the continuation line.
+  # LH1 (over-lint, issue #153): a span in a list item wrapping onto its continuation line
+  # is not stripped.
   printf -- '- see `foo <k>\n  bar` end\n' > "$T/in.md"
   visible "LH1 over-lint: span in a list item" '<k>'
-  # Design A. Q1: indented code on a list marker line never joins the next line (red on
-  # 1246656); Q1b the same inside a block quote.
+  # Q1, Q1b: indented code on a list marker line, plain or quoted, never pairs with the
+  # next line (red on 1246656).
   printf -- '-     cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "Q1 indented code after a list marker" '<real>'
   printf -- '> -     cmd `\n> see <real> ` tail\n' > "$T/in.md"
   visible "Q1b quoted indented code after a list marker" '<real>'
   # F1 (over-lint, issue #153): a ``` line that opens no fence (backtick in its info string)
-  # is not plain, though CommonMark pairs its last backtick with the next line's.
+  # does not pair its last backtick with the next line, though CommonMark does.
   printf '```cmd `\nsee <k> ` tail\n' > "$T/in.md"
   visible "F1 over-lint: backtick run that opens no fence" '<k>'
-  # S1 (over-lint, issue #153): a setext underline is not plain and the lines after it up
-  # to a blank line stand alone.
+  # S1 (over-lint, issue #153): a span wrapping after a setext underline is not stripped.
   printf 'title\n===\nx `a <k>\nb` c\n' > "$T/in.md"
   visible "S1 over-lint: wrap after a setext underline" '<k>'
-  # S2 (over-lint, issue #153): a bare numbered marker with nothing after it is not plain.
+  # S2 (over-lint, issue #153): nor after a bare numbered marker.
   printf '1.\nx `a <k>\nb` c\n' > "$T/in.md"
   visible "S2 over-lint: wrap after a bare numbered marker" '<k>'
-  # S3 (over-lint, issue #153): a CRLF line end does not make a bare marker plain.
+  # S3 (over-lint, issue #153): nor after a CRLF bare list marker.
   printf -- '-\r\nx `a <k>\r\nb` c\r\n' > "$T/in.md"
   visible "S3 over-lint: wrap after a CRLF bare marker" '<k>'
-  # P4: a span wraps the break between two plain lines anywhere in a run of plain lines.
+  # P4 (over-lint, issue #153): a span wrapping later in a paragraph is not stripped.
   printf 'line one\nsee `foo <k>\nbar` end\n' > "$T/in.md"
-  hidden "P4 wrap later in a paragraph" '<k>'
-  # FR1 (over-lint, issue #153): the end of a fence does not end the stand-alone run; only
-  # a blank line does, so a span after the fence does not wrap though CommonMark would.
+  visible "P4 over-lint: wrap later in a paragraph" '<k>'
+  # FR1 (over-lint, issue #153): a span wrapping after a closed fence is not stripped.
   printf '# h\n~~~\nx\n~~~\nsee `foo <k>\nbar` end\n' > "$T/in.md"
   visible "FR1 over-lint: wrap after a fence closes" '<k>'
-  # A1-A3: a fence inside an HTML block does not end the stand-alone run (A1 red on ac6fe77;
-  # A2 red there too, inside a list item, where no line starts with <; A3 quoted).
+  # A1-A3: lines after a fence inside an HTML block never pair (A1, A2 red on ac6fe77;
+  # A2 in a list item, A3 quoted).
   printf '<div>\n```\nx\n```\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
   visible "A1 fence inside an HTML block" '<real>'
   printf -- '- <div>\n  ```\n  x\n  ```\n  foo `a\n  b <real> ` c\n  </div>\n' > "$T/in.md"
   visible "A2 fence inside an HTML block in a list item" '<real>'
   printf '> <div>\n> ```\n> x\n> ```\n> foo `a\n> b <real> ` c\n> </div>\n' > "$T/in.md"
   visible "A3 fence inside a quoted HTML block" '<real>'
-  # HP1-HP3: an HTML block such as <pre> runs across blank lines, so once a line starts
-  # with < (after up to 3 columns) no line joins again (HP1 and HP2 red on ac6fe77).
+  # HP1-HP3: an HTML block such as <pre> runs across blank lines; its lines never pair
+  # (HP1, HP2 red on ac6fe77).
   printf '<pre>\n\nfoo `a\nb <real> ` c\n</pre>\n' > "$T/in.md"
   visible "HP1 blank line inside <pre>" '<real>'
   printf -- '- a\n\n  <pre>\n\n  foo `a\n  b <real> ` c\n  </pre>\n' > "$T/in.md"
   visible "HP2 blank line inside an indented <pre>" '<real>'
   printf '> <pre>\n>\n> foo `a\n> b <real> ` c\n> </pre>\n' > "$T/in.md"
   visible "HP3 blank line inside a quoted <pre>" '<real>'
-  # D1-D8: a line made only of - _ * = : | and blanks after a run of plain lines can be a
-  # table delimiter row whose header is the run's last line (GFM), so every line of the run
-  # is stripped alone (D1, D2, D5, D7, D8 red on ac6fe77; D6 quoted).
+  # D1-D8: the lines above a table delimiter row never pair; GFM may read the last of them
+  # as a header (D1, D2, D5, D7, D8 red on ac6fe77; D6 quoted).
   printf 'see `x <real>\nh ` y\n:-:\n' > "$T/in.md"
   visible "D1 delimiter row under a wrapped span" '<real>'
   printf 'see `x <real>\nh ` y\n|-|\n' > "$T/in.md"
@@ -214,8 +208,8 @@ command: |
   visible "D7 delimiter row in a list item" '<real>'
   printf 'line one\nsee `x <real>\nh ` y\n:-:\n' > "$T/in.md"
   visible "D8 delimiter row under a three-line run" '<real>'
-  # D3, D4 (over-lint, issue #153): under --- or === the run is a setext heading where the
-  # span does wrap; it is stripped line by line all the same.
+  # D3, D4 (over-lint, issue #153): under --- or === the two lines are a setext heading where
+  # the span does wrap; it is not stripped.
   printf 'see `x <k>\nh ` y\n---\n' > "$T/in.md"
   visible "D3 over-lint: setext --- under a wrapped span" '<k>'
   printf 'see `x <k>\nh ` y\n===\n' > "$T/in.md"
@@ -223,38 +217,37 @@ command: |
   # D9: a span inside a lone header line is still stripped.
   printf 'h `a <k>` y\n:-:\n' > "$T/in.md"
   hidden "D9 span in a lone header line" '<k>'
-  # Plain whitelist. HL1, HL2: a < after list markers, or indented 4 columns inside a list
-  # item, starts an HTML block such as <pre> that runs across blank lines (red on 2e7f275).
+  # HL1, HL2: <pre> after a list marker, or indented 4 columns in a list item, runs across
+  # blank lines; its lines never pair (red on 2e7f275).
   printf -- '- <pre>\n\n  foo `a\n  b <real> ` c\n  </pre>\n' > "$T/in.md"
   visible "HL1 <pre> after a list marker" '<real>'
   printf -- '- a\n\n    <pre>\n\n  foo `a\n  b <real> ` c\n  </pre>\n' > "$T/in.md"
   visible "HL2 <pre> indented 4 columns in a list item" '<real>'
-  # FN1, LR1: a footnote or link reference definition line starts with [, so it is not
-  # plain and never joins (red on 2e7f275).
+  # FN1, LR1: a footnote or link reference definition line never pairs with a neighbour
+  # (red on 2e7f275).
   printf 'see `x <real>\n[^1]: y ` z\n' > "$T/in.md"
   visible "FN1 footnote definition after a line" '<real>'
   printf '[a `x <real>]: /u\nb ` c\n' > "$T/in.md"
   visible "LR1 link reference definition" '<real>'
-  # P5: a line starting with a digit (not a list marker) is plain, so the span wraps.
+  # P5 (over-lint, issue #153): a span wrapping after a line starting with a digit is not stripped.
   printf '3.14 `x <k>\npi ` z\n' > "$T/in.md"
-  hidden "P5 wrap after a line starting with a digit" '<k>'
-  # CR1: a CRLF delimiter row still splits the run above it.
+  visible "P5 over-lint: wrap after a line starting with a digit" '<k>'
+  # CR1: the lines above a CRLF delimiter row never pair.
   printf 'see `x <real>\r\nh ` y\r\n:-:\r\n' > "$T/in.md"
   visible "CR1 CRLF delimiter row under a wrapped span" '<real>'
-  # S4 (over-lint, issue #153): a CRLF bare numbered marker is not plain.
+  # S4 (over-lint, issue #153): a span wrapping after a CRLF bare numbered marker is not stripped.
   printf '1.\r\nx `a <k>\r\nb` c\r\n' > "$T/in.md"
   visible "S4 over-lint: wrap after a CRLF bare numbered marker" '<k>'
-  # W1-W3 (over-lint, issue #153): a line whose first character is not an ASCII letter or
-  # digit is not plain, though CommonMark wraps the span there.
+  # W1-W3 (over-lint, issue #153): a span wrapping on a line that starts with emphasis (W1)
+  # or a code span (W2), or whose closer starts the next line (W3), is not stripped.
   printf '**Note** see `foo <k>\nbar` end\n' > "$T/in.md"
   visible "W1 over-lint: line starting with emphasis" '<k>'
   printf '`x` and `foo <k>\nbar` end\n' > "$T/in.md"
   visible "W2 over-lint: line starting with a code span" '<k>'
   printf 'see `foo <k>\n` end\n' > "$T/in.md"
   visible "W3 over-lint: closing backtick at the start of the next line" '<k>'
-  # Inline precedence. IP1-IP4: a < before the first backtick left on a line after its own
-  # closed spans may open a raw HTML tag (IP1, IP4), autolink (IP2) or comment (IP3) that
-  # holds the backtick, so that line does not join the next one (red on 9c22fb1).
+  # IP1-IP6: a raw HTML tag (IP1, IP4-IP6), autolink (IP2) or comment (IP3) holding a
+  # backtick never lets that backtick pair with the next line (IP1-IP4 red on 9c22fb1).
   printf 'see <a href="`x"> <real>\nb ` c\n' > "$T/in.md"
   visible "IP1 backtick inside a raw HTML tag" '<real>'
   printf 'see <http://h/`a> <real>\nb ` c\n' > "$T/in.md"
@@ -263,14 +256,15 @@ command: |
   visible "IP3 backtick inside an HTML comment" '<real>'
   printf 'see `a` <a href="`x"> <real>\nb ` c\n' > "$T/in.md"
   visible "IP4 closed span before the tag" '<real>'
-  # P6, P7: a < after the opener, or inside a closed span before it, still lets the span wrap.
+  # P6, P7 (over-lint, issue #153): a wrapping span is not stripped, whatever < it holds
+  # after the opener (P6) or inside a closed span before it (P7).
   printf 'see `x <p>\nb` c\n' > "$T/in.md"
-  hidden "P6 placeholder after the opener" '<p>'
+  visible "P6 over-lint: placeholder after the opener" '<p>'
   printf 'see `<a>` and `x <k>\nb` c\n' > "$T/in.md"
-  hidden "P7 < inside an earlier closed span" '<k>'
-  # Balanced span. WB1-WB6: a span that wraps a line break, or follows one on its closing
-  # line, must hold <>-balanced text (depth never below zero, zero at the closer); otherwise
-  # a tag or comment may hold the backtick, and GitHub renders <real> as raw HTML.
+  visible "P7 over-lint: < inside an earlier closed span" '<k>'
+  # WB1-WB6: a tag or comment holding a backtick, after a wrapped span or opened on the line
+  # before, never lets that backtick pair with another line; GitHub renders <real> there as
+  # raw HTML (red on dca49f6).
   printf 'see `x\ny` <a href="`z"> <real>\nb ` c\n' > "$T/in.md"
   visible "WB1 tag after a wrapped span" '<real>'
   printf 'see `x\ny` <a href="`z"> <real> ` q\nb ` c\n' > "$T/in.md"
@@ -283,30 +277,44 @@ command: |
   visible "WB5 depth below zero, back to zero at the closer" '<real>'
   printf 'see <a\nhref="`<<x"> <real>\nb ` c\n' > "$T/in.md"
   visible "WB6 depth above zero at the closer" '<real>'
-  # IP5: a < after the backtick inside the tag balances the wrapped span's text, so only the
-  # inline precedence check keeps the two lines apart.
+  # IP5, IP6: a < after the backtick inside the tag (see IP1-IP6).
   printf 'see <a href="`<x"> <real>\nb ` c\n' > "$T/in.md"
   visible "IP5 tag text balanced after the backtick" '<real>'
   printf 'see `a` <a href="`<x"> <real>\nb ` c\n' > "$T/in.md"
   visible "IP6 IP5 after a closed span" '<real>'
-  # P8: a balanced tag inside a wrapped span still strips.
+  # P8 (over-lint, issue #153): a wrapped span holding balanced tags is not stripped.
   printf 'see `x <b>y</b> <p>\nz` end\n' > "$T/in.md"
-  hidden "P8 balanced tags inside a wrapped span" '<p>'
-  # P9: the balance test for later spans ends at the line break after the wrapped span.
+  visible "P8 over-lint: balanced tags inside a wrapped span" '<p>'
+  # P9: a span closed within its own line, after lines with lone backticks, still strips.
   printf 'see `x\ny` z\nw `<k> >` c\n' > "$T/in.md"
-  hidden "P9 unbalanced span on the line after" '<k>'
+  hidden "P9 one-line span on the line after" '<k>'
+  # P10 (over-lint, issue #153): <k> inside a wrapped span stays visible.
   printf 'see `x <k>\ny` z\nw `a >` c\n' > "$T/in.md"
-  hidden "P10 placeholder in the wrap, unbalanced span on the line after" '<k>'
-  # X1, X2: a span GitHub renders as code can fail the balance test; the run is then stripped
-  # line by line, so its closer cannot open a new wrap over <real> (X1 through the wrapping
-  # span, X2 through a later span on the closing line).
+  visible "P10 over-lint: placeholder in the wrap, span on the line after" '<k>'
+  # X1, X2: a backtick that would close a wrapped span never pairs onward over <real> on
+  # the next line (red on c1a32c2).
   printf 'see `a <\nb` then <real>\nc ` d\n' > "$T/in.md"
   visible "X1 rejected wrap does not shift the pairing" '<real>'
   printf 'see `x\ny` p `a >` then <real>\nc ` d\n' > "$T/in.md"
   visible "X2 rejected span after a wrap does not shift the pairing" '<real>'
-  # WZ1 (over-lint, issue #153): GitHub renders `x y <k` as code, but a < still open at the
-  # closer stops the wrap.
+  # WZ1 (over-lint, issue #153): GitHub renders `x y <k` as code, but the span wraps a line
+  # break, so <k` z> stays visible.
   printf 'see `x\ny <k` z>\n' > "$T/in.md"
   visible "WZ1 over-lint: < open at the closer" '<k` z>'
+  # J1-J6: a raw HTML tag, comment or processing instruction that opens on one line and holds
+  # a backtick, with a < after that backtick, hid <real> on c1f1429 (the last join design);
+  # stripping each line alone keeps it visible, as main a2d4029 does.
+  printf 'see <a\nhref="`<x"> <real>\nb ` c\n' > "$T/in.md"
+  visible "J1 tag opened on the line before, < after the backtick" '<real>'
+  printf 'see <!-- a\nb `<x --> <real>\nc ` d\n' > "$T/in.md"
+  visible "J2 comment opened on the line before, < after the backtick" '<real>'
+  printf 'see `x\ny` <a href="`<z"> <real> ` q\nb ` c\n' > "$T/in.md"
+  visible "J3 tag after a wrapped span, < after the backtick" '<real>'
+  printf 'see <?\nb `<x ?> <real>\nc ` d\n' > "$T/in.md"
+  visible "J4 processing instruction opened on the line before" '<real>'
+  printf 'see `a\nb` <a href="`<x"> <real>\nc ` d\n' > "$T/in.md"
+  visible "J5 tag on the closing line of a wrapped span" '<real>'
+  printf 'see <x-y\nz="`<<a>"> <real>\nb ` c\n' > "$T/in.md"
+  visible "J6 custom tag opened on the line before" '<real>'
   echo PASS
-expected: exit 0; stdout "PASS". Design A with a plain whitelist: strip_code_spans strips every line on its own, as main a2d4029 did, except that a run of plain lines is stripped together so a span may wrap the one line break between two of them (P1, P4, P5) while text after the span is still linted (P2). A line is plain only when, after an indent of 3 columns or less, its first character is an ASCII letter or digit, it is not an ordered list marker line (digits, then . or ), then a blank or end of line; trailing whitespace, CR included, trimmed first) and it holds no |. Every other line is not plain: list and quote markers, headings, HTML, fences, footnote and link reference definitions (FN1, LR1), emphasis, a leading backtick. Once a non-plain line appears, every line up to the next blank line stands alone, a closed fence among them or not (T2, H2, G5-G9, G15, G16, LM5, A1-A3), and a blank line starts joining again (T4). Once a line starts with <, at any indent and after any run of list or quote markers, no line joins for the rest of the file, blank lines included (HP1-HP3, HL1, HL2). A line made only of - _ * = : | and blanks strips each line of the run above it alone, since GFM may read the run's last line as a table header (D1, D2, D5-D8, CR1); a span in a lone header line still strips (D9). A span crosses at most one line break (R2) and never a blank line (R1) or a fence (R3); an unclosed span is printed whole (R7) and an escaped backtick opens nothing (R8). Two plain lines do not join when the first, stripped of its own closed spans, has a < before its first backtick, since the < may open a raw HTML tag (IP1, IP4 after a closed span), autolink (IP2) or comment (IP3) that holds the backtick; a < after the opener (P6) or inside an earlier closed span (P7) still lets the span wrap. A span that wraps the line break, or any later span on the line it closes on, is kept only if its text is <>-balanced (depth never below zero, zero at the closer), since only raw HTML and autolinks outrank a code span and both sit in < >; when a span fails, the whole run is stripped line by line exactly as main strips it (WB1-WB6), so a rejected span's closer cannot open a new wrap (X1, X2); a balanced tag inside the span still strips (P8), and the test for later spans ends at the next line break (P9, P10). IP5 and IP6 are the cases the balance test cannot see (the tag text after the backtick holds a <), so the inline precedence check stays. Every fail-open guard keeps <real> visible: R4-R6, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1, Q1b, A1-A3, HP1-HP3, D1, D2, D5-D8, HL1, HL2, FN1, LR1, CR1, IP1-IP6, WB1-WB6, X1, X2 (WB1-WB6 are red on dca49f6, IP5, IP6, X1 and X2 pass there; X1 and X2 are red on c1a32c2, which kept scanning the run after a rejection; IP1-IP4 are red on 9c22fb1; HL1, HL2, FN1 and LR1 red on 2e7f275; earlier: Q1 red on 1246656; A1, A2, HP1, HP2, D1, D2, D5, D7, D8 red on ac6fe77). Documented over-lint (issue #153), each asserting that <k> stays visible: a lazy indented line (L1), a line holding a pipe (P3), a run after a table ended by a heading (T5), a list item line (LH1), a ``` line that opens no fence (F1), the lines after a setext underline (S1), a bare numbered marker (S2, CRLF S4) or a CRLF bare marker (S3), after a closed fence until a blank line (FR1), a two-line setext heading under --- or === (D3, D4), and a line whose first character is not an ASCII letter or digit (W1 emphasis, W2 leading code span, W3 closing backtick first on the next line), and a < still open at the closer of a wrapped span (WZ1, asserting <k` z> stays visible). Mutation (each on a copy of scripts/pr-delivery.sh; failing cases from a collected run, and the committed fixture exits 1 for each unless noted): accept any first character -> R4-R6, LM1-LM3, LM7, LM8, LM11-LM13, Q1, Q1b, FN1, LR1, CR1 and others fail; restore the old blacklist plain test with the new < trigger -> FN1, LR1 (and W1-W3) fail; letters only, no digits -> P5 fails; drop the ordered marker test -> LM9, LM10, S2, S4 fail; require a blank after the ordered marker -> S2, S4 fail; drop the pipe test -> P3 fails; indent test always true -> B1, L1 fail; drop the trailing trim -> CR1, S4 fail; old < trigger (3 columns, no markers) -> HL1, HL2 fail; markers but 3 columns only -> HL2 fails; any indent but no markers -> HL1 fails; no sticky < test, or clearing it at a blank line -> HP1, HP2, HL1, HL2 fail; flush the run joined under a delimiter row -> D1, D2, D5, D7, D8, CR1 (and D3, D4) fail; split only a run of two lines -> D8 fails; require : or | in the delimiter row -> D3, D4 fail; reset at a fence end -> FR1 fails; let a plain line join after a non-plain one -> T2, G5-G7, G15, G16 and the S pins fail; no reset at a blank line -> T4 fails; no flush at a blank line -> R1 fails, before a fence -> R3 fails; no one-break limit -> R2 fails; never join -> P1, P4, P5, T4 fail; drop the inline precedence check, or test the current line instead of the previous one -> IP5, IP6 fail (the balance test now also catches IP1-IP4); test the previous line before stripping its closed spans -> IP6 fails; stop the join on any < -> P1, P4-P8, P10, T4 fail; drop the balance test -> WB1-WB6 (and WZ1) fail; let the depth go below zero -> WB5 fails; skip the zero-at-closer test -> WB6 (and WZ1) fail; test only the span that wraps, not later spans on its closing line -> WB2 fails; keep testing later spans past the next line break -> P10 fails; keep scanning the joined run after a rejection instead of splitting it -> X1, X2 fail. Survivors: also stopping the join when a < is left but no backtick changes nothing here (exit 0); the previous line then opens no span on its own. Dropping the quote marker (>) from the < trigger changes nothing (exit 0): an HTML block inside a block quote ends at the first line without >, and every quoted line is already not plain. The fence-end reset is now killed only by the over-lint pin FR1: the sticky < test covers every fence-inside-HTML case, so that clause guards no fail-open on its own.
+expected: exit 0; stdout "PASS". strip_code_spans matches a code span within one line only: every line outside a fence is stripped on its own, exactly as on main a2d4029 (plus the item-3 fence indent rule pinned by fixture 360). No line is ever joined to the next, so no span is matched across a line break. Fail-safe over-lint, issue #153: a span that wraps a line break, which CommonMark and GitHub render as code, is not stripped, so a placeholder inside it stays visible and the lint refuses the evidence; the positives P1, P4-P8, P10 and T4 pin that (each asserts its <k> or <p> stays visible), alongside the earlier pins L1, P3, T5, LH1, F1, S1-S4, FR1, D3, D4, W1-W3 and WZ1. Issue #149 item 1 (let a span wrap a line break) was dropped: every joining design tried in run 20261124-gate-edges-149 had a path that hid a real placeholder relative to main (a raw HTML tag, comment or processing instruction opened on one line and holding a backtick), the last of them c1f1429. Guards, each asserting <real> stays visible and each passing here: R1-R8, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1, Q1b, A1-A3, HP1-HP3, D1, D2, D5-D8, HL1, HL2, FN1, LR1, CR1, IP1-IP6, WB1-WB6, X1, X2, and J1-J6 (the probes S1, S2, S3, H08, H09, H14 of the run, red on c1f1429, green on main and here). P2 keeps text after an unclosed backtick linted. One-line spans still strip: T3, D9, P9. Mutation (on a copy of scripts/pr-delivery.sh, collected run): a minimal join that strips each pair of consecutive non-blank lines outside fences together makes this fixture exit 1, the first failure P1; collected, the wrap pins P1, T4, P5-P8, P10 fail (P4 passes: the pairwise join pairs its first two lines) with most earlier #153 pins and most guards, J3 among them (J1, J2, J4-J6 pass on that naive pairwise join, because their backtick closer sits on the third line). On c1f1429, the last join design, exactly the eight flipped positives (P1, T4, P4-P8, P10) and J1-J6 fail; every other case passes there.

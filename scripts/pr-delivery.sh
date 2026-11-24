@@ -397,76 +397,32 @@ cmd_review() {
 # line of the opener's character, at least as long, with nothing but whitespace after it;
 # an unclosed fence is printed as-is. A backtick run closes only on a run of the same
 # length; an unmatched run stays, so text after it is still linted.
-# Every other line is stripped on its own, except that a span may wrap the one line break
-# between two plain paragraph lines (issue #149). A line is plain only when, after an
-# indent of 3 columns or less, its first character is an ASCII letter or digit, it is not
-# an ordered list marker line (digits, then . or ), then a blank or end of line), and it
-# holds no pipe; every other line (list or quote marker, heading, HTML, fence, footnote or
-# link reference definition, emphasis, a leading backtick, ...) is not plain.
-# Two plain lines do not join when the first, stripped of its own closed spans, has a <
-# before its first backtick: the < may open a raw HTML tag, autolink or comment holding that
-# backtick, which then opens no span. In a joined run, a span that wraps the line break, or
-# any later span on the line it closes on, is kept only if its text is <>-balanced (no >
-# before its <, none left open): raw HTML and autolinks, the only inline constructs that
-# outrank a code span, sit in < >. When a span fails, the whole run is stripped line by line,
-# exactly as main strips it.
-# Once a line that is not plain appears, every line up to the next blank line stands alone
-# (a fence closing does not end that run: the fence may sit inside an HTML block). Once a
-# line starts with <, at any indent and after any list or quote markers, no line joins for
-# the rest of the file: an HTML block such as <pre> runs across blank lines. A line made only of - _ * = : | and
-# blanks may be a table delimiter row whose header is the last line of the run before it
-# (GFM), so each line of that run is stripped alone. A line that stands alone when
-# CommonMark would join it only over-lints; a join CommonMark would not make can hide a
-# placeholder.
+# Every line outside a fence is stripped on its own: a span is matched within one line only.
+# A span that wraps a line break (valid CommonMark) is therefore not stripped, and a
+# placeholder inside it is still linted. That is a known over-lint, fail-safe (it refuses
+# evidence, never passes a placeholder), tracked in issue #153; every design that joined
+# lines could hide a real placeholder behind a < construct that outranks the span.
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    # A run where strip_inline rejected a span is stripped line by line instead, as on main.
-    function flush(   x) {
-      if (!have) return
-      rejected = 0; x = strip_inline(para)
-      if (rejected) flush_lines(); else { print x; para = ""; have = 0 }
-    }
-    # Strip each buffered line alone (the run sits above a possible table delimiter row).
-    function flush_lines(   n, i, part) {
-      if (have) { n = split(para, part, "\n"); for (i = 1; i <= n; i++) print strip_inline(part[i]) }
-      para = ""; have = 0
-    }
-    # s may hold line breaks (a run of plain lines); a closer is looked for across at most one.
-    function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch, after) {
-      out = ""; i = 1; n = length(s); after = 0
+    function strip_inline(s,   out, i, n, r, k, m, found, b) {
+      out = ""; i = 1; n = length(s)
       while (i <= n) {
-        if (substr(s, i, 1) != "`") { if (substr(s, i, 1) == "\n") after = 0; out = out substr(s, i, 1); i++; continue }
+        if (substr(s, i, 1) != "`") { out = out substr(s, i, 1); i++; continue }
         # An odd run of backslashes before an opener escapes its first backtick, so it is
         # literal text, not a span opener (CommonMark). Closers are not escapable.
         b = 0; while (i - b - 1 >= 1 && substr(s, i - b - 1, 1) == "\\") b++
         if (b % 2 == 1) { out = out "`"; i++; continue }
-        r = run_len(s, i, "`"); k = i + r; found = 0; nl = 0
+        r = run_len(s, i, "`"); k = i + r; found = 0
         while (k <= n) {
-          ch = substr(s, k, 1)
-          if (ch == "\n") { if (++nl > 1) break; k++; continue }
-          if (ch != "`") { k++; continue }
+          if (substr(s, k, 1) != "`") { k++; continue }
           m = run_len(s, k, "`")
           if (m == r) { found = 1; break }
           k += m
         }
-        # Only raw HTML and autolinks outrank a code span, and both sit in < >: a span that
-        # wraps a line break, or follows a wrapped span on its closing line (where backticks
-        # pair unlike that line alone), must hold <>-balanced text, or flush() splits the run.
-        if (found && (nl || after) && !balanced(substr(s, i + r, k - i - r))) { found = 0; rejected = 1 }
-        if (found) { i = k + m; if (nl) after = 1 } else { out = out substr(s, i, r); i += r }
+        if (found) { i = k + m } else { out = out substr(s, i, r); i += r }
       }
       return out
-    }
-    # 1 when every > closes an earlier < and none is left open (depth never below zero).
-    function balanced(s,   d, j, ch) {
-      d = 0
-      for (j = 1; j <= length(s); j++) {
-        ch = substr(s, j, 1)
-        if (ch == "<") d++
-        else if (ch == ">" && --d < 0) return 0
-      }
-      return d == 0
     }
     {
       # Indent in columns (a tab advances to the next multiple of 4). A fence opener or
@@ -492,28 +448,11 @@ strip_code_spans() {
       if (col <= 3 && (c == "`" || c == "~")) {
         l = run_len(t, 1, c)
         # A backtick fence info string cannot hold a backtick; such a line opens no fence.
-        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { flush(); fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
       }
-      if (t ~ /^[[:space:]]*$/) { flush(); mixed = 0; print; next }
-      # Plain paragraph line test (see the comment above the function). The trailing trim
-      # keeps a CRLF line end from hiding a bare numbered marker or a delimiter row.
-      u = t; sub(/[[:space:]]+$/, "", u)
-      if (u ~ /^(([-+*]|[0-9]+[.)])[ \t]+|>[ \t]*)*</) html = 1
-      rule = u ~ /^[-_*=:| \t]+$/
-      # Whitelist: starts with an ASCII letter or digit, is not an ordered list marker line, no pipe.
-      plain = col <= 3 && u ~ /^[A-Za-z0-9]/ && u !~ /^[0-9]+[.)]([ \t]|$)/ && index(u, "|") == 0
-      if (plain && !mixed && !html) {
-        # Inline precedence: when the previous line, stripped of its own closed spans, has a <
-        # before its first backtick, that < may open a raw HTML tag, autolink or comment that
-        # holds the backtick (GitHub renders it literally), so the previous line does not join.
-        if (have) { x = strip_inline(last); lt = index(x, "<"); bt = index(x, "`"); if (lt && bt && lt < bt) flush() }
-        para = have ? para "\n" $0 : $0; have = 1; last = $0; next
-      }
-      if (rule) flush_lines(); else flush()
-      if (!plain) mixed = 1
       print strip_inline($0)
     }
-    END { flush(); if (fence) printf "%s", buf }
+    END { if (fence) printf "%s", buf }
   ' "$1"
 }
 
