@@ -396,40 +396,19 @@ cmd_review() {
 # A fence line (opener or closer) is indented at most 3 columns. A fence closes only on a
 # line of the opener's character, at least as long, with nothing but whitespace after it;
 # an unclosed fence is printed as-is. A backtick run closes only on a run of the same
-# length; an unmatched run stays, so text after it is still linted. A span may wrap one
-# line break inside a paragraph, never a blank line, a fence line, or the start of a list
-# item, block quote or heading (issue #149). Indented code lines, table rows (any line
-# with a pipe, and what follows it to a blank line) and HTML block lines (a line starting
-# with <, and what follows it to a blank line, printed raw) never join another line. Nor
-# does a quote or list item line whose content is a heading, fence or HTML start, or a list
-# item line holding a pipe.
+# length; an unmatched run stays, so text after it is still linted.
+# Every other line is stripped on its own, except that a span may wrap the one line break
+# between two plain paragraph lines (issue #149). A line is plain when it is indented 3
+# columns or less, is not blank, has no list item or block quote marker, holds no pipe,
+# does not start with #, <, ``` or ~~~, and is not made only of - _ * = : | and blanks.
+# Once a line that is not plain appears, every line up to the next blank line or the end
+# of a fence stands alone. A line that stands alone when CommonMark would join it only
+# over-lints; a join CommonMark would not make can hide a placeholder.
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    function flush() { if (have) print strip_inline(para); para = ""; have = 0; lastl = "" }
-    # s without its leading blanks and any block quote and list item markers; nm is set to
-    # the number of list item markers removed.
-    function after_markers(s) {
-      nm = 0; sub(/^[ \t]+/, "", s)
-      while (1) {
-        if (s ~ /^>/) { s = substr(s, 2); sub(/^[ \t]+/, "", s); continue }
-        if (s ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/) { sub(/^([-+*]|[0-9]+[.)])[ \t]*/, "", s); nm++; continue }
-        break
-      }
-      return s
-    }
-    # True when s (after its markers) starts a heading, an HTML block or a fence.
-    function opens_block(s) { return s ~ /^[#<]/ || substr(s, 1, 3) == "```" || substr(s, 1, 3) == "~~~" }
-    # True when s is paragraph text after any block quote and list item markers. A bare "-"
-    # or ">" opens a container but is not a paragraph line; neither is a heading, HTML or
-    # fence start, nor a setext underline or thematic break (only - _ * = and blanks).
-    function has_text(s) {
-      sub(/[[:space:]]+$/, "", s); s = after_markers(s)
-      if (opens_block(s)) return 0
-      if (s ~ /^[-_*= \t]*$/) return 0
-      return 1
-    }
-    # s may hold line breaks (a buffered paragraph); a closer is looked for across at most one.
+    function flush() { if (have) print strip_inline(para); para = ""; have = 0 }
+    # s may hold line breaks (a run of plain lines); a closer is looked for across at most one.
     function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
       out = ""; i = 1; n = length(s)
       while (i <= n) {
@@ -463,12 +442,12 @@ strip_code_spans() {
         else break
         p++
       }
-      t = substr($0, p); c = substr(t, 1, 1); pl = cur; cur = $0
+      t = substr($0, p); c = substr(t, 1, 1)
       if (fence) {
         buf = buf $0 "\n"
         if (col <= 3 && c == fc) {
           l = run_len(t, 1, c)
-          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = "" }
+          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = ""; mixed = 0 }
         }
         next
       }
@@ -477,56 +456,15 @@ strip_code_spans() {
         # A backtick fence info string cannot hold a backtick; such a line opens no fence.
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { flush(); fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
       }
-      # Paragraph lines are buffered so a span can wrap a line break. A blank line ends the
-      # paragraph; a heading is one line of its own; a list item or block quote starts a new
-      # block, so no span pairs across those boundaries. When unsure whether a line ends a
-      # paragraph, it stands alone: a span that fails to strip only over-lints.
-      # A line starting with < may open an HTML block, where backticks are literal: it and
-      # every line after it up to a blank line are printed raw.
-      # A table starts at a delimiter row (only | - : and blanks after any > markers, with a
-      # pipe or colon in it or a pipe in the line before), at any indent and whether or not
-      # a line is buffered. A buffered last line is the header and is stripped on its own,
-      # apart from the paragraph lines before it. The detector is loose on purpose (a false
-      # table only over-lints). Table rows, with or without pipes, are stripped one by one until a
-      # blank line or an ATX heading (1-6 #, then a blank or end of line).
-      # An indented line (4+ columns) joins the buffer only as a lazy continuation: the last
-      # buffered line holds paragraph text and the line itself does not look like a list
-      # item, quote, heading, fence, HTML or table line. Otherwise it is stripped on its own
-      # (after a blank line it is indented code).
-      if (t ~ /^[[:space:]]*$/) { flush(); solo = ""; print; next }
-      if (solo == "html" || (col <= 3 && c == "<")) { flush(); solo = "html"; print; next }
-      if (solo == "table") {
-        h = run_len(t, 1, "#"); hc = substr(t, h + 1, 1)
-        if (!(col <= 3 && h >= 1 && h <= 6 && (hc == "" || hc == " " || hc == "\t"))) { print strip_inline($0); next }
-        solo = ""
-      }
-      dt = t; sub(/[[:space:]]+$/, "", dt); while (dt ~ /^>/) { dt = substr(dt, 2); sub(/^[ \t]+/, "", dt) }
-      if (dt ~ /^[-|: \t]+$/ && index(dt, "-") > 0 && (index(dt, "|") > 0 || index(dt, ":") > 0 || index(pl, "|") > 0)) {
-        if (have) {
-          k = 0; for (i = length(para); i >= 1; i--) if (substr(para, i, 1) == "\n") { k = i; break }
-          if (k) print strip_inline(substr(para, 1, k - 1))
-          print strip_inline(substr(para, k + 1))
-        }
-        para = ""; have = 0; lastl = ""; solo = "table"; print strip_inline($0); next
-      }
-      if (col >= 4) {
-        if (have && has_text(lastl) && !(t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^[>#<]/ || substr(t, 1, 3) == "```" || substr(t, 1, 3) == "~~~" || index(t, "|") > 0)) { para = para "\n" $0; lastl = $0; next }
-        flush(); print strip_inline($0); next
-      }
-      # A quote or list item line whose content is a heading, fence or HTML start, or a list
-      # item line holding a pipe, stands alone: no span pairs into or out of it. After an
-      # HTML start the lines up to a blank line are printed raw, as for a top-level one.
-      if (col <= 3) {
-        tt = t; sub(/[[:space:]]+$/, "", tt); mt = after_markers(tt)
-        if (mt != tt && (opens_block(mt) || (nm && index(mt, "|") > 0))) {
-          flush()
-          if (substr(mt, 1, 1) == "<") { solo = "html"; print; next }
-          print strip_inline($0); next
-        }
-      }
-      if (col <= 3 && t ~ /^#+([ \t]|$)/) { flush(); print strip_inline($0); next }
-      if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^>/)) flush()
-      para = have ? para "\n" $0 : $0; have = 1; lastl = $0
+      if (t ~ /^[[:space:]]*$/) { flush(); mixed = 0; print; next }
+      # Plain paragraph line test (see the comment above the function). The trailing trim
+      # keeps a CRLF line end from hiding a bare marker or a rule.
+      u = t; sub(/[[:space:]]+$/, "", u)
+      plain = col <= 3 && u !~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ && u !~ /^[>#<]/ && index(u, "|") == 0 &&
+        substr(u, 1, 3) != "```" && substr(u, 1, 3) != "~~~" && u !~ /^[-_*=:| \t]+$/
+      if (plain && !mixed) { para = have ? para "\n" $0 : $0; have = 1; next }
+      flush(); if (!plain) mixed = 1
+      print strip_inline($0)
     }
     END { flush(); if (fence) printf "%s", buf }
   ' "$1"

@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip removes a code span that wraps one line break, including a lazy indented line or prose with a pipe, but never across a blank line, fence, block start, second break, indented code line, table header or row, HTML block, or a list or quote line opening a heading, fence or HTML block
+name: pr-delivery.sh placeholder strip checks each line on its own and lets a code span wrap one line break only between two plain paragraph lines with no non-plain line since the last blank line or fence end (design A)
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 1)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -64,9 +64,10 @@ command: |
   # H2: lines inside an HTML block (up to the blank line) never pair a span either.
   printf '<div>\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
   visible "H2 inside an HTML block" '<real>'
-  # CodeRabbit pass 2. L1: an indented line right after paragraph text is a lazy continuation.
+  # L1 (over-lint, issue #153): an indented line is not plain, so a span does not wrap onto
+  # a lazy continuation line, though CommonMark would close it there.
   printf 'see `foo <k>\n    bar` end\n' > "$T/in.md"
-  hidden "L1 lazy indented continuation" '<k>'
+  visible "L1 over-lint: lazy indented continuation" '<k>'
   # G1: a bare list or quote marker is not paragraph text, so the indented line after it is code.
   printf -- '-\n      cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G1 indented code after a bare list marker" '<real>'
@@ -75,31 +76,32 @@ command: |
   # G2: an indented line that starts a block (a nested list item) never joins.
   printf -- '- a `x <real>\n    - b` c\n' > "$T/in.md"
   visible "G2 indented nested list item" '<real>'
-  # P3: prose holding a pipe, with no delimiter row after it, is a paragraph and a span wraps.
+  # P3 (over-lint, issue #153): a line holding a pipe is not plain, even in prose.
   printf 'ran `cat x <k> |\ngrep y` done\n' > "$T/in.md"
-  hidden "P3 prose with a pipe" '<k>'
-  # G3: on a delimiter row the header stands alone, apart from the paragraph line before it.
+  visible "P3 over-lint: prose with a pipe" '<k>'
+  # G3: a header line holding a pipe is not plain, so a span opened on the line before it
+  # cannot close in it.
   printf 'see `x <real>\na ` | b\n--- | ---\n' > "$T/in.md"
   visible "G3 header split from the line before" '<real>'
-  # G4: a table inside a block quote is found through the > markers.
+  # G4: a table inside a block quote: every line is a quote line and stands alone.
   printf '> a | b\n> --- | ---\n> x | y\n> z ` | w\nnext <real> ` tail\n' > "$T/in.md"
   visible "G4 table in a block quote" '<real>'
-  # G5: a pipe-less delimiter row under a header with a pipe is still taken as a table.
+  # G5: rows after a pipe header stand alone up to a blank line, pipe or no pipe.
   printf '| a |\n---\nx ` <real>\ny ` z\n' > "$T/in.md"
   visible "G5 pipe-less delimiter under a pipe header" '<real>'
-  # T5: an ATX heading ends a table, so a wrapped span after it is stripped again.
+  # T5 (over-lint, issue #153): only a blank line ends the stand-alone run, not a heading.
   printf 'a | b\n--- | ---\nx | y\n# Next\nsee `foo <k>\nbar` end\n' > "$T/in.md"
-  hidden "T5 heading ends a table" '<k>'
-  # G6, G7: seven #, or # with no blank after it, is not a heading and the table goes on.
+  visible "T5 over-lint: heading after a table" '<k>'
+  # G6, G7: rows after a table stand alone up to a blank line, whatever lines come between.
   printf 'a | b\n--- | ---\n####### x\np ` <real>\nq ` r\n' > "$T/in.md"
   visible "G6 seven hashes stay a row" '<real>'
   printf 'a | b\n--- | ---\n#x\np ` <real>\nq ` r\n' > "$T/in.md"
   visible "G7 hash without a blank stays a row" '<real>'
-  # G8: a heading line ends a table, but it stands alone itself.
+  # G8: a heading line stands alone.
   printf 'a | b\n--- | ---\n# h `x <real>\nb` c\n' > "$T/in.md"
   visible "G8 heading after a table stands alone" '<real>'
-  # G10-G13: an indented line after a setext underline, a thematic break, or a heading or
-  # rule inside a list item is code, not a lazy continuation.
+  # G10-G13: an indented line (code) after a setext underline, a thematic break, or a
+  # heading or rule inside a list item stands alone.
   printf 'title\n---\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G10 indented code after a setext underline" '<real>'
   printf 'para\n***\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
@@ -108,22 +110,22 @@ command: |
   visible "G12 indented code after a list-item heading" '<real>'
   printf -- '- a\n    ***\n      cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "G13 indented code after a list-item rule" '<real>'
-  # G14: an indented table header stands alone, and its delimiter row still starts a table.
+  # G14: rows of a table inside a list item stand alone up to a blank line.
   printf -- '- x\n    a | b\n    --|--\n  p ` <real> | y\n  z ` | w\n' > "$T/in.md"
   visible "G14 indented table in a list item" '<real>'
-  # G15: a pipe-less delimiter under a solo pipe header still starts a table.
+  # G15: the same after a pipe-less delimiter under a solo pipe header.
   printf -- '- x\n    | a |\n    ---\n  p ` <real>\n  z ` w\n' > "$T/in.md"
   visible "G15 pipe-less delimiter under a solo pipe header" '<real>'
-  # G16: CRLF line ends change neither the delimiter row nor the bare-marker test.
+  # G16: CRLF line ends change none of the plain line tests.
   printf 'a | b\r\n--- | ---\r\nx ` <real>\r\nz ` w\r\n' > "$T/in.md"
   visible "G16 CRLF table" '<real>'
   printf -- '-\r\n      cmd `\r\nsee <real> ` tail\r\n' > "$T/in.md"
   visible "G16b CRLF bare list marker" '<real>'
-  # G9: a heading does not end an HTML block.
+  # G9: lines of an HTML block stand alone up to a blank line, a heading among them or not.
   printf '<div>\n# h\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
   visible "G9 heading inside an HTML block" '<real>'
-  # LM1-LM13: a list-marker or quote line whose content is a heading, fence or HTML start, or
-  # a list-marker line holding a pipe, stands alone; the next line never closes a span in it.
+  # LM1-LM13: a list marker or quote line is not plain; the next line never closes a span
+  # opened in it, and lines after it stand alone up to a blank line (LM5).
   printf -- '- # a `x <real>\nb` c\n' > "$T/in.md"
   visible "LM1 heading after a list marker" '<real>'
   printf -- '- ~~~ `x <real>\nb` c\n' > "$T/in.md"
@@ -150,8 +152,35 @@ command: |
   visible "LM12 list marker at 3 columns" '<real>'
   printf -- '> # a `x <real>\nb` c\n' > "$T/in.md"
   visible "LM13 heading in a block quote" '<real>'
-  # LH1: an ordinary list item still wraps a span onto its continuation line.
+  # LH1 (over-lint, issue #153): a list item line is not plain, so its span does not wrap
+  # onto the continuation line.
   printf -- '- see `foo <k>\n  bar` end\n' > "$T/in.md"
-  hidden "LH1 span wraps inside a list item" '<k>'
+  visible "LH1 over-lint: span in a list item" '<k>'
+  # Design A. Q1: indented code on a list marker line never joins the next line (red on
+  # 1246656); Q1b the same inside a block quote.
+  printf -- '-     cmd `\nsee <real> ` tail\n' > "$T/in.md"
+  visible "Q1 indented code after a list marker" '<real>'
+  printf -- '> -     cmd `\n> see <real> ` tail\n' > "$T/in.md"
+  visible "Q1b quoted indented code after a list marker" '<real>'
+  # F1 (over-lint, issue #153): a ``` line that opens no fence (backtick in its info string)
+  # is not plain, though CommonMark pairs its last backtick with the next line's.
+  printf '```cmd `\nsee <k> ` tail\n' > "$T/in.md"
+  visible "F1 over-lint: backtick run that opens no fence" '<k>'
+  # S1 (over-lint, issue #153): a setext underline is not plain and the lines after it up
+  # to a blank line stand alone.
+  printf 'title\n===\nx `a <k>\nb` c\n' > "$T/in.md"
+  visible "S1 over-lint: wrap after a setext underline" '<k>'
+  # S2 (over-lint, issue #153): a bare numbered marker with nothing after it is not plain.
+  printf '1.\nx `a <k>\nb` c\n' > "$T/in.md"
+  visible "S2 over-lint: wrap after a bare numbered marker" '<k>'
+  # S3 (over-lint, issue #153): a CRLF line end does not make a bare marker plain.
+  printf -- '-\r\nx `a <k>\r\nb` c\r\n' > "$T/in.md"
+  visible "S3 over-lint: wrap after a CRLF bare marker" '<k>'
+  # P4: a span wraps the break between two plain lines anywhere in a run of plain lines.
+  printf 'line one\nsee `foo <k>\nbar` end\n' > "$T/in.md"
+  hidden "P4 wrap later in a paragraph" '<k>'
+  # FR1: the end of a fence ends the stand-alone run, like a blank line.
+  printf '# h\n~~~\nx\n~~~\nsee `foo <k>\nbar` end\n' > "$T/in.md"
+  hidden "FR1 wrap after a fence closes" '<k>'
   echo PASS
-expected: exit 0; stdout "PASS". strip_code_spans removes a closed inline code span that wraps a single line break (P1) and keeps text after it (P2), but a span does not cross a blank line (R1), a second line break (R2), a fence (R3), a new list item (R4), a block quote line (R5) or out of a heading (R6); an unclosed span at end of file is printed whole (R7), and an escaped backtick opens nothing (R8), so each <real> placeholder stays visible to cmd_ready's lint. Mutation: make strip_inline stop at the first newline and P1 fails; remove the second-newline limit and R2 fails; drop the flush at a blank line and R1 fails, before a fence and R3 fails, before a list or quote line and R4 fails; let a heading join the next line and R6 fails. CodeRabbit pass: an indented code line never joins (B1), table rows with or without a leading pipe never join, nor a pipe-less row after one, until a blank line (T1, T2), a span inside one row still strips (T3) and a wrapped span after the table's blank line strips again (T4), and an HTML block start and its lines up to a blank line never pair a span (H1, H2). Mutation: drop the indented-code rule and B1 fails; stop treating a pipe line as a row and T1 fails; make table mode not sticky and T2 fails; stop a blank line clearing it and T4 fails; stop treating a leading < as an HTML start and H1 fails; make HTML mode not sticky and H2 fails. CodeRabbit pass 2: an indented line right after paragraph text joins as a lazy continuation (L1), but not after a bare list or quote marker (G1, G1b) nor when it starts a block such as a nested list item (G2); a line with a pipe stays prose until a delimiter row follows (P3); on a delimiter row the header stands apart from the line before it (G3), > markers are looked through (G4) and a pipe-less delimiter under a pipe header still counts (G5); an ATX heading of 1-6 # followed by a blank ends a table (T5), seven # or #x do not (G6, G7), the heading itself stands alone (G8), and a heading does not end an HTML block (G9). Mutation: drop the paragraph-text test and G1 fails; drop the block-start test and G2 fails; never join and L1 fails; keep the header in the paragraph and G3 fails; skip the > strip and G4 fails; require a pipe in the delimiter and G5 fails; never detect a table and T1 fails; drop the 6 limit and G6 fails, the blank after # and G7 fails; never end on a heading and T5 fails; buffer the heading and G8 fails; let a heading end HTML mode and G9 fails. The paragraph-text test also refuses a setext underline, a thematic break, and a heading or rule after a list marker (G10-G13); a delimiter row starts a table even after a solo indented header (G14) and a pipe in the line before counts whatever path it took (G15); CRLF line ends change neither test (G16, G16b). Mutation: make the shared heading/HTML/fence test always false and G12 fails (deleting only the paragraph-text test's call to it is now covered by the list-marker guard and passes); drop the rule refusal and G10 fails; require a buffered line for a delimiter and G14 fails; take the header pipe from the buffer only and G15 fails; skip the trailing-space trim on the delimiter and G16 fails, on the marker test and G16b fails. List-marker pass: a quote or list line whose content after its markers is a heading, a ``` or ~~~ fence or an HTML start, or a list line holding a pipe, stands alone (LM1-LM4, LM6), an HTML start after a marker begins an HTML block (LM5), every marker form counts (LM7-LM10), as do > before the marker (LM11), 3 columns of indent (LM12) and a quote with no list marker (LM13), while an ordinary list item still wraps a span (LH1). Mutation: drop the guard and LM1 fails; let it skip #, ~~~, ``` or < and LM1, LM2, LM3 or LM4 fails; skip the HTML mode and LM5 fails; drop the pipe test and LM6 fails; drop *, +, the dot or the paren from the marker pattern and LM7, LM8, LM9 or LM10 fails; drop the > strip and the run stops at G1b (LM11 fails alone); allow only 2 columns and LM12 fails; require a list marker and LM13 fails; let every marker line stand alone and LH1 fails.
+expected: exit 0; stdout "PASS". Design A: strip_code_spans strips every line on its own, as main a2d4029 did, except that a run of plain paragraph lines is stripped together so a span may wrap the one line break between two of them (P1, P4) while text after the span is still linted (P2). A line is plain when it is indented 3 columns or less, not blank, has no list item marker (-, *, + or digits then . or ), followed by a blank or end of line) or > marker, holds no |, does not start with #, <, ``` or ~~~, and is not made only of - _ * = : | and blanks (trailing whitespace, CR included, trimmed first). Once a non-plain line appears, every line up to the next blank line or the end of a fence stands alone (T2, H2, G5-G9, G15, G16, LM5), and a blank line or a closed fence starts joining again (T4, FR1). A span crosses at most one line break (R2) and never a blank line (R1) or a fence (R3); an unclosed span is printed whole (R7) and an escaped backtick opens nothing (R8). Every fail-open guard keeps <real> visible: R4-R6, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1 and Q1b (indented code on a list marker line, plain or quoted; Q1 is red on 1246656). Documented over-lint (issue #153): a span does not strip where CommonMark would close it across a lazy indented line (L1), a line holding a pipe (P3), a run after a table ended by a heading (T5), a list item line (LH1), a ``` line that opens no fence (F1), or the lines after a setext underline (S1), a bare numbered marker (S2) or a CRLF bare marker (S3); each asserts that <k> stays visible. Mutation (each on a copy of scripts/pr-delivery.sh): indent test always true -> B1 fails; drop the list marker test -> R4, Q1 and LM1 fail; drop *, +, the dot or the paren -> LM7, LM8, LM9 or LM10 fails; require a blank after the marker (no end of line) -> S2 fails; drop > -> R5, Q1b and LM13 fail; drop # -> R6 fails; drop < -> H1 and H2 fail; drop the pipe test -> G3 fails; drop the ``` test -> F1 fails; drop the rule test -> S1 fails; drop the trailing trim -> S3 fails; let a plain line join after a non-plain one -> T2 fails; no reset at a blank line -> T4 fails; no reset at a fence end -> FR1 fails; no flush at a blank line -> R1 fails, before a fence -> R3 fails; no one-break limit -> R2 fails; never join -> P1 fails. The ```, rule, end-of-line and trim clauses guard no fail-open on their own (their killing cases are over-lint pins); the ~~~ test cannot be reached (a ~~~ run at 3 columns or less always opens a fence first), so dropping it changes nothing.
