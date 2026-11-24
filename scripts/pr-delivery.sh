@@ -393,7 +393,7 @@ cmd_review() {
 }
 
 # Print a markdown file with fenced blocks and closed inline `code` spans removed.
-# A fence closes only on a line of the opener's character, at least as long, with nothing
+# A fence line (opener or closer) is indented at most 3 columns. A fence closes only on a line of the opener's character, at least as long, with nothing
 # but whitespace after it; an unclosed fence is printed as-is. A backtick run closes only
 # on a run of the same length; an unmatched run stays, so text after it is still linted.
 strip_code_spans() {
@@ -419,16 +419,27 @@ strip_code_spans() {
       return out
     }
     {
-      t = $0; sub(/^[[:space:]]*/, "", t); c = substr(t, 1, 1)
+      # Indent in columns (a tab advances to the next multiple of 4). A fence opener or
+      # closer may be indented at most 3 columns; at 4 or more the line is indented code
+      # or paragraph text, not a fence (CommonMark, issue #149).
+      col = 0; p = 1
+      while (p <= length($0)) {
+        ch = substr($0, p, 1)
+        if (ch == " ") col++
+        else if (ch == "\t") col += 4 - col % 4
+        else break
+        p++
+      }
+      t = substr($0, p); c = substr(t, 1, 1)
       if (fence) {
         buf = buf $0 "\n"
-        if (c == fc) {
+        if (col <= 3 && c == fc) {
           l = run_len(t, 1, c)
           if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = "" }
         }
         next
       }
-      if (c == "`" || c == "~") {
+      if (col <= 3 && (c == "`" || c == "~")) {
         l = run_len(t, 1, c)
         # A backtick fence info string cannot hold a backtick; such a line opens no fence.
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
