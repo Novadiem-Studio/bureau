@@ -405,16 +405,19 @@ strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
     function flush() { if (have) print strip_inline(para); para = ""; have = 0; lastl = "" }
-    # True when s holds text after any block quote and list item markers (a bare "-" or ">"
-    # opens a container but is not yet a paragraph line).
+    # True when s is paragraph text after any block quote and list item markers. A bare "-"
+    # or ">" opens a container but is not a paragraph line; neither is a heading, HTML or
+    # fence start, nor a setext underline or thematic break (only - _ * = and blanks).
     function has_text(s) {
-      sub(/^[ \t]+/, "", s)
+      sub(/^[ \t]+/, "", s); sub(/[[:space:]]+$/, "", s)
       while (1) {
         if (s ~ /^>/) { s = substr(s, 2); sub(/^[ \t]+/, "", s); continue }
         if (s ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/) { sub(/^([-+*]|[0-9]+[.)])[ \t]*/, "", s); continue }
         break
       }
-      return s ~ /[^ \t]/
+      if (s ~ /^[#<]/ || substr(s, 1, 3) == "```" || substr(s, 1, 3) == "~~~") return 0
+      if (s ~ /^[-_*= \t]*$/) return 0
+      return 1
     }
     # s may hold line breaks (a buffered paragraph); a closer is looked for across at most one.
     function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
@@ -450,7 +453,7 @@ strip_code_spans() {
         else break
         p++
       }
-      t = substr($0, p); c = substr(t, 1, 1)
+      t = substr($0, p); c = substr(t, 1, 1); pl = cur; cur = $0
       if (fence) {
         buf = buf $0 "\n"
         if (col <= 3 && c == fc) {
@@ -470,10 +473,11 @@ strip_code_spans() {
       # paragraph, it stands alone: a span that fails to strip only over-lints.
       # A line starting with < may open an HTML block, where backticks are literal: it and
       # every line after it up to a blank line are printed raw.
-      # A table starts when a delimiter row (only | - : and blanks, after any > markers)
-      # follows a buffered line: that line is the header and is stripped on its own, apart
-      # from the paragraph lines before it. The detector is loose on purpose (a false table
-      # only over-lints). Table rows, with or without pipes, are stripped one by one until a
+      # A table starts at a delimiter row (only | - : and blanks after any > markers, with a
+      # pipe or colon in it or a pipe in the line before), at any indent and whether or not
+      # a line is buffered. A buffered last line is the header and is stripped on its own,
+      # apart from the paragraph lines before it. The detector is loose on purpose (a false
+      # table only over-lints). Table rows, with or without pipes, are stripped one by one until a
       # blank line or an ATX heading (1-6 #, then a blank or end of line).
       # An indented line (4+ columns) joins the buffer only as a lazy continuation: the last
       # buffered line holds paragraph text and the line itself does not look like a list
@@ -486,11 +490,13 @@ strip_code_spans() {
         if (!(col <= 3 && h >= 1 && h <= 6 && (hc == "" || hc == " " || hc == "\t"))) { print strip_inline($0); next }
         solo = ""
       }
-      dt = t; while (dt ~ /^>/) { dt = substr(dt, 2); sub(/^[ \t]+/, "", dt) }
-      if (have && dt ~ /^[-|: \t]+$/ && index(dt, "-") > 0 && (index(dt, "|") > 0 || index(dt, ":") > 0 || index(lastl, "|") > 0)) {
-        k = 0; for (i = length(para); i >= 1; i--) if (substr(para, i, 1) == "\n") { k = i; break }
-        if (k) print strip_inline(substr(para, 1, k - 1))
-        print strip_inline(substr(para, k + 1))
+      dt = t; sub(/[[:space:]]+$/, "", dt); while (dt ~ /^>/) { dt = substr(dt, 2); sub(/^[ \t]+/, "", dt) }
+      if (dt ~ /^[-|: \t]+$/ && index(dt, "-") > 0 && (index(dt, "|") > 0 || index(dt, ":") > 0 || index(pl, "|") > 0)) {
+        if (have) {
+          k = 0; for (i = length(para); i >= 1; i--) if (substr(para, i, 1) == "\n") { k = i; break }
+          if (k) print strip_inline(substr(para, 1, k - 1))
+          print strip_inline(substr(para, k + 1))
+        }
         para = ""; have = 0; lastl = ""; solo = "table"; print strip_inline($0); next
       }
       if (col >= 4) {
