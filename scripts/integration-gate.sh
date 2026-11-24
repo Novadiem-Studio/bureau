@@ -715,7 +715,7 @@ def final_ci_veto():
         if rec["pending"]:
             return out("pending", "CI not finished on the head commit (pending is not a pass): %s" % ", ".join(map(str, rec["pending"])))
         if any(c["bucket"] == "pass" for c in summary):
-            return out("passed", "every check on the head commit passed")
+            return out("passed", "no check on the head commit failed or is pending, and at least one passed")
         return out("no_checks", "no check on the head commit passed (all skipped or none)")
     except Exception as e:
         return out("gh_error", "the CI read failed: %s" % e)
@@ -1743,8 +1743,8 @@ PY
   # A --gate-mode ci --final gate that ran the local suite also carries the head's
   # CI read (final_ci_veto in MODE_JSON) as one more gate, appended after the
   # under-declaration and flaky steps: the build cannot declare it and a flaky
-  # entry cannot demote it. It is green only when the read says every check
-  # passed; a missing or unreadable record is a red gate, never no gate. An
+  # entry cannot demote it. It is green only when the read says no check failed
+  # or is pending and at least one passed (skipped checks allowed); a missing or unreadable record is a red gate, never no gate. An
   # unreadable gate list is passed through untouched (it already fails closed).
   if [ "$REQ_FINAL" = 1 ] && [ "$REQ_GATE_MODE" = ci ] && [ "$EFFECTIVE_MODE" != ci ]; then
     GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$MODE_JSON" <<'PY'
