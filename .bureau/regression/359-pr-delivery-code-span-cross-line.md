@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip checks each line on its own and lets a code span wrap one line break only between two plain paragraph lines with no non-plain line since the last blank line or fence end (design A)
+name: pr-delivery.sh placeholder strip checks each line on its own and lets a code span wrap one line break only between two plain paragraph lines with no non-plain line since the last blank line, none after a line starting with <, and none above a delimiter row (design A)
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 1)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -179,8 +179,49 @@ command: |
   # P4: a span wraps the break between two plain lines anywhere in a run of plain lines.
   printf 'line one\nsee `foo <k>\nbar` end\n' > "$T/in.md"
   hidden "P4 wrap later in a paragraph" '<k>'
-  # FR1: the end of a fence ends the stand-alone run, like a blank line.
+  # FR1 (over-lint, issue #153): the end of a fence does not end the stand-alone run; only
+  # a blank line does, so a span after the fence does not wrap though CommonMark would.
   printf '# h\n~~~\nx\n~~~\nsee `foo <k>\nbar` end\n' > "$T/in.md"
-  hidden "FR1 wrap after a fence closes" '<k>'
+  visible "FR1 over-lint: wrap after a fence closes" '<k>'
+  # A1-A3: a fence inside an HTML block does not end the stand-alone run (A1 red on ac6fe77;
+  # A2 red there too, inside a list item, where no line starts with <; A3 quoted).
+  printf '<div>\n```\nx\n```\nfoo `a\nb <real> ` c\n</div>\n' > "$T/in.md"
+  visible "A1 fence inside an HTML block" '<real>'
+  printf -- '- <div>\n  ```\n  x\n  ```\n  foo `a\n  b <real> ` c\n  </div>\n' > "$T/in.md"
+  visible "A2 fence inside an HTML block in a list item" '<real>'
+  printf '> <div>\n> ```\n> x\n> ```\n> foo `a\n> b <real> ` c\n> </div>\n' > "$T/in.md"
+  visible "A3 fence inside a quoted HTML block" '<real>'
+  # HP1-HP3: an HTML block such as <pre> runs across blank lines, so once a line starts
+  # with < (after up to 3 columns) no line joins again (HP1 and HP2 red on ac6fe77).
+  printf '<pre>\n\nfoo `a\nb <real> ` c\n</pre>\n' > "$T/in.md"
+  visible "HP1 blank line inside <pre>" '<real>'
+  printf -- '- a\n\n  <pre>\n\n  foo `a\n  b <real> ` c\n  </pre>\n' > "$T/in.md"
+  visible "HP2 blank line inside an indented <pre>" '<real>'
+  printf '> <pre>\n>\n> foo `a\n> b <real> ` c\n> </pre>\n' > "$T/in.md"
+  visible "HP3 blank line inside a quoted <pre>" '<real>'
+  # D1-D8: a line made only of - _ * = : | and blanks after a run of plain lines can be a
+  # table delimiter row whose header is the run's last line (GFM), so every line of the run
+  # is stripped alone (D1, D2, D5, D7, D8 red on ac6fe77; D6 quoted).
+  printf 'see `x <real>\nh ` y\n:-:\n' > "$T/in.md"
+  visible "D1 delimiter row under a wrapped span" '<real>'
+  printf 'see `x <real>\nh ` y\n|-|\n' > "$T/in.md"
+  visible "D2 piped delimiter row under a wrapped span" '<real>'
+  printf 'see `x <real>\nh ` y\n-:\n' > "$T/in.md"
+  visible "D5 right-aligned delimiter row under a wrapped span" '<real>'
+  printf '> see `x <real>\n> h ` y\n> :-:\n' > "$T/in.md"
+  visible "D6 quoted delimiter row under a wrapped span" '<real>'
+  printf -- '- a\n\n  see `x <real>\n  h ` y\n  :-:\n' > "$T/in.md"
+  visible "D7 delimiter row in a list item" '<real>'
+  printf 'line one\nsee `x <real>\nh ` y\n:-:\n' > "$T/in.md"
+  visible "D8 delimiter row under a three-line run" '<real>'
+  # D3, D4 (over-lint, issue #153): under --- or === the run is a setext heading where the
+  # span does wrap; it is stripped line by line all the same.
+  printf 'see `x <k>\nh ` y\n---\n' > "$T/in.md"
+  visible "D3 over-lint: setext --- under a wrapped span" '<k>'
+  printf 'see `x <k>\nh ` y\n===\n' > "$T/in.md"
+  visible "D4 over-lint: setext === under a wrapped span" '<k>'
+  # D9: a span inside a lone header line is still stripped.
+  printf 'h `a <k>` y\n:-:\n' > "$T/in.md"
+  hidden "D9 span in a lone header line" '<k>'
   echo PASS
-expected: exit 0; stdout "PASS". Design A: strip_code_spans strips every line on its own, as main a2d4029 did, except that a run of plain paragraph lines is stripped together so a span may wrap the one line break between two of them (P1, P4) while text after the span is still linted (P2). A line is plain when it is indented 3 columns or less, not blank, has no list item marker (-, *, + or digits then . or ), followed by a blank or end of line) or > marker, holds no |, does not start with #, <, ``` or ~~~, and is not made only of - _ * = : | and blanks (trailing whitespace, CR included, trimmed first). Once a non-plain line appears, every line up to the next blank line or the end of a fence stands alone (T2, H2, G5-G9, G15, G16, LM5), and a blank line or a closed fence starts joining again (T4, FR1). A span crosses at most one line break (R2) and never a blank line (R1) or a fence (R3); an unclosed span is printed whole (R7) and an escaped backtick opens nothing (R8). Every fail-open guard keeps <real> visible: R4-R6, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1 and Q1b (indented code on a list marker line, plain or quoted; Q1 is red on 1246656). Documented over-lint (issue #153): a span does not strip where CommonMark would close it across a lazy indented line (L1), a line holding a pipe (P3), a run after a table ended by a heading (T5), a list item line (LH1), a ``` line that opens no fence (F1), or the lines after a setext underline (S1), a bare numbered marker (S2) or a CRLF bare marker (S3); each asserts that <k> stays visible. Mutation (each on a copy of scripts/pr-delivery.sh): indent test always true -> B1 fails; drop the list marker test -> R4, Q1 and LM1 fail; drop *, +, the dot or the paren -> LM7, LM8, LM9 or LM10 fails; require a blank after the marker (no end of line) -> S2 fails; drop > -> R5, Q1b and LM13 fail; drop # -> R6 fails; drop < -> H1 and H2 fail; drop the pipe test -> G3 fails; drop the ``` test -> F1 fails; drop the rule test -> S1 fails; drop the trailing trim -> S3 fails; let a plain line join after a non-plain one -> T2 fails; no reset at a blank line -> T4 fails; no reset at a fence end -> FR1 fails; no flush at a blank line -> R1 fails, before a fence -> R3 fails; no one-break limit -> R2 fails; never join -> P1 fails. The ```, rule, end-of-line and trim clauses guard no fail-open on their own (their killing cases are over-lint pins); the ~~~ test cannot be reached (a ~~~ run at 3 columns or less always opens a fence first), so dropping it changes nothing.
+expected: exit 0; stdout "PASS". Design A: strip_code_spans strips every line on its own, as main a2d4029 did, except that a run of plain paragraph lines is stripped together so a span may wrap the one line break between two of them (P1, P4) while text after the span is still linted (P2). A line is plain when it is indented 3 columns or less, not blank, has no list item marker (-, *, + or digits then . or ), followed by a blank or end of line) or > marker, holds no |, does not start with #, <, ``` or ~~~, and is not made only of - _ * = : | and blanks (trailing whitespace, CR included, trimmed first). Once a non-plain line appears, every line up to the next blank line stands alone, a closed fence among them or not (T2, H2, G5-G9, G15, G16, LM5, A1-A3), and a blank line starts joining again (T4). Once a line indented 3 columns or less starts with <, no line joins for the rest of the file, blank lines included (HP1-HP3). A line made only of - _ * = : | and blanks strips each line of the run above it alone, since GFM may read the run's last line as a table header (D1, D2, D5-D8); a span in a lone header line still strips (D9). A span crosses at most one line break (R2) and never a blank line (R1) or a fence (R3); an unclosed span is printed whole (R7) and an escaped backtick opens nothing (R8). Every fail-open guard keeps <real> visible: R4-R6, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1 and Q1b (indented code on a list marker line, plain or quoted; Q1 is red on 1246656), A1-A3, HP1-HP3 and D1, D2, D5-D8 (A1, A2, HP1, HP2, D1, D2, D5, D7 and D8 are red on ac6fe77). Documented over-lint (issue #153): a span does not strip where CommonMark would close it across a lazy indented line (L1), a line holding a pipe (P3), a run after a table ended by a heading (T5), a list item line (LH1), a ``` line that opens no fence (F1), or the lines after a setext underline (S1), a bare numbered marker (S2) or a CRLF bare marker (S3), after a closed fence until a blank line (FR1), or in a setext heading of two lines under --- or === (D3, D4); each asserts that <k> stays visible. Mutation (each on a copy of scripts/pr-delivery.sh): indent test always true -> B1 fails; drop the list marker test -> R4, Q1 and LM1 fail; drop *, +, the dot or the paren -> LM7, LM8, LM9 or LM10 fails; require a blank after the marker (no end of line) -> S2 fails; drop > -> R5, Q1b and LM13 fail; drop # -> R6 fails; drop < from both the plain test and the sticky < test -> H1, H2, A1, HP1 and HP2 fail (from the plain test alone it changes nothing: the sticky test refuses the line first); drop the pipe test -> G3 fails; drop the ``` test -> F1 fails; drop the rule test from the plain test -> S1, D1, D3, D4, D5, D7 and D8 fail; drop the trailing trim -> S3 fails; let a plain line join after a non-plain one -> T2 fails; no reset at a blank line -> T4 fails; reset again at a fence end -> FR1 and A2 fail; no sticky < test, or clearing it at a blank line -> HP1 and HP2 fail; < test at column 0 only -> HP2 fails; flush the run joined under a delimiter row -> D1, D2, D5, D7, D8 (and D3, D4) fail; split only a run of two lines -> D8 fails; require : or | in the delimiter row -> S1, D3 and D4 fail; no flush at a blank line -> R1 fails, before a fence -> R3 fails; no one-break limit -> R2 fails; never join -> P1 fails. The ```, end-of-line and trim clauses guard no fail-open on their own (their killing cases are over-lint pins); the rule clause does, through the delimiter-row split (D1); the ~~~ test cannot be reached (a ~~~ run at 3 columns or less always opens a fence first), so dropping it changes nothing.

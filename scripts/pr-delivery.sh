@@ -401,13 +401,23 @@ cmd_review() {
 # between two plain paragraph lines (issue #149). A line is plain when it is indented 3
 # columns or less, is not blank, has no list item or block quote marker, holds no pipe,
 # does not start with #, <, ``` or ~~~, and is not made only of - _ * = : | and blanks.
-# Once a line that is not plain appears, every line up to the next blank line or the end
-# of a fence stands alone. A line that stands alone when CommonMark would join it only
-# over-lints; a join CommonMark would not make can hide a placeholder.
+# Once a line that is not plain appears, every line up to the next blank line stands alone
+# (a fence closing does not end that run: the fence may sit inside an HTML block). Once a
+# line indented 3 columns or less starts with <, no line joins for the rest of the file:
+# an HTML block such as <pre> runs across blank lines. A line made only of - _ * = : | and
+# blanks may be a table delimiter row whose header is the last line of the run before it
+# (GFM), so each line of that run is stripped alone. A line that stands alone when
+# CommonMark would join it only over-lints; a join CommonMark would not make can hide a
+# placeholder.
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
     function flush() { if (have) print strip_inline(para); para = ""; have = 0 }
+    # Strip each buffered line alone (the run sits above a possible table delimiter row).
+    function flush_lines(   n, i, part) {
+      if (have) { n = split(para, part, "\n"); for (i = 1; i <= n; i++) print strip_inline(part[i]) }
+      para = ""; have = 0
+    }
     # s may hold line breaks (a run of plain lines); a closer is looked for across at most one.
     function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
       out = ""; i = 1; n = length(s)
@@ -447,7 +457,7 @@ strip_code_spans() {
         buf = buf $0 "\n"
         if (col <= 3 && c == fc) {
           l = run_len(t, 1, c)
-          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = ""; mixed = 0 }
+          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = "" }
         }
         next
       }
@@ -460,10 +470,13 @@ strip_code_spans() {
       # Plain paragraph line test (see the comment above the function). The trailing trim
       # keeps a CRLF line end from hiding a bare marker or a rule.
       u = t; sub(/[[:space:]]+$/, "", u)
+      if (col <= 3 && c == "<") html = 1
+      rule = u ~ /^[-_*=:| \t]+$/
       plain = col <= 3 && u !~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ && u !~ /^[>#<]/ && index(u, "|") == 0 &&
-        substr(u, 1, 3) != "```" && substr(u, 1, 3) != "~~~" && u !~ /^[-_*=:| \t]+$/
-      if (plain && !mixed) { para = have ? para "\n" $0 : $0; have = 1; next }
-      flush(); if (!plain) mixed = 1
+        substr(u, 1, 3) != "```" && substr(u, 1, 3) != "~~~" && !rule
+      if (plain && !mixed && !html) { para = have ? para "\n" $0 : $0; have = 1; next }
+      if (rule) flush_lines(); else flush()
+      if (!plain) mixed = 1
       print strip_inline($0)
     }
     END { flush(); if (fence) printf "%s", buf }
