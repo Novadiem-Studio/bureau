@@ -238,7 +238,12 @@ The gate prints the open ids and a ready-to-fill event line. Ids compare as stri
 a newline, names nothing. A count clears nothing: an event that names no ids (the old
 `"findings":<n>` shape) dispositions no finding, however large the number, so a matching
 total can never cover a finding nobody named. A summary that claims more actionable comments
-than the gate found ids for also fails closed, as does a failed or unreadable lookup.
+than the gate found ids for also fails closed, as does a failed or unreadable lookup. The gate
+reads that claim, `Actionable comments posted: N` (bold or not), from the bot's formal reviews
+on the head, where CodeRabbit posts it, taking the largest N, and from any issue-comment copy,
+taking the larger of the two (issue #149). N is only a lower bound: CodeRabbit's own count can
+be smaller than its inline plus outside-diff entries, so it can fail the gate but never clears
+a finding.
 
 A disposition keyed to a different head does not clear findings on this one — same discipline as
 the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.

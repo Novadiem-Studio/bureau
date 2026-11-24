@@ -275,11 +275,22 @@ while IFS="$tab" read -r kind rid f3 f4 f5; do
 done < "$WORK/body.tsv"
 
 # A summary that claims more actionable comments than there are finding ids leaves some
-# finding unnamed; fail closed rather than guess which.
+# finding unnamed; fail closed rather than guess which. CodeRabbit posts the count line
+# ("**Actionable comments posted: N**") in its formal review body, not in the issue
+# comment (#149), so read it from every bot review on the head and take the largest; an
+# issue-comment copy is still read, and the larger of the two wins. The count is a lower
+# bound only: it can fail the gate, never clear a finding. A review with no count line is 0.
 total=$(grep -c . "$open_ids")
-actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
+actionable=$(grep -oE 'Actionable comments posted:[* ]*[0-9]+' "$bodies" 2>/dev/null \
   | tail -1 | grep -oE '[0-9]+$')
 [ -n "$actionable" ] || actionable=0
+review_actionable=$(jq -r --arg h "$head_sha" '
+  [.[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h)
+   | (.body // "") | strings
+   | scan("Actionable comments posted:[* ]*([0-9]+)") | .[0] | tonumber] | max // 0' "$reviews" 2>/dev/null) \
+  || { echo "coderabbit-gate: cannot read the actionable count from formal reviews for PR #$PR in $REPO" >&2; exit 2; }
+case "$review_actionable" in ''|*[!0-9]*) echo "coderabbit-gate: unreadable actionable count in formal reviews for PR #$PR in $REPO" >&2; exit 2 ;; esac
+[ "$review_actionable" -gt "$actionable" ] && actionable="$review_actionable"
 if [ "$actionable" -gt $((total + anon)) ]; then
   defect "CodeRabbit reports $actionable actionable comment(s) on PR #$PR but only $((total + anon)) finding id(s) were found, so some findings cannot be named. Read the PR's review comments."
 fi
