@@ -403,6 +403,9 @@ cmd_review() {
 # an ordered list marker line (digits, then . or ), then a blank or end of line), and it
 # holds no pipe; every other line (list or quote marker, heading, HTML, fence, footnote or
 # link reference definition, emphasis, a leading backtick, ...) is not plain.
+# Two plain lines do not join when the first, stripped of its own closed spans, has a <
+# before its first backtick: the < may open a raw HTML tag, autolink or comment holding that
+# backtick, which then opens no span.
 # Once a line that is not plain appears, every line up to the next blank line stands alone
 # (a fence closing does not end that run: the fence may sit inside an HTML block). Once a
 # line starts with <, at any indent and after any list or quote markers, no line joins for
@@ -476,7 +479,13 @@ strip_code_spans() {
       rule = u ~ /^[-_*=:| \t]+$/
       # Whitelist: starts with an ASCII letter or digit, is not an ordered list marker line, no pipe.
       plain = col <= 3 && u ~ /^[A-Za-z0-9]/ && u !~ /^[0-9]+[.)]([ \t]|$)/ && index(u, "|") == 0
-      if (plain && !mixed && !html) { para = have ? para "\n" $0 : $0; have = 1; next }
+      if (plain && !mixed && !html) {
+        # Inline precedence: when the previous line, stripped of its own closed spans, has a <
+        # before its first backtick, that < may open a raw HTML tag, autolink or comment that
+        # holds the backtick (GitHub renders it literally), so the previous line does not join.
+        if (have) { x = strip_inline(last); lt = index(x, "<"); bt = index(x, "`"); if (lt && bt && lt < bt) flush() }
+        para = have ? para "\n" $0 : $0; have = 1; last = $0; next
+      }
       if (rule) flush_lines(); else flush()
       if (!plain) mixed = 1
       print strip_inline($0)
