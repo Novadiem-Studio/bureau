@@ -393,13 +393,18 @@ cmd_review() {
 }
 
 # Print a markdown file with fenced blocks and closed inline `code` spans removed.
-# A fence line (opener or closer) is indented at most 3 columns. A fence closes only on a line of the opener's character, at least as long, with nothing
-# but whitespace after it; an unclosed fence is printed as-is. A backtick run closes only
-# on a run of the same length; an unmatched run stays, so text after it is still linted.
+# A fence line (opener or closer) is indented at most 3 columns. A fence closes only on a
+# line of the opener's character, at least as long, with nothing but whitespace after it;
+# an unclosed fence is printed as-is. A backtick run closes only on a run of the same
+# length; an unmatched run stays, so text after it is still linted. A span may wrap one
+# line break inside a paragraph, never a blank line, a fence line, or the start of a list
+# item, block quote, table row or heading (issue #149).
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    function strip_inline(s,   out, i, n, r, k, m, found, b) {
+    function flush() { if (have) print strip_inline(para); para = ""; have = 0 }
+    # s may hold line breaks (a buffered paragraph); a closer is looked for across at most one.
+    function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
       out = ""; i = 1; n = length(s)
       while (i <= n) {
         if (substr(s, i, 1) != "`") { out = out substr(s, i, 1); i++; continue }
@@ -407,9 +412,11 @@ strip_code_spans() {
         # literal text, not a span opener (CommonMark). Closers are not escapable.
         b = 0; while (i - b - 1 >= 1 && substr(s, i - b - 1, 1) == "\\") b++
         if (b % 2 == 1) { out = out "`"; i++; continue }
-        r = run_len(s, i, "`"); k = i + r; found = 0
+        r = run_len(s, i, "`"); k = i + r; found = 0; nl = 0
         while (k <= n) {
-          if (substr(s, k, 1) != "`") { k++; continue }
+          ch = substr(s, k, 1)
+          if (ch == "\n") { if (++nl > 1) break; k++; continue }
+          if (ch != "`") { k++; continue }
           m = run_len(s, k, "`")
           if (m == r) { found = 1; break }
           k += m
@@ -442,11 +449,17 @@ strip_code_spans() {
       if (col <= 3 && (c == "`" || c == "~")) {
         l = run_len(t, 1, c)
         # A backtick fence info string cannot hold a backtick; such a line opens no fence.
-        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { flush(); fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
       }
-      print strip_inline($0)
+      # Paragraph lines are buffered so a span can wrap a line break. A blank line ends the
+      # paragraph; a heading is one line of its own; a list item, block quote or table row
+      # starts a new block, so no span pairs across those boundaries.
+      if (t ~ /^[[:space:]]*$/) { flush(); print; next }
+      if (col <= 3 && t ~ /^#+([ \t]|$)/) { flush(); print strip_inline($0); next }
+      if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^[>|]/)) flush()
+      para = have ? para "\n" $0 : $0; have = 1
     }
-    END { if (fence) printf "%s", buf }
+    END { flush(); if (fence) printf "%s", buf }
   ' "$1"
 }
 
