@@ -405,7 +405,11 @@ cmd_review() {
 # link reference definition, emphasis, a leading backtick, ...) is not plain.
 # Two plain lines do not join when the first, stripped of its own closed spans, has a <
 # before its first backtick: the < may open a raw HTML tag, autolink or comment holding that
-# backtick, which then opens no span.
+# backtick, which then opens no span. In a joined run, a span that wraps the line break, or
+# any later span on the line it closes on, is kept only if its text is <>-balanced (no >
+# before its <, none left open): raw HTML and autolinks, the only inline constructs that
+# outrank a code span, sit in < >. When a span fails, the whole run is stripped line by line,
+# exactly as main strips it.
 # Once a line that is not plain appears, every line up to the next blank line stands alone
 # (a fence closing does not end that run: the fence may sit inside an HTML block). Once a
 # line starts with <, at any indent and after any list or quote markers, no line joins for
@@ -417,17 +421,22 @@ cmd_review() {
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    function flush() { if (have) print strip_inline(para); para = ""; have = 0 }
+    # A run where strip_inline rejected a span is stripped line by line instead, as on main.
+    function flush(   x) {
+      if (!have) return
+      rejected = 0; x = strip_inline(para)
+      if (rejected) flush_lines(); else { print x; para = ""; have = 0 }
+    }
     # Strip each buffered line alone (the run sits above a possible table delimiter row).
     function flush_lines(   n, i, part) {
       if (have) { n = split(para, part, "\n"); for (i = 1; i <= n; i++) print strip_inline(part[i]) }
       para = ""; have = 0
     }
     # s may hold line breaks (a run of plain lines); a closer is looked for across at most one.
-    function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
-      out = ""; i = 1; n = length(s)
+    function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch, after) {
+      out = ""; i = 1; n = length(s); after = 0
       while (i <= n) {
-        if (substr(s, i, 1) != "`") { out = out substr(s, i, 1); i++; continue }
+        if (substr(s, i, 1) != "`") { if (substr(s, i, 1) == "\n") after = 0; out = out substr(s, i, 1); i++; continue }
         # An odd run of backslashes before an opener escapes its first backtick, so it is
         # literal text, not a span opener (CommonMark). Closers are not escapable.
         b = 0; while (i - b - 1 >= 1 && substr(s, i - b - 1, 1) == "\\") b++
@@ -441,9 +450,23 @@ strip_code_spans() {
           if (m == r) { found = 1; break }
           k += m
         }
-        if (found) { i = k + m } else { out = out substr(s, i, r); i += r }
+        # Only raw HTML and autolinks outrank a code span, and both sit in < >: a span that
+        # wraps a line break, or follows a wrapped span on its closing line (where backticks
+        # pair unlike that line alone), must hold <>-balanced text, or flush() splits the run.
+        if (found && (nl || after) && !balanced(substr(s, i + r, k - i - r))) { found = 0; rejected = 1 }
+        if (found) { i = k + m; if (nl) after = 1 } else { out = out substr(s, i, r); i += r }
       }
       return out
+    }
+    # 1 when every > closes an earlier < and none is left open (depth never below zero).
+    function balanced(s,   d, j, ch) {
+      d = 0
+      for (j = 1; j <= length(s); j++) {
+        ch = substr(s, j, 1)
+        if (ch == "<") d++
+        else if (ch == ">" && --d < 0) return 0
+      }
+      return d == 0
     }
     {
       # Indent in columns (a tab advances to the next multiple of 4). A fence opener or
