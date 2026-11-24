@@ -404,7 +404,18 @@ cmd_review() {
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
-    function flush() { if (have) print strip_inline(para); para = ""; have = 0 }
+    function flush() { if (have) print strip_inline(para); para = ""; have = 0; lastl = "" }
+    # True when s holds text after any block quote and list item markers (a bare "-" or ">"
+    # opens a container but is not yet a paragraph line).
+    function has_text(s) {
+      sub(/^[ \t]+/, "", s)
+      while (1) {
+        if (s ~ /^>/) { s = substr(s, 2); sub(/^[ \t]+/, "", s); continue }
+        if (s ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/) { sub(/^([-+*]|[0-9]+[.)])[ \t]*/, "", s); continue }
+        break
+      }
+      return s ~ /[^ \t]/
+    }
     # s may hold line breaks (a buffered paragraph); a closer is looked for across at most one.
     function strip_inline(s,   out, i, n, r, k, m, found, b, nl, ch) {
       out = ""; i = 1; n = length(s)
@@ -458,17 +469,37 @@ strip_code_spans() {
       # block, so no span pairs across those boundaries. When unsure whether a line ends a
       # paragraph, it stands alone: a span that fails to strip only over-lints.
       # A line starting with < may open an HTML block, where backticks are literal: it and
-      # every line after it up to a blank line are printed raw. A line holding a pipe may be
-      # a table row (GFM rows need no leading pipe, and a pipe-less line after a row is a
-      # row too): it and every line after it up to a blank line are stripped one by one.
-      # An indented line (4+ columns) is indented code and is stripped on its own.
+      # every line after it up to a blank line are printed raw.
+      # A table starts when a delimiter row (only | - : and blanks, after any > markers)
+      # follows a buffered line: that line is the header and is stripped on its own, apart
+      # from the paragraph lines before it. The detector is loose on purpose (a false table
+      # only over-lints). Table rows, with or without pipes, are stripped one by one until a
+      # blank line or an ATX heading (1-6 #, then a blank or end of line).
+      # An indented line (4+ columns) joins the buffer only as a lazy continuation: the last
+      # buffered line holds paragraph text and the line itself does not look like a list
+      # item, quote, heading, fence, HTML or table line. Otherwise it is stripped on its own
+      # (after a blank line it is indented code).
       if (t ~ /^[[:space:]]*$/) { flush(); solo = ""; print; next }
       if (solo == "html" || (col <= 3 && c == "<")) { flush(); solo = "html"; print; next }
-      if (solo == "table" || index($0, "|") > 0) { flush(); solo = "table"; print strip_inline($0); next }
-      if (col >= 4) { flush(); print strip_inline($0); next }
+      if (solo == "table") {
+        h = run_len(t, 1, "#"); hc = substr(t, h + 1, 1)
+        if (!(col <= 3 && h >= 1 && h <= 6 && (hc == "" || hc == " " || hc == "\t"))) { print strip_inline($0); next }
+        solo = ""
+      }
+      dt = t; while (dt ~ /^>/) { dt = substr(dt, 2); sub(/^[ \t]+/, "", dt) }
+      if (have && dt ~ /^[-|: \t]+$/ && index(dt, "-") > 0 && (index(dt, "|") > 0 || index(dt, ":") > 0 || index(lastl, "|") > 0)) {
+        k = 0; for (i = length(para); i >= 1; i--) if (substr(para, i, 1) == "\n") { k = i; break }
+        if (k) print strip_inline(substr(para, 1, k - 1))
+        print strip_inline(substr(para, k + 1))
+        para = ""; have = 0; lastl = ""; solo = "table"; print strip_inline($0); next
+      }
+      if (col >= 4) {
+        if (have && has_text(lastl) && !(t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^[>#<]/ || substr(t, 1, 3) == "```" || substr(t, 1, 3) == "~~~" || index(t, "|") > 0)) { para = para "\n" $0; lastl = $0; next }
+        flush(); print strip_inline($0); next
+      }
       if (col <= 3 && t ~ /^#+([ \t]|$)/) { flush(); print strip_inline($0); next }
       if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^>/)) flush()
-      para = have ? para "\n" $0 : $0; have = 1
+      para = have ? para "\n" $0 : $0; have = 1; lastl = $0
     }
     END { flush(); if (fence) printf "%s", buf }
   ' "$1"
