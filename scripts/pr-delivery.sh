@@ -399,7 +399,9 @@ cmd_review() {
 # ambiguous: inside a list item it is a fence line (its indent counts from the item), at
 # top level it is code. Either guess can flip which later ``` lines open and close,
 # hiding a placeholder GitHub shows, so after an ambiguous line no further fence opens
-# and every later line is linted (over-lint, fail-safe). A backtick run closes only on a
+# and every later line is linted (over-lint, fail-safe). The body of a fence closed by an
+# ambiguous closer is linted too: a list item can end inside it, and GitHub then shows the
+# rest as plain text (over-lint when the item holds). A backtick run closes only on a
 # run of the same length; an unmatched run stays, so text after it is still linted.
 # Every line outside a fence is stripped on its own: a span is matched within one line only.
 # A span that wraps a line break (valid CommonMark) is therefore not stripped, and a
@@ -445,9 +447,16 @@ strip_code_spans() {
         buf = buf $0 "\n"
         if (c == fc) {
           l = run_len(t, 1, c)
-          # amb: a 4+ column fence line was seen, so stop opening fences (see above).
-          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = ""; if (col > 3) amb = 1 }
+          if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) {
+            fence = 0; buf = ""
+            # amb: a 4+ column fence line was seen, so stop opening fences (see above).
+            # The body before an ambiguous closer is printed, not dropped: if a list item
+            # ended inside it, GitHub shows the rest as plain text.
+            if (col > 3) { amb = 1; for (j = 1; j <= nb; j++) print strip_inline(body[j]) }
+            next
+          }
         }
+        body[++nb] = $0
         next
       }
       if (!amb && (c == "`" || c == "~")) {
@@ -456,7 +465,7 @@ strip_code_spans() {
         # An opener at 4+ columns is ambiguous too: it opens nothing and sets amb.
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) {
           if (col > 3) amb = 1
-          else { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+          else { fence = 1; fc = c; fl = l; buf = $0 "\n"; nb = 0; next }
         }
       }
       print strip_inline($0)
