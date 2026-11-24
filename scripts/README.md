@@ -543,8 +543,10 @@ opt-in (or with a malformed `local_only_gates` list, an unreadable project file,
 A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
 When `--gate-mode ci --final` falls back to the local suite, the gate still reads `gh pr checks`
 once, with no waiting, for the PR whose head equals the worktree HEAD, and appends it as a last
-gate `ci-final-veto` (#149). It is an extra veto, never a stand-in: green only when every check
-on that head passed; a red check, pending, no checks, a head mismatch, no known PR, no `gh`, or
+gate `ci-final-veto` (#149). It is an extra veto, never a stand-in: green only when no check
+on that head failed or is pending and at least one passed (skipped checks are allowed, as in CI
+mode), and `terminal-pairing.sh` never counts it as a gate that ran, so it cannot pair a final
+gate whose local gates were all absent; a red check, pending, no checks, a head mismatch, no known PR, no `gh`, or
 a failed or unreadable `gh` call makes it red, with `ci_status` and `detail` naming which, and
 `gate_mode_reason` ends `final gate CI veto: <status>`. `gate_mode` stays `local` and `ci` stays
 null. `--gate-mode local --final` reads no CI.

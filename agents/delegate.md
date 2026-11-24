@@ -315,7 +315,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      `state.json`; pass `--project-context <path>` when the project file lives outside the
      target repo (for example a parent workspace). A `state.json` copy that differs from the
      project file makes it run local. When it runs local it still reads the head's CI once as
-     a `ci-final-veto` gate, red unless every check on that exact head passed (#149).
+     a `ci-final-veto` gate, red unless no check on that exact head failed or is pending and
+     at least one passed (skipped checks are allowed) (#149).
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
      replaces the first).
@@ -737,7 +738,8 @@ whose target repo must not carry `.bureau/` may have neither. Absent is not a
 failure and not a hidden red gate: never revise or escalate on it alone. Note it
 in Uncertainties ("regression gate absent: no runner at <runner_searched>;
 <fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
-absent, no gate evidence exists for this checkpoint: emit `escalate` with
+absent (a `ci-final-veto` record, `ci_veto: true`, is not a canonical gate: it can
+only veto, never stand in for one), no gate evidence exists for this checkpoint: emit `escalate` with
 Escalation "no canonical gate ran: <names> absent". A runner the branch removed
 or broke is not absent: the gate records it red (`runner_source: "missing"`,
 `missing_reason`), and Step 1's failed-gate rule applies. A gate with
