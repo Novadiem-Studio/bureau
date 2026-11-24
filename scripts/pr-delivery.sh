@@ -393,14 +393,14 @@ cmd_review() {
 }
 
 # Print a markdown file with fenced blocks and closed inline `code` spans removed.
-# A fence opener is indented at most 3 columns. A fence closes only on a line of the
+# A fence opens on a line indented at most 3 columns. A fence closes only on a line of the
 # opener's character, at least as long, with nothing but whitespace after it, at any
-# indent; an unclosed fence is printed as-is. A closer at 4+ columns is ambiguous: inside
-# a list item it closes the fence (its indent counts from the item), at top level it is
-# code. Either guess can flip which later ``` lines open and close, hiding a placeholder
-# GitHub shows, so after an ambiguous closer no further fence opens and every later line
-# is linted (fail-safe over-lint). A backtick run closes only on a run of the same
-# length; an unmatched run stays, so text after it is still linted.
+# indent; an unclosed fence is printed as-is. An opener or closer at 4+ columns is
+# ambiguous: inside a list item it is a fence line (its indent counts from the item), at
+# top level it is code. Either guess can flip which later ``` lines open and close,
+# hiding a placeholder GitHub shows, so after an ambiguous line no further fence opens
+# and every later line is linted (over-lint, fail-safe). A backtick run closes only on a
+# run of the same length; an unmatched run stays, so text after it is still linted.
 # Every line outside a fence is stripped on its own: a span is matched within one line only.
 # A span that wraps a line break (valid CommonMark) is therefore not stripped, and a
 # placeholder inside it is still linted. That is a known over-lint, fail-safe (it refuses
@@ -429,9 +429,9 @@ strip_code_spans() {
       return out
     }
     {
-      # Indent in columns (a tab advances to the next multiple of 4). A fence opener may be
-      # indented at most 3 columns; at 4 or more the line is indented code or paragraph
-      # text, not a fence (CommonMark, issue #149).
+      # Indent in columns (a tab advances to the next multiple of 4). A fence opens only at
+      # 3 columns or less; at 4 or more the line is indented code at top level but a fence
+      # line inside a list item (CommonMark, issue #149), so it sets amb instead.
       col = 0; p = 1
       while (p <= length($0)) {
         ch = substr($0, p, 1)
@@ -445,15 +445,19 @@ strip_code_spans() {
         buf = buf $0 "\n"
         if (c == fc) {
           l = run_len(t, 1, c)
-          # amb: closed by a 4+ column closer, so stop opening fences (see above).
+          # amb: a 4+ column fence line was seen, so stop opening fences (see above).
           if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) { fence = 0; buf = ""; if (col > 3) amb = 1 }
         }
         next
       }
-      if (!amb && col <= 3 && (c == "`" || c == "~")) {
+      if (!amb && (c == "`" || c == "~")) {
         l = run_len(t, 1, c)
         # A backtick fence info string cannot hold a backtick; such a line opens no fence.
-        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+        # An opener at 4+ columns is ambiguous too: it opens nothing and sets amb.
+        if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) {
+          if (col > 3) amb = 1
+          else { fence = 1; fc = c; fl = l; buf = $0 "\n"; next }
+        }
       }
       print strip_inline($0)
     }
