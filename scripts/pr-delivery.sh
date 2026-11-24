@@ -400,22 +400,32 @@ cmd_review() {
 # line break inside a paragraph, never a blank line, a fence line, or the start of a list
 # item, block quote or heading (issue #149). Indented code lines, table rows (any line
 # with a pipe, and what follows it to a blank line) and HTML block lines (a line starting
-# with <, and what follows it to a blank line, printed raw) never join another line.
+# with <, and what follows it to a blank line, printed raw) never join another line. Nor
+# does a quote or list item line whose content is a heading, fence or HTML start, or a list
+# item line holding a pipe.
 strip_code_spans() {
   awk '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
     function flush() { if (have) print strip_inline(para); para = ""; have = 0; lastl = "" }
+    # s without its leading blanks and any block quote and list item markers; nm is set to
+    # the number of list item markers removed.
+    function after_markers(s) {
+      nm = 0; sub(/^[ \t]+/, "", s)
+      while (1) {
+        if (s ~ /^>/) { s = substr(s, 2); sub(/^[ \t]+/, "", s); continue }
+        if (s ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/) { sub(/^([-+*]|[0-9]+[.)])[ \t]*/, "", s); nm++; continue }
+        break
+      }
+      return s
+    }
+    # True when s (after its markers) starts a heading, an HTML block or a fence.
+    function opens_block(s) { return s ~ /^[#<]/ || substr(s, 1, 3) == "```" || substr(s, 1, 3) == "~~~" }
     # True when s is paragraph text after any block quote and list item markers. A bare "-"
     # or ">" opens a container but is not a paragraph line; neither is a heading, HTML or
     # fence start, nor a setext underline or thematic break (only - _ * = and blanks).
     function has_text(s) {
-      sub(/^[ \t]+/, "", s); sub(/[[:space:]]+$/, "", s)
-      while (1) {
-        if (s ~ /^>/) { s = substr(s, 2); sub(/^[ \t]+/, "", s); continue }
-        if (s ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/) { sub(/^([-+*]|[0-9]+[.)])[ \t]*/, "", s); continue }
-        break
-      }
-      if (s ~ /^[#<]/ || substr(s, 1, 3) == "```" || substr(s, 1, 3) == "~~~") return 0
+      sub(/[[:space:]]+$/, "", s); s = after_markers(s)
+      if (opens_block(s)) return 0
       if (s ~ /^[-_*= \t]*$/) return 0
       return 1
     }
@@ -502,6 +512,17 @@ strip_code_spans() {
       if (col >= 4) {
         if (have && has_text(lastl) && !(t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^[>#<]/ || substr(t, 1, 3) == "```" || substr(t, 1, 3) == "~~~" || index(t, "|") > 0)) { para = para "\n" $0; lastl = $0; next }
         flush(); print strip_inline($0); next
+      }
+      # A quote or list item line whose content is a heading, fence or HTML start, or a list
+      # item line holding a pipe, stands alone: no span pairs into or out of it. After an
+      # HTML start the lines up to a blank line are printed raw, as for a top-level one.
+      if (col <= 3) {
+        tt = t; sub(/[[:space:]]+$/, "", tt); mt = after_markers(tt)
+        if (mt != tt && (opens_block(mt) || (nm && index(mt, "|") > 0))) {
+          flush()
+          if (substr(mt, 1, 1) == "<") { solo = "html"; print; next }
+          print strip_inline($0); next
+        }
       }
       if (col <= 3 && t ~ /^#+([ \t]|$)/) { flush(); print strip_inline($0); next }
       if (col <= 3 && (t ~ /^([-+*]|[0-9]+[.)])([ \t]|$)/ || t ~ /^>/)) flush()
