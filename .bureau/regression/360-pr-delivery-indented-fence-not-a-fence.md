@@ -59,5 +59,20 @@ command: |
   # C1: three spaces of indent still open and close a fence.
   printf 'text\n\n   ```\n<k>\n   ```\n\nafter\n' > "$T/in.md"
   hidden "C1 three-space fence" '<k>'
+  # CR1: a bare CR is a line ending (CommonMark), so a CR then ``` is a closer at column 0
+  # on GitHub; the placeholder after it is plain text. Main a2d4029 closed it too.
+  printf '```\ncode\n\r```\nreal placeholder <fill me>\n```\nmore\n' > "$T/in.md"
+  visible "CR1 closer after a bare CR" '<fill me>'
+  # CR2: the same for an opener; skipping it would flip which later ``` open and close.
+  printf '\r```\ncode <a>\n```\nreal placeholder <fill me>\n```\nmore\n```\n' > "$T/in.md"
+  visible "CR2 opener after a bare CR" '<fill me>'
+  # CR3: the indent counts from the last CR, so spaces before it do not make a 4+ column
+  # opener; the fence opens and closes as on GitHub (and main).
+  printf 'text\n\n    \r```\n<k>\n```\n\nafter\n' > "$T/in.md"
+  hidden "CR3 indent counts from the last CR" '<k>'
+  # CR4: CRLF line endings open and close fences as LF does.
+  printf 'text\r\n\r\n```\r\n<k>\r\n```\r\nreal placeholder <fill me>\r\n' > "$T/in.md"
+  hidden "CR4 CRLF fence body" '<k>'
+  visible "CR4 CRLF text after the fence" '<fill me>'
   echo PASS
-expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint. A closer at any indent closes an open fence. A fence line at four or more columns is ambiguous (a list item's fence line on GitHub, L1 closer, O1 and O2 openers; code at top level, R1), so after it no fence opens and every later line is linted (L1, O1, O2, R1, R2 visible; I4 is an over-lint pin). The body of a fence closed by an ambiguous closer is linted, not dropped, because a list item can end inside it (E1 visible; A1 is an over-lint pin). A fence indented three spaces still opens and closes (C1). Mutation: drop the `col <= 3` test on the opener (open at any indent) and I1-I3 fail; restore `col <= 3` on the closer and I4 and L1 fail; drop the `!amb` test on the opener and R1, R2, O1 and O2 fail; stop a 4+ column opener setting amb and O1 and O2 fail; drop the body at an ambiguous closer again and E1 and A1 fail.
+expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint. A closer at any indent closes an open fence. A fence line at four or more columns is ambiguous (a list item's fence line on GitHub, L1 closer, O1 and O2 openers; code at top level, R1), so after it no fence opens and every later line is linted (L1, O1, O2, R1, R2 visible; I4 is an over-lint pin). The body of a fence closed by an ambiguous closer is linted, not dropped, because a list item can end inside it (E1 visible; A1 is an over-lint pin). A fence indented three spaces still opens and closes (C1). A bare CR is a line ending, so a ``` after a CR in the leading whitespace is a fence line whose indent counts from that CR: it closes (CR1) and opens (CR2) a fence, and spaces before the CR do not make it a 4+ column line (CR3, hidden); CRLF files open and close fences as LF does (CR4). Mutation: drop the `col <= 3` test on the opener (open at any indent) and I1-I3 fail; restore `col <= 3` on the closer and I4 and L1 fail; drop the `!amb` test on the opener and R1, R2, O1 and O2 fail; stop a 4+ column opener setting amb and O1 and O2 fail; drop the body at an ambiguous closer again and E1 and A1 fail; drop the CR branch of the indent loop and CR1-CR3 fail; keep the column at a CR instead of restarting it and CR3 fails.

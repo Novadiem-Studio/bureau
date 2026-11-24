@@ -434,11 +434,14 @@ strip_code_spans() {
       # Indent in columns (a tab advances to the next multiple of 4). A fence opens only at
       # 3 columns or less; at 4 or more the line is indented code at top level but a fence
       # line inside a list item (CommonMark, issue #149), so it sets amb instead.
+      # A bare CR is a line ending (CommonMark): in the leading whitespace it starts the
+      # line GitHub sees, so the indent restarts at 0 (main a2d4029 skipped it as space).
       col = 0; p = 1
       while (p <= length($0)) {
         ch = substr($0, p, 1)
         if (ch == " ") col++
         else if (ch == "\t") col += 4 - col % 4
+        else if (ch == "\r") col = 0
         else break
         p++
       }
