@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip treats a ``` line indented 4+ columns as text, not a fence opener or closer
+name: pr-delivery.sh placeholder strip treats a ``` line indented 4+ columns as text, not a fence opener; a 4+ column closer closes and stops later fences opening
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 3)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -23,12 +23,27 @@ command: |
   # I3: two spaces and a tab reach column 4 too.
   printf 'text\n\n  \t```\n\nreal placeholder <fill me>\n\n```sh\ncode\n```\n' > "$T/in.md"
   visible "I3 spaces-then-tab opener" '<fill me>'
-  # I4: a closer indented four spaces does not close an open fence, so what follows is
-  # still code up to the real closer.
+  # I4: a closer indented four spaces is ambiguous (top level: code; in a list item: a
+  # closer). It closes the fence, so <x> is linted although GitHub shows it as code.
+  # Over-lint pin, fail-safe.
   printf '```\ncode\n    ```\n<x> still code\n```\n' > "$T/in.md"
-  hidden "I4 four-space closer" '<x>'
+  visible "I4 four-space closer (over-lint)" '<x>'
+  # L1: in a list item a closer two columns in from the item (four absolute) closes the
+  # fence on GitHub, so the placeholder after it is plain text.
+  printf 'text\n\n- item\n\n  ```\n  code\n    ```\n\nreal placeholder <fill me>\n\n```sh\ncode\n```\n' > "$T/in.md"
+  visible "L1 list-item closer at four columns" '<fill me>'
+  # R1: at top level that closer is code on GitHub, so the next ``` closes the fence and
+  # the placeholder after it is plain text. After an ambiguous closer no fence reopens.
+  printf '```\ncode\n    ```\nplain\n```\nreal placeholder <fill me>\n```\nmore\n```\n' > "$T/in.md"
+  visible "R1 no reopen after four-space closer" '<fill me>'
+  # R2: the same with a tab-indented ~~~ closer and a longer ~~~~ fence.
+  printf '~~~~\ncode\n\t~~~~~\nplain\n~~~~\nreal placeholder <fill me>\n~~~~\nmore\n~~~~\n' > "$T/in.md"
+  visible "R2 no reopen after tab ~~~ closer" '<fill me>'
+  # A1: code before the ambiguous closer is inside the fence on either reading.
+  printf 'text\n\n- item\n\n  ```\n  <k>\n    ```\n\nafter\n' > "$T/in.md"
+  hidden "A1 list fence body" '<k>'
   # C1: three spaces of indent still open and close a fence.
   printf 'text\n\n   ```\n<k>\n   ```\n\nafter\n' > "$T/in.md"
   hidden "C1 three-space fence" '<k>'
   echo PASS
-expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint; a ``` closer indented four spaces does not close an open fence (I4); a fence indented three spaces still opens and closes (C1). Mutation: drop the `col <= 3` test on the opener in strip_code_spans and I1-I3 fail; drop it on the closer and I4 fails.
+expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint. A closer at any indent closes an open fence; one at four or more columns is ambiguous (a list item's closer on GitHub, L1, or code at top level, R1), so after it no fence opens and every later line is linted (L1, R1, R2 visible; I4 is an over-lint pin, A1 keeps the fence body before it hidden). A fence indented three spaces still opens and closes (C1). Mutation: drop the `col <= 3` test on the opener and I1-I3 fail; restore `col <= 3` on the closer and I4, L1 and A1 fail; drop the `!amb` test on the opener and R1 fails.
