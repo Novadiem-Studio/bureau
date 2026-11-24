@@ -193,7 +193,7 @@ usually the only CodeRabbit read before merge.
 `scripts/coderabbit-gate.sh` and not by the `reviewDecision` check above.
 
 **Why it needs its own gate.** CodeRabbit posts as an *issue comment* from
-`coderabbitai[bot]`, never as a formal review. On a reviewed PR, `gh pr view --json reviews`
+`coderabbitai[bot]`, usually not as a formal review. On a reviewed PR, `gh pr view --json reviews`
 returns `[]` and `reviewDecision` is `""` — so the `reviewDecision != CHANGES_REQUESTED`
 precondition is structurally blind to it and cannot fail on a CodeRabbit finding, ever.
 
@@ -209,14 +209,33 @@ not a usable test:
 Only the reviewed **commit range** is evidence. A real review reports
 `Reviewing files that changed ... between <base> and <head>`; the gate compares that head
 against the PR's current head, so a review of an earlier commit fails as stale rather than
-passing.
+passing. When the summary carries no range at all (auto-review paused, or after
+`@coderabbitai resume`), the gate reads `pulls/{n}/reviews` instead and accepts a review by
+`coderabbitai[bot]` whose `commit_id` is the current head (issue #146). A review of another
+commit, or by any other login, does not count.
 
 **What the gate requires to pass:** a review whose reported head equals the PR's current head,
-and either zero actionable findings or a disposition recorded in `log.md` for that exact head:
+and every open finding **named by id** in a disposition recorded in `log.md` for that exact head:
 
 ```
-CODERABBIT-EVENT: {"head":"<sha>","findings":<n>,"disposition":"addressed|overruled","note":"<why>"}
+CODERABBIT-EVENT: {"head":"<sha>","disposition":"addressed|overruled","ids":["<id>", ...],"note":"<why>"}
 ```
+
+Findings are dispositioned one by one, by id (issue #146). The open set is:
+
+- every top-level inline review comment by `coderabbitai[bot]` (`pulls/{n}/comments`, any
+  commit; a reply in a thread is not a finding), by its numeric comment id;
+- every entry in the "Outside diff range comments (N)" section of a bot review on the head.
+  These have no comment id, so the gate derives `b<review id>-<first 12 hex of the sha256 of
+  "<file:lines>|<title>">` (the text as the gate's @tsv step escapes it, so copy ids from the gate's own output, not by hand). If it cannot parse exactly N entries, it fails closed.
+
+The gate prints the open ids and a ready-to-fill event line. Ids compare as strings, so
+`4662945345` and `"4662945345"` match; one event or several may name them, with `addressed` or
+`overruled`. An id outside the id grammar (digits, or `b<digits>-<hex>`), such as one holding
+a newline, names nothing. A count clears nothing: an event that names no ids (the old
+`"findings":<n>` shape) dispositions no finding, however large the number, so a matching
+total can never cover a finding nobody named. A summary that claims more actionable comments
+than the gate found ids for also fails closed, as does a failed or unreadable lookup.
 
 A disposition keyed to a different head does not clear findings on this one — same discipline as
 the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.

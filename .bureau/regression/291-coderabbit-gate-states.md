@@ -53,14 +53,18 @@ command: |
   out=$(run "$TMPF/ok.txt" 3); rc=$?
   [ $rc -eq 1 ] || { echo "FAIL: F (undispositioned findings) must fail, rc=$rc"; rm -rf "$TMPF"; exit 1; }
 
-  # G — same findings, dispositioned in log.md for THIS head -> passes.
-  printf 'CODERABBIT-EVENT: {"head":"%s","findings":3,"disposition":"addressed","note":"all three fixed"}\n' "$HEAD" > "$TMPF/log.md"
-  out=$(run "$TMPF/ok.txt" 3 "$TMPF/log.md"); rc=$?
+  # G — three findings (by inline comment id), each named in log.md for THIS head -> passes.
+  # Dispositions name finding ids since issue #146 round 3; a bare count no longer clears
+  # (fixture 356 owns the per-id rules), so G and H carry ids via --inline-file.
+  printf '[{"id":11,"user":{"login":"coderabbitai[bot]"}},{"id":12,"user":{"login":"coderabbitai[bot]"}},{"id":13,"user":{"login":"coderabbitai[bot]"}}]\n' > "$TMPF/inline3.json"
+  runf() { bash "$G" --comments-file "$TMPF/ok.txt" --head "$HEAD" --inline-file "$TMPF/inline3.json" --log "$1" 2>&1; }
+  printf 'CODERABBIT-EVENT: {"head":"%s","disposition":"addressed","ids":[11,12,13],"note":"all three fixed"}\n' "$HEAD" > "$TMPF/log.md"
+  out=$(runf "$TMPF/log.md"); rc=$?
   [ $rc -eq 0 ] || { echo "FAIL: G (dispositioned) should pass, rc=$rc: $out"; rm -rf "$TMPF"; exit 1; }
 
   # H — a disposition for a DIFFERENT head must not clear findings on this one.
-  printf 'CODERABBIT-EVENT: {"head":"%s","findings":3,"disposition":"addressed"}\n' dddddddddddddddddddddddddddddddddddddddd > "$TMPF/log2.md"
-  out=$(run "$TMPF/ok.txt" 3 "$TMPF/log2.md"); rc=$?
+  printf 'CODERABBIT-EVENT: {"head":"%s","disposition":"addressed","ids":[11,12,13]}\n' dddddddddddddddddddddddddddddddddddddddd > "$TMPF/log2.md"
+  out=$(runf "$TMPF/log2.md"); rc=$?
   [ $rc -eq 1 ] || { echo "FAIL: H (wrong-head disposition) must fail, rc=$rc"; rm -rf "$TMPF"; exit 1; }
 
   # I — the seam is all-or-nothing, so it cannot half-engage in production.

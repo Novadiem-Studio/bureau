@@ -9,17 +9,30 @@
 # Offline test seam (no network; all three must be given together):
 #   --comments-file FILE   bot comment bodies, as the API would return them
 #   --head SHA             the PR head to compare the reviewed range against
-#   --inline-count N       number of inline review comments from the bot
+#   --inline-file FILE     the PR's inline review comments as the API returns them
+#                          (a JSON array), or instead:
+#   --inline-count N       N inline findings with no ids (they can never be dispositioned,
+#                          so N > 0 always fails; N = 0 means none)
+#   --reviews-file FILE    optional; the PR's formal reviews as the API returns them
+#                          (a JSON array; default []). Offline mode only.
+#
+# Findings are dispositioned BY ID (#146). The open set is every top-level inline comment
+# by coderabbitai[bot] (its numeric comment id) plus every entry in the "Outside diff range
+# comments (N)" section of a bot review on the head (id b<review id>-<first 12 hex of the
+# sha256 of "<file:lines>|<title>">). Each must be named in the `ids` of a CODERABBIT-EVENT
+# for the head; a count never clears anything. The gate prints the open ids.
 #
 # Exit codes (mirrors preflight-artifacts.sh / spawn-gate.sh):
 #   0  + "coderabbit: clean"   reviewed at the current head; findings zero or dispositioned
 #   1  + DEFECT line(s)        not reviewed, stale, or findings left undispositioned
 #   2                          cannot run (bad args, no PR recorded, gh/jq missing)
 #
-# WHY THIS EXISTS. CodeRabbit posts as an ISSUE COMMENT from coderabbitai[bot], never
-# as a formal review: `gh pr view --json reviews` returns [] and reviewDecision is "".
-# pr-delivery.sh's `reviewDecision != CHANGES_REQUESTED` check therefore can NEVER see
-# a CodeRabbit finding. This gate reads the bot's comments directly instead.
+# WHY THIS EXISTS. CodeRabbit usually posts as an ISSUE COMMENT from coderabbitai[bot],
+# not a formal review: `gh pr view --json reviews` returns [] and reviewDecision is "".
+# pr-delivery.sh's `reviewDecision != CHANGES_REQUESTED` check therefore cannot see
+# a CodeRabbit finding. This gate reads the bot's comments directly instead. When the
+# summary reports no range (auto-review paused, or after '@coderabbitai resume'), a
+# formal review from the bot whose commit_id is the head is accepted as the proof (#146).
 #
 # THE TRAP THIS GATE EXISTS TO AVOID. CodeRabbit comments even when it has NOT reviewed:
 #   - draft PRs        -> "skip review by coderabbit.ai"  (Bureau opens every PR --draft)
@@ -29,12 +42,29 @@
 #
 # Bash 3.2 + gh + jq; macOS portable. No set -e (we inspect exit codes).
 
+# Resolve gh and the sha256 tool from the CALLER's PATH before the guard below. The guard
+# is for grep (ugrep); it must not swap in a different gh or digest tool. On Linux runners
+# a real gh lives in /usr/bin and would shadow a caller's (or a test's) gh (#146).
+GH_BIN=$(command -v gh 2>/dev/null)
+SHASUM_BIN=$(command -v shasum 2>/dev/null)
+SHA256SUM_BIN=$(command -v sha256sum 2>/dev/null)
 PATH=/usr/bin:$PATH  # EC 10 — ugrep guard
+gh() { "$GH_BIN" "$@"; }
+# First 12 hex of the sha256 of stdin, or nothing (status 1) when no tool works.
+digest12() {
+  local d
+  if [ -n "$SHASUM_BIN" ]; then d=$("$SHASUM_BIN" -a 256 | cut -c1-12)
+  elif [ -n "$SHA256SUM_BIN" ]; then d=$("$SHA256SUM_BIN" | cut -c1-12)
+  else return 1; fi
+  case "$d" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) printf '%s\n' "$d" ;; *) return 1 ;; esac
+}
 
 RUN_DIR=""; REPO=""; PR=""; LOG_MD=""
-COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""
+COMMENTS_FILE=""; HEAD_OVERRIDE=""; INLINE_OVERRIDE=""; REVIEWS_FILE=""; INLINE_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --reviews-file)  REVIEWS_FILE="$2";    shift 2 ;;
+    --inline-file)   INLINE_FILE="$2";     shift 2 ;;
     --repo)          REPO="$2";            shift 2 ;;
     --pr)            PR="$2";              shift 2 ;;
     --log)           LOG_MD="$2";          shift 2 ;;
@@ -47,18 +77,27 @@ while [ $# -gt 0 ]; do
 done
 
 OFFLINE=0
-if [ -n "$COMMENTS_FILE" ] || [ -n "$HEAD_OVERRIDE" ] || [ -n "$INLINE_OVERRIDE" ]; then
-  if [ -z "$COMMENTS_FILE" ] || [ -z "$HEAD_OVERRIDE" ] || [ -z "$INLINE_OVERRIDE" ]; then
-    echo "coderabbit-gate: --comments-file, --head and --inline-count must be given together" >&2
+if [ -n "$COMMENTS_FILE" ] || [ -n "$HEAD_OVERRIDE" ] || [ -n "$INLINE_OVERRIDE" ] || [ -n "$INLINE_FILE" ]; then
+  if [ -z "$COMMENTS_FILE" ] || [ -z "$HEAD_OVERRIDE" ] || { [ -z "$INLINE_OVERRIDE" ] && [ -z "$INLINE_FILE" ]; }; then
+    echo "coderabbit-gate: --comments-file, --head and --inline-file (or --inline-count) must be given together" >&2
     exit 2
   fi
+  if [ -n "$INLINE_OVERRIDE" ] && [ -n "$INLINE_FILE" ]; then
+    echo "coderabbit-gate: give --inline-file or --inline-count, not both" >&2; exit 2
+  fi
   [ -r "$COMMENTS_FILE" ] || { echo "coderabbit-gate: unreadable --comments-file" >&2; exit 2; }
+  [ -z "$INLINE_FILE" ] || [ -r "$INLINE_FILE" ] || { echo "coderabbit-gate: unreadable --inline-file" >&2; exit 2; }
+  case "$INLINE_OVERRIDE" in *[!0-9]*) echo "coderabbit-gate: --inline-count must be a whole number" >&2; exit 2 ;; esac
   OFFLINE=1
   [ -n "$REPO" ] || REPO="offline/offline"
   [ -n "$PR" ] || PR="0"
 fi
+if [ -n "$REVIEWS_FILE" ]; then
+  [ "$OFFLINE" -eq 1 ] || { echo "coderabbit-gate: --reviews-file needs the offline seam (--comments-file, --head, --inline-file or --inline-count)" >&2; exit 2; }
+  [ -r "$REVIEWS_FILE" ] || { echo "coderabbit-gate: unreadable --reviews-file" >&2; exit 2; }
+fi
 
-[ "$OFFLINE" -eq 1 ] || command -v gh >/dev/null 2>&1 || { echo "coderabbit-gate: gh required" >&2; exit 2; }
+[ "$OFFLINE" -eq 1 ] || [ -n "$GH_BIN" ] || { echo "coderabbit-gate: gh required" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "coderabbit-gate: jq required" >&2; exit 2; }
 
 if [ -n "$RUN_DIR" ]; then
@@ -127,6 +166,24 @@ if grep -q 'rate limited by coderabbit.ai' "$bodies" 2>/dev/null; then
   defect "CodeRabbit was RATE LIMITED and did not review (plan limit or exhausted credits). Re-trigger with an '@coderabbitai review' PR comment once capacity returns; do not merge on the assumption it passed."
 fi
 
+# ── The PR's formal reviews (no-range proof, and body-only findings) ──────────
+# A failed or unreadable lookup is an error: body-only findings live here, so a gate that
+# cannot read them cannot pass.
+reviews="$WORK/reviews.json"
+if [ "$OFFLINE" -eq 1 ]; then
+  if [ -n "$REVIEWS_FILE" ]; then cp "$REVIEWS_FILE" "$reviews"; else echo '[]' > "$reviews"; fi
+else
+  if ! gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[]' > "$WORK/reviews.lines" 2>"$WORK/reviews.err"; then
+    echo "coderabbit-gate: cannot read formal reviews for PR #$PR in $REPO: $(head -1 "$WORK/reviews.err")" >&2
+    exit 2
+  fi
+  jq -s '.' "$WORK/reviews.lines" > "$reviews" 2>/dev/null || : > "$reviews"
+fi
+if ! jq -e 'type == "array"' "$reviews" >/dev/null 2>&1; then
+  echo "coderabbit-gate: unreadable formal reviews for PR #$PR in $REPO" >&2
+  exit 2
+fi
+
 # ── Did it review THIS head? ──────────────────────────────────────────────────
 # A real review names its commit range: "between <base_sha> and <head_sha>".
 # Last occurrence wins — the bot edits its summary in place on each new push.
@@ -138,33 +195,115 @@ if [ -n "$reviewed_sha" ]; then
     defect "CodeRabbit's review is STALE: it reviewed ${reviewed_sha}, the PR head is ${head_sha}. Commits landed after the review, so the merged tree was never seen. Push-triggered re-review, or '@coderabbitai review'."
   fi
 elif [ -s "$bodies" ]; then
-  defect "CodeRabbit commented on PR #$PR but never reported a reviewed commit range, so no review of any commit is evidenced. Treat as unreviewed."
+  # No range in the summary (auto-review paused, or after '@coderabbitai resume'). A formal
+  # review by the bot on exactly this head is the proof instead; one on another commit, or
+  # by another login, is not (#146).
+  review_shas="$WORK/review-shas.txt"
+  jq -r '.[] | select(.user.login=="coderabbitai[bot]") | .commit_id // empty' "$reviews" > "$review_shas" 2>/dev/null
+  if ! grep -Fxq "$head_sha" "$review_shas" 2>/dev/null; then
+    defect "CodeRabbit commented on PR #$PR but never reported a reviewed commit range, and has no formal review on head ${head_sha}, so no review of this head is evidenced. Treat as unreviewed."
+  fi
 fi
 
-# ── Findings, and whether they were dispositioned ─────────────────────────────
-if [ "$OFFLINE" -eq 1 ]; then
-  inline="$INLINE_OVERRIDE"
+# ── Findings, by id, and whether each was dispositioned ───────────────────────
+# Open inline findings: top-level comments by the bot (a reply in a thread is not a new
+# finding), across every commit, each by its numeric comment id. A failed or unreadable
+# lookup is an error, not zero findings: a gate that cannot list findings cannot pass.
+open_ids="$WORK/open-ids.txt"; : > "$open_ids"
+INLINE_JQ='.[] | select(.user.login == "coderabbitai[bot]" and (.in_reply_to_id // null) == null) | .id'
+anon=0
+if [ "$OFFLINE" -eq 1 ] && [ -n "$INLINE_OVERRIDE" ]; then
+  anon="$INLINE_OVERRIDE"
+elif [ "$OFFLINE" -eq 1 ]; then
+  # Exactly one JSON value, an array: {} or empty input would otherwise yield no ids and
+  # read as no findings. [] stays a valid empty lookup.
+  jq -s -e 'length == 1 and (.[0] | type == "array")' "$INLINE_FILE" >/dev/null 2>&1 \
+    || { echo "coderabbit-gate: --inline-file must hold exactly one JSON array" >&2; exit 2; }
+  jq -r "$INLINE_JQ" "$INLINE_FILE" > "$WORK/inline.ids" 2>/dev/null \
+    || { echo "coderabbit-gate: unreadable --inline-file" >&2; exit 2; }
 else
-  inline=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate \
-    --jq '[.[] | select(.user.login=="coderabbitai[bot]")] | length' 2>/dev/null)
+  if ! gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq "$INLINE_JQ" > "$WORK/inline.ids" 2>"$WORK/inline.err"; then
+    echo "coderabbit-gate: cannot read inline review comments for PR #$PR in $REPO: $(head -1 "$WORK/inline.err")" >&2
+    exit 2
+  fi
 fi
-[ -n "$inline" ] || inline=0
+if [ -s "$WORK/inline.ids" ]; then
+  if grep -vqE '^[0-9]+$' "$WORK/inline.ids"; then
+    echo "coderabbit-gate: unreadable inline review comment ids for PR #$PR in $REPO" >&2
+    exit 2
+  fi
+  cat "$WORK/inline.ids" >> "$open_ids"
+fi
+if [ "$anon" -gt 0 ]; then
+  defect "$anon inline finding(s) on PR #$PR were given only as a count (--inline-count), with no ids, so none can be dispositioned. Use --inline-file."
+fi
+
+# Body-only findings: entries in the "Outside diff range comments (N)" section of a bot
+# review on the head have no comment id. Each gets b<review id>-<12 hex of the sha256 of
+# "<file:lines>|<title>">. If the N entries cannot all be parsed, fail closed.
+jq -r --arg h "$head_sha" '
+  .[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h) | . as $r
+  | (($r.body // "") | split("\n")) as $L
+  | ([$L | to_entries[] | select(.value | test("Outside diff range comments \\([0-9]+\\)")) | .key] | first) as $i
+  | select($i != null)
+  | ($L[$i] | capture("Outside diff range comments \\((?<n>[0-9]+)\\)").n | tonumber) as $n
+  | ([$L | to_entries[] | select(.key > $i and (.value | startswith(">") | not)) | .key] | first // ($L | length)) as $k
+  | [$L[$i + 1:$k][] | select(test("^> *<summary><strong>"))
+     | (capture(" · (?<title>.+) · <code>(?<loc>[^<]+)</code></summary>") // null)] as $e
+  | if ($e | length) == $n and all($e[]; . != null)
+    then ($e[] | ["ID", ($r.id | tostring), .loc, .title] | @tsv)
+    else ["BAD", ($r.id | tostring), ($n | tostring), ([$e[] | select(. != null)] | length | tostring)] | @tsv
+    end' "$reviews" > "$WORK/body.tsv" 2>/dev/null \
+  || { echo "coderabbit-gate: cannot parse formal review bodies for PR #$PR in $REPO" >&2; exit 2; }
+tab=$(printf '\t')
+while IFS="$tab" read -r kind rid f3 f4; do
+  case "$kind" in
+    ID)  # Never an id from an empty digest: those would collapse into one id (#146).
+         dg=$(printf '%s|%s' "$f3" "$f4" | digest12) \
+           || { echo "coderabbit-gate: no working sha256 tool (shasum or sha256sum) to derive body finding ids" >&2; exit 2; }
+         printf 'b%s-%s\n' "$rid" "$dg" >> "$open_ids" ;;
+    BAD) defect "CodeRabbit review $rid on head ${head_sha} lists \"Outside diff range comments ($f3)\" but only $f4 entr(ies) could be parsed, so those findings have no reliable ids and cannot be dispositioned. Read the review body; this gate fails closed until it parses." ;;
+  esac
+done < "$WORK/body.tsv"
+
+# A summary that claims more actionable comments than there are finding ids leaves some
+# finding unnamed; fail closed rather than guess which.
+total=$(grep -c . "$open_ids")
 actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
   | tail -1 | grep -oE '[0-9]+$')
 [ -n "$actionable" ] || actionable=0
+if [ "$actionable" -gt $((total + anon)) ]; then
+  defect "CodeRabbit reports $actionable actionable comment(s) on PR #$PR but only $((total + anon)) finding id(s) were found, so some findings cannot be named. Read the PR's review comments."
+fi
 
-findings=$inline
-[ "$actionable" -gt "$findings" ] 2>/dev/null && findings=$actionable
-
-if [ "$findings" -gt 0 ] 2>/dev/null; then
-  # Adjudication, mirroring the BLOCKER-EVENT ledger: the Conductor records a
-  # disposition keyed to the head it applies to. Nothing else clears findings.
-  disposed=0
+if [ "$total" -gt 0 ]; then
+  # Adjudication, mirroring the BLOCKER-EVENT ledger: an event for exactly this head, with
+  # disposition addressed or overruled, names the finding ids it covers. Ids compare as
+  # strings, so 4662945345 and "4662945345" match. A count (`findings`) clears nothing.
+  disposed="$WORK/disposed-ids.txt"; : > "$disposed"
   if [ -n "$LOG_MD" ] && [ -r "$LOG_MD" ]; then
-    grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null | grep -Fq "\"head\":\"$head_sha\"" && disposed=1
+    grep -F 'CODERABBIT-EVENT:' "$LOG_MD" 2>/dev/null \
+      | sed 's/^.*CODERABBIT-EVENT:[[:space:]]*//' \
+      | jq -nrR --arg h "$head_sha" '
+          inputs | (try fromjson catch null)
+          | select(type == "object" and .head == $h
+                   and (.disposition == "addressed" or .disposition == "overruled"))
+          | .ids | select(type == "array") | .[]
+          | select(type == "string" or type == "number") | tostring
+          | select(length > 0 and (test("[^0-9A-Za-z-]") | not))' > "$disposed" 2>/dev/null
+  # The last select keeps only ids in the id grammar (digits, or b<digits>-<hex>). An id
+  # holding a newline or other control character would otherwise print as several lines
+  # and clear several ids it does not name (#146). A negated class, not ^...$, because
+  # those anchors match at line breaks.
   fi
-  if [ "$disposed" -ne 1 ]; then
-    defect "CodeRabbit posted $findings actionable finding(s) on PR #$PR and none are dispositioned for head ${head_sha}. Address them, or record an explicit overrule, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"findings\":$findings,\"disposition\":\"addressed|overruled\",\"note\":\"<why>\"}"
+  # FILENAME, not NR == FNR: with no dispositions the first file is empty, and NR == FNR
+  # would then read the open ids as dispositioned.
+  awk 'FILENAME == ARGV[1] { done[$0] = 1; next } !($0 in done) && !seen[$0]++' "$disposed" "$open_ids" > "$WORK/undisposed.txt"
+  if [ -s "$WORK/undisposed.txt" ]; then
+    n_open=$(grep -c . "$WORK/undisposed.txt")
+    list=$(tr '\n' ' ' < "$WORK/undisposed.txt" | sed 's/ $//')
+    ids_json=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$WORK/undisposed.txt")
+    defect "CodeRabbit has $n_open of $total finding(s) on PR #$PR not dispositioned for head ${head_sha} (open: $list). Address or overrule each, then append to log.md: CODERABBIT-EVENT: {\"head\":\"$head_sha\",\"disposition\":\"addressed|overruled\",\"ids\":$ids_json,\"note\":\"<why>\"}"
   fi
 fi
 
@@ -173,5 +312,5 @@ if [ -s "$DEFECTS" ]; then
   exit 1
 fi
 
-echo "coderabbit: clean (reviewed ${head_sha}, ${findings} finding(s) dispositioned or none)"
+echo "coderabbit: clean (reviewed ${head_sha}, ${total} finding(s), each dispositioned by id, or none)"
 exit 0
