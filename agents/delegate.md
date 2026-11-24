@@ -314,7 +314,8 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      those settings from `project-context.md` as committed on `--base-ref`, never from
      `state.json`; pass `--project-context <path>` when the project file lives outside the
      target repo (for example a parent workspace). A `state.json` copy that differs from the
-     project file makes it run local.
+     project file makes it run local. When it runs local it still reads the head's CI once as
+     a `ci-final-veto` gate, red unless every check on that exact head passed (#149).
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
      replaces the first).

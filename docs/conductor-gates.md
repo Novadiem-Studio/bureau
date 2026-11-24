@@ -157,7 +157,9 @@ local final gate until it opts in. The gate reads these two settings from the pr
 committed on the base branch, never from the run's `state.json`, which you write: a run must not
 be able to shorten its own final gate. If `state.json#integration_gate` differs from the project
 file (a missing local-only gate, a flipped opt-in), the final gate runs the full local suite and
-records why.
+records why. A `--gate-mode ci --final` gate that runs the local suite also reads the head's CI
+once, without waiting, as an extra red-only veto (`ci-final-veto` gate): a red, pending, missing
+or unreadable CI result fails the final gate even when the local suite is green (#149).
 `integration-results.json#gate_mode` records which one produced the result and
 `#gate_mode_reason` says why (`agents/delegate.md` § Main manager loop, step 2). CI mode pays off
 only when CI is quick; a project whose suite takes more than about 10 minutes as one CI job

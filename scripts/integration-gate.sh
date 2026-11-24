@@ -65,7 +65,12 @@
 #                   hardware on this host) still runs locally. The settings are
 #                   never taken from the run's state.json (the Conductor writes
 #                   it); a state.json copy that differs from the project file
-#                   forces the local suite. Recorded as final_gate.
+#                   forces the local suite. Recorded as final_gate. When
+#                   --gate-mode ci --final runs the local suite, the head
+#                   commit's `gh pr checks` is still read once (no waiting) and
+#                   appended as gate "ci-final-veto": an extra veto, green only
+#                   when every check on the exact head passed, red otherwise
+#                   with ci_status saying why (issue #149).
 #   --project-context <path>  the project file to read those settings from.
 #                   Default: project-context.md as committed on --base-ref.
 #   --since-ref   <git ref>    the commit the previous integration gate verified.
@@ -621,6 +626,12 @@ def log(msg):
 
 def done(mode, reason):
     res["mode"], res["reason"] = mode, reason
+    # Issue #149: a final gate that asked for CI but runs the local suite still reads
+    # the CI of the head commit once, as an extra veto. It never stands in for the local suite.
+    if mode == "local" and requested == "ci" and final == "1":
+        veto = final_ci_veto()
+        res["final_ci_veto"] = veto
+        res["reason"] = "%s; final gate CI veto: %s" % (reason, veto["ci_status"])
     print(json.dumps(res))
     sys.exit(0)
 
@@ -628,6 +639,86 @@ def done(mode, reason):
 def git(*args):
     return subprocess.run(["git", "-C", worktree] + list(args),
                           capture_output=True, text=True)
+
+
+def final_ci_veto():
+    """One non-waiting read of `gh pr checks` for the PR whose head is the worktree
+    HEAD (#149). -> a gate record named ci-final-veto. Green only when every check on
+    that head passed (or was skipped, with at least one pass); a red check, pending,
+    no checks, a head mismatch, no known PR, no gh, or a failed or unreadable gh call
+    is red with ci_status saying which. No poll loop: the final gate does not wait."""
+    rec = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
+           "head_sha": "", "failed": [], "pending": [], "checks": []}
+
+    def out(status, detail=""):
+        ok = status == "passed"
+        rec.update({"ci_status": status, "detail": detail,
+                    "exit_code_branch": 0 if ok else {"failed": 1, "pending": 124}.get(status, 2),
+                    "result": "green" if ok else "red"})
+        return rec
+
+    try:
+        p, rp = pr, repo
+        if not p or not rp:
+            try:
+                with open(state_path) as fh:
+                    g = (json.load(fh) or {}).get("git") or {}
+                p = p or ("" if g.get("pr_number") in (None, "") else str(g.get("pr_number")))
+                rp = rp or (g.get("github_repo") or "")
+            except Exception:
+                pass
+        if not p:
+            return out("no_pr", "no pull request known (no --pr and no state.json git.pr_number), so the CI of the head commit cannot be read")
+        gh_bin = shutil.which("gh")
+        if gh_bin is None:
+            return out("gh_missing", "gh is not on PATH, so the CI of the head commit cannot be read")
+        h = git("rev-parse", "HEAD")
+        if h.returncode != 0:
+            return out("gh_error", "cannot read the worktree HEAD")
+        sha = h.stdout.strip()
+        rec["head_sha"] = sha
+        ra = ["-R", rp] if rp else []
+        rec["command"] = " ".join(["gh", "pr", "checks", p] + ra + ["--json", "name,state,bucket,workflow,link"])
+
+        def view():
+            r = subprocess.run([gh_bin, "pr", "view", p] + ra + ["--json", "headRefOid", "-q", ".headRefOid"],
+                               capture_output=True, text=True, timeout=120)
+            return (r.stdout.strip(), "") if r.returncode == 0 else (None, (r.stderr or r.stdout).strip()[:300])
+
+        h1, err = view()
+        if h1 is None:
+            return out("gh_error", "gh pr view failed: %s" % err)
+        if h1 != sha:
+            return out("head_mismatch", "PR head is %s, worktree HEAD is %s (not pushed yet?)" % (h1[:12], sha[:12]))
+        r = subprocess.run([gh_bin, "pr", "checks", p] + ra + ["--json", "name,state,bucket,workflow,link"],
+                           capture_output=True, text=True, timeout=120)
+        if "no checks reported" in (r.stderr + r.stdout).lower():
+            return out("no_checks", "gh reports no checks on the head commit")
+        try:
+            checks = json.loads(r.stdout)
+            if not isinstance(checks, list):
+                raise ValueError("not a list")
+        except Exception:
+            return out("gh_error", "gh pr checks gave no JSON (exit %d): %s" % (r.returncode, (r.stderr or r.stdout).strip()[:300]))
+        summary = [{k: c.get(k) for k in ("name", "bucket", "state", "workflow", "link")}
+                   for c in checks if isinstance(c, dict)]
+        rec["checks"] = summary
+        rec["failed"] = [c["name"] for c in summary if c["bucket"] in ("fail", "cancel")]
+        rec["pending"] = [c["name"] for c in summary if c["bucket"] not in ("pass", "skipping", "fail", "cancel")]
+        h2, err = view()
+        if h2 != h1:
+            return out("head_mismatch", "PR head moved during the read (%s -> %s)" % (h1[:12], (h2 or "?")[:12]))
+        if len(summary) != len(checks):
+            return out("gh_error", "gh pr checks returned entries that are not objects")
+        if rec["failed"]:
+            return out("failed", "CI red on the head commit: %s" % ", ".join(map(str, rec["failed"])))
+        if rec["pending"]:
+            return out("pending", "CI not finished on the head commit (pending is not a pass): %s" % ", ".join(map(str, rec["pending"])))
+        if any(c["bucket"] == "pass" for c in summary):
+            return out("passed", "every check on the head commit passed")
+        return out("no_checks", "no check on the head commit passed (all skipped or none)")
+    except Exception as e:
+        return out("gh_error", "the CI read failed: %s" % e)
 
 
 try:
@@ -1647,6 +1738,41 @@ PY
   GATE_RESULTS_JSON="$(apply_flaky gates "$GATE_RESULTS_JSON")"
   UNDER_DECL_JSON="$(apply_flaky under_declaration "$UNDER_DECL_JSON")"
   PRE_EXISTING_JSON="$(apply_flaky pre_existing "$PRE_EXISTING_JSON")"
+
+  # ── FINAL-GATE CI VETO (issue #149) ───────────────────────────────────
+  # A --gate-mode ci --final gate that ran the local suite also carries the head's
+  # CI read (final_ci_veto in MODE_JSON) as one more gate, appended after the
+  # under-declaration and flaky steps: the build cannot declare it and a flaky
+  # entry cannot demote it. It is green only when the read says every check
+  # passed; a missing or unreadable record is a red gate, never no gate. An
+  # unreadable gate list is passed through untouched (it already fails closed).
+  if [ "$REQ_FINAL" = 1 ] && [ "$REQ_GATE_MODE" = ci ] && [ "$EFFECTIVE_MODE" != ci ]; then
+    GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$MODE_JSON" <<'PY'
+import json, sys
+try:
+    gates = json.loads(sys.argv[1])
+    if not isinstance(gates, list):
+        raise ValueError("not a list")
+except Exception:
+    print(sys.argv[1])
+    sys.exit(0)
+try:
+    veto = json.loads(sys.argv[2]).get("final_ci_veto")
+except Exception:
+    veto = None
+if not isinstance(veto, dict) or veto.get("name") != "ci-final-veto":
+    veto = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
+            "exit_code_branch": 2, "result": "red", "ci_status": "unreadable",
+            "detail": "the final-gate CI read left no usable record"}
+elif not (veto.get("ci_status") == "passed" and veto.get("exit_code_branch") == 0):
+    veto["result"] = "red"
+    if veto.get("exit_code_branch") in (0, None):
+        veto["exit_code_branch"] = 2
+gates.append(veto)
+print(json.dumps(gates))
+PY
+)"
+  fi
 
   # ── WRITE integration-results.json to $OUT ────────────────────────────
   # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —
