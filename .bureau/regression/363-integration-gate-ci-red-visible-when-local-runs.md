@@ -75,6 +75,40 @@ command: |
   jq -e '.gate_mode=="local" and .gates[0].name=="regression" and .gates[0].result=="green"
     and (.gates[-1] | .name=="ci-final-veto" and .result=="green" and .exit_code_branch==0 and .ci_status=="passed")
     and ([.gates[] | select(.result!="green")] | length==0)' "$(R green)" >/dev/null || { echo "FAIL green"; jq -c .gates "$(R green)"; exit 1; }
+  "$ROOT/scripts/terminal-pairing.sh" --gate "$(R green)" --review-sha "$SHA" > "$TMP/pair.out" 2>&1 \
+    || { echo "FAIL green: pairing refused a green local suite with a green veto: $(cat "$TMP/pair.out")"; exit 1; }
+  # V7: with no regression runner anywhere the local gate is absent; a green veto must not
+  # make the final gate count as one where a gate ran (an extra veto, never a stand-in).
+  W2="$TMP/wt2"; mkdir -p "$W2"
+  git -C "$W2" init -q -b main; git -C "$W2" config user.email t@t; git -C "$W2" config user.name t
+  echo a > "$W2/a"; git -C "$W2" add -A; git -C "$W2" commit -qm base
+  BASE2=$(git -C "$W2" rev-parse HEAD)
+  git -C "$W2" checkout -q -b feat; echo c > "$W2/f"; git -C "$W2" add -A; git -C "$W2" commit -qm c1
+  SHA2=$(git -C "$W2" rev-parse HEAD)
+  W1="$W"; BASE1="$BASE"; W="$W2"; BASE="$BASE2"
+  gate absent pass st.json --gate-mode ci --final
+  W="$W1"; BASE="$BASE1"
+  jq -e '.gates[0].name=="regression" and .gates[0].result=="absent" and .gates[0].exit_code_branch==null
+    and (.gates[-1] | .name=="ci-final-veto" and .result=="green" and .ci_status=="passed")
+    and ([.gates[] | select(.result!="absent" and .ci_veto!=true)] | length==0)' "$(R absent)" >/dev/null \
+    || { echo "FAIL absent: precondition (regression absent, veto green) not met"; jq -c .gates "$(R absent)"; exit 1; }
+  "$ROOT/scripts/terminal-pairing.sh" --gate "$(R absent)" --review-sha "$SHA2" > "$TMP/pair.out" 2>&1; rc=$?
+  [ "$rc" -eq 1 ] && grep -Fq 'every gate absent' "$TMP/pair.out" \
+    || { echo "FAIL absent: pairing did not discard an absent local suite with a green veto (exit $rc): $(cat "$TMP/pair.out")"; exit 1; }
+  # V8: no gh on PATH (a PATH of links to every system tool but gh, so a /usr/bin/gh is
+  # hidden too): the veto is red gh_missing and pairing discards the final gate.
+  NOGH="$TMP/nogh"; mkdir "$NOGH"
+  for t in python3 git jq; do ln -s "$(command -v "$t")" "$NOGH/$t"; done
+  for d in /usr/bin /bin /usr/sbin /sbin; do [ -d "$d" ] && ln -s "$d"/* "$NOGH"/ 2>/dev/null; done
+  rm -f "$NOGH/gh"
+  PATH="$NOGH" sh -c 'command -v gh' >/dev/null 2>&1 && { echo "FAIL nogh: gh still on the test PATH"; exit 1; }
+  printf 'pass' > "$FK/mode"; mkdir "$TMP/nogh-out"
+  PATH="$NOGH" "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
+    --claimed-gates '[]' --state-json "$TMP/st.json" --out "$TMP/nogh-out" --ci-poll 1 --ci-timeout 3 \
+    --gate-mode ci --final 2>/dev/null
+  vetoed nogh-out gh_missing
+  if "$ROOT/scripts/terminal-pairing.sh" --gate "$(R nogh-out)" --review-sha "$SHA" > "$TMP/pair.out" 2>&1; then
+    echo "FAIL nogh: pairing accepted a final gate whose CI could not be read"; exit 1; fi
   # V5: CI green never turns a local red green.
   touch "$FK/localred"
   gate lred pass st.json --gate-mode ci --final
@@ -87,4 +121,4 @@ command: |
   gate nonfinal pass st.json --gate-mode ci
   jq -e '.gate_mode=="ci" and [.gates[].name]==["ci"]' "$(R nonfinal)" >/dev/null || { echo "FAIL nonfinal"; jq -c .gates "$(R nonfinal)"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a fully passed CI gives a green veto (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails.
+expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a fully passed CI gives a green veto and pairing accepts it (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). With no regression runner anywhere the local gate is absent and a green veto does not count as a gate that ran: terminal-pairing.sh discards with exit 1, "every gate absent" (V7). With no gh on PATH (a PATH of links to every system tool except gh, so it holds on hosts with /usr/bin/gh) the veto is red with ci_status gh_missing and pairing exits nonzero (V8). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails; count a ci_veto record as a gate that ran in terminal-pairing.sh and V7 fails; return passed from the gh_missing branch and V8 fails.

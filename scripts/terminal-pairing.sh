@@ -98,8 +98,12 @@ red = [x.get("name", "?") for x in gates
                                 or x.get("result") != "green")]
 if red:
     problems.append("red gate(s): %s" % ", ".join(map(str, red)))
-if gates and len(absent) == len(gates):
-    problems.append("no gate ran (every gate absent: %s)" % ", ".join(map(str, absent)))
+# Issue #149: a final-gate CI veto record (ci_veto true) can only veto. It never counts as
+# a gate that ran, so a green veto over an all-absent local suite still has no gate ran.
+ran = [x for x in gates if not is_absent(x)
+       and not (isinstance(x, dict) and x.get("ci_veto") is True)]
+if gates and not ran:
+    problems.append("no gate ran (every gate absent: %s)" % (", ".join(map(str, absent)) or "none"))
 scope = g.get("scope") or {}
 if not isinstance(scope, dict):
     problems.append("scope verification result is malformed")
