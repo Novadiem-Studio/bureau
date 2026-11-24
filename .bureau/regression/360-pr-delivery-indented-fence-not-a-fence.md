@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip opens a fence only at 3 columns or less; a ``` line at 4+ columns opens nothing, a closer closes at any indent, the body before a 4+ column closer is linted, and after a 4+ column fence line no fence opens
+name: pr-delivery.sh placeholder strip opens a fence only at 3 columns or less; a ``` line at 4+ columns opens nothing, a closer closes at any indent, the body before a 4+ column closer is linted, and after a 4+ column fence line no fence opens; a CR (leading, mid-line or CRLF) ends a line
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 3)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -80,5 +80,24 @@ command: |
   printf 'text\r\n\r\n```\r\n<k>\r\n```\r\nreal placeholder <fill me>\r\n' > "$T/in.md"
   hidden "CR4 CRLF fence body" '<k>'
   visible "CR4 CRLF text after the fence" '<fill me>'
+  # CR6: a CR mid-line ends the line too, so a ``` after it closes the fence; the
+  # placeholder after it is plain text on GitHub.
+  printf '```\ncode\r```\nreal placeholder <fill me>\n```\nmore\n' > "$T/in.md"
+  visible "CR6 closer after a mid-line CR" '<fill me>'
+  # CR7: the closer and the placeholder on one physical line, split by CRs.
+  printf '```\ncode\r```\r<fill me> after\n```\nx\n```\n' > "$T/in.md"
+  visible "CR7 closer and text after it on one physical line" '<fill me>'
+  # CR8: a CR inside a placeholder on a line after a mid-line closer: GitHub shows it as
+  # paragraph text, and the stripped text keeps it on one line, so the lint regex
+  # cmd_ready uses still matches it.
+  printf '```\ncode\r```\na <fill\rme> b\n```\nmore\n' > "$T/in.md"
+  strip "CR8 placeholder split by a CR"
+  grep -Eq '<[^>]+>' "$T/out" || { echo "FAIL: CR8: placeholder split by a CR is not linted"; od -c "$T/out"; exit 1; }
+  # CR9: in a list item that ends inside a fence (the E1 shape, opener after a CR, closer
+  # after a mid-line CR) GitHub shows the placeholder as plain text. The CR-split pass
+  # hides it as LF lines would; the pass over whole LF lines (run for any file with a CR)
+  # still lints it, so a CR file never lints less than before the split.
+  printf 'text\n\n- item\n\r  ```\n  code\n\nreal placeholder <fill me>\r```\n\nafter\n' > "$T/in.md"
+  visible "CR9 list fence closed after a mid-line CR" '<fill me>'
   echo PASS
-expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint. A closer at any indent closes an open fence. A fence line at four or more columns is ambiguous (a list item's fence line on GitHub, L1 closer, O1 and O2 openers; code at top level, R1), so after it no fence opens and every later line is linted (L1, O1, O2, R1, R2 visible; I4 is an over-lint pin). The body of a fence closed by an ambiguous closer is linted, not dropped, because a list item can end inside it (E1 visible; A1 is an over-lint pin). A fence indented three spaces still opens and closes (C1). A bare CR is a line ending, so a ``` after a CR in the leading whitespace is a fence line whose indent counts from that CR: it closes (CR1) and opens (CR2) a fence, spaces before the CR do not make it a 4+ column line (CR3, hidden), and neither does a form feed or vertical tab before the CR (CR5, closer and opener); CRLF files open and close fences as LF does (CR4). Mutation: drop the `col <= 3` test on the opener (open at any indent) and I1-I3 fail; restore `col <= 3` on the closer and I4 and L1 fail; drop the `!amb` test on the opener and R1, R2, O1 and O2 fail; stop a 4+ column opener setting amb and O1 and O2 fail; drop the body at an ambiguous closer again and E1 and A1 fail; drop the last-CR scan before the indent loop and CR1-CR3 and CR5 fail; look for the CR in a space, tab and CR lead only (not all [[:space:]]) and CR5 fails.
+expected: exit 0; stdout "PASS". A ``` line indented four or more columns (four spaces I1, a tab I2, two spaces and a tab I3) opens no fence, so a later placeholder before the next real fence stays visible to the lint. A closer at any indent closes an open fence. A fence line at four or more columns is ambiguous (a list item's fence line on GitHub, L1 closer, O1 and O2 openers; code at top level, R1), so after it no fence opens and every later line is linted (L1, O1, O2, R1, R2 visible; I4 is an over-lint pin). The body of a fence closed by an ambiguous closer is linted, not dropped, because a list item can end inside it (E1 visible; A1 is an over-lint pin). A fence indented three spaces still opens and closes (C1). A bare CR is a line ending, so a ``` after a CR in the leading whitespace is a fence line whose indent counts from that CR: it closes (CR1) and opens (CR2) a fence, spaces before the CR do not make it a 4+ column line (CR3, hidden), and neither does a form feed or vertical tab before the CR (CR5, closer and opener); CRLF files open and close fences as LF does (CR4). A CR mid-line ends the line too, so a ``` after it closes the fence and the placeholder after it, on the next line (CR6) or the same physical line (CR7), is linted. A placeholder split by a CR outside a fence still matches the lint regex (CR8). A file holding a CR is also parsed as whole LF lines and that output is linted too, so a placeholder GitHub shows after a list item ends inside a fence (the E1 shape with CRs, CR9) is linted though the CR-split parse hides it, as it does for the LF file (over-lint, fail-safe: fence bodies in a file with mid-line CRs are linted). Mutation: drop the `col <= 3` test on the opener (open at any indent) and I1-I3 fail; restore `col <= 3` on the closer and I4 and L1 fail; drop the `!amb` test on the opener and R1, R2, O1 and O2 fail; stop a 4+ column opener setting amb and O1 and O2 fail; drop the body at an ambiguous closer again and E1 and A1 fail; stop splitting lines on CR in the first pass and CR3, CR6, CR7 and CR8 fail; print the CR-split pieces of a line on separate lines and CR8 fails; drop the whole-LF-line second pass and CR9 fails.

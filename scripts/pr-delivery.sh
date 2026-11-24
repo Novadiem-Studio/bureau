@@ -408,8 +408,21 @@ cmd_review() {
 # placeholder inside it is still linted. That is a known over-lint, fail-safe (it refuses
 # evidence, never passes a placeholder), tracked in issue #153; every design that joined
 # lines could hide a real placeholder behind a < construct that outranks the span.
+# A bare CR and CRLF end a line on GitHub, so a fence line after a CR (mid-line too) opens
+# or closes a fence. A file holding a CR is parsed twice, split on CR and as whole LF
+# lines, and both outputs are linted: neither parse can hide what the other shows.
 strip_code_spans() {
-  awk '
+  # Two passes, both printed, so the lint sees the union (more lint only, fail-safe).
+  # Pass 1 splits each line on CR, as GitHub does (a bare CR and CRLF both end a line).
+  # Pass 2, only for a file holding a CR, reads LF lines whole with the indent counted
+  # from the last CR in the lead (the parse before the split): where the two disagree on
+  # which lines a fence hides, a placeholder either one shows is still linted.
+  for _scs_split in 1 0; do
+    if [ "$_scs_split" = 0 ]; then
+      _scs_cr="$(awk 'index($0, "\r") { print "y"; exit }' "$1")" || return 1
+      [ "$_scs_cr" = y ] || break
+    fi
+    awk -v crsplit="$_scs_split" '
     function run_len(s, i, ch,   n) { n = 0; while (substr(s, i + n, 1) == ch) n++; return n }
     function strip_inline(s,   out, i, n, r, k, m, found, b) {
       out = ""; i = 1; n = length(s)
@@ -430,26 +443,41 @@ strip_code_spans() {
       }
       return out
     }
-    {
+    # Text outside fences is printed one physical (LF) line at a time, the CR-split pieces
+    # that survive joined back with CR, so the lint still sees a <...> that a bare CR
+    # splits, and a line with no fence line in it prints as one stripped line.
+    # A line holding CRs is also printed piece by piece, each stripped on its own as an LF
+    # line would be: a fence-like run in one piece must not pair with a run in another and
+    # hide text between them. Extra lines only lint more (fail-safe).
+    function put(s,   q, a, j) {
+      print strip_inline(s)
+      if (crsplit && index(s, "\r")) { q = split(s, a, "\r"); for (j = 1; j <= q; j++) print strip_inline(a[j]) }
+    }
+    function emit(s) { out = has ? out "\r" s : s; has = 1 }
+    function flush() { if (has) put(out); has = 0; out = "" }
+    # One logical line s, ended by sep (CR or LF; kept so the unclosed-fence dump in END
+    # reproduces the file).
+    function piece(s, sep,   col, p, ch, t, c, l, j) {
       # Indent in columns (a tab advances to the next multiple of 4). A fence opens only at
       # 3 columns or less; at 4 or more the line is indented code at top level but a fence
       # line inside a list item (CommonMark, issue #149), so it sets amb instead.
-      # A bare CR is a line ending (CommonMark): the line GitHub sees starts after the last
-      # CR in the leading whitespace, whatever whitespace precedes it, so the indent is
-      # counted from there (main a2d4029 skipped all leading whitespace).
       col = 0; p = 1
-      match($0, /^[[:space:]]*/)
-      for (k = RLENGTH; k >= 1; k--) if (substr($0, k, 1) == "\r") { p = k + 1; break }
-      while (p <= length($0)) {
-        ch = substr($0, p, 1)
+      # Pass 2 only (pass 1 has no CR in s): the line GitHub sees starts after the last CR
+      # in the leading whitespace, so the indent is counted from there.
+      if (!crsplit) {
+        match(s, /^[[:space:]]*/)
+        for (j = RLENGTH; j >= 1; j--) if (substr(s, j, 1) == "\r") { p = j + 1; break }
+      }
+      while (p <= length(s)) {
+        ch = substr(s, p, 1)
         if (ch == " ") col++
         else if (ch == "\t") col += 4 - col % 4
         else break
         p++
       }
-      t = substr($0, p); c = substr(t, 1, 1)
+      t = substr(s, p); c = substr(t, 1, 1)
       if (fence) {
-        buf = buf $0 "\n"
+        buf = buf s sep
         if (c == fc) {
           l = run_len(t, 1, c)
           if (l >= fl && substr(t, l + 1) ~ /^[[:space:]]*$/) {
@@ -457,12 +485,15 @@ strip_code_spans() {
             # amb: a 4+ column fence line was seen, so stop opening fences (see above).
             # The body before an ambiguous closer is printed, not dropped: if a list item
             # ended inside it, GitHub shows the rest as plain text.
-            if (col > 3) { amb = 1; for (j = 1; j <= nb; j++) print strip_inline(body[j]) }
-            next
+            if (col > 3) { amb = 1; for (j = 1; j <= nb; j++) put(body[j]) }
+            return
           }
         }
-        body[++nb] = $0
-        next
+        # Body pieces from one physical line stay one body line, joined with CR.
+        if (brec == NR) body[nb] = body[nb] "\r" s
+        else body[++nb] = s
+        brec = NR
+        return
       }
       if (!amb && (c == "`" || c == "~")) {
         l = run_len(t, 1, c)
@@ -470,13 +501,25 @@ strip_code_spans() {
         # An opener at 4+ columns is ambiguous too: it opens nothing and sets amb.
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) {
           if (col > 3) amb = 1
-          else { fence = 1; fc = c; fl = l; buf = $0 "\n"; nb = 0; next }
+          else { flush(); fence = 1; fc = c; fl = l; buf = s sep; nb = 0; brec = 0; return }
         }
       }
-      print strip_inline($0)
+      emit(s)
+    }
+    {
+      # A bare CR is a line ending (CommonMark), as is CRLF, so in pass 1 each CR-split
+      # piece is a line: a fence line after a CR, at the start or mid-line, opens or closes
+      # a fence. CRLF leaves an empty last piece, a blank line that changes no state.
+      if (crsplit) {
+        n = split($0, seg, "\r")
+        if (n == 0) { n = 1; seg[1] = "" }
+        for (i = 1; i <= n; i++) piece(seg[i], i < n ? "\r" : "\n")
+      } else piece($0, "\n")
+      flush()
     }
     END { if (fence) printf "%s", buf }
-  ' "$1"
+  ' "$1" || return 1
+  done
 }
 
 cmd_ready() {
