@@ -71,7 +71,8 @@
 #                   appended as gate "ci-final-veto": an extra veto, green only
 #                   when no check on the exact head failed or is pending and at
 #                   least one passed (skipped checks are allowed), red otherwise
-#                   with ci_status saying why (issue #149).
+#                   with ci_status saying why (issue #149). The record keeps at
+#                   most 20 failed and 20 pending names, with the full counts.
 #   --project-context <path>  the project file to read those settings from.
 #                   Default: project-context.md as committed on --base-ref.
 #   --since-ref   <git ref>    the commit the previous integration gate verified.
@@ -86,7 +87,8 @@
 #   --ci-no-checks-grace <seconds>  how long to wait for a first check to appear
 #                   on the head commit before concluding it has no CI (default 300).
 #
-# Output: writes integration-results.json into --out (same snake_case field layout
+# Output: removes any earlier integration-results.json from --out first, then
+# writes integration-results.json into --out (same snake_case field layout
 # watcher.sh produced; issue #92 adds final_gate, gate_mode, gate_mode_requested,
 # gate_mode_reason, gate_commands and ci, and keeps every existing field). NOTE:
 # this file has NO `verdict` key — it is EVIDENCE only; the proceed/revise/escalate
@@ -182,6 +184,24 @@ if [ "$REQ_CHECKPOINT_TYPE" != "integration" ]; then
   exit 0
 fi
 
+# ── no stale results: remove an earlier integration-results.json first (#149 r4-b1) ──
+# An earlier gate into the same --out (for example a diagnostic local re-run of the
+# final gate) leaves its results file behind. If this run then failed before or at
+# its own write, that old file would stay, pass assert_results_written and pair. So it
+# goes before anything here can fail: a run that writes nothing leaves no file. A
+# --out that is missing or not writable is left to the checks below (exit 2).
+if [ -n "$OUT" ] && [ -d "$OUT" ] && [ -w "$OUT" ]; then
+  rm -f "$OUT/integration-results.json" 2>/dev/null
+  if [ -e "$OUT/integration-results.json" ] || [ -L "$OUT/integration-results.json" ]; then
+    # Cannot unlink it (a sticky dir, say) but may still write it, as the results write
+    # would: empty it, so the old results cannot be read even by a caller that ignores exit 2.
+    # (A subshell: a failed redirection on `:` would end this shell with exit 1, not 2.)
+    [ -d "$OUT/integration-results.json" ] || ( : > "$OUT/integration-results.json" ) 2>/dev/null
+    echo "integration-gate: cannot remove the earlier $OUT/integration-results.json; exiting 2 rather than leave it to read as this run's results" >&2
+    exit 2
+  fi
+fi
+
 # ── validate the gate-mode flags (issue #92) ─────────────────────────────────
 case "$REQ_GATE_MODE" in
   local|ci) ;;
@@ -221,6 +241,9 @@ fi
 # verifies the file exists, is non-empty, AND parses as JSON; if any check fails
 # it prints a clear stderr reason and exits 2 (a distinct fail-closed code). A
 # write failure can therefore NEVER reach the `exit 0` at the foot of this script.
+# Any earlier results file was removed at the start (#149 r4-b1), so the file this
+# finds was written by this run (or by another gate writing into the same --out at
+# the same time, which no caller does).
 assert_results_written() {
   _res="$OUT/integration-results.json"
   if [ ! -s "$_res" ]; then
@@ -649,13 +672,26 @@ def final_ci_veto():
     allowed); a red check, pending, no checks, a head mismatch, no known PR, no gh, or a
     failed or unreadable gh call is red with ci_status saying which. No poll loop: the
     final gate does not wait. gh runs in the worktree, so with no repo override (-R) it
-    resolves the PR from the worktree's own remote, not the caller's directory."""
+    resolves the PR from the worktree's own remote, not the caller's directory.
+    The record is bounded whatever gh returns: it travels to later steps as a
+    command-line argument, and a record past the argument limit left the results
+    unwritten (#149 r4-b1). So failed and pending keep at most NAMES_CAP names, each
+    cut to NAME_CAP characters, with the full counts beside them (failed_count,
+    pending_count, checks_count); the full check list is not kept. The verdict and
+    the counts come from the full list, before any cap."""
+    NAMES_CAP, NAME_CAP, DETAIL_CAP = 20, 200, 6000
     rec = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
-           "head_sha": "", "failed": [], "pending": [], "checks": []}
+           "head_sha": "", "failed": [], "pending": [],
+           "failed_count": 0, "pending_count": 0, "checks_count": 0}
+
+    def capped(names):
+        shown = [str(n)[:NAME_CAP] for n in names[:NAMES_CAP]]
+        more = len(names) - len(shown)
+        return shown, ", ".join(shown) + (" and %d more" % more if more > 0 else "")
 
     def out(status, detail=""):
         ok = status == "passed"
-        rec.update({"ci_status": status, "detail": detail,
+        rec.update({"ci_status": status, "detail": str(detail)[:DETAIL_CAP],
                     "exit_code_branch": 0 if ok else {"failed": 1, "pending": 124}.get(status, 2),
                     "result": "green" if ok else "red"})
         return rec
@@ -705,18 +741,20 @@ def final_ci_veto():
             return out("gh_error", "gh pr checks gave no JSON (exit %d): %s" % (r.returncode, (r.stderr or r.stdout).strip()[:300]))
         summary = [{k: c.get(k) for k in ("name", "bucket", "state", "workflow", "link")}
                    for c in checks if isinstance(c, dict)]
-        rec["checks"] = summary
-        rec["failed"] = [c["name"] for c in summary if c["bucket"] in ("fail", "cancel")]
-        rec["pending"] = [c["name"] for c in summary if c["bucket"] not in ("pass", "skipping", "fail", "cancel")]
+        failed = [c["name"] for c in summary if c["bucket"] in ("fail", "cancel")]
+        pending = [c["name"] for c in summary if c["bucket"] not in ("pass", "skipping", "fail", "cancel")]
+        rec["failed"], failed_text = capped(failed)
+        rec["pending"], pending_text = capped(pending)
+        rec.update({"failed_count": len(failed), "pending_count": len(pending), "checks_count": len(checks)})
         h2, err = view()
         if h2 != h1:
             return out("head_mismatch", "PR head moved during the read (%s -> %s)" % (h1[:12], (h2 or "?")[:12]))
         if len(summary) != len(checks):
             return out("gh_error", "gh pr checks returned entries that are not objects")
-        if rec["failed"]:
-            return out("failed", "CI red on the head commit: %s" % ", ".join(map(str, rec["failed"])))
-        if rec["pending"]:
-            return out("pending", "CI not finished on the head commit (pending is not a pass): %s" % ", ".join(map(str, rec["pending"])))
+        if failed:
+            return out("failed", "CI red on the head commit: %s" % failed_text)
+        if pending:
+            return out("pending", "CI not finished on the head commit (pending is not a pass): %s" % pending_text)
         if any(c["bucket"] == "pass" for c in summary):
             return out("passed", "no check on the head commit failed or is pending, and at least one passed")
         return out("no_checks", "no check on the head commit passed (all skipped or none)")
