@@ -239,9 +239,10 @@ a newline, names nothing. A count clears nothing: an event that names no ids (th
 `"findings":<n>` shape) dispositions no finding, however large the number, so a matching
 total can never cover a finding nobody named. A summary that claims more actionable comments
 than the gate found ids for also fails closed, as does a failed or unreadable lookup. The gate
-reads that claim, `Actionable comments posted: N` (bold or not), from the bot's formal reviews
-on the head, where CodeRabbit posts it, taking the largest N, and from any issue-comment copy,
-taking the larger of the two (issue #149). N is only a lower bound: CodeRabbit's own count can
+reads that claim, `Actionable comments posted: N` (bold or not, `posted:** N` included), from
+the bot's formal reviews on the head, where CodeRabbit posts it, taking the largest N, and from
+the last `posted: N` line in the issue comments, taking the larger of the two (issue #149). An N
+of more than 18 digits cannot be compared and fails closed. N is only a lower bound: CodeRabbit's own count can
 be smaller than its inline plus outside-diff entries, so it can fail the gate but never clears
 a finding.
 

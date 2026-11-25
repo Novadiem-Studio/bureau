@@ -19,8 +19,9 @@
 # Findings are dispositioned BY ID (#146). The open set is every top-level inline comment
 # by coderabbitai[bot] (its numeric comment id) plus every entry in the "Outside diff range
 # comments (N)" section of a bot review on the head (id b<review id>-<first 12 hex of the
-# sha256 of "<file:lines>|<title>">). Each must be named in the `ids` of a CODERABBIT-EVENT
-# for the head; a count never clears anything. The gate prints the open ids.
+# sha256 of "<file:lines>|<title>">; when one review repeats a file:lines and title, the k-th
+# repeat, k >= 2, hashes that text plus a tab and k, #149). Each must be named in the `ids` of a
+# CODERABBIT-EVENT for the head; a count never clears anything. The gate prints the open ids.
 #
 # Exit codes (mirrors preflight-artifacts.sh / spawn-gate.sh):
 #   0  + "coderabbit: clean"   reviewed at the current head; findings zero or dispositioned
@@ -277,11 +278,21 @@ done < "$WORK/body.tsv"
 # A summary that claims more actionable comments than there are finding ids leaves some
 # finding unnamed; fail closed rather than guess which. CodeRabbit posts the count line
 # ("**Actionable comments posted: N**") in its formal review body, not in the issue
-# comment (#149), so read it from every bot review on the head and take the largest; an
-# issue-comment copy is still read, and the larger of the two wins. The count is a lower
+# comment (#149), so read it ("...posted:** N" too) from every bot review on the head and take
+# the largest. An issue-comment copy is still read, in the "posted: N" form only and the last
+# one: a wider pattern with tail -1 would let a later line replace a larger count. The larger
+# of the two wins, and a count too large to compare fails closed. The count is a lower
 # bound only: it can fail the gate, never clear a finding. A review with no count line is 0.
 total=$(grep -c . "$open_ids")
-actionable=$(grep -oE 'Actionable comments posted:[* ]*[0-9]+' "$bodies" 2>/dev/null \
+# count_norm <digits>: the number with no leading zeros, or status 1 above 18 digits, which
+# [ and $(( )) cannot hold: a count that cannot be compared must not skip the guard.
+count_norm() {
+  local n="${1#"${1%%[!0]*}"}"
+  [ "${#n}" -le 18 ] || return 1
+  printf '%s\n' "${n:-0}"
+}
+too_large=""
+actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
   | tail -1 | grep -oE '[0-9]+$')
 [ -n "$actionable" ] || actionable=0
 review_actionable=$(jq -r --arg h "$head_sha" '
@@ -290,6 +301,11 @@ review_actionable=$(jq -r --arg h "$head_sha" '
    | scan("Actionable comments posted:[* ]*([0-9]+)") | .[0] | tonumber] | max // 0' "$reviews" 2>/dev/null) \
   || { echo "coderabbit-gate: cannot read the actionable count from formal reviews for PR #$PR in $REPO" >&2; exit 2; }
 case "$review_actionable" in ''|*[!0-9]*) echo "coderabbit-gate: unreadable actionable count in formal reviews for PR #$PR in $REPO" >&2; exit 2 ;; esac
+actionable=$(count_norm "$actionable") || { too_large="the issue comments"; actionable=0; }
+review_actionable=$(count_norm "$review_actionable") || { too_large="a formal review on the head"; review_actionable=0; }
+if [ -n "$too_large" ]; then
+  defect "CodeRabbit reports an actionable comment count of more than 18 digits in $too_large on PR #$PR, too large to compare with the finding ids found. Read the PR's review comments."
+fi
 [ "$review_actionable" -gt "$actionable" ] && actionable="$review_actionable"
 if [ "$actionable" -gt $((total + anon)) ]; then
   defect "CodeRabbit reports $actionable actionable comment(s) on PR #$PR but only $((total + anon)) finding id(s) were found, so some findings cannot be named. Read the PR's review comments."
