@@ -38,6 +38,7 @@ command: |
       case "$m" in
         nochecks) echo "no checks reported on the 'feat' branch" >&2; exit 1 ;;
         error) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
+        big) cat "$FK/checks.json"; exit 0 ;;
         *) printf '[{"name":"tests","bucket":"%s","state":"X","workflow":"ci","link":""}]\n' "$m"; exit 0 ;;
       esac ;;
   esac
@@ -49,7 +50,7 @@ command: |
   printf '{"scope":{},"git":{"pr_number":7}}\n' > "$TMP/st-norepo.json"
   gate() {  # <case> <mode> <state> <extra args...>
     c="$1"; printf '%s' "$2" > "$FK/mode"; st="$3"; shift 3
-    mkdir "$TMP/$c"; : > "$GH_LOG"
+    mkdir -p "$TMP/$c"; : > "$GH_LOG"
     PATH="$BIN:$PATH" "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
       --claimed-gates '[]' --state-json "$TMP/$st" --out "$TMP/$c" --ci-poll 1 --ci-timeout 3 "$@" 2>/dev/null
   }
@@ -152,5 +153,76 @@ command: |
   [ ! -s "$GH_LOG" ] || { echo "FAIL loc: gh was called in local mode"; cat "$GH_LOG"; exit 1; }
   gate nonfinal pass st.json --gate-mode ci
   jq -e '.gate_mode=="ci" and [.gates[].name]==["ci"]' "$(R nonfinal)" >/dev/null || { echo "FAIL nonfinal"; jq -c .gates "$(R nonfinal)"; exit 1; }
+  # V11 (r4-b1): a check list too big for one command-line argument. The veto record used to
+  # carry every check, and the record reaches python3 as an argument, so the final write died
+  # with "Argument list too long" and an earlier green results file in the same --out paired.
+  # Size: past getconf ARG_MAX (clamped to 128 KiB..4 MiB; Linux also caps one argument at
+  # 128 KiB), every entry over 300 bytes, and measured below: one argument holding the
+  # list must fail to exec here.
+  AMAX=$(getconf ARG_MAX 2>/dev/null); case "$AMAX" in ''|*[!0-9]*) AMAX=2097152 ;; esac
+  python3 - "$AMAX" "$FK" <<'PY'
+  import json, sys
+  amax, fk = int(sys.argv[1]), sys.argv[2]
+  n = (min(max(amax, 131072), 4194304) + 65536) // 300 + 1
+  def chk(i, b, name=None):
+      return {"name": name or "matrix job %05d / ubuntu-26.04 / node 24" % i, "bucket": b, "state": "X",
+              "workflow": "ci", "link": "https://github.com/acme/demo/actions/runs/45653339663/job/%012d?%s" % (i, "p" * 200)}
+  ok = [chk(i, "pass") for i in range(n)]
+  red = list(ok)
+  for i in range(n - 28, n - 25):
+      red[i] = chk(i, "pending")
+  for i in range(n - 25, n):
+      red[i] = chk(i, "fail", "x" * 300 if i == n - 25 else None)
+  json.dump(ok, open(fk + "/big-pass.json", "w"))
+  json.dump(red, open(fk + "/big-red.json", "w"))
+  open(fk + "/n", "w").write(str(n))
+  PY
+  N=$(cat "$FK/n")
+  if env true "$(cat "$FK/big-pass.json")" 2>/dev/null; then echo "FAIL big: $N checks still fit in one argument (ARG_MAX $AMAX)"; exit 1; fi
+  # V11a: thousands of checks, 25 failed (the last ones, the first of them with a 300-character
+  # name) and 3 pending: the results are written, the veto is red, and its record stays small.
+  cp "$FK/big-red.json" "$FK/checks.json"
+  gate bigred big st.json --gate-mode ci --final; rc=$?
+  [ "$rc" -eq 0 ] && [ -s "$(R bigred)" ] || { echo "FAIL bigred: gate exit $rc, results not written"; exit 1; }
+  vetoed bigred failed
+  F2=$(printf 'matrix job %05d / ubuntu-26.04 / node 24' $((N - 24)))
+  jq -e --argjson n "$N" --arg f2 "$F2" '.gates[-1] | (has("checks")|not) and .failed_count==25
+    and .pending_count==3 and .checks_count==$n and (.failed|length)==20 and (.failed[0]|length)==200
+    and .failed[1]==$f2 and (.pending|length)==3 and (.detail|test(" and 5 more$")) and (.detail|length)<=6000
+    and ([.failed_count,.pending_count,.checks_count]|map(type)|unique)==["number"]' "$(R bigred)" >/dev/null \
+    || { echo "FAIL bigred: veto record"; jq -c '.gates[-1]|del(.detail)' "$(R bigred)" | cut -c1-600; exit 1; }
+  [ "$(wc -c < "$(R bigred)")" -lt 65536 ] || { echo "FAIL bigred: results file is not small"; exit 1; }
+  if "$ROOT/scripts/terminal-pairing.sh" --gate "$(R bigred)" --review-sha "$SHA" > /dev/null 2>&1; then echo "FAIL bigred: pairing accepted it"; exit 1; fi
+  # V11b: thousands of checks, all passed, local suite green: green veto, and pairing accepts it.
+  cp "$FK/big-pass.json" "$FK/checks.json"
+  gate bigok big st.json --gate-mode ci --final
+  jq -e --argjson n "$N" '.gates[0].result=="green" and (.gates[-1] | .result=="green" and .ci_status=="passed"
+    and .checks_count==$n and .failed_count==0 and .failed==[] and (has("checks")|not))' "$(R bigok)" >/dev/null \
+    || { echo "FAIL bigok"; jq -c '.gates|map(del(.detail))' "$(R bigok)" | cut -c1-600; exit 1; }
+  "$ROOT/scripts/terminal-pairing.sh" --gate "$(R bigok)" --review-sha "$SHA" > "$TMP/pair.out" 2>&1 \
+    || { echo "FAIL bigok: pairing refused: $(cat "$TMP/pair.out")"; exit 1; }
+  # V11c, the r4-b1 case: an earlier green final gate in the same --out (the diagnostic local
+  # re-run), then the local suite goes red and the ci --final gate reads thousands of green
+  # checks. Whatever this run writes, the earlier green file must not pair.
+  gate bigstale pass st.json --gate-mode local --final
+  "$ROOT/scripts/terminal-pairing.sh" --gate "$(R bigstale)" --review-sha "$SHA" >/dev/null 2>&1 \
+    || { echo "FAIL bigstale: precondition, the earlier green result does not pair"; exit 1; }
+  touch "$FK/localred"; cp "$FK/big-pass.json" "$FK/checks.json"
+  gate bigstale big st.json --gate-mode ci --final
+  if "$ROOT/scripts/terminal-pairing.sh" --gate "$(R bigstale)" --review-sha "$SHA" > "$TMP/pair.out" 2>&1; then
+    echo "FAIL bigstale: an earlier green result paired after a red local suite: $(cat "$TMP/pair.out")"; exit 1; fi
+  rm -f "$FK/localred"
+  # V11d: an earlier green result, then a run whose results write fails for another reason (a
+  # python3 first on PATH that refuses only that write): no results file is left, the gate
+  # exits nonzero, and pairing has nothing to pair.
+  gate wfail pass st.json --gate-mode local --final
+  [ -s "$(R wfail)" ] || { echo "FAIL wfail: precondition, no earlier result"; exit 1; }
+  SHIM="$TMP/pyshim"; mkdir "$SHIM"
+  printf '#!/bin/sh\ncase "$1:$2" in -:*/integration-results.json) exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v python3)" > "$SHIM/python3"
+  chmod +x "$SHIM/python3"
+  PATH="$SHIM:$BIN:$PATH" "$GATE" --checkpoint-type integration --worktree-path "$W" --base-ref "$BASE" \
+    --claimed-gates '[]' --state-json "$TMP/st.json" --out "$TMP/wfail" --gate-mode local --final 2>/dev/null; rc=$?
+  [ "$rc" -ne 0 ] && [ ! -e "$(R wfail)" ] || { echo "FAIL wfail: gate exit $rc, results file left: $(ls "$TMP/wfail")"; exit 1; }
+  if "$ROOT/scripts/terminal-pairing.sh" --gate "$(R wfail)" --review-sha "$SHA" >/dev/null 2>&1; then echo "FAIL wfail: pairing accepted"; exit 1; fi
   echo PASS
-expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a cancelled check is red with status failed, checks that were all skipped with no_checks, and a PR head that moves while its green checks are read with head_mismatch (V10); a fully passed CI gives a green veto and pairing accepts it (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). With no regression runner anywhere the local gate is absent and a green veto does not count as a gate that ran: terminal-pairing.sh discards with exit 1, "no gate ran (absent: regression; a ci-final-veto record never counts as a gate that ran)" (V7), and the same for a veto record with no other gate recorded (V7b). Both gh calls run in the worktree, so when no repository is known (no -R) the CI read is of the worktree's own repository even if the gate is started from another repository's directory holding the same commit with green CI (V9); a known repository is still passed as -R on every call (checked after V2). With no gh on PATH (a PATH of links to every system tool except gh, so it holds on hosts with /usr/bin/gh) the veto is red with ci_status gh_missing and pairing exits nonzero (V8). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails; drop the second head read, not count a cancelled check as failed, or count a skipped check as a pass, and V10 fails; count a ci_veto record as a gate that ran in terminal-pairing.sh and V7 and V7b fail; drop cwd=worktree from either gh call and V9 fails; drop -R from the gh calls and the check after V2 fails; return passed from the gh_missing branch and V8 fails.
+expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a cancelled check is red with status failed, checks that were all skipped with no_checks, and a PR head that moves while its green checks are read with head_mismatch (V10); a fully passed CI gives a green veto and pairing accepts it (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). With no regression runner anywhere the local gate is absent and a green veto does not count as a gate that ran: terminal-pairing.sh discards with exit 1, "no gate ran (absent: regression; a ci-final-veto record never counts as a gate that ran)" (V7), and the same for a veto record with no other gate recorded (V7b). Both gh calls run in the worktree, so when no repository is known (no -R) the CI read is of the worktree's own repository even if the gate is started from another repository's directory holding the same commit with green CI (V9); a known repository is still passed as -R on every call (checked after V2). With no gh on PATH (a PATH of links to every system tool except gh, so it holds on hosts with /usr/bin/gh) the veto is red with ci_status gh_missing and pairing exits nonzero (V8). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails; drop the second head read, not count a cancelled check as failed, or count a skipped check as a pass, and V10 fails; count a ci_veto record as a gate that ran in terminal-pairing.sh and V7 and V7b fail; drop cwd=worktree from either gh call and V9 fails; drop -R from the gh calls and the check after V2 fails; return passed from the gh_missing branch and V8 fails. V11 (#149 r4-b1): the stub returns more checks than fit in one command-line argument (count from getconf ARG_MAX clamped to 128 KiB..4 MiB plus 64 KiB, at over 300 bytes a check; the row first checks that one argument holding the list fails to exec). With 25 failed and 3 pending the results are written and the veto is red with failed_count 25, pending_count 3, checks_count the full count, 20 failed names with a long name cut to 200 characters, detail ending "and 5 more", no checks list and a results file under 64 KiB, and pairing refuses it (V11a); all passed gives a green veto that pairs (V11b); an earlier green --gate-mode local --final result in the same --out does not pair once the local suite is red and the ci --final gate reads that list (V11c); and after an earlier green result, a run whose results write fails another way (a python3 first on PATH that refuses only that write) exits nonzero and leaves no results file (V11d). Mutation: keep the full check list in the veto record and V11a and V11b fail (V11c still passes: the earlier file is removed, so the failed write leaves nothing to pair); drop the removal of an earlier results file and V11d fails (V11c still passes: the bounded record is written); store a count as a string, or drop the name or list cap, and V11a fails.
