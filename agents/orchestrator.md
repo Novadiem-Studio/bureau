@@ -158,8 +158,7 @@ as a hard quality bar:
 
 ## How to spawn an agent
 
-Read `docs/host-runtime.md` and select transport from `model-routing.json#runtime`. Claude uses the Agent tool with the
-`subagent_type` from `docs/host-runtime.md § Claude specialist types` (a short tool list, not `general-purpose`, for most specialists); Codex normally uses
+Read `docs/host-runtime.md` and select transport from `model-routing.json#runtime`. Claude uses the Agent tool with the `subagent_type` from its § Claude specialist types; Codex normally uses
 `multi_agent_v1.spawn_agent` with `fork_context: false` and explicit reasoning. Cursor uses Task with an explicit model slug and
 `scripts/run-cursor-specialist.sh --plan` first (`CURSOR.md`). The only Codex exception is an eligible first-pass
 `execute-plan` Mage under `roles.mage.executionProfiles.granular-ui-fast`, using `scripts/run-codex-spark-specialist.sh`;

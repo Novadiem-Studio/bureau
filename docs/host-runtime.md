@@ -60,11 +60,11 @@ A `general-purpose` agent loads every tool, every connector's tool names and the
 
 | `subagent_type` | Use for |
 |---|---|
-| `bureau-specialist` | Analizer 2000, Architect, Spellwright, Challenger, Systemsmith, and a Mage or other coder with no React or Next.js work |
+| `bureau-specialist` | Analizer 2000, Architect, Spellwright, Challenger, Coupler, Systemsmith, and a Mage or other coder with no React or Next.js work |
 | `bureau-web-specialist` | a Mage, Challenger or Spellwright on a React or Next.js surface |
 | `general-purpose` | the Conductor and any role that spawns agents; any spawn that needs a connector (Linear, Slack, Sentry), a browser, image generation or the Skill tool; Cleric, Voice, Witness, Scribe, Mechanic, Scoot and Tally |
 
-Both types have Bash, Read, Edit, Write, Grep, Glob, SendMessage, TaskStop, Monitor and WebFetch, and they keep the advisor. `novadiem-engineering` is preloaded in both, `react-nextjs` in the web one. They have no Skill tool: a skill the prompt names is read from its `SKILL.md`, and the agent's own instructions give the paths. If a spawn reports that the type is unknown, use `general-purpose` and note it in `log.md`. If a specialist hands back because a tool is missing, respawn it as `general-purpose`.
+Both types have Bash, Read, Edit, Write, Grep, Glob, SendMessage, TaskStop, Monitor and WebFetch, and they keep the advisor. `novadiem-engineering` is preloaded in both, `react-nextjs` in the web one. They have no Skill tool: a skill the prompt names is read from its `SKILL.md`, and the agent's own instructions give the paths. A skill that exists only inside a plugin has no such path: spawn that work as `general-purpose`, and respawn it that way if a handoff reports a missing skill. A session opened before the types were installed does not know them. If a spawn reports that the type is unknown, use `general-purpose` and note it in `log.md`. If a specialist hands back because a tool is missing, respawn it as `general-purpose`.
 
 Codex fresh-context spawns MUST pass no parent transcript. In the current tool
 surface that means `fork_context: false`; in older/future surfaces this may be
