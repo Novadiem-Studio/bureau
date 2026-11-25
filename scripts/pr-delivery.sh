@@ -410,7 +410,7 @@ cmd_review() {
 # reverse also happens: GitHub can pair a backtick left unmatched on one line with one on a
 # later line, so a span this strip removes from that later line is not code on GitHub. So
 # once a line leaves a backtick run unmatched, every later line up to the next blank line
-# is printed raw as well as stripped (more lint only, issue #153).
+# or fence opener is printed raw as well as stripped (more lint only, issue #153).
 # A bare CR and CRLF end a line on GitHub, so a fence line after a CR (mid-line too) opens
 # or closes a fence; a file holding a CR is also parsed as whole LF lines.
 # The parse this one replaced (main a2d4029: any indent opens or closes a fence, each LF
@@ -465,7 +465,9 @@ strip_code_spans() {
     # unmatched on its own line can pair with a run on a later line and shift every span
     # after it (issue #153). Once a line holds one (pm), each later line up to the next blank
     # line is also printed raw, beside its stripped form. Blank is CommonMark blank (spaces
-    # and tabs, and the CR of a line end): a form feed or vertical tab is text.
+    # and tabs, and the CR of a line end): a form feed or vertical tab is text. A fence at 3
+    # columns or less ends the paragraph too, so opening one clears pm (HTML blocks are not
+    # modelled, see above); an ambiguous fence line can be paragraph text and leaves it set.
     function put(s,   q, a, j) {
       unm = 0
       print strip_inline(s)
@@ -527,7 +529,7 @@ strip_code_spans() {
         # An opener at 4+ columns is ambiguous too: it opens nothing and sets amb.
         if (l >= 3 && !(c == "`" && index(substr(t, l + 1), "`") > 0)) {
           if (col > 3) amb = 1
-          else { flush(); fence = 1; fc = c; fl = l; buf = s sep; nb = 0; brec = 0; return }
+          else { flush(); pm = 0; fence = 1; fc = c; fl = l; buf = s sep; nb = 0; brec = 0; return }
         }
       }
       emit(s)
