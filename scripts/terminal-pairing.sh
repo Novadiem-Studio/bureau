@@ -103,7 +103,12 @@ if red:
 ran = [x for x in gates if not is_absent(x)
        and not (isinstance(x, dict) and x.get("ci_veto") is True)]
 if gates and not ran:
-    problems.append("no gate ran (every gate absent: %s)" % (", ".join(map(str, absent)) or "none"))
+    names = ", ".join(map(str, absent))
+    if len(absent) == len(gates):
+        problems.append("no gate ran (every gate absent: %s)" % names)
+    else:
+        problems.append("no gate ran (%s; a ci-final-veto record never counts as a gate that ran)"
+                        % ("absent: " + names if absent else "no other gate recorded"))
 scope = g.get("scope") or {}
 if not isinstance(scope, dict):
     problems.append("scope verification result is malformed")
