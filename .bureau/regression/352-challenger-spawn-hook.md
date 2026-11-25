@@ -31,6 +31,7 @@ command: |
   # allow: strong and escalated Challengers
   expect_allow "challenger opus"  "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,model:"opus"}')")"
   expect_allow "bureau-specialist opus" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,subagent_type:"bureau-specialist",model:"opus"}')")"
+  expect_allow "bureau-web-specialist opus" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,subagent_type:"bureau-web-specialist",model:"opus"}')")"
   expect_allow "challenger fable" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,model:"fable"}')")"
   # allow: other roles on cheap models, even when they mention the Challenger
   expect_allow "mage sonnet mentioning challenger" "$(agent Agent "$(jq -cn --arg p "$P_MAGE" '{description:"Mage prompt 4",prompt:$p,model:"sonnet"}')")"

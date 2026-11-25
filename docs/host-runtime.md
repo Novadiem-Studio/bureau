@@ -56,7 +56,7 @@ Cursor Agent (`runtime=cursor`) is a fourth host, not a fourth column: Task spaw
 
 ### Claude specialist types
 
-A `general-purpose` agent loads every tool, every connector's tool names and the whole skills list: 111k to 120k tokens before any work in the desktop app. The two types in `claude-agents/` start near 32k. `scripts/install-claude-agents.sh` links them into `~/.claude/agents`.
+A `general-purpose` agent loads every tool, every connector's tool names and the whole skills list: 111k to 120k tokens before any work in the desktop app. The two types in `claude-agents/` started at 42k and 47k in this repo, and 28k and 33k in a directory with no project instructions (headless, 2.1.330, 2026-11-25). `scripts/install-claude-agents.sh` links them into `~/.claude/agents`.
 
 | `subagent_type` | Use for |
 |---|---|
