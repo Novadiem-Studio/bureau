@@ -1,4 +1,4 @@
-name: pr-delivery.sh placeholder strip never matches a code span across a line break (each line stripped on its own, as main a2d4029); a span that wraps a break stays visible as a fail-safe over-lint tracked in issue #153, and no join can hide a placeholder
+name: pr-delivery.sh placeholder strip never matches a code span across a line break (each line stripped on its own); a span that wraps a break stays visible as a fail-safe over-lint tracked in issue #153, no join can hide a placeholder, and a backtick left unmatched on one line keeps later lines of its paragraph linted raw
 phase: bug-fix (run 20261124-gate-edges-149, issue #149 item 1)
 owner: scripts/pr-delivery.sh (strip_code_spans, used by cmd_ready's placeholder lint)
 command: |
@@ -14,7 +14,8 @@ command: |
   hidden() { strip "$1"; if grep -Fq "$2" "$T/out"; then echo "FAIL: $1: $2 was not stripped"; cat "$T/out"; exit 1; fi; }
 
   # No span is matched across a line break: every line is stripped on its own, as on main
-  # a2d4029. A positive below that says "over-lint, issue #153" pins a span CommonMark does
+  # a2d4029, and later lines of a paragraph are also printed raw once one line leaves a
+  # backtick unmatched (XF0 below). A positive below that says "over-lint, issue #153" pins a span CommonMark does
   # wrap (GitHub renders it as code) whose <k> stays visible, so the lint refuses it. That is
   # fail-safe and tracked in issue #153; every guard keeps a real <real> visible.
   # P1 (over-lint, issue #153): a closed span that wraps one line break is not stripped.
@@ -48,6 +49,9 @@ command: |
   # B1: an indented code line (4+ columns) never pairs with the next line.
   printf 'intro\n\n    cmd `\nsee <real> ` tail\n' > "$T/in.md"
   visible "B1 indented code line" '<real>'
+  # B2: indented code holding a lone backtick, then prose: the placeholder is not in a span.
+  printf '    `example\n<real>`\n' > "$T/in.md"
+  visible "B2 indented code then prose" '<real>'
   # T1, T2: table rows, with or without a pipe, never pair a backtick across rows.
   printf 'a | b\n--- | ---\nx ` <real> | y\nz ` | w\n' > "$T/in.md"
   visible "T1 table rows without a leading pipe" '<real>'
@@ -76,6 +80,8 @@ command: |
   # G2: nor does a nested list item.
   printf -- '- a `x <real>\n    - b` c\n' > "$T/in.md"
   visible "G2 indented nested list item" '<real>'
+  printf -- '- parent\n  - ran `x <real>\n    - then` y\n' > "$T/in.md"
+  visible "G2b nested list marker at four columns under a nested item" '<real>'
   # P3 (over-lint, issue #153): a span wrapping after a line holding a pipe is not stripped.
   printf 'ran `cat x <k> |\ngrep y` done\n' > "$T/in.md"
   visible "P3 over-lint: prose with a pipe" '<k>'
@@ -285,9 +291,21 @@ command: |
   # P8 (over-lint, issue #153): a wrapped span holding balanced tags is not stripped.
   printf 'see `x <b>y</b> <p>\nz` end\n' > "$T/in.md"
   visible "P8 over-lint: balanced tags inside a wrapped span" '<p>'
-  # P9: a span closed within its own line, after lines with lone backticks, still strips.
+  # P9 (over-lint, issue #153): a span closed within its own line, in a paragraph where an
+  # earlier line left a backtick unmatched, is printed raw too, so its <k> stays visible.
   printf 'see `x\ny` z\nw `<k> >` c\n' > "$T/in.md"
-  hidden "P9 one-line span on the line after" '<k>'
+  visible "P9 over-lint: one-line span after a lone backtick in the paragraph" '<k>'
+  # P9b-P9d: the same span after a blank line still strips (the raw print ends at a blank
+  # line; spaces, tabs and a CRLF line end count as blank).
+  printf 'see `x\ny` z\n\nw `<k> >` c\n' > "$T/in.md"
+  hidden "P9b one-line span in the next paragraph" '<k>'
+  printf 'see `x\ny` z\n \t\nw `<k> >` c\n' > "$T/in.md"
+  hidden "P9c blank line of a space and a tab" '<k>'
+  printf 'see `x\r\ny` z\r\n\r\nw `<k> >` c\r\n' > "$T/in.md"
+  hidden "P9d CRLF blank line" '<k>'
+  # P9e: a lone backtick changes nothing on its own line; a span before it still strips.
+  printf 'ran `cat <k>` and a lone ` here\n' > "$T/in.md"
+  hidden "P9e one-line span before a lone backtick" '<k>'
   # P10 (over-lint, issue #153): <k> inside a wrapped span stays visible.
   printf 'see `x <k>\ny` z\nw `a >` c\n' > "$T/in.md"
   visible "P10 over-lint: placeholder in the wrap, span on the line after" '<k>'
@@ -316,5 +334,32 @@ command: |
   visible "J5 tag on the closing line of a wrapped span" '<real>'
   printf 'see <x-y\nz="`<<a>"> <real>\nb ` c\n' > "$T/in.md"
   visible "J6 custom tag opened on the line before" '<real>'
+  # XF0-XF2: a backtick left unmatched on one line pairs, on GitHub, with the first backtick
+  # of a later line in the same paragraph, so a span stripped on that later line on its own
+  # is not code there and its <real> shows as raw HTML; every later line of the paragraph is
+  # also linted raw. All red on 92ad0e6. XF1 puts a 4-column ``` line between (opens no
+  # fence, issue #149 item 3); main a2d4029 refuses XF1 only through its unclosed-fence dump
+  # and passes XF0. XF2 is XF0 with CRLF line ends.
+  printf 'Ran it on `main\n`x <real>` passed.\n' > "$T/in.md"
+  visible "XF0 unmatched backtick pairs with a later line" '<real>'
+  printf 'Ran the suite on `main\n    ```\n`code <real>` and it passed.\n' > "$T/in.md"
+  visible "XF1 unmatched backtick across a 4-column fence-like line" '<real>'
+  printf 'Ran it on `main\r\n`x <real>` passed.\r\n' > "$T/in.md"
+  visible "XF2 XF0 with CRLF line ends" '<real>'
+  # XF3 (guard): XF0 split by a bare CR inside one LF line; the whole-line strip pairs across
+  # the CR as GitHub does and keeps <real>.
+  printf 'Ran it on `main\r`x <real>` passed.\n' > "$T/in.md"
+  visible "XF3 XF0 split by a bare CR" '<real>'
+  # XF4 (over-lint pin): the whole-LF-line pass prints raw too. The CR-split pass takes the
+  # ``` after the mid-line CR for a fence and hides line 3, as GitHub does; only the raw
+  # print of the whole-line pass keeps <real> (red on 92ad0e6).
+  printf 'a `x\nb\r```\n`y <real>`\n```\n' > "$T/in.md"
+  visible "XF4 over-lint: raw print in the whole-line pass" '<real>'
+  # XF5, XF6: a line of only a form feed or a vertical tab is not blank in CommonMark, so
+  # the paragraph runs on and the raw print does too (red on 92ad0e6).
+  printf 'Ran it on `main\n\f\n`x <real>` passed.\n' > "$T/in.md"
+  visible "XF5 form feed line does not end the paragraph" '<real>'
+  printf 'Ran it on `main\n\v\n`x <real>` passed.\n' > "$T/in.md"
+  visible "XF6 vertical tab line does not end the paragraph" '<real>'
   echo PASS
-expected: exit 0; stdout "PASS". strip_code_spans matches a code span within one line only: every line outside a fence is stripped on its own, exactly as on main a2d4029 (plus the item-3 fence indent rule pinned by fixture 360). No line is ever joined to the next, so no span is matched across a line break. Fail-safe over-lint, issue #153: a span that wraps a line break, which CommonMark and GitHub render as code, is not stripped, so a placeholder inside it stays visible and the lint refuses the evidence; the positives P1, P4-P8, P10 and T4 pin that (each asserts its <k> or <p> stays visible), alongside the earlier pins L1, P3, T5, LH1, F1, S1-S4, FR1, D3, D4, W1-W3 and WZ1. Issue #149 item 1 (let a span wrap a line break) was dropped: every design that joined lines to match a wrapped span had a path that hid a real placeholder relative to main (a raw HTML tag, comment or processing instruction opened on one line and holding a backtick). Guards, each asserting <real> stays visible and each passing here: R1-R8, B1, T1, T2, H1, H2, G1-G16b, LM1-LM13, Q1, Q1b, A1-A3, HP1-HP3, D1, D2, D5-D8, HL1, HL2, FN1, LR1, CR1, IP1-IP6, WB1-WB6, X1, X2, and J1-J6 (a tag, comment or processing instruction opened on the line before a backtick, with a < after the backtick; each hid <real> under a join design, and passes on main and here). P2 keeps text after an unclosed backtick linted. One-line spans still strip: T3, D9, P9. Mutation (on a copy of scripts/pr-delivery.sh, collected run): a minimal join that strips each pair of consecutive non-blank lines outside fences together makes this fixture exit 1, the first failure P1; collected, the wrap pins P1, T4, P5-P8, P10 fail (P4 passes: the pairwise join pairs its first two lines) with most earlier #153 pins and most guards, J3 among them (J1, J2, J4-J6 pass on that naive pairwise join, because their backtick closer sits on the third line). Under a full join design that matches wrapped spans, the eight flipped positives (P1, T4, P4-P8, P10) and the J1-J6 guards are the cases that fail.
+expected: exit 0; stdout "PASS". strip_code_spans matches a code span within one line only: every line outside a fence is stripped on its own, as on main a2d4029, whose own parse also runs on every file and is printed too (fixture 360 M1, M2 pin that pass; 360 also pins the fence indent rule). No line is ever joined to the next, so no span is matched across a line break. Fail-safe over-lint, issue #153: a span that wraps a line break, which CommonMark and GitHub render as code, is not stripped, so a placeholder inside it stays visible and the lint refuses the evidence; the positives P1, P4-P8, P10 and T4 pin that (each asserts its <k> or <p> stays visible), alongside the earlier pins L1, P3, T5, LH1, F1, S1-S4, FR1, D3, D4, W1-W3 and WZ1. Issue #149 item 1 (let a span wrap a line break) was dropped: every design that joined lines to match a wrapped span had a path that hid a real placeholder relative to main (a raw HTML tag, comment or processing instruction opened on one line and holding a backtick). Guards, each asserting <real> stays visible and each passing here: R1-R8, B1, B2, T1, T2, H1, H2, G1-G16b (G2b a nested list marker under a nested item), LM1-LM13, Q1, Q1b, A1-A3, HP1-HP3, D1, D2, D5-D8, HL1, HL2, FN1, LR1, CR1, IP1-IP6, WB1-WB6, X1, X2, and J1-J6 (a tag, comment or processing instruction opened on the line before a backtick, with a < after the backtick; each hid <real> under a join design, and passes on main and here). P2 keeps text after an unclosed backtick linted. One-line spans still strip: T3, D9, P9b-P9e. Cross-line pairing the other way (issue #153): GitHub can pair a backtick left unmatched on one line with the first backtick of a later line in the same paragraph, so a span this strip removes from that later line is not code there. Once a line leaves a backtick run unmatched, every later line up to the next blank line (spaces, tabs and a CR only) is printed raw as well as stripped, in the CR-split pass and in the whole-LF-line pass: XF0, XF1 (a 4-column ``` line between), XF2 (CRLF), XF5 and XF6 (a form feed or vertical tab line between, not blank in CommonMark) keep <real> visible as GitHub shows it, and XF4 pins the whole-line pass. XF0-XF2, XF4-XF6 and P9 are red on 92ad0e6; main a2d4029 hides the token in each of them except XF1, which it shows only through its unclosed-fence dump. XF3 (a bare CR mid-line) is a guard. P9 (over-lint, issue #153) pins the cost: its one-line span follows a lone backtick in the same paragraph, so its <k> stays visible; P9b-P9d, the same span after a blank line, and P9e still strip. Mutations (on copies of scripts/pr-delivery.sh, every row run): never setting the paragraph flag fails P9, XF0, XF2, XF4, XF5 and XF6 (XF1 is also kept by the main pass); never clearing it fails P9b-P9d; clearing it on any [[:space:]] line fails XF5 and XF6; only on an empty line P9c and P9d; not on a CR P9d; printing raw one line after only fails XF5 and XF6; printing the line that sets the flag raw fails P9e; raw in the CR-split pass only fails XF4; in the whole-line pass only fails P9, XF0, XF5 and XF6. A minimal join that strips each pair of consecutive non-blank lines outside fences together, in every pass, makes this fixture exit 1, the first failure P1; with every row run, the wrap pins P1, T4, P5-P8, P10 fail (P4 passes: the pairwise join pairs its first two lines) with most earlier #153 pins and most guards, J3 among them (J1, J2, J4-J6 pass on that naive pairwise join, because their backtick closer sits on the third line). The same join in the CR-split pass alone fails only P9: the main pass still prints every line stripped on its own.
