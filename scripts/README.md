@@ -560,8 +560,8 @@ client team's repo; it runs with the worktree as cwd). The record's `runner_sour
 `exit_code_branch: null`, with `runner_searched` and `fixtures_found` (NN-*.md files sitting in
 those dirs, unexecuted). Nothing runs, so it is never red; `canonical_source` reads
 `regression-absent`, or `manifest-only` when manifest gates still ran. The cold reviewer notes
-an absent gate in Uncertainties and escalates only when every gate is absent
-(`agents/delegate.md` § Five-step verifying checklist).
+an absent gate in Uncertainties and escalates only when every gate other than a `ci-final-veto`
+record is absent (`agents/delegate.md` § Five-step verifying checklist).
 
 **Kept output.** Every gate's stdout and stderr stream straight into `--out/gate-output/`
 (`<gate>.stdout.log`, `<gate>.stderr.log`; `pre-existing-<gate>.<branch|base>.*.log` for
@@ -625,8 +625,8 @@ scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" \
   --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"
 ```
 
-- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green, no escalate
-  marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
+- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green
+  that is not a `ci_veto` record (a lone green `ci-final-veto` does not pair), no escalate marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
   `branch_tip` equal to the review SHA. The verdict counts.
 - **Exit 1 `discard`:** the final gate is not green (or not a final gate). Discard the review
   uncounted and run the fix loop.

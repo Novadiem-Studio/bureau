@@ -87,7 +87,8 @@ if g.get("gate_mode") not in ("ci", "local"):
 if not gates:
     problems.append("no gate records")
 # Issue #115: an absent gate (no runner anywhere, nothing ran) is neither green
-# nor red. It does not block pairing, but at least one gate must have run green.
+# nor red. It does not block pairing, but at least one gate other than a ci_veto record
+# must have run green (a lone green veto does not pair, see below).
 # Absent means result "absent" AND exit_code_branch null; anything else is judged
 # on its exit code.
 def is_absent(x):
