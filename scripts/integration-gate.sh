@@ -69,7 +69,8 @@
 #                   --gate-mode ci --final runs the local suite, the head
 #                   commit's `gh pr checks` is still read once (no waiting) and
 #                   appended as gate "ci-final-veto": an extra veto, green only
-#                   when every check on the exact head passed, red otherwise
+#                   when no check on the exact head failed or is pending and at
+#                   least one passed (skipped checks are allowed), red otherwise
 #                   with ci_status saying why (issue #149).
 #   --project-context <path>  the project file to read those settings from.
 #                   Default: project-context.md as committed on --base-ref.
@@ -643,10 +644,12 @@ def git(*args):
 
 def final_ci_veto():
     """One non-waiting read of `gh pr checks` for the PR whose head is the worktree
-    HEAD (#149). -> a gate record named ci-final-veto. Green only when every check on
-    that head passed (or was skipped, with at least one pass); a red check, pending,
-    no checks, a head mismatch, no known PR, no gh, or a failed or unreadable gh call
-    is red with ci_status saying which. No poll loop: the final gate does not wait."""
+    HEAD (#149). -> a gate record named ci-final-veto. Green only when no check
+    on that head failed or is pending and at least one passed (skipped checks are
+    allowed); a red check, pending, no checks, a head mismatch, no known PR, no gh, or a
+    failed or unreadable gh call is red with ci_status saying which. No poll loop: the
+    final gate does not wait. gh runs in the worktree, so with no repo override (-R) it
+    resolves the PR from the worktree's own remote, not the caller's directory."""
     rec = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
            "head_sha": "", "failed": [], "pending": [], "checks": []}
 
@@ -682,7 +685,7 @@ def final_ci_veto():
 
         def view():
             r = subprocess.run([gh_bin, "pr", "view", p] + ra + ["--json", "headRefOid", "-q", ".headRefOid"],
-                               capture_output=True, text=True, timeout=120)
+                               cwd=worktree, capture_output=True, text=True, timeout=120)
             return (r.stdout.strip(), "") if r.returncode == 0 else (None, (r.stderr or r.stdout).strip()[:300])
 
         h1, err = view()
@@ -691,7 +694,7 @@ def final_ci_veto():
         if h1 != sha:
             return out("head_mismatch", "PR head is %s, worktree HEAD is %s (not pushed yet?)" % (h1[:12], sha[:12]))
         r = subprocess.run([gh_bin, "pr", "checks", p] + ra + ["--json", "name,state,bucket,workflow,link"],
-                           capture_output=True, text=True, timeout=120)
+                           cwd=worktree, capture_output=True, text=True, timeout=120)
         if "no checks reported" in (r.stderr + r.stdout).lower():
             return out("no_checks", "gh reports no checks on the head commit")
         try:
