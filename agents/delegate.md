@@ -318,7 +318,9 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      a `ci-final-veto` gate, red unless no check on that exact head failed or is pending and
      at least one passed (skipped checks are allowed) (#149). A `pending`, `head_mismatch` or
      `no_checks` veto right after a push means GitHub or CI has not caught up with that head:
-     wait, then re-run the final gate; it is not an escalation.
+     wait, then re-run the final gate; it is not an escalation. A run with no PR or no CI runs
+     its final gate in `--gate-mode local --final`: there `ci --final` is always red (`no_pr`,
+     `gh_missing` or `no_checks`).
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
      replaces the first). A local re-run of a final gate to diagnose a CI red is diagnostic

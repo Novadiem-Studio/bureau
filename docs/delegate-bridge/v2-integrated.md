@@ -193,8 +193,11 @@ capabilities a read-only reviewer must not read as its own (W7 capability-contam
   gate set in the worktree. `ci` confirms `gh pr checks` is fully green on the worktree's exact
   HEAD, polls with a deadline, and treats pending as a wait, never a pass. It falls back to
   `local` for `--final`, a merge commit since `--since-ref`, no known PR, no `gh`, or no checks
-  on the head commit. The Delegate chooses the mode per `agents/delegate.md` § Main manager
-  loop, step 2.
+  on the head commit. A `--final` gate in `ci` mode that runs the local suite still reads the
+  head's CI once, as a `ci-final-veto` gate (#149). The Delegate chooses the mode per
+  `agents/delegate.md` § Main manager loop, step 2; a run with no PR or no CI runs its final
+  gate in `--gate-mode local --final`, since `ci --final` is always red there (`no_pr`,
+  `gh_missing` or `no_checks`).
 - **Output:** writes `integration-results.json` to the `--out` dir, naming `gate_mode`,
   `gate_mode_reason` and `gate_commands`, and streams every gate's stdout/stderr into
   `--out/gate-output/` (kept for diagnosis; not part of the reviewer's artifact manifest).
