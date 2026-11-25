@@ -316,7 +316,9 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      target repo (for example a parent workspace). A `state.json` copy that differs from the
      project file makes it run local. When it runs local it still reads the head's CI once as
      a `ci-final-veto` gate, red unless no check on that exact head failed or is pending and
-     at least one passed (skipped checks are allowed) (#149).
+     at least one passed (skipped checks are allowed) (#149). A `pending` veto right after a
+     push means CI on that head has not finished: wait, then re-run the final gate; it is
+     not an escalation.
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
      replaces the first).
