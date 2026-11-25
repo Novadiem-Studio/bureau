@@ -54,5 +54,22 @@ command: |
   I3=$(ids)
   [ "$(printf '%s\n' "$I3" | grep -c .)" -eq 3 ] || { echo "FAIL: D5 want 3 distinct ids: $out"; exit 1; }
   for i in $IDS; do printf '%s\n' "$I3" | grep -Fxq "$i" || { echo "FAIL: D5 id $i changed when a third duplicate appeared"; exit 1; }; done
+  # D6: the ordinal counts repeats of one file:lines and title, not entries in the list: an
+  # entry sharing only the file:lines, only the title, or neither keeps the id it has alone.
+  # rl <loc|title>...: one bot review (id 900) on the head listing those entries in order.
+  rl() {
+    { printf '> **Outside diff range comments (%s)**\n' "$#"
+      for e in "$@"; do printf '> <summary><strong>Major</strong> \302\267 %s \302\267 <code>%s</code></summary>\n' "${e#*|}" "${e%%|*}"; done
+    } | jq -Rs --arg c "$HEAD" '[{id:900,user:{login:"coderabbitai[bot]"},commit_id:$c,state:"COMMENTED",body:.}]'
+  }
+  want=""
+  for e in 'a.sh:1-2|Same title' 'a.sh:1-2|Other title' 'b.sh:1-2|Same title' 'c.sh:9|Third'; do
+    rl "$e" > "$TMPF/r6.json"; run "$TMPF/r6.json"; want="$want$(ids)
+  "
+  done
+  rl 'a.sh:1-2|Same title' 'a.sh:1-2|Other title' 'b.sh:1-2|Same title' 'c.sh:9|Third' > "$TMPF/r6.json"
+  run "$TMPF/r6.json"
+  want=$(printf '%s' "$want" | tr -d ' ' | grep . | sort -u)
+  [ "$(printf '%s\n' "$want" | grep -c .)" -eq 4 ] && [ "$(ids)" = "$want" ] || { echo "FAIL: D6 want each entry's own id ($want): $out"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". A review on the head whose "Outside diff range comments" section lists the same file:lines and title more than once gets one id per entry: the first keeps the legacy id b900-2f6ed1df2cc4 (D0, D1), later ones get their own id in the b<digits>-<hex> grammar, stable across re-fetches (D2) and when more duplicates appear (D5); naming one id leaves the other open with a "1 of 2" count (D3), naming both passes (D4). Mutation: drop the ordinal from the hash input in coderabbit-gate.sh and D1 fails (one id for two findings).
+expected: exit 0; stdout "PASS". A review on the head whose "Outside diff range comments" section lists the same file:lines and title more than once gets one id per entry: the first keeps the legacy id b900-2f6ed1df2cc4 (D0, D1), later ones get their own id in the b<digits>-<hex> grammar, stable across re-fetches (D2) and when more duplicates appear (D5); naming one id leaves the other open with a "1 of 2" count (D3), naming both passes (D4). The ordinal counts repeats of one file:lines and title, so entries that share only one of them, or neither, each keep the id they have alone (D6). Mutations in coderabbit-gate.sh: drop the ordinal from the hash input and D1 fails (one id for two findings); count it over the whole list, or per file:lines only, or per title only, and D6 fails.

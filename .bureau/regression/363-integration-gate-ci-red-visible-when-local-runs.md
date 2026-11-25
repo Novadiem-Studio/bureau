@@ -30,8 +30,11 @@ command: |
   fi
   case "$1 $2" in
     "pr view")
+      # moved mode: the PR head changes after the checks are read (green on the old head).
+      [ "$m" = moved ] && [ -f "$FK/read" ] && m=mismatch
       if [ "$m" = mismatch ]; then echo 0000000000000000000000000000000000000000; else git -C "$W" rev-parse HEAD; fi; exit 0 ;;
     "pr checks")
+      [ "$m" = moved ] && { touch "$FK/read"; m=pass; }
       case "$m" in
         nochecks) echo "no checks reported on the 'feat' branch" >&2; exit 1 ;;
         error) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
@@ -78,6 +81,12 @@ command: |
   gate mism mismatch st.json --gate-mode ci --final; vetoed mism head_mismatch
   gate err error st.json --gate-mode ci --final; vetoed err gh_error
   gate nopr pass st-nopr.json --gate-mode ci --final; vetoed nopr no_pr
+  # V10: a cancelled check is red, checks that were all skipped passed nothing, and a PR head
+  # that moves while its green checks are read is red.
+  gate canc cancel st.json --gate-mode ci --final; vetoed canc failed
+  gate skipd skipping st.json --gate-mode ci --final; vetoed skipd no_checks
+  gate moved moved st.json --gate-mode ci --final; vetoed moved head_mismatch
+  jq -e '.gates[-1].detail|test("moved during the read")' "$(R moved)" >/dev/null || { echo "FAIL moved: detail"; jq -c '.gates[-1]' "$(R moved)"; exit 1; }
   # V4: CI green on the head -> the veto is green and the local suite still ran.
   gate green pass st.json --gate-mode ci --final
   jq -e '.gate_mode=="local" and .gates[0].name=="regression" and .gates[0].result=="green"
@@ -144,4 +153,4 @@ command: |
   gate nonfinal pass st.json --gate-mode ci
   jq -e '.gate_mode=="ci" and [.gates[].name]==["ci"]' "$(R nonfinal)" >/dev/null || { echo "FAIL nonfinal"; jq -c .gates "$(R nonfinal)"; exit 1; }
   echo PASS
-expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a fully passed CI gives a green veto and pairing accepts it (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). With no regression runner anywhere the local gate is absent and a green veto does not count as a gate that ran: terminal-pairing.sh discards with exit 1, "no gate ran (absent: regression; a ci-final-veto record never counts as a gate that ran)" (V7), and the same for a veto record with no other gate recorded (V7b). Both gh calls run in the worktree, so when no repository is known (no -R) the CI read is of the worktree's own repository even if the gate is started from another repository's directory holding the same commit with green CI (V9); a known repository is still passed as -R on every call (checked after V2). With no gh on PATH (a PATH of links to every system tool except gh, so it holds on hosts with /usr/bin/gh) the veto is red with ci_status gh_missing and pairing exits nonzero (V8). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails; count a ci_veto record as a gate that ran in terminal-pairing.sh and V7 and V7b fail; drop cwd=worktree from either gh call and V9 fails; drop -R from the gh calls and the check after V2 fails; return passed from the gh_missing branch and V8 fails.
+expected: exit 0; stdout "PASS". With --gate-mode ci --final and no project opt-in, the final gate runs the full local suite (gate_mode local, ci null, gates[0] the regression gate) and also reads `gh pr checks` once for the PR whose head is the worktree HEAD, recorded as a last gate "ci-final-veto" (not under-declared, reason appended "final gate CI veto: <status>"). A red check gives a red veto naming the failed check and head, which terminal-pairing.sh discards (V1), in a single read (V2); pending, no checks, head mismatch, a failed gh call and no known PR are each red with that status (V3); a cancelled check is red with status failed, checks that were all skipped with no_checks, and a PR head that moves while its green checks are read with head_mismatch (V10); a fully passed CI gives a green veto and pairing accepts it (V4) but never turns a red local suite green (V5); --gate-mode local --final calls no gh and a non-final ci gate is unchanged (V6). With no regression runner anywhere the local gate is absent and a green veto does not count as a gate that ran: terminal-pairing.sh discards with exit 1, "no gate ran (absent: regression; a ci-final-veto record never counts as a gate that ran)" (V7), and the same for a veto record with no other gate recorded (V7b). Both gh calls run in the worktree, so when no repository is known (no -R) the CI read is of the worktree's own repository even if the gate is started from another repository's directory holding the same commit with green CI (V9); a known repository is still passed as -R on every call (checked after V2). With no gh on PATH (a PATH of links to every system tool except gh, so it holds on hosts with /usr/bin/gh) the veto is red with ci_status gh_missing and pairing exits nonzero (V8). Mutation: skip the veto in the gate-mode resolver (scripts/integration-gate.sh) and V1 fails; record a pending read as green and V3 fails; drop the second head read, not count a cancelled check as failed, or count a skipped check as a pass, and V10 fails; count a ci_veto record as a gate that ran in terminal-pairing.sh and V7 and V7b fail; drop cwd=worktree from either gh call and V9 fails; drop -R from the gh calls and the check after V2 fails; return passed from the gh_missing branch and V8 fails.
