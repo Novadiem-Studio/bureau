@@ -184,7 +184,7 @@ if [ "$REQ_CHECKPOINT_TYPE" != "integration" ]; then
   exit 0
 fi
 
-# ── no stale results: remove an earlier integration-results.json first (#149 r4-b1) ──
+# ── no stale results: remove an earlier integration-results.json first (#149) ──
 # An earlier gate into the same --out (for example a diagnostic local re-run of the
 # final gate) leaves its results file behind. If this run then failed before or at
 # its own write, that old file would stay, pass assert_results_written and pair. So it
@@ -241,7 +241,7 @@ fi
 # verifies the file exists, is non-empty, AND parses as JSON; if any check fails
 # it prints a clear stderr reason and exits 2 (a distinct fail-closed code). A
 # write failure can therefore NEVER reach the `exit 0` at the foot of this script.
-# Any earlier results file was removed at the start (#149 r4-b1), so the file this
+# Any earlier results file was removed at the start (#149), so the file this
 # finds was written by this run (or by another gate writing into the same --out at
 # the same time, which no caller does).
 assert_results_written() {
@@ -675,7 +675,7 @@ def final_ci_veto():
     resolves the PR from the worktree's own remote, not the caller's directory.
     The record is bounded whatever gh returns: it travels to later steps as a
     command-line argument, and a record past the argument limit left the results
-    unwritten (#149 r4-b1). So failed and pending keep at most NAMES_CAP names, each
+    unwritten (#149). So failed and pending keep at most NAMES_CAP names, each
     cut to NAME_CAP characters, with the full counts beside them (failed_count,
     pending_count, checks_count); the full check list is not kept. The verdict and
     the counts come from the full list, before any cap."""
