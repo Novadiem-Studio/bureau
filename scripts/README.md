@@ -549,14 +549,14 @@ mode), and `terminal-pairing.sh` never counts it as a gate that ran, so it canno
 gate whose local gates were all absent; a red check, pending, no checks, a head mismatch, no known PR, no `gh`, or
 a failed or unreadable `gh` call makes it red, with `ci_status` and `detail` naming which, and
 `gate_mode_reason` ends `final gate CI veto: <status>`. The record stays small whatever CI
-returns: `failed` and `pending` hold at most 20 check names (each cut to 200 characters) beside
+returns: `failed` and `pending` hold at most 20 check names (each cut to 200 bytes of escaped JSON) beside
 the full `failed_count`, `pending_count` and `checks_count`, and the full check list is not kept
 (a list past the argument limit once left the results unwritten). `gate_mode` stays `local` and
 `ci` stays null. `--gate-mode local --final` reads no CI. A run with no PR or no CI runs its
 final gate in `--gate-mode local --final`: there `ci --final` is always red (`no_pr`,
 `gh_missing` or `no_checks`). Each integration run removes an earlier
 `integration-results.json` from `--out` before anything else can fail, so a run that writes
-nothing leaves no file to pair.
+nothing leaves no file to pair; a file it cannot remove it empties if it can, and exits 2.
 In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).
 
 **Regression runner (#115).** The standing `regression` gate runs the first runner it finds:

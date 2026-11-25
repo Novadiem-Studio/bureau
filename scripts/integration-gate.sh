@@ -189,14 +189,18 @@ fi
 # final gate) leaves its results file behind. If this run then failed before or at
 # its own write, that old file would stay, pass assert_results_written and pair. So it
 # goes before anything here can fail: a run that writes nothing leaves no file. A
-# --out that is missing or not writable is left to the checks below (exit 2).
-if [ -n "$OUT" ] && [ -d "$OUT" ] && [ -w "$OUT" ]; then
+# --out that is missing, or not writable with no earlier file, is left to the checks
+# below (exit 2).
+if [ -n "$OUT" ] && [ -d "$OUT" ]; then
   rm -f "$OUT/integration-results.json" 2>/dev/null
   if [ -e "$OUT/integration-results.json" ] || [ -L "$OUT/integration-results.json" ]; then
-    # Cannot unlink it (a sticky dir, say) but may still write it, as the results write
-    # would: empty it, so the old results cannot be read even by a caller that ignores exit 2.
+    # Cannot unlink it (a sticky or unwritable dir) but may still write it: empty it, so
+    # the old results cannot be read even by a caller that ignores exit 2. Regular files
+    # only (opening a FIFO would block), and in an unwritable dir never through a symlink.
     # (A subshell: a failed redirection on `:` would end this shell with exit 1, not 2.)
-    [ -d "$OUT/integration-results.json" ] || ( : > "$OUT/integration-results.json" ) 2>/dev/null
+    if [ -f "$OUT/integration-results.json" ] && { [ -w "$OUT" ] || [ ! -L "$OUT/integration-results.json" ]; }; then
+      ( : > "$OUT/integration-results.json" ) 2>/dev/null
+    fi
     echo "integration-gate: cannot remove the earlier $OUT/integration-results.json; exiting 2 rather than leave it to read as this run's results" >&2
     exit 2
   fi
@@ -675,8 +679,8 @@ def final_ci_veto():
     resolves the PR from the worktree's own remote, not the caller's directory.
     The record is bounded whatever gh returns: it travels to later steps as a
     command-line argument, and a record past the argument limit left the results
-    unwritten (#149). So failed and pending keep at most NAMES_CAP names, each
-    cut to NAME_CAP characters, with the full counts beside them (failed_count,
+    unwritten (#149). So failed and pending keep at most NAMES_CAP names, each cut to
+    NAME_CAP bytes as serialized (an escaped character is up to 12 bytes), with the full counts beside them (failed_count,
     pending_count, checks_count); the full check list is not kept. The verdict and
     the counts come from the full list, before any cap."""
     NAMES_CAP, NAME_CAP, DETAIL_CAP = 20, 200, 6000
@@ -684,14 +688,23 @@ def final_ci_veto():
            "head_sha": "", "failed": [], "pending": [],
            "failed_count": 0, "pending_count": 0, "checks_count": 0}
 
+    def cut(text, cap):
+        # cap counts bytes of ASCII-escaped JSON, the form the record travels in.
+        text, size = str(text)[:cap], 0
+        for i, ch in enumerate(text):
+            size += len(json.dumps(ch)) - 2
+            if size > cap:
+                return text[:i]
+        return text
+
     def capped(names):
-        shown = [str(n)[:NAME_CAP] for n in names[:NAMES_CAP]]
+        shown = [cut(n, NAME_CAP) for n in names[:NAMES_CAP]]
         more = len(names) - len(shown)
         return shown, ", ".join(shown) + (" and %d more" % more if more > 0 else "")
 
     def out(status, detail=""):
         ok = status == "passed"
-        rec.update({"ci_status": status, "detail": str(detail)[:DETAIL_CAP],
+        rec.update({"ci_status": status, "detail": cut(detail, DETAIL_CAP),
                     "exit_code_branch": 0 if ok else {"failed": 1, "pending": 124}.get(status, 2),
                     "result": "green" if ok else "red"})
         return rec
