@@ -44,7 +44,7 @@ that way until Robin revises this split.
 
 | Operation | Claude Code host | Codex host | Grok Bot host |
 |---|---|---|---|
-| Fresh specialist | Agent tool, `subagent_type: general-purpose`, explicit `model` | Codex multi-agent spawn, currently exposed as `multi_agent_v1.spawn_agent`, `fork_context: false`, explicit `model` and `reasoning_effort` | Task executor, blank prompt, no parent transcript; log `--plan` payload first |
+| Fresh specialist | Agent tool, `subagent_type` from § Claude specialist types, explicit `model` | Codex multi-agent spawn, currently exposed as `multi_agent_v1.spawn_agent`, `fork_context: false`, explicit `model` and `reasoning_effort` | Task executor, blank prompt, no parent transcript; log `--plan` payload first |
 | Qualified fast Mage pass | normal fresh specialist | one-shot `scripts/run-codex-spark-specialist.sh`; Spark/high; `execute-plan` only; no resume | role default; no grok-build helper yet |
 | Resumable Conductor | Agent tool; retain returned agent id | Codex multi-agent spawn, currently exposed as `multi_agent_v1.spawn_agent`; retain returned agent id | Task executor; retain agent id in `delegate-state.json` |
 | Resume an idle agent | `SendMessage` to retained id | `multi_agent_v1.send_input` to retained id | Task `resume` or `MessageSubagent` |
@@ -53,6 +53,18 @@ that way until Robin revises this split.
 | Genuine human fork | Delegate writes the fork to `state.json#checkpoints` + `open_questions`, appends to `log.md`, persists `delegate-state.json`, fires `notify_robin`, and ENDS THE TURN; the answer arrives by `SendMessage`, a `--bg --resume` continuation, or Robin directly. **Never `AskUserQuestion`** (`agents/delegate.md` § genuine fork) | Delegate persists state and asks Robin in its top-level final response; after Robin replies, `multi_agent_v1.send_input` resumes the Conductor | Delegate persists, asks Robin in this chat, then resumes the Conductor |
 
 Cursor Agent (`runtime=cursor`) is a fourth host, not a fourth column: Task spawn/resume, `--plan` via `scripts/run-cursor-specialist.sh`, optional `environment: cloud` for producers, local Task for cold review. See `docs/host-cursor.md`.
+
+### Claude specialist types
+
+A `general-purpose` agent loads every tool, every connector's tool names and the whole skills list: 111k to 120k tokens before any work in the desktop app. The two types in `claude-agents/` start near 32k. `scripts/install-claude-agents.sh` links them into `~/.claude/agents`.
+
+| `subagent_type` | Use for |
+|---|---|
+| `bureau-specialist` | Analizer 2000, Architect, Spellwright, Challenger, Systemsmith, and a Mage or other coder with no React or Next.js work |
+| `bureau-web-specialist` | a Mage, Challenger or Spellwright on a React or Next.js surface |
+| `general-purpose` | the Conductor and any role that spawns agents; any spawn that needs a connector (Linear, Slack, Sentry), a browser, image generation or the Skill tool; Cleric, Voice, Witness, Scribe, Mechanic, Scoot and Tally |
+
+Both types have Bash, Read, Edit, Write, Grep, Glob, SendMessage, TaskStop, Monitor and WebFetch, and they keep the advisor. `novadiem-engineering` is preloaded in both, `react-nextjs` in the web one. They have no Skill tool: a skill the prompt names is read from its `SKILL.md`, and the agent's own instructions give the paths. If a spawn reports that the type is unknown, use `general-purpose` and note it in `log.md`. If a specialist hands back because a tool is missing, respawn it as `general-purpose`.
 
 Codex fresh-context spawns MUST pass no parent transcript. In the current tool
 surface that means `fork_context: false`; in older/future surfaces this may be
