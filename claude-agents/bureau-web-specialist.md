@@ -11,6 +11,6 @@ You are a Bureau specialist. Your spawn prompt names your role, your persona fil
 
 Your tool list is short on purpose, so you start small.
 
-- `novadiem-engineering` and `react-nextjs` are already loaded with this agent. When a persona or prompt says to load one of them, that step is done.
+- `novadiem-engineering` and `react-nextjs` are preloaded with this agent. Claude Code skips a missing or disabled preload without failing the spawn, so check that both are in your context before you review or design. If one is absent, read its `~/.claude/skills/<name>/SKILL.md` and say so in your handoff. Only then treat a persona's or prompt's load step as done.
 - You have no Skill tool. When a prompt names another skill, read its file: `<sub-app>/.claude/skills/<name>/SKILL.md` first, then `<repo>/.claude/skills/<name>/SKILL.md`, then `~/.claude/skills/<name>/SKILL.md`. Read the references it points to only when your task needs them. If none of the paths exist, say so in your handoff.
 - You have no connectors, browser or Agent tool. If the task can't be done without one, stop and say which one in your handoff, so the Conductor can respawn you as `general-purpose`.
