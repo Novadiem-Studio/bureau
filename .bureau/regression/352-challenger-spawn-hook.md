@@ -24,10 +24,14 @@ command: |
   # deny: other detection paths
   expect_deny "attempt-id critic-"  "$(agent Agent '{"description":"cold review","prompt":"Review the plan.\nAttempt ID: critic-01b","model":"sonnet"}')"
   expect_deny "subagent_type"       "$(agent Agent '{"description":"review","prompt":"review it","subagent_type":"critic","model":"sonnet"}')"
+  expect_deny "bureau-specialist sonnet" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review round 3",prompt:$p,subagent_type:"bureau-specialist",model:"sonnet"}')")"
+  expect_deny "bureau-web-specialist sonnet" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review round 3",prompt:$p,subagent_type:"bureau-web-specialist",model:"sonnet"}')")"
   expect_deny "description prefix"  "$(agent Agent '{"description":"Challenger round 2 on plan","prompt":"review it","model":"sonnet"}')"
   expect_deny "legacy Task tool"    "$(agent Task "$(jq -cn --arg p "$P_CH" '{description:"x",prompt:$p,model:"sonnet"}')")"
   # allow: strong and escalated Challengers
   expect_allow "challenger opus"  "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,model:"opus"}')")"
+  expect_allow "bureau-specialist opus" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,subagent_type:"bureau-specialist",model:"opus"}')")"
+  expect_allow "bureau-web-specialist opus" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,subagent_type:"bureau-web-specialist",model:"opus"}')")"
   expect_allow "challenger fable" "$(agent Agent "$(jq -cn --arg p "$P_CH" '{description:"Review",prompt:$p,model:"fable"}')")"
   # allow: other roles on cheap models, even when they mention the Challenger
   expect_allow "mage sonnet mentioning challenger" "$(agent Agent "$(jq -cn --arg p "$P_MAGE" '{description:"Mage prompt 4",prompt:$p,model:"sonnet"}')")"
