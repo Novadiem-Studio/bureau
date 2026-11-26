@@ -541,6 +541,22 @@ opt-in (or with a malformed `local_only_gates` list, an unreadable project file,
 `state.json#integration_gate` copy that differs from it), a merge since `--since-ref`, no known PR, no
 `gh` on PATH, three `gh` errors in a row, or no checks on the head commit after the grace period.
 A CI red stays red: re-run the checkpoint with `--gate-mode local` when it needs local diagnosis.
+When `--gate-mode ci --final` falls back to the local suite, the gate still reads `gh pr checks`
+once, with no waiting, for the PR whose head equals the worktree HEAD, and appends it as a last
+gate `ci-final-veto` (#149). It is an extra veto, never a stand-in: green only when no check
+on that head failed or is pending and at least one passed (skipped checks are allowed, as in CI
+mode), and `terminal-pairing.sh` never counts it as a gate that ran, so it cannot pair a final
+gate whose local gates were all absent; a red check, pending, no checks, a head mismatch, no known PR, no `gh`, or
+a failed or unreadable `gh` call makes it red, with `ci_status` and `detail` naming which, and
+`gate_mode_reason` ends `final gate CI veto: <status>`. The record stays small whatever CI
+returns: `failed` and `pending` hold at most 20 check names (each cut to 200 bytes of escaped JSON) beside
+the full `failed_count`, `pending_count` and `checks_count`, and the full check list is not kept
+(a list past the argument limit once left the results unwritten). `gate_mode` stays `local` and
+`ci` stays null. `--gate-mode local --final` reads no CI. A run with no PR or no CI runs its
+final gate in `--gate-mode local --final`: there `ci --final` is always red (`no_pr`,
+`gh_missing` or `no_checks`). Each integration run removes an earlier
+`integration-results.json` from `--out` before anything else can fail, so a run that writes
+nothing leaves no file to pair; a file it cannot remove it empties if it can, and exits 2.
 In CI mode `under_declaration` is empty (no local gate ran to cross-check the claims against).
 
 **Regression runner (#115).** The standing `regression` gate runs the first runner it finds:
@@ -551,8 +567,8 @@ client team's repo; it runs with the worktree as cwd). The record's `runner_sour
 `exit_code_branch: null`, with `runner_searched` and `fixtures_found` (NN-*.md files sitting in
 those dirs, unexecuted). Nothing runs, so it is never red; `canonical_source` reads
 `regression-absent`, or `manifest-only` when manifest gates still ran. The cold reviewer notes
-an absent gate in Uncertainties and escalates only when every gate is absent
-(`agents/delegate.md` § Five-step verifying checklist).
+an absent gate in Uncertainties and escalates only when every gate other than a `ci-final-veto`
+record is absent (`agents/delegate.md` § Five-step verifying checklist).
 
 **Kept output.** Every gate's stdout and stderr stream straight into `--out/gate-output/`
 (`<gate>.stdout.log`, `<gate>.stderr.log`; `pre-existing-<gate>.<branch|base>.*.log` for
@@ -616,8 +632,8 @@ scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" \
   --out "$RUN_DIR/checkpoints/NN-terminal-pairing.json"
 ```
 
-- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green, no escalate
-  marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
+- **Exit 0 `paired`:** `final_gate` true, every gate green (`exit_code_branch` 0) or `absent` with at least one green
+  that is not a `ci_veto` record (a lone green `ci-final-veto` does not pair), no escalate marker, fast-forward and conflicts clean, CI `head_sha` equal to `branch_tip` in CI mode, and
   `branch_tip` equal to the review SHA. The verdict counts.
 - **Exit 1 `discard`:** the final gate is not green (or not a final gate). Discard the review
   uncounted and run the fix loop.

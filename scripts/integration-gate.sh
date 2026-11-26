@@ -65,7 +65,14 @@
 #                   hardware on this host) still runs locally. The settings are
 #                   never taken from the run's state.json (the Conductor writes
 #                   it); a state.json copy that differs from the project file
-#                   forces the local suite. Recorded as final_gate.
+#                   forces the local suite. Recorded as final_gate. When
+#                   --gate-mode ci --final runs the local suite, the head
+#                   commit's `gh pr checks` is still read once (no waiting) and
+#                   appended as gate "ci-final-veto": an extra veto, green only
+#                   when no check on the exact head failed or is pending and at
+#                   least one passed (skipped checks are allowed), red otherwise
+#                   with ci_status saying why (issue #149). The record keeps at
+#                   most 20 failed and 20 pending names, with the full counts.
 #   --project-context <path>  the project file to read those settings from.
 #                   Default: project-context.md as committed on --base-ref.
 #   --since-ref   <git ref>    the commit the previous integration gate verified.
@@ -80,7 +87,8 @@
 #   --ci-no-checks-grace <seconds>  how long to wait for a first check to appear
 #                   on the head commit before concluding it has no CI (default 300).
 #
-# Output: writes integration-results.json into --out (same snake_case field layout
+# Output: removes any earlier integration-results.json from --out first, then
+# writes integration-results.json into --out (same snake_case field layout
 # watcher.sh produced; issue #92 adds final_gate, gate_mode, gate_mode_requested,
 # gate_mode_reason, gate_commands and ci, and keeps every existing field). NOTE:
 # this file has NO `verdict` key — it is EVIDENCE only; the proceed/revise/escalate
@@ -176,6 +184,28 @@ if [ "$REQ_CHECKPOINT_TYPE" != "integration" ]; then
   exit 0
 fi
 
+# ── no stale results: remove an earlier integration-results.json first (#149) ──
+# An earlier gate into the same --out (for example a diagnostic local re-run of the
+# final gate) leaves its results file behind. If this run then failed before or at
+# its own write, that old file would stay, pass assert_results_written and pair. So it
+# goes before anything here can fail: a run that writes nothing leaves no file. A
+# --out that is missing, or not writable with no earlier file, is left to the checks
+# below (exit 2).
+if [ -n "$OUT" ] && [ -d "$OUT" ]; then
+  rm -f "$OUT/integration-results.json" 2>/dev/null
+  if [ -e "$OUT/integration-results.json" ] || [ -L "$OUT/integration-results.json" ]; then
+    # Cannot unlink it (a sticky or unwritable dir) but may still write it: empty it, so
+    # the old results cannot be read even by a caller that ignores exit 2. Regular files
+    # only (opening a FIFO would block), and in an unwritable dir never through a symlink.
+    # (A subshell: a failed redirection on `:` would end this shell with exit 1, not 2.)
+    if [ -f "$OUT/integration-results.json" ] && { [ -w "$OUT" ] || [ ! -L "$OUT/integration-results.json" ]; }; then
+      ( : > "$OUT/integration-results.json" ) 2>/dev/null
+    fi
+    echo "integration-gate: cannot remove the earlier $OUT/integration-results.json; exiting 2 rather than leave it to read as this run's results" >&2
+    exit 2
+  fi
+fi
+
 # ── validate the gate-mode flags (issue #92) ─────────────────────────────────
 case "$REQ_GATE_MODE" in
   local|ci) ;;
@@ -215,6 +245,9 @@ fi
 # verifies the file exists, is non-empty, AND parses as JSON; if any check fails
 # it prints a clear stderr reason and exits 2 (a distinct fail-closed code). A
 # write failure can therefore NEVER reach the `exit 0` at the foot of this script.
+# Any earlier results file was removed at the start (#149), so the file this
+# finds was written by this run (or by another gate writing into the same --out at
+# the same time, which no caller does).
 assert_results_written() {
   _res="$OUT/integration-results.json"
   if [ ! -s "$_res" ]; then
@@ -621,6 +654,12 @@ def log(msg):
 
 def done(mode, reason):
     res["mode"], res["reason"] = mode, reason
+    # Issue #149: a final gate that asked for CI but runs the local suite still reads
+    # the CI of the head commit once, as an extra veto. It never stands in for the local suite.
+    if mode == "local" and requested == "ci" and final == "1":
+        veto = final_ci_veto()
+        res["final_ci_veto"] = veto
+        res["reason"] = "%s; final gate CI veto: %s" % (reason, veto["ci_status"])
     print(json.dumps(res))
     sys.exit(0)
 
@@ -628,6 +667,112 @@ def done(mode, reason):
 def git(*args):
     return subprocess.run(["git", "-C", worktree] + list(args),
                           capture_output=True, text=True)
+
+
+def final_ci_veto():
+    """One non-waiting read of `gh pr checks` for the PR whose head is the worktree
+    HEAD (#149). -> a gate record named ci-final-veto. Green only when no check
+    on that head failed or is pending and at least one passed (skipped checks are
+    allowed); a red check, pending, no checks, a head mismatch, no known PR, no gh, or a
+    failed or unreadable gh call is red with ci_status saying which. No poll loop: the
+    final gate does not wait. gh runs in the worktree, so with no repo override (-R) it
+    resolves the PR from the worktree's own remote, not the caller's directory.
+    The record is bounded whatever gh returns: it travels to later steps as a
+    command-line argument, and a record past the argument limit left the results
+    unwritten (#149). So failed and pending keep at most NAMES_CAP names, each cut to
+    NAME_CAP bytes as serialized (an escaped character is up to 12 bytes), with the full counts beside them (failed_count,
+    pending_count, checks_count); the full check list is not kept. The verdict and
+    the counts come from the full list, before any cap."""
+    NAMES_CAP, NAME_CAP, DETAIL_CAP = 20, 200, 6000
+    rec = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
+           "head_sha": "", "failed": [], "pending": [],
+           "failed_count": 0, "pending_count": 0, "checks_count": 0}
+
+    def cut(text, cap):
+        # cap counts bytes of ASCII-escaped JSON, the form the record travels in.
+        text, size = str(text)[:cap], 0
+        for i, ch in enumerate(text):
+            size += len(json.dumps(ch)) - 2
+            if size > cap:
+                return text[:i]
+        return text
+
+    def capped(names):
+        shown = [cut(n, NAME_CAP) for n in names[:NAMES_CAP]]
+        more = len(names) - len(shown)
+        return shown, ", ".join(shown) + (" and %d more" % more if more > 0 else "")
+
+    def out(status, detail=""):
+        ok = status == "passed"
+        rec.update({"ci_status": status, "detail": cut(detail, DETAIL_CAP),
+                    "exit_code_branch": 0 if ok else {"failed": 1, "pending": 124}.get(status, 2),
+                    "result": "green" if ok else "red"})
+        return rec
+
+    try:
+        p, rp = pr, repo
+        if not p or not rp:
+            try:
+                with open(state_path) as fh:
+                    g = (json.load(fh) or {}).get("git") or {}
+                p = p or ("" if g.get("pr_number") in (None, "") else str(g.get("pr_number")))
+                rp = rp or (g.get("github_repo") or "")
+            except Exception:
+                pass
+        if not p:
+            return out("no_pr", "no pull request known (no --pr and no state.json git.pr_number), so the CI of the head commit cannot be read")
+        gh_bin = shutil.which("gh")
+        if gh_bin is None:
+            return out("gh_missing", "gh is not on PATH, so the CI of the head commit cannot be read")
+        h = git("rev-parse", "HEAD")
+        if h.returncode != 0:
+            return out("gh_error", "cannot read the worktree HEAD")
+        sha = h.stdout.strip()
+        rec["head_sha"] = sha
+        ra = ["-R", rp] if rp else []
+        rec["command"] = " ".join(["gh", "pr", "checks", p] + ra + ["--json", "name,state,bucket,workflow,link"])
+
+        def view():
+            r = subprocess.run([gh_bin, "pr", "view", p] + ra + ["--json", "headRefOid", "-q", ".headRefOid"],
+                               cwd=worktree, capture_output=True, text=True, timeout=120)
+            return (r.stdout.strip(), "") if r.returncode == 0 else (None, (r.stderr or r.stdout).strip()[:300])
+
+        h1, err = view()
+        if h1 is None:
+            return out("gh_error", "gh pr view failed: %s" % err)
+        if h1 != sha:
+            return out("head_mismatch", "PR head is %s, worktree HEAD is %s (not pushed yet?)" % (h1[:12], sha[:12]))
+        r = subprocess.run([gh_bin, "pr", "checks", p] + ra + ["--json", "name,state,bucket,workflow,link"],
+                           cwd=worktree, capture_output=True, text=True, timeout=120)
+        if "no checks reported" in (r.stderr + r.stdout).lower():
+            return out("no_checks", "gh reports no checks on the head commit")
+        try:
+            checks = json.loads(r.stdout)
+            if not isinstance(checks, list):
+                raise ValueError("not a list")
+        except Exception:
+            return out("gh_error", "gh pr checks gave no JSON (exit %d): %s" % (r.returncode, (r.stderr or r.stdout).strip()[:300]))
+        summary = [{k: c.get(k) for k in ("name", "bucket", "state", "workflow", "link")}
+                   for c in checks if isinstance(c, dict)]
+        failed = [c["name"] for c in summary if c["bucket"] in ("fail", "cancel")]
+        pending = [c["name"] for c in summary if c["bucket"] not in ("pass", "skipping", "fail", "cancel")]
+        rec["failed"], failed_text = capped(failed)
+        rec["pending"], pending_text = capped(pending)
+        rec.update({"failed_count": len(failed), "pending_count": len(pending), "checks_count": len(checks)})
+        h2, err = view()
+        if h2 != h1:
+            return out("head_mismatch", "PR head moved during the read (%s -> %s)" % (h1[:12], (h2 or "?")[:12]))
+        if len(summary) != len(checks):
+            return out("gh_error", "gh pr checks returned entries that are not objects")
+        if failed:
+            return out("failed", "CI red on the head commit: %s" % failed_text)
+        if pending:
+            return out("pending", "CI not finished on the head commit (pending is not a pass): %s" % pending_text)
+        if any(c["bucket"] == "pass" for c in summary):
+            return out("passed", "no check on the head commit failed or is pending, and at least one passed")
+        return out("no_checks", "no check on the head commit passed (all skipped or none)")
+    except Exception as e:
+        return out("gh_error", "the CI read failed: %s" % e)
 
 
 try:
@@ -1647,6 +1792,41 @@ PY
   GATE_RESULTS_JSON="$(apply_flaky gates "$GATE_RESULTS_JSON")"
   UNDER_DECL_JSON="$(apply_flaky under_declaration "$UNDER_DECL_JSON")"
   PRE_EXISTING_JSON="$(apply_flaky pre_existing "$PRE_EXISTING_JSON")"
+
+  # ── FINAL-GATE CI VETO (issue #149) ───────────────────────────────────
+  # A --gate-mode ci --final gate that ran the local suite also carries the head's
+  # CI read (final_ci_veto in MODE_JSON) as one more gate, appended after the
+  # under-declaration and flaky steps: the build cannot declare it and a flaky
+  # entry cannot demote it. It is green only when the read says no check failed
+  # or is pending and at least one passed (skipped checks allowed); a missing or unreadable record is a red gate, never no gate. An
+  # unreadable gate list is passed through untouched (it already fails closed).
+  if [ "$REQ_FINAL" = 1 ] && [ "$REQ_GATE_MODE" = ci ] && [ "$EFFECTIVE_MODE" != ci ]; then
+    GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$MODE_JSON" <<'PY'
+import json, sys
+try:
+    gates = json.loads(sys.argv[1])
+    if not isinstance(gates, list):
+        raise ValueError("not a list")
+except Exception:
+    print(sys.argv[1])
+    sys.exit(0)
+try:
+    veto = json.loads(sys.argv[2]).get("final_ci_veto")
+except Exception:
+    veto = None
+if not isinstance(veto, dict) or veto.get("name") != "ci-final-veto":
+    veto = {"name": "ci-final-veto", "command": "gh pr checks", "ci_veto": True,
+            "exit_code_branch": 2, "result": "red", "ci_status": "unreadable",
+            "detail": "the final-gate CI read left no usable record"}
+elif not (veto.get("ci_status") == "passed" and veto.get("exit_code_branch") == 0):
+    veto["result"] = "red"
+    if veto.get("exit_code_branch") in (0, None):
+        veto["exit_code_branch"] = 2
+gates.append(veto)
+print(json.dumps(gates))
+PY
+)"
+  fi
 
   # ── WRITE integration-results.json to $OUT ────────────────────────────
   # FIX 3: build the seed errors[] with json.dumps, never shell string-concat —

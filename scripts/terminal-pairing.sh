@@ -87,7 +87,8 @@ if g.get("gate_mode") not in ("ci", "local"):
 if not gates:
     problems.append("no gate records")
 # Issue #115: an absent gate (no runner anywhere, nothing ran) is neither green
-# nor red. It does not block pairing, but at least one gate must have run green.
+# nor red. It does not block pairing, but at least one gate other than a ci_veto record
+# must have run green (a lone green veto does not pair, see below).
 # Absent means result "absent" AND exit_code_branch null; anything else is judged
 # on its exit code.
 def is_absent(x):
@@ -98,8 +99,17 @@ red = [x.get("name", "?") for x in gates
                                 or x.get("result") != "green")]
 if red:
     problems.append("red gate(s): %s" % ", ".join(map(str, red)))
-if gates and len(absent) == len(gates):
-    problems.append("no gate ran (every gate absent: %s)" % ", ".join(map(str, absent)))
+# Issue #149: a final-gate CI veto record (ci_veto true) can only veto. It never counts as
+# a gate that ran, so a green veto over an all-absent local suite still has no gate ran.
+ran = [x for x in gates if not is_absent(x)
+       and not (isinstance(x, dict) and x.get("ci_veto") is True)]
+if gates and not ran:
+    names = ", ".join(map(str, absent))
+    if len(absent) == len(gates):
+        problems.append("no gate ran (every gate absent: %s)" % names)
+    else:
+        problems.append("no gate ran (%s; a ci-final-veto record never counts as a gate that ran)"
+                        % ("absent: " + names if absent else "no other gate recorded"))
 scope = g.get("scope") or {}
 if not isinstance(scope, dict):
     problems.append("scope verification result is malformed")

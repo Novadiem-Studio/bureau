@@ -19,8 +19,9 @@
 # Findings are dispositioned BY ID (#146). The open set is every top-level inline comment
 # by coderabbitai[bot] (its numeric comment id) plus every entry in the "Outside diff range
 # comments (N)" section of a bot review on the head (id b<review id>-<first 12 hex of the
-# sha256 of "<file:lines>|<title>">). Each must be named in the `ids` of a CODERABBIT-EVENT
-# for the head; a count never clears anything. The gate prints the open ids.
+# sha256 of "<file:lines>|<title>">; when one review repeats a file:lines and title, the k-th
+# repeat, k >= 2, hashes that text plus a tab and k, #149). Each must be named in the `ids` of a
+# CODERABBIT-EVENT for the head; a count never clears anything. The gate prints the open ids.
 #
 # Exit codes (mirrors preflight-artifacts.sh / spawn-gate.sh):
 #   0  + "coderabbit: clean"   reviewed at the current head; findings zero or dispositioned
@@ -240,7 +241,9 @@ fi
 
 # Body-only findings: entries in the "Outside diff range comments (N)" section of a bot
 # review on the head have no comment id. Each gets b<review id>-<12 hex of the sha256 of
-# "<file:lines>|<title>">. If the N entries cannot all be parsed, fail closed.
+# "<file:lines>|<title>">; the k-th (k >= 2) repeat of the same file:lines and title in one
+# review hashes "<file:lines>|<title><TAB>k" instead, so each is its own finding (#149).
+# If the N entries cannot all be parsed, fail closed.
 jq -r --arg h "$head_sha" '
   .[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h) | . as $r
   | (($r.body // "") | split("\n")) as $L
@@ -251,15 +254,21 @@ jq -r --arg h "$head_sha" '
   | [$L[$i + 1:$k][] | select(test("^> *<summary><strong>"))
      | (capture(" · (?<title>.+) · <code>(?<loc>[^<]+)</code></summary>") // null)] as $e
   | if ($e | length) == $n and all($e[]; . != null)
-    then ($e[] | ["ID", ($r.id | tostring), .loc, .title] | @tsv)
+    then ($e | to_entries[] | .key as $j | .value as $v
+          | ([$e[0:$j][] | select(.loc == $v.loc and .title == $v.title)] | length + 1) as $ord
+          | ["ID", ($r.id | tostring), $v.loc, $v.title, ($ord | tostring)] | @tsv)
     else ["BAD", ($r.id | tostring), ($n | tostring), ([$e[] | select(. != null)] | length | tostring)] | @tsv
     end' "$reviews" > "$WORK/body.tsv" 2>/dev/null \
   || { echo "coderabbit-gate: cannot parse formal review bodies for PR #$PR in $REPO" >&2; exit 2; }
 tab=$(printf '\t')
-while IFS="$tab" read -r kind rid f3 f4; do
+while IFS="$tab" read -r kind rid f3 f4 f5; do
   case "$kind" in
     ID)  # Never an id from an empty digest: those would collapse into one id (#146).
-         dg=$(printf '%s|%s' "$f3" "$f4" | digest12) \
+         # f5 is the entry's ordinal among same loc+title entries of this review. The first
+         # keeps the legacy hash input, so dispositions already logged still match; a later
+         # duplicate adds a tab (which @tsv never leaves in a field) and its ordinal (#149).
+         if [ "$f5" = 1 ]; then dg=$(printf '%s|%s' "$f3" "$f4" | digest12)
+         else dg=$(printf '%s|%s\t%s' "$f3" "$f4" "$f5" | digest12); fi \
            || { echo "coderabbit-gate: no working sha256 tool (shasum or sha256sum) to derive body finding ids" >&2; exit 2; }
          printf 'b%s-%s\n' "$rid" "$dg" >> "$open_ids" ;;
     BAD) defect "CodeRabbit review $rid on head ${head_sha} lists \"Outside diff range comments ($f3)\" but only $f4 entr(ies) could be parsed, so those findings have no reliable ids and cannot be dispositioned. Read the review body; this gate fails closed until it parses." ;;
@@ -267,11 +276,37 @@ while IFS="$tab" read -r kind rid f3 f4; do
 done < "$WORK/body.tsv"
 
 # A summary that claims more actionable comments than there are finding ids leaves some
-# finding unnamed; fail closed rather than guess which.
+# finding unnamed; fail closed rather than guess which. CodeRabbit posts the count line
+# ("**Actionable comments posted: N**") in its formal review body, not in the issue
+# comment (#149), so read it ("...posted:** N" too) from every bot review on the head and take
+# the largest. An issue-comment copy is still read, in the "posted: N" form only and the last
+# one: a wider pattern with tail -1 would let a later line replace a larger count. The larger
+# of the two wins, and a count too large to compare fails closed. The count is a lower
+# bound only: it can fail the gate, never clear a finding. A review with no count line is 0.
 total=$(grep -c . "$open_ids")
+# count_norm <digits>: the number with no leading zeros, or status 1 above 18 digits, which
+# [ and $(( )) cannot hold: a count that cannot be compared must not skip the guard.
+count_norm() {
+  local n="${1#"${1%%[!0]*}"}"
+  [ "${#n}" -le 18 ] || return 1
+  printf '%s\n' "${n:-0}"
+}
+too_large=""
 actionable=$(grep -oE 'Actionable comments posted: *[0-9]+' "$bodies" 2>/dev/null \
   | tail -1 | grep -oE '[0-9]+$')
 [ -n "$actionable" ] || actionable=0
+review_actionable=$(jq -r --arg h "$head_sha" '
+  [.[] | select(.user.login == "coderabbitai[bot]" and .commit_id == $h)
+   | (.body // "") | strings
+   | scan("Actionable comments posted:[* ]*([0-9]+)") | .[0] | tonumber] | max // 0' "$reviews" 2>/dev/null) \
+  || { echo "coderabbit-gate: cannot read the actionable count from formal reviews for PR #$PR in $REPO" >&2; exit 2; }
+case "$review_actionable" in ''|*[!0-9]*) echo "coderabbit-gate: unreadable actionable count in formal reviews for PR #$PR in $REPO" >&2; exit 2 ;; esac
+actionable=$(count_norm "$actionable") || { too_large="the issue comments"; actionable=0; }
+review_actionable=$(count_norm "$review_actionable") || { too_large="a formal review on the head"; review_actionable=0; }
+if [ -n "$too_large" ]; then
+  defect "CodeRabbit reports an actionable comment count of more than 18 digits in $too_large on PR #$PR, too large to compare with the finding ids found. Read the PR's review comments."
+fi
+[ "$review_actionable" -gt "$actionable" ] && actionable="$review_actionable"
 if [ "$actionable" -gt $((total + anon)) ]; then
   defect "CodeRabbit reports $actionable actionable comment(s) on PR #$PR but only $((total + anon)) finding id(s) were found, so some findings cannot be named. Read the PR's review comments."
 fi

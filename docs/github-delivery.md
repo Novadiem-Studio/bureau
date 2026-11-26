@@ -228,6 +228,9 @@ Findings are dispositioned one by one, by id (issue #146). The open set is:
 - every entry in the "Outside diff range comments (N)" section of a bot review on the head.
   These have no comment id, so the gate derives `b<review id>-<first 12 hex of the sha256 of
   "<file:lines>|<title>">` (the text as the gate's @tsv step escapes it, so copy ids from the gate's own output, not by hand). If it cannot parse exactly N entries, it fails closed.
+  When one review lists the same file:lines and title more than once, the first keeps that id
+  and each later repeat hashes the same text plus a tab and its ordinal (2, 3, ...), so every
+  repeat is its own open finding with a stable id (issue #149).
 
 The gate prints the open ids and a ready-to-fill event line. Ids compare as strings, so
 `4662945345` and `"4662945345"` match; one event or several may name them, with `addressed` or
@@ -235,7 +238,13 @@ The gate prints the open ids and a ready-to-fill event line. Ids compare as stri
 a newline, names nothing. A count clears nothing: an event that names no ids (the old
 `"findings":<n>` shape) dispositions no finding, however large the number, so a matching
 total can never cover a finding nobody named. A summary that claims more actionable comments
-than the gate found ids for also fails closed, as does a failed or unreadable lookup.
+than the gate found ids for also fails closed, as does a failed or unreadable lookup. The gate
+reads that claim, `Actionable comments posted: N` (bold or not, `posted:** N` included), from
+the bot's formal reviews on the head, where CodeRabbit posts it, taking the largest N, and from
+the last `posted: N` line in the issue comments, taking the larger of the two (issue #149). An N
+of more than 18 digits cannot be compared and fails closed. N is only a lower bound: CodeRabbit's own count can
+be smaller than its inline plus outside-diff entries, so it can fail the gate but never clears
+a finding.
 
 A disposition keyed to a different head does not clear findings on this one — same discipline as
 the `BLOCKER-EVENT` ledger. Overruling is allowed and recorded; ignoring is not.

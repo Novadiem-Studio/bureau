@@ -314,10 +314,18 @@ For each return from the Conductor, parse the CONDUCTOR-RETURN block (schema in
      those settings from `project-context.md` as committed on `--base-ref`, never from
      `state.json`; pass `--project-context <path>` when the project file lives outside the
      target repo (for example a parent workspace). A `state.json` copy that differs from the
-     project file makes it run local.
+     project file makes it run local. When it runs local it still reads the head's CI once as
+     a `ci-final-veto` gate, red unless no check on that exact head failed or is pending and
+     at least one passed (skipped checks are allowed) (#149). A `pending`, `head_mismatch` or
+     `no_checks` veto right after a push means GitHub or CI has not caught up with that head:
+     wait, then re-run the final gate; it is not an escalation. A run with no PR or no CI runs
+     its final gate in `--gate-mode local --final`: there `ci --final` is always red (`no_pr`,
+     `gh_missing` or `no_checks`).
    - `--gate-mode local` for `post-merge`, for a repo with no CI, and to diagnose a CI red
      locally (re-run the same checkpoint in local mode; the second `integration-results.json`
-     replaces the first).
+     replaces the first). A local re-run of a final gate to diagnose a CI red is diagnostic
+     only: it reads no CI, so never pair its results (the pairing script does not refuse
+     them); re-run `--gate-mode ci --final` before pairing.
    - **Terminal gate: the whole-PR cold review may run in parallel.** Spawn it while the final
      gate runs, recording the head SHA you hand the reviewer. It counts only if
      `scripts/terminal-pairing.sh --gate "$CTX/integration-results.json" --review-sha <sha>
@@ -736,7 +744,8 @@ whose target repo must not carry `.bureau/` may have neither. Absent is not a
 failure and not a hidden red gate: never revise or escalate on it alone. Note it
 in Uncertainties ("regression gate absent: no runner at <runner_searched>;
 <fixtures_found> fixture file(s) not executed"). If **every** canonical gate is
-absent, no gate evidence exists for this checkpoint: emit `escalate` with
+absent (a `ci-final-veto` record, `ci_veto: true`, is not a canonical gate: it can
+only veto, never stand in for one), no gate evidence exists for this checkpoint: emit `escalate` with
 Escalation "no canonical gate ran: <names> absent". A runner the branch removed
 or broke is not absent: the gate records it red (`runner_source: "missing"`,
 `missing_reason`), and Step 1's failed-gate rule applies. A gate with
@@ -862,9 +871,10 @@ This `Integration-evidence` block is the ONE authoritative schema-PascalCase lis
 ### Proceed rule
 
 `proceed` requires ALL of the following (AC-5):
-1. All canonical gates in `Gates-checked` have `exit-code-on-branch: 0`
-   (or are demoted as flaky per OQ-B14-4, or have `result: "absent"`), and at
-   least one gate is not absent.
+1. All gates in `Gates-checked`, the `ci-final-veto` record (`ci_veto: true`)
+   included, have `exit-code-on-branch: 0` (or are demoted as flaky per
+   OQ-B14-4, or have `result: "absent"`), and at least one gate is neither
+   absent nor a `ci_veto` record.
 2. All `Pre-existing-validated` entries have `confirmed-pre-existing: true`
    (or carry `flaky: true` in integration-results.json, flagged in Uncertainties).
 3. No `Under-declaration` entry has `result: "red"` (except one that carries
