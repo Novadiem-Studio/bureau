@@ -976,6 +976,31 @@ LEDGER_FILE="$RUN_DIR/delegate-decisions.md" \
 
 ---
 
+## Reference replay (`reference-replay.sh`)
+
+Replays a fresh Challenger on a past build diff whose outcome is known, and scores the verdict
+against that outcome. Full method, case format and limits: `docs/reference-replay.md` (#161).
+
+```bash
+scripts/reference-replay.sh build   <case.json> <packet-dir>   # blind packet only, no spawn
+scripts/reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M] [--effort L]
+scripts/reference-replay.sh summary <out-dir>
+```
+
+- **Inputs:** a case file naming the target repo, `base_sha`, `target_sha`, the verdict's
+  `diff_sha`, prompt paths, leak patterns and expected findings.
+- **Output:** one directory per trial under `<out-dir>/<case-id>/` with `events.jsonl`,
+  `verdict.json`, `audit.json`, `score.json` and `trial.json` (model, status, token usage).
+- **Deps:** `bash`, `git`, `python3`, the `claude` CLI (`CLAUDE_BIN` overrides it).
+- **Exit codes:** `0` every trial finished (scored or contaminated); `2` usage or malformed case;
+  `3` regenerated diff does not match `diff_sha`; `4` a leak pattern is in the packet; `5` a
+  pinned extra file changed; `6` a reviewer returned no structured verdict. Exit `0` does not
+  mean every trial was scored: a contaminated trial is kept unscored, so read `summary` (its
+  `dirty` column) or each `trial.json` status.
+- **Cost:** `run` spawns one model reviewer per trial. Get Robin's go before a multi-case pass.
+
+---
+
 ## ChatGPT flat export
 
 `sync-chatgpt-export.sh` copies canon visual docs + locked `reference/` assets into

@@ -1,0 +1,576 @@
+#!/usr/bin/env bash
+# reference-replay.sh: replay the Challenger on a known-answer build diff (issue #161).
+#
+# A case is a past build-diff review whose outcome we know: a defect a later gate or a person
+# found in a diff the Challenger approved (known-miss), a defect the Challenger did block
+# (known-catch), or a diff nothing has ever faulted (control). The runner rebuilds the exact
+# packet from git, hands it to a fresh read-only Challenger, and scores the verdict against the
+# case's expected findings. See docs/reference-replay.md for the case format and what the
+# numbers do and do not mean.
+#
+#   reference-replay.sh build   <case.json> <packet-dir>
+#   reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M] [--effort L]
+#   reference-replay.sh audit   <packet-dir> <events.jsonl>
+#   reference-replay.sh score   <case.json> <verdict.json>
+#   reference-replay.sh summary <out-dir>
+#
+# Exit codes: 0 ok; 2 usage or malformed case; 3 regenerated diff does not match diff_sha;
+# 4 a leak pattern is in the packet; 5 an extra file's sha256 does not match the case;
+# 6 the reviewer spawn failed or returned no structured verdict.
+#
+# Environment: CLAUDE_BIN (default claude), REPLAY_MAX_TURNS (default 200), REPLAY_EFFORT
+# (default: the CLI's own; recorded in trial.json either way), TMPDIR (trial packets are built
+# there and must be outside every git work tree).
+
+set -euo pipefail
+PATH="/usr/bin:/bin:$PATH"   # system tools first: a ugrep or GNU shim can shadow them
+export PATH
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCHEMA="$ROOT/config/challenger-verdict.schema.json"
+
+die() { echo "reference-replay: $1" >&2; exit "${2:-2}"; }
+usage() { grep '^#   reference-replay.sh ' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+
+[ "$#" -ge 1 ] || usage
+cmd="$1"; shift
+
+# ---------------------------------------------------------------------------------------------
+# build: validate the case, regenerate and hash-check the diff, export the reviewed tree, stage
+# prompts, extra files and the current persona, then refuse if any leak pattern is present.
+# Nothing is read from the run dir except extra files pinned by sha256 in the case.
+# ---------------------------------------------------------------------------------------------
+do_build() {
+  [ "$#" -eq 2 ] || usage
+  python3 -I - "$ROOT" "$1" "$2" <<'PY'
+import hashlib, json, os, re, shutil, subprocess, sys
+
+root, case_path, packet = sys.argv[1:]
+
+def fail(msg, code=2):
+    sys.stderr.write("reference-replay: %s\n" % msg)
+    sys.exit(code)
+
+try:
+    case = json.load(open(case_path, encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    fail("cannot read case %s: %s" % (case_path, exc))
+
+HEX40 = re.compile(r"^[0-9a-f]{7,40}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+def need(key, kind):
+    if key not in case or not isinstance(case[key], kind):
+        fail("case field %r is missing or not %s" % (key, kind.__name__))
+    return case[key]
+
+cid = need("id", str)
+if not re.match(r"^[a-z0-9][a-z0-9._-]*$", cid):
+    fail("case id must be lowercase letters, digits, dot, dash or underscore")
+kind = need("kind", str)
+if kind not in ("known-miss", "known-catch", "control"):
+    fail("case kind must be known-miss, known-catch or control")
+if case.get("review_mode") != "build-diff":
+    fail("only review_mode build-diff is supported")
+repo = need("target_repo", str)
+if not os.path.isabs(repo) or not os.path.isdir(repo):
+    fail("target_repo must be an existing absolute directory")
+base = need("base_sha", str); target = need("target_sha", str); want = need("diff_sha", str)
+if not HEX40.match(base) or not HEX40.match(target):
+    fail("base_sha and target_sha must be hex commit ids")
+if not HEX64.match(want):
+    fail("diff_sha must be a 64-character sha256")
+prompts = case.get("prompt_paths", [])
+extras = case.get("extra_files", [])
+leaks = need("leak_patterns", list)
+expected = need("expected", list)
+if not all(isinstance(p, str) and p for p in leaks):
+    fail("leak_patterns must be non-empty strings")
+if kind == "control" and expected:
+    fail("a control case has no expected findings")
+if kind != "control" and not expected:
+    fail("a %s case needs at least one expected finding" % kind)
+for e in expected:
+    if not isinstance(e, dict) or not all(isinstance(e.get(k), str) and e.get(k) for k in ("id", "anchor", "pattern")):
+        fail("each expected finding needs non-empty id, anchor and pattern")
+    try:
+        re.compile(e["pattern"])
+    except re.error as exc:
+        fail("expected %s has a bad pattern: %s" % (e["id"], exc))
+
+def safe_rel(p):
+    return isinstance(p, str) and p and not os.path.isabs(p) and ".." not in p.split("/")
+
+if os.path.exists(packet) and (not os.path.isdir(packet) or os.listdir(packet)):
+    fail("packet dir must not exist or must be empty: %s" % packet)
+
+def git(*args):
+    r = subprocess.run(["git", "-C", repo] + list(args), capture_output=True)
+    if r.returncode != 0:
+        fail("git %s failed: %s" % (" ".join(args), r.stderr.decode("utf-8", "replace").strip()))
+    return r.stdout
+
+diff = git("diff", base, target)
+got = hashlib.sha256(diff).hexdigest()
+if got != want:
+    fail("regenerated diff sha256 %s does not match case diff_sha %s" % (got, want), 3)
+
+# From here on, any refusal removes the partial packet.
+os.makedirs(packet, exist_ok=True)
+_fail = fail
+def fail(msg, code=2):
+    shutil.rmtree(packet, ignore_errors=True)
+    _fail(msg, code)
+
+# Export the reviewed commit's blobs byte for byte. Not `git archive`: it applies
+# .gitattributes export-ignore and export-subst, so the tree could differ from what was reviewed.
+# Symlinks and submodules are skipped: nothing in the packet may point outside it.
+tree = os.path.join(packet, "tree")
+os.makedirs(tree)
+entries = []
+for rec in git("ls-tree", "-r", "-z", "--full-tree", target).split(b"\0"):
+    if not rec:
+        continue
+    meta_part, path = rec.split(b"\t", 1)
+    mode, otype, oid = meta_part.split(b" ")
+    if otype != b"blob" or mode not in (b"100644", b"100755"):
+        continue
+    rel = path.decode("utf-8", "surrogateescape")
+    if os.path.isabs(rel) or ".." in rel.split("/"):
+        continue
+    entries.append((oid.decode(), rel, mode == b"100755"))
+cat = subprocess.Popen(["git", "-C", repo, "cat-file", "--batch"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+for oid, rel, exe in entries:
+    cat.stdin.write(oid.encode() + b"\n"); cat.stdin.flush()
+    header = cat.stdout.readline().split()
+    if len(header) != 3 or header[1] != b"blob":
+        cat.kill()
+        fail("git cat-file returned %r for %s" % (header, rel))
+    data = cat.stdout.read(int(header[2])); cat.stdout.read(1)
+    dest = os.path.join(tree, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    open(dest, "wb").write(data)
+    if exe:
+        os.chmod(dest, 0o755)
+cat.stdin.close(); cat.wait()
+open(os.path.join(packet, "review.diff"), "wb").write(diff)
+
+for p in prompts:
+    if not safe_rel(p) or not os.path.isfile(os.path.join(tree, p)):
+        fail("prompt path %r is not a file in the tree at %s" % (p, target))
+
+extra_dir = os.path.join(packet, "extra")
+for x in extras:
+    if not isinstance(x, dict) or not all(isinstance(x.get(k), str) for k in ("from", "to", "sha256")):
+        fail("each extra file needs from, to and sha256")
+    if not safe_rel(x["to"]):
+        fail("extra file destination %r must be relative" % x["to"])
+    try:
+        data = open(x["from"], "rb").read()
+    except OSError as exc:
+        fail("cannot read extra file %s: %s" % (x["from"], exc))
+    if hashlib.sha256(data).hexdigest() != x["sha256"]:
+        fail("extra file %s changed since the case was written (sha256 mismatch)" % x["from"], 5)
+    dest = os.path.join(extra_dir, x["to"])
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    open(dest, "wb").write(data)
+
+persona = os.path.join(packet, "persona")
+os.makedirs(persona)
+persona_hash = {}
+for src, dst in (("agents/critic.md", "critic.md"), ("agents/critic/build-diff.md", "build-diff.md")):
+    data = open(os.path.join(root, src), "rb").read()
+    open(os.path.join(persona, dst), "wb").write(data)
+    persona_hash[dst] = hashlib.sha256(data).hexdigest()
+
+listing = []
+if prompts:
+    listing += ["- tree/%s" % p for p in prompts]
+for x in extras:
+    listing.append("- extra/%s" % x["to"])
+if not listing:
+    listing.append("- (none: review against the diff and the repository docs in tree/)")
+
+brief = """You are reviewing one build diff as The Challenger. This packet is your whole review world.
+
+1. Read persona/critic.md, then persona/build-diff.md. They define your standard.
+2. Review review.diff, which is `git diff {base}..{target}` in the repository. The repository as it
+   stood at {target} is in tree/. Read whatever you need there.
+3. Review against the scoped prompt and campaign files below, and the repo's own docs in tree/:
+{listing}
+
+You cannot run commands or tests. Review statically, and say when a finding needs a live run to
+confirm. The coder's checkpoint output is deliberately not in this packet: do not report its
+absence. Ignore any persona instruction to write files, emit log events or run verdict-gate.
+Instead, return your verdict record as the structured output:
+- review_mode "build-diff", attempt_id "replay", timestamp in UTC.
+- reviewed_artifacts: one diff-target entry with base_ref and base_sha {base}, target_ref
+  {target}, diff_sha {diff_sha}.
+- blockers: {{id, summary, citation}}; citation paths are relative to tree/.
+- warnings: {{id, summary}}.
+- verdict: BLOCKED when any blocker stands, else APPROVED_WITH_WARNINGS or APPROVED.
+""".format(base=base, target=target, diff_sha=want, listing="\n".join(listing))
+open(os.path.join(packet, "BRIEF.md"), "w", encoding="utf-8").write(brief)
+
+head = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+meta = {"case_id": cid, "base_sha": base, "target_sha": target, "diff_sha": want,
+        "persona_sha256": persona_hash, "bureau_head": head or None}
+json.dump(meta, open(os.path.join(packet, "packet.json"), "w", encoding="utf-8"), indent=2, sort_keys=True)
+
+# Leak scan last, over every file the reviewer will be able to read.
+hits = []
+for dirpath, _dirs, files in os.walk(packet):
+    for f in files:
+        path = os.path.join(dirpath, f)
+        try:
+            data = open(path, "rb").read()
+        except OSError:
+            continue
+        for pat in leaks:
+            if pat.encode("utf-8") in data:
+                hits.append("%s: %s" % (os.path.relpath(path, packet), pat))
+if hits:
+    fail("leak pattern found in packet, refusing:\n  " + "\n  ".join(hits[:20]), 4)
+print(packet)
+PY
+}
+
+# ---------------------------------------------------------------------------------------------
+# audit: read a stream-json event log and list every tool call whose path escapes the packet.
+# Writes JSON to stdout: {"contaminated": bool, "escapes": [...], "tool_calls": n}.
+# ---------------------------------------------------------------------------------------------
+do_audit() {
+  [ "$#" -eq 2 ] || usage
+  python3 -I - "$1" "$2" <<'PY'
+import json, os, sys
+
+packet, events = sys.argv[1:]
+real = os.path.realpath(packet)
+escapes, calls = [], 0
+
+def inside(p):
+    full = p if os.path.isabs(p) else os.path.join(real, p)
+    rp = os.path.realpath(full)
+    return rp == real or rp.startswith(real + os.sep)
+
+try:
+    lines = open(events, encoding="utf-8", errors="replace").read().splitlines()
+except OSError as exc:
+    sys.stderr.write("reference-replay: cannot read events %s: %s\n" % (events, exc))
+    sys.exit(2)
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    msg = ev.get("message") if isinstance(ev, dict) else None
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        continue
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        calls += 1
+        args = block.get("input") or {}
+        name = block.get("name")
+        if name == "StructuredOutput":
+            continue  # how --json-schema delivers the verdict; it reads nothing
+        if name not in ("Read", "Grep", "Glob"):
+            escapes.append({"tool": name, "reason": "tool outside the allowed Read/Grep/Glob set"})
+            continue
+        for key in ("file_path", "path"):
+            p = args.get(key)
+            if isinstance(p, str) and p and not inside(p):
+                escapes.append({"tool": name, key: p})
+        # Glob's pattern and Grep's glob can name paths too: refuse absolute, ~ or .. forms.
+        for key in (("pattern",) if name == "Glob" else ("glob",) if name == "Grep" else ()):
+            p = args.get(key)
+            if isinstance(p, str) and (p.startswith(("/", "~")) or ".." in p.replace("\\", "/").split("/")):
+                escapes.append({"tool": name, key: p})
+json.dump({"contaminated": bool(escapes), "escapes": escapes, "tool_calls": calls}, sys.stdout, indent=2)
+print()
+PY
+}
+
+# ---------------------------------------------------------------------------------------------
+# score: match the verdict's blockers and warnings against the case's expected findings.
+# A finding counts when ONE blocker or warning contains the anchor (case-insensitive substring)
+# and matches the pattern (case-insensitive regex). Writes JSON to stdout.
+# ---------------------------------------------------------------------------------------------
+do_score() {
+  [ "$#" -eq 2 ] || usage
+  python3 -I - "$1" "$2" <<'PY'
+import json, re, sys
+
+case_path, verdict_path = sys.argv[1:]
+case = json.load(open(case_path, encoding="utf-8"))
+try:
+    v = json.load(open(verdict_path, encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    sys.stderr.write("reference-replay: cannot read verdict %s: %s\n" % (verdict_path, exc))
+    sys.exit(2)
+
+def text(item):
+    # Only what the reviewer wrote: the summary and the citation's values. Never JSON keys or
+    # enum values ("missing", "absence"), which would match patterns no finding stated.
+    if isinstance(item, str):
+        return item
+    if not isinstance(item, dict):
+        return ""
+    parts = [item.get("summary")]
+    cite = item.get("citation")
+    if isinstance(cite, dict):
+        parts += [cite.get("path"), cite.get("anchor"), cite.get("missing")]
+    return "\n".join(p for p in parts if isinstance(p, str))
+
+findings = [("blocker", text(b)) for b in v.get("blockers") or []]
+findings += [("warning", text(w)) for w in v.get("warnings") or []]
+expected = case.get("expected", [])
+cands = []
+for e in expected:
+    rx = re.compile(e["pattern"], re.I)
+    cands.append([i for i, (_s, t) in enumerate(findings) if e["anchor"].lower() in t.lower() and rx.search(t)])
+
+# One finding satisfies at most one expected entry. Take a maximum matching (augmenting paths),
+# so a broad expected entry cannot steal the only finding a narrower one could use. Blocker
+# candidates are tried first, which favours an assignment onto blockers.
+owner = {}
+def augment(j, seen):
+    for i in sorted(cands[j], key=lambda i: findings[i][0] != "blocker"):
+        if i in seen:
+            continue
+        seen.add(i)
+        if i not in owner or augment(owner[i], seen):
+            owner[i] = j
+            return True
+    return False
+for j in range(len(expected)):
+    augment(j, set())
+match = {j: i for i, j in owner.items()}
+used = set(owner)
+results = []
+for j, e in enumerate(expected):
+    i = match.get(j)
+    results.append({"id": e["id"], "found": i is not None,
+                    "as": findings[i][0] if i is not None else None,
+                    "text": findings[i][1][:600] if i is not None else None})
+
+verdict = v.get("verdict")
+if case["kind"] == "control":
+    passed = verdict != "BLOCKED"
+    as_blocker = None
+else:
+    passed = all(r["found"] for r in results)
+    as_blocker = all(r["as"] == "blocker" for r in results)
+other = [{"as": s, "text": t[:600]} for i, (s, t) in enumerate(findings) if i not in used]
+json.dump({"case_id": case["id"], "kind": case["kind"], "verdict": verdict, "pass": passed,
+           "all_as_blocker": as_blocker, "expected": results, "unmatched_findings": other},
+          sys.stdout, indent=2, ensure_ascii=False)
+print()
+PY
+}
+
+# ---------------------------------------------------------------------------------------------
+# summary: raw counts per case across every trial under <out-dir>.
+# ---------------------------------------------------------------------------------------------
+do_summary() {
+  [ "$#" -eq 1 ] || usage
+  python3 -I - "$1" <<'PY'
+import glob, json, os, sys
+from collections import defaultdict
+
+out = sys.argv[1]
+rows = defaultdict(lambda: {"kind": None, "trials": 0, "pass": 0, "blocker": 0, "contaminated": 0,
+                            "failed": 0, "tokens_new": 0, "tokens_read": 0, "models": set()})
+for trial in sorted(glob.glob(os.path.join(out, "*", "trial-*"))):
+    cid = os.path.basename(os.path.dirname(trial))
+    r = rows[cid]
+    meta = {}
+    if os.path.exists(os.path.join(trial, "trial.json")):
+        meta = json.load(open(os.path.join(trial, "trial.json")))
+        r["models"].add(meta.get("model") or "?")
+        u = meta.get("usage") or {}
+        r["tokens_new"] += (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0)
+        r["tokens_read"] += u.get("cache_read_input_tokens") or 0
+    status = meta.get("status")
+    if status == "contaminated":
+        r["contaminated"] += 1; continue
+    if status != "scored":
+        r["failed"] += 1; continue
+    s = json.load(open(os.path.join(trial, "score.json")))
+    r["kind"] = s["kind"]; r["trials"] += 1
+    r["pass"] += 1 if s["pass"] else 0
+    r["blocker"] += 1 if s.get("all_as_blocker") else 0
+if not rows:
+    print("no trials under %s" % out); sys.exit(0)
+print("%-34s %-11s %-8s %-10s %-10s %-6s %-6s %s" % ("case", "kind", "scored", "pass", "as-blocker", "dirty", "failed", "tokens new/read"))
+for cid, r in sorted(rows.items()):
+    n = r["trials"]
+    label = "not-blocked" if r["kind"] == "control" else "found"
+    print("%-34s %-11s %-8d %-10s %-10s %-6d %-6d %dk/%dk  (%s)" % (
+        cid, r["kind"] or "?", n, "%d/%d %s" % (r["pass"], n, label),
+        "-" if r["kind"] == "control" else "%d/%d" % (r["blocker"], n),
+        r["contaminated"], r["failed"], r["tokens_new"] // 1000, r["tokens_read"] // 1000,
+        ",".join(sorted(r["models"]))))
+PY
+}
+
+# ---------------------------------------------------------------------------------------------
+# run: N fresh trials. Each trial builds its own packet, spawns a read-only claude -p Challenger
+# in it, extracts the structured verdict and usage, audits tool paths, and scores.
+# ---------------------------------------------------------------------------------------------
+resolve_model() {
+  python3 -I - "$ROOT" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+policy = json.load(open(os.path.join(root, "config/model-policy.v2.json")))
+tier = policy["roles"]["challenger"]["default_tier"]
+runtime = json.load(open(os.path.join(root, "config/runtimes/claude.json")))
+print(runtime["tiers"][tier]["model"])
+PY
+}
+
+do_run() {
+  [ "$#" -ge 2 ] || usage
+  local case_file="$1" out="$2"; shift 2
+  local trials=1 model="" effort="${REPLAY_EFFORT:-}"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --trials) [ "$#" -ge 2 ] || usage; trials="$2"; shift 2 ;;
+      --model)  [ "$#" -ge 2 ] || usage; model="$2"; shift 2 ;;
+      --effort) [ "$#" -ge 2 ] || usage; effort="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  case "$trials" in ''|*[!0-9]*) die "--trials must be a positive integer" ;; esac
+  [ "$trials" -ge 1 ] || die "--trials must be a positive integer"
+  [ -n "$model" ] || model="$(resolve_model)"
+  case "$model" in ''|*[!A-Za-z0-9._-]*) die "--model must be letters, digits, dot, dash or underscore" ;; esac
+  case "$effort" in *[!a-z]*) die "--effort must be a lowercase level name" ;; esac
+  local claude_bin="${CLAUDE_BIN:-claude}"
+  command -v "$claude_bin" >/dev/null 2>&1 || die "Claude CLI not found: $claude_bin" 6
+  local cli_version
+  cli_version="$("$claude_bin" --version 2>/dev/null | head -1 || true)"
+  local cid
+  cid="$(python3 -I -c 'import json,re,sys
+c = json.load(open(sys.argv[1]))["id"]
+assert isinstance(c, str) and re.match(r"^[a-z0-9][a-z0-9._-]*$", c)
+print(c)' "$case_file" 2>/dev/null)" || die "case id in $case_file is missing or not a safe name"
+  local system_prompt="You are The Challenger, replayed on a fixed review packet for framework evaluation. The packet in your working directory is your entire review world. Do not load CLAUDE.md or act as the Conductor."
+  # A killed run must not leave a packet behind in $TMPDIR.
+  REPLAY_WORK=""
+  trap 'if [ -n "${REPLAY_WORK:-}" ]; then rm -rf "$REPLAY_WORK"; fi' EXIT
+  trap 'exit 130' INT TERM
+  local t=1 rc=0 failed=0
+  while [ "$t" -le "$trials" ]; do
+    local stamp dir work packet
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    dir="$out/$cid/trial-$stamp-$model-$t-$$"
+    [ ! -e "$dir" ] || die "trial dir already exists: $dir"
+    mkdir -p "$dir"
+    # The packet lives in a temp dir outside every git work tree: Claude Code injects the
+    # enclosing repo's auto-memory into the first message, past any tool audit (#161 review).
+    work="$(mktemp -d "${TMPDIR:-/tmp}/reference-replay.XXXXXX")"
+    REPLAY_WORK="$work"
+    packet="$work/packet"
+    if git -C "$work" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      rm -rf "${work:?}"
+      die "temp dir $work is inside a git work tree; set TMPDIR outside any repo"
+    fi
+    set +e
+    do_build "$case_file" "$packet" > /dev/null
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+      rm -rf "${work:?}"
+      printf '{"status":"build-refused","exit":%d,"model":"%s"}\n' "$rc" "$model" > "$dir/trial.json"
+      return "$rc"
+    fi
+    local effort_args=()
+    [ -z "$effort" ] || effort_args=(--effort "$effort")
+    set +e
+    (
+      cd "$packet" &&
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 "$claude_bin" -p \
+        --system-prompt "$system_prompt" \
+        --model "$model" \
+        ${effort_args[@]+"${effort_args[@]}"} \
+        --output-format stream-json --verbose \
+        --json-schema "$(cat "$SCHEMA")" \
+        --tools "Read,Grep,Glob" \
+        --add-dir "$packet" \
+        --setting-sources "" \
+        --no-session-persistence \
+        --max-turns "${REPLAY_MAX_TURNS:-200}" \
+        "$(cat BRIEF.md)" < /dev/null
+    ) > "$dir/events.jsonl" 2> "$dir/stderr.log"
+    rc=$?
+    set -e
+    do_audit "$packet" "$dir/events.jsonl" > "$dir/audit.json"
+    python3 -I - "$dir" "$model" "$rc" "${effort:-cli-default}" "$cli_version" <<'PY'
+import json, os, sys
+d, model, rc, effort, cli = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
+result = None
+for line in open(os.path.join(d, "events.jsonl"), encoding="utf-8", errors="replace"):
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(ev, dict) and ev.get("type") == "result":
+        result = ev
+verdict = result.get("structured_output") if isinstance(result, dict) else None
+audit = json.load(open(os.path.join(d, "audit.json")))
+meta = {"model": model, "effort": effort, "cli_version": cli, "cli_exit": rc,
+        "usage": (result or {}).get("usage"),
+        "num_turns": (result or {}).get("num_turns"),
+        "duration_ms": (result or {}).get("duration_ms"),
+        "subtype": (result or {}).get("subtype")}
+if audit["contaminated"]:
+    meta["status"] = "contaminated"
+elif rc != 0 or not isinstance(verdict, dict):
+    meta["status"] = "reviewer-failed"
+else:
+    meta["status"] = "verdict"
+    json.dump(verdict, open(os.path.join(d, "verdict.json"), "w"), indent=2, ensure_ascii=False)
+json.dump(meta, open(os.path.join(d, "trial.json"), "w"), indent=2)
+print(meta["status"])
+PY
+    local status
+    status="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$dir/trial.json")"
+    if [ "$status" = "verdict" ]; then
+      do_score "$case_file" "$dir/verdict.json" > "$dir/score.json"
+      python3 -I - "$dir/trial.json" <<'PY'
+import json, sys
+p = sys.argv[1]; m = json.load(open(p)); m["status"] = "scored"
+json.dump(m, open(p, "w"), indent=2)
+PY
+      status=scored
+    fi
+    # Keep what the reviewer was given, minus the tree (reproducible from git).
+    rm -rf "${packet:?}/tree"
+    mv "$packet" "$dir/packet"
+    rm -rf "${work:?}"
+    REPLAY_WORK=""
+    echo "$cid trial $t ($model): $status -> $dir"
+    if [ "$status" = "reviewer-failed" ]; then failed=$((failed + 1)); fi
+    t=$((t + 1))
+  done
+  if [ "$failed" -gt 0 ]; then
+    echo "reference-replay: $failed of $trials trials returned no verdict (see stderr.log)" >&2
+    return 6
+  fi
+  return 0
+}
+
+case "$cmd" in
+  build)   do_build "$@" ;;
+  run)     do_run "$@" ;;
+  audit)   do_audit "$@" ;;
+  score)   do_score "$@" ;;
+  summary) do_summary "$@" ;;
+  -h|--help|help) usage ;;
+  *) usage ;;
+esac
