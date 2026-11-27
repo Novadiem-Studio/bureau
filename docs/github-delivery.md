@@ -152,7 +152,8 @@ the worktree is clean:
 <FRAMEWORK>/scripts/run-worktree.sh remove --run-dir "$RUN_DIR"
 ```
 
-`ready` rejects placeholder evidence. `merge` rejects drafts and outstanding requested changes,
+`ready` rejects evidence that still holds the template's `Pending —` lines, or `TBD` or `TODO` as a
+word. It does not check angle brackets (issue #158). `merge` rejects drafts and outstanding requested changes,
 then delegates the merge to GitHub without bypassing branch protection. `merge`, `squash`, and
 `rebase` methods are supported; regular `merge` is the default so the accepted branch commits stay
 visible on the target branch, and target-repository policy wins. Package checks, dev verification,
