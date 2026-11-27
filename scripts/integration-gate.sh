@@ -71,7 +71,9 @@
 #                   appended as gate "ci-final-veto": an extra veto, green only
 #                   when no check on the exact head failed or is pending and at
 #                   least one passed (skipped checks are allowed), red otherwise
-#                   with ci_status saying why (issue #149). The record keeps at
+#                   with ci_status saying why (issue #149). A passed read whose
+#                   commit is no longer the worktree HEAD after the suite is red
+#                   too (head_moved, issue #154 item 2). The record keeps at
 #                   most 20 failed and 20 pending names, with the full counts.
 #   --project-context <path>  the project file to read those settings from.
 #                   Default: project-context.md as committed on --base-ref.
@@ -1801,6 +1803,32 @@ PY
   # or is pending and at least one passed (skipped checks allowed); a missing or unreadable record is a red gate, never no gate. An
   # unreadable gate list is passed through untouched (it already fails closed).
   if [ "$REQ_FINAL" = 1 ] && [ "$REQ_GATE_MODE" = ci ] && [ "$EFFECTIVE_MODE" != ci ]; then
+    # Issue #154 item 2: the CI was read before the local suite ran. A green read counts
+    # only if the worktree HEAD is still the commit it was read for and that commit is
+    # the recorded branch tip; otherwise the veto is red (head_moved) and the gate is
+    # run again on the new head. An unreadable HEAD counts as moved.
+    VETO_TIP_NOW="$(git -C "$REQ_WORKTREE_PATH" rev-parse HEAD 2>/dev/null || echo unknown)"
+    MODE_JSON="$(python3 - "$MODE_JSON" "$VETO_TIP_NOW" "$BRANCH_TIP" <<'PY'
+import json, sys
+raw, now, tip = sys.argv[1:4]
+try:
+    data = json.loads(raw)
+    veto = data.get("final_ci_veto")
+    if isinstance(veto, dict) and veto.get("ci_status") == "passed":
+        read_for = str(veto.get("head_sha") or "")
+        if not read_for or read_for != now or read_for != tip:
+            veto.update({"ci_status": "head_moved", "result": "red", "exit_code_branch": 2,
+                         "detail": "CI was read for %s but the worktree HEAD is now %s (branch tip %s): "
+                                   "something committed during the gate; run the final gate again on the new head"
+                                   % (read_for[:12] or "an unknown commit", now[:12], tip[:12])})
+            reason = str(data.get("reason") or "")
+            if reason.endswith("final gate CI veto: passed"):
+                data["reason"] = reason[:-len("passed")] + "head_moved"
+    print(json.dumps(data))
+except Exception:
+    print(raw)
+PY
+)"
     GATE_RESULTS_JSON="$(python3 - "$GATE_RESULTS_JSON" "$MODE_JSON" <<'PY'
 import json, sys
 try:
