@@ -5,10 +5,10 @@ command: |
   TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
   R="$TMP/repo"; mkdir -p "$R/docs"; git init -q "$R"
   git -C "$R" config user.email fixture@example.invalid; git -C "$R" config user.name fixture
-  printf 'def ok():\n    return 1\n' > "$R/app.py"
+  printf 'DIFFONLY_REMOVED_LINE = 1\ndef ok():\n    return 1\n' > "$R/app.py"
   printf '# Prompt 01\nAdd charge(); send credentials over HTTPS only.\n' > "$R/docs/01-prompt.md"
   git -C "$R" add -A; git -C "$R" commit -qm base; B=$(git -C "$R" rev-parse HEAD)
-  printf 'def charge(url, password):\n    return post(url, password)\n' >> "$R/app.py"
+  printf 'def ok():\n    return 1\ndef charge(url, password):\n    return post(url, password)\n' > "$R/app.py"
   git -C "$R" commit -qam target; T=$(git -C "$R" rev-parse HEAD)
   D=$(git -C "$R" diff "$B" "$T" | python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')
   printf 'pinned note\n' > "$TMP/extra.md"
@@ -45,11 +45,14 @@ command: |
   mkcase "$TMP/leak.json" "$D" "def charge" "$X" docs/01-prompt.md
   [ "$(rc_of "$TMP/leak.json" "$TMP/p-leak")" = 4 ] || fail "leak pattern in packet did not exit 4"
   [ ! -e "$TMP/p-leak" ] || fail "leaky packet was left on disk"
+  ! grep -rq DIFFONLY_REMOVED_LINE "$P/tree" || fail "fixture setup: the diff-only string is in the tree"
+  mkcase "$TMP/leakdiff.json" "$D" "DIFFONLY_REMOVED_LINE" "$X" docs/01-prompt.md
+  [ "$(rc_of "$TMP/leakdiff.json" "$TMP/p-leakdiff")" = 4 ] || fail "leak pattern only in review.diff did not exit 4"
   mkcase "$TMP/extra.json" "$D" "validate_https_url" "1111111111111111111111111111111111111111111111111111111111111111" docs/01-prompt.md
   [ "$(rc_of "$TMP/extra.json" "$TMP/p-extra")" = 5 ] || fail "changed extra file did not exit 5"
   mkcase "$TMP/noprompt.json" "$D" "validate_https_url" "$X" docs/missing.md
   [ "$(rc_of "$TMP/noprompt.json" "$TMP/p-noprompt")" = 2 ] || fail "missing prompt path did not exit 2"
   echo PASS
-expected: exit 0 and prints PASS — a correct case builds a packet holding the reviewed tree (no .git), the byte-exact reviewed diff, the persona and the pinned extra file, and none of the case's expected-finding text; a wrong diff_sha exits 3, a leak pattern present in the packet exits 4 and removes the packet, a changed extra file exits 5, a prompt path absent from the tree exits 2.
+expected: exit 0 and prints PASS — a correct case builds a packet holding the reviewed tree (no .git), the byte-exact reviewed diff, the persona and the pinned extra file, and none of the case's expected-finding text; a wrong diff_sha exits 3, a leak pattern present in the packet exits 4 and removes the packet (including a string found only in review.diff), a changed extra file exits 5, a prompt path absent from the tree exits 2.
 phase: #161 · reference replay
 owner: scripts/reference-replay.sh build

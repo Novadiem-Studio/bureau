@@ -60,9 +60,10 @@ runner, this format and synthetic fixtures (`.bureau/regression/364` to `366`).
 - `leak_patterns` are strings that appear only in the fix. Build refuses (exit 4) if any is in
   the packet, including the reviewed diff. A refusal usually means the string was not fix-only.
 - `expected[].anchor` is a case-insensitive substring and `pattern` a case-insensitive regex.
-  Both must match inside one blocker or warning. Anchor on something any correct finding must
-  name (the variable, the function), and keep the pattern loose: it decides whether the defect
-  was seen, not how it was phrased.
+  Both must match inside one blocker or warning: its summary plus its citation's path, anchor
+  and missing values, never the JSON keys. One finding counts for at most one expected entry.
+  Anchor on something any correct finding must name (the variable, the function), and keep the
+  pattern loose: it decides whether the defect was seen, not how it was phrased.
 - `held_out: false` marks a case a persona or checklist edit has already been taught from. Report
   held-out and taught cases separately, or an edit is graded on its own training data.
 
@@ -82,17 +83,24 @@ answer.
 
 ## A trial
 
-`run` builds a fresh packet per trial and spawns `claude -p` in it with `--tools Read,Grep,Glob`,
-`--add-dir <packet>`, `--setting-sources ""`, `--no-session-persistence`, the Challenger verdict
-schema as `--json-schema`, and `stream-json` output. The model defaults to the Challenger's tier in
+`run` builds a fresh packet per trial in a temp dir under `$TMPDIR` and refuses if that dir is
+inside a git work tree. This matters: Claude Code injects the enclosing repo's auto-memory
+(`MEMORY.md`) into the first message, and no tool audit can see it. Run from a repo's results
+folder is fine; the packet itself never lives there. The spawn is `claude -p` in the packet
+with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `--tools Read,Grep,Glob`, `--add-dir <packet>`,
+`--setting-sources ""`, `--no-session-persistence`, the Challenger verdict schema as
+`--json-schema`, and `stream-json` output. The model defaults to the Challenger's tier in
 `config/model-policy.v2.json` resolved through `config/runtimes/claude.json`; `--model` overrides
-it.
+it. Effort is the CLI's default unless `--effort` (or `REPLAY_EFFORT`) sets it; either way
+`trial.json` records the effort and the CLI version, because both can move a result.
 
-After the spawn, `audit` reads every tool call in `events.jsonl`. Any path outside the packet, or
-any tool other than Read, Grep and Glob, marks the trial `contaminated`, and it is not scored.
-Otherwise the verdict is scored and the exported tree is deleted (it is reproducible from git).
-Each trial directory keeps `BRIEF.md`, the diff, the persona, `events.jsonl`, `verdict.json`,
-`score.json`, `audit.json` and `trial.json` (model, status, token usage, turns).
+After the spawn, `audit` reads every tool call in `events.jsonl`. Any path outside the packet, a
+Glob pattern or Grep glob that is absolute or climbs with `..`, or any tool other than Read, Grep
+and Glob marks the trial `contaminated`, and it is not scored.
+Otherwise the verdict is scored. The packet, minus its exported tree (reproducible from git), is
+then moved into the trial directory, which keeps `packet/` (brief, diff, persona, `packet.json`),
+`events.jsonl`, `verdict.json`, `score.json`, `audit.json` and `trial.json` (model, effort, CLI
+version, status, token usage, turns).
 
 ```bash
 scripts/reference-replay.sh run cases/x.json results/2026-11-27 --trials 3

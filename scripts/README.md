@@ -983,7 +983,7 @@ against that outcome. Full method, case format and limits: `docs/reference-repla
 
 ```bash
 scripts/reference-replay.sh build   <case.json> <packet-dir>   # blind packet only, no spawn
-scripts/reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M]
+scripts/reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M] [--effort L]
 scripts/reference-replay.sh summary <out-dir>
 ```
 

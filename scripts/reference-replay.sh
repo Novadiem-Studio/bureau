@@ -9,7 +9,7 @@
 # numbers do and do not mean.
 #
 #   reference-replay.sh build   <case.json> <packet-dir>
-#   reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M]
+#   reference-replay.sh run     <case.json> <out-dir> [--trials N] [--model M] [--effort L]
 #   reference-replay.sh audit   <packet-dir> <events.jsonl>
 #   reference-replay.sh score   <case.json> <verdict.json>
 #   reference-replay.sh summary <out-dir>
@@ -18,7 +18,9 @@
 # 4 a leak pattern is in the packet; 5 an extra file's sha256 does not match the case;
 # 6 the reviewer spawn failed or returned no structured verdict.
 #
-# Environment: CLAUDE_BIN (default claude), REPLAY_MAX_TURNS (default 200).
+# Environment: CLAUDE_BIN (default claude), REPLAY_MAX_TURNS (default 200), REPLAY_EFFORT
+# (default: the CLI's own; recorded in trial.json either way), TMPDIR (trial packets are built
+# there and must be outside every git work tree).
 
 set -euo pipefail
 PATH="/usr/bin:/bin:$PATH"   # system tools first: a ugrep or GNU shim can shadow them
@@ -188,7 +190,8 @@ brief = """You are reviewing one build diff as The Challenger. This packet is yo
 {listing}
 
 You cannot run commands or tests. Review statically, and say when a finding needs a live run to
-confirm. Ignore any persona instruction to write files, emit log events or run verdict-gate.
+confirm. The coder's checkpoint output is deliberately not in this packet: do not report its
+absence. Ignore any persona instruction to write files, emit log events or run verdict-gate.
 Instead, return your verdict record as the structured output:
 - review_mode "build-diff", attempt_id "replay", timestamp in UTC.
 - reviewed_artifacts: one diff-target entry with base_ref and base_sha {base}, target_ref
@@ -257,6 +260,11 @@ for line in lines:
             p = args.get(key)
             if isinstance(p, str) and p and not inside(p):
                 escapes.append({"tool": name, key: p})
+        # Glob's pattern and Grep's glob can name paths too: refuse absolute, ~ or .. forms.
+        for key in (("pattern",) if name == "Glob" else ("glob",) if name == "Grep" else ()):
+            p = args.get(key)
+            if isinstance(p, str) and (p.startswith(("/", "~")) or ".." in p.replace("\\", "/").split("/")):
+                escapes.append({"tool": name, key: p})
 json.dump({"contaminated": bool(escapes), "escapes": escapes, "tool_calls": calls}, sys.stdout, indent=2)
 print()
 PY
@@ -281,7 +289,17 @@ except (OSError, ValueError) as exc:
     sys.exit(2)
 
 def text(item):
-    return item if isinstance(item, str) else json.dumps(item, ensure_ascii=False, sort_keys=True)
+    # Only what the reviewer wrote: the summary and the citation's values. Never JSON keys or
+    # enum values ("missing", "absence"), which would match patterns no finding stated.
+    if isinstance(item, str):
+        return item
+    if not isinstance(item, dict):
+        return ""
+    parts = [item.get("summary")]
+    cite = item.get("citation")
+    if isinstance(cite, dict):
+        parts += [cite.get("path"), cite.get("anchor"), cite.get("missing")]
+    return "\n".join(p for p in parts if isinstance(p, str))
 
 findings = [("blocker", text(b)) for b in v.get("blockers") or []]
 findings += [("warning", text(w)) for w in v.get("warnings") or []]
@@ -290,8 +308,9 @@ results = []
 for e in case.get("expected", []):
     rx = re.compile(e["pattern"], re.I)
     hit = None
-    for i, (sev, t) in enumerate(findings):  # blockers come first, so a blocker match wins
-        if e["anchor"].lower() in t.lower() and rx.search(t):
+    # One finding satisfies at most one expected entry. Blockers come first, so a blocker wins.
+    for i, (sev, t) in enumerate(findings):
+        if i not in used and e["anchor"].lower() in t.lower() and rx.search(t):
             hit = (i, sev)
             break
     if hit is not None:
@@ -378,44 +397,63 @@ PY
 do_run() {
   [ "$#" -ge 2 ] || usage
   local case_file="$1" out="$2"; shift 2
-  local trials=1 model=""
+  local trials=1 model="" effort="${REPLAY_EFFORT:-}"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --trials) [ "$#" -ge 2 ] || usage; trials="$2"; shift 2 ;;
       --model)  [ "$#" -ge 2 ] || usage; model="$2"; shift 2 ;;
+      --effort) [ "$#" -ge 2 ] || usage; effort="$2"; shift 2 ;;
       *) usage ;;
     esac
   done
   case "$trials" in ''|*[!0-9]*) die "--trials must be a positive integer" ;; esac
   [ "$trials" -ge 1 ] || die "--trials must be a positive integer"
   [ -n "$model" ] || model="$(resolve_model)"
+  case "$model" in ''|*[!A-Za-z0-9._-]*) die "--model must be letters, digits, dot, dash or underscore" ;; esac
+  case "$effort" in *[!a-z]*) die "--effort must be a lowercase level name" ;; esac
   local claude_bin="${CLAUDE_BIN:-claude}"
   command -v "$claude_bin" >/dev/null 2>&1 || die "Claude CLI not found: $claude_bin" 6
+  local cli_version
+  cli_version="$("$claude_bin" --version 2>/dev/null | head -1 || true)"
   local cid
-  cid="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$case_file")" \
-    || die "cannot read case id from $case_file"
+  cid="$(python3 -I -c 'import json,re,sys
+c = json.load(open(sys.argv[1]))["id"]
+assert isinstance(c, str) and re.match(r"^[a-z0-9][a-z0-9._-]*$", c)
+print(c)' "$case_file" 2>/dev/null)" || die "case id in $case_file is missing or not a safe name"
   local system_prompt="You are The Challenger, replayed on a fixed review packet for framework evaluation. The packet in your working directory is your entire review world. Do not load CLAUDE.md or act as the Conductor."
   local t=1 rc=0 failed=0
   while [ "$t" -le "$trials" ]; do
-    local stamp dir packet
+    local stamp dir work packet
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    dir="$out/$cid/trial-$stamp-$model-$t"
+    dir="$out/$cid/trial-$stamp-$model-$t-$$"
+    [ ! -e "$dir" ] || die "trial dir already exists: $dir"
     mkdir -p "$dir"
-    packet="$dir/packet"
+    # The packet lives in a temp dir outside every git work tree: Claude Code injects the
+    # enclosing repo's auto-memory into the first message, past any tool audit (#161 review).
+    work="$(mktemp -d "${TMPDIR:-/tmp}/reference-replay.XXXXXX")"
+    packet="$work/packet"
+    if git -C "$work" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      rm -rf "${work:?}"
+      die "temp dir $work is inside a git work tree; set TMPDIR outside any repo"
+    fi
     set +e
     do_build "$case_file" "$packet" > /dev/null
     rc=$?
     set -e
     if [ "$rc" -ne 0 ]; then
+      rm -rf "${work:?}"
       printf '{"status":"build-refused","exit":%d,"model":"%s"}\n' "$rc" "$model" > "$dir/trial.json"
       return "$rc"
     fi
+    local effort_args=()
+    [ -z "$effort" ] || effort_args=(--effort "$effort")
     set +e
     (
       cd "$packet" &&
-      "$claude_bin" -p \
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 "$claude_bin" -p \
         --system-prompt "$system_prompt" \
         --model "$model" \
+        ${effort_args[@]+"${effort_args[@]}"} \
         --output-format stream-json --verbose \
         --json-schema "$(cat "$SCHEMA")" \
         --tools "Read,Grep,Glob" \
@@ -428,9 +466,9 @@ do_run() {
     rc=$?
     set -e
     do_audit "$packet" "$dir/events.jsonl" > "$dir/audit.json"
-    python3 -I - "$dir" "$model" "$rc" <<'PY'
+    python3 -I - "$dir" "$model" "$rc" "${effort:-cli-default}" "$cli_version" <<'PY'
 import json, os, sys
-d, model, rc = sys.argv[1], sys.argv[2], int(sys.argv[3])
+d, model, rc, effort, cli = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
 result = None
 for line in open(os.path.join(d, "events.jsonl"), encoding="utf-8", errors="replace"):
     try:
@@ -441,7 +479,7 @@ for line in open(os.path.join(d, "events.jsonl"), encoding="utf-8", errors="repl
         result = ev
 verdict = result.get("structured_output") if isinstance(result, dict) else None
 audit = json.load(open(os.path.join(d, "audit.json")))
-meta = {"model": model, "cli_exit": rc,
+meta = {"model": model, "effort": effort, "cli_version": cli, "cli_exit": rc,
         "usage": (result or {}).get("usage"),
         "num_turns": (result or {}).get("num_turns"),
         "duration_ms": (result or {}).get("duration_ms"),
@@ -467,7 +505,10 @@ json.dump(m, open(p, "w"), indent=2)
 PY
       status=scored
     fi
-    rm -rf "${packet:?}/tree"   # reproducible from git; keep BRIEF, diff, persona, packet.json
+    # Keep what the reviewer was given, minus the tree (reproducible from git).
+    rm -rf "${packet:?}/tree"
+    mv "$packet" "$dir/packet"
+    rm -rf "${work:?}"
     echo "$cid trial $t ($model): $status -> $dir"
     if [ "$status" = "reviewer-failed" ]; then failed=$((failed + 1)); fi
     t=$((t + 1))
