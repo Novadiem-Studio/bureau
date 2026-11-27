@@ -7,6 +7,8 @@ command: |
   git -C "$R" config user.email fixture@example.invalid; git -C "$R" config user.name fixture
   printf 'DIFFONLY_REMOVED_LINE = 1\ndef ok():\n    return 1\n' > "$R/app.py"
   printf '# Prompt 01\nAdd charge(); send credentials over HTTPS only.\n' > "$R/docs/01-prompt.md"
+  # git archive would drop docs/ here; the packet must still hold the commit's real blobs.
+  printf 'docs/** export-ignore\n' > "$R/.gitattributes"
   git -C "$R" add -A; git -C "$R" commit -qm base; B=$(git -C "$R" rev-parse HEAD)
   printf 'def ok():\n    return 1\ndef charge(url, password):\n    return post(url, password)\n' > "$R/app.py"
   git -C "$R" commit -qam target; T=$(git -C "$R" rev-parse HEAD)
@@ -52,7 +54,10 @@ command: |
   [ "$(rc_of "$TMP/extra.json" "$TMP/p-extra")" = 5 ] || fail "changed extra file did not exit 5"
   mkcase "$TMP/noprompt.json" "$D" "validate_https_url" "$X" docs/missing.md
   [ "$(rc_of "$TMP/noprompt.json" "$TMP/p-noprompt")" = 2 ] || fail "missing prompt path did not exit 2"
+  [ ! -e "$TMP/p-noprompt" ] || fail "refused build left a partial packet"
+  mkcase "$TMP/leakmeta.json" "$D" "toy-case" "$X" docs/01-prompt.md
+  [ "$(rc_of "$TMP/leakmeta.json" "$TMP/p-leakmeta")" = 4 ] || fail "leak pattern only in packet.json did not exit 4"
   echo PASS
-expected: exit 0 and prints PASS — a correct case builds a packet holding the reviewed tree (no .git), the byte-exact reviewed diff, the persona and the pinned extra file, and none of the case's expected-finding text; a wrong diff_sha exits 3, a leak pattern present in the packet exits 4 and removes the packet (including a string found only in review.diff), a changed extra file exits 5, a prompt path absent from the tree exits 2.
+expected: exit 0 and prints PASS — a correct case builds a packet holding the reviewed commit's blobs even where .gitattributes says export-ignore (no .git), the byte-exact reviewed diff, the persona and the pinned extra file, and none of the case's expected-finding text; a wrong diff_sha exits 3, a leak pattern present in the packet exits 4 and removes the packet (including a string found only in review.diff), a changed extra file exits 5, a prompt path absent from the tree exits 2 and leaves no partial packet; a leak string present only in the generated packet.json also exits 4.
 phase: #161 · reference replay
 owner: scripts/reference-replay.sh build

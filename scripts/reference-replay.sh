@@ -43,7 +43,7 @@ cmd="$1"; shift
 do_build() {
   [ "$#" -eq 2 ] || usage
   python3 -I - "$ROOT" "$1" "$2" <<'PY'
-import hashlib, json, os, re, shutil, subprocess, sys, tarfile, io
+import hashlib, json, os, re, shutil, subprocess, sys
 
 root, case_path, packet = sys.argv[1:]
 
@@ -115,19 +115,44 @@ got = hashlib.sha256(diff).hexdigest()
 if got != want:
     fail("regenerated diff sha256 %s does not match case diff_sha %s" % (got, want), 3)
 
+# From here on, any refusal removes the partial packet.
 os.makedirs(packet, exist_ok=True)
+_fail = fail
+def fail(msg, code=2):
+    shutil.rmtree(packet, ignore_errors=True)
+    _fail(msg, code)
+
+# Export the reviewed commit's blobs byte for byte. Not `git archive`: it applies
+# .gitattributes export-ignore and export-subst, so the tree could differ from what was reviewed.
+# Symlinks and submodules are skipped: nothing in the packet may point outside it.
 tree = os.path.join(packet, "tree")
 os.makedirs(tree)
-archive = git("archive", "--format=tar", target)
-with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tf:
-    for member in tf.getmembers():
-        name = member.name
-        if os.path.isabs(name) or ".." in name.split("/") or member.issym() or member.islnk() or member.isdev():
-            continue  # never follow links or special files out of the tree
-        try:
-            tf.extract(member, tree, filter="data")
-        except TypeError:  # Python without extraction filters
-            tf.extract(member, tree)
+entries = []
+for rec in git("ls-tree", "-r", "-z", "--full-tree", target).split(b"\0"):
+    if not rec:
+        continue
+    meta_part, path = rec.split(b"\t", 1)
+    mode, otype, oid = meta_part.split(b" ")
+    if otype != b"blob" or mode not in (b"100644", b"100755"):
+        continue
+    rel = path.decode("utf-8", "surrogateescape")
+    if os.path.isabs(rel) or ".." in rel.split("/"):
+        continue
+    entries.append((oid.decode(), rel, mode == b"100755"))
+cat = subprocess.Popen(["git", "-C", repo, "cat-file", "--batch"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+for oid, rel, exe in entries:
+    cat.stdin.write(oid.encode() + b"\n"); cat.stdin.flush()
+    header = cat.stdout.readline().split()
+    if len(header) != 3 or header[1] != b"blob":
+        cat.kill()
+        fail("git cat-file returned %r for %s" % (header, rel))
+    data = cat.stdout.read(int(header[2])); cat.stdout.read(1)
+    dest = os.path.join(tree, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    open(dest, "wb").write(data)
+    if exe:
+        os.chmod(dest, 0o755)
+cat.stdin.close(); cat.wait()
 open(os.path.join(packet, "review.diff"), "wb").write(diff)
 
 for p in prompts:
@@ -157,21 +182,6 @@ for src, dst in (("agents/critic.md", "critic.md"), ("agents/critic/build-diff.m
     data = open(os.path.join(root, src), "rb").read()
     open(os.path.join(persona, dst), "wb").write(data)
     persona_hash[dst] = hashlib.sha256(data).hexdigest()
-
-hits = []
-for dirpath, _dirs, files in os.walk(packet):
-    for f in files:
-        path = os.path.join(dirpath, f)
-        try:
-            data = open(path, "rb").read()
-        except OSError:
-            continue
-        for pat in leaks:
-            if pat.encode("utf-8") in data:
-                hits.append("%s: %s" % (os.path.relpath(path, packet), pat))
-if hits:
-    shutil.rmtree(packet)
-    fail("leak pattern found in packet, refusing:\n  " + "\n  ".join(hits[:20]), 4)
 
 listing = []
 if prompts:
@@ -206,6 +216,21 @@ head = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=T
 meta = {"case_id": cid, "base_sha": base, "target_sha": target, "diff_sha": want,
         "persona_sha256": persona_hash, "bureau_head": head or None}
 json.dump(meta, open(os.path.join(packet, "packet.json"), "w", encoding="utf-8"), indent=2, sort_keys=True)
+
+# Leak scan last, over every file the reviewer will be able to read.
+hits = []
+for dirpath, _dirs, files in os.walk(packet):
+    for f in files:
+        path = os.path.join(dirpath, f)
+        try:
+            data = open(path, "rb").read()
+        except OSError:
+            continue
+        for pat in leaks:
+            if pat.encode("utf-8") in data:
+                hits.append("%s: %s" % (os.path.relpath(path, packet), pat))
+if hits:
+    fail("leak pattern found in packet, refusing:\n  " + "\n  ".join(hits[:20]), 4)
 print(packet)
 PY
 }
@@ -303,21 +328,35 @@ def text(item):
 
 findings = [("blocker", text(b)) for b in v.get("blockers") or []]
 findings += [("warning", text(w)) for w in v.get("warnings") or []]
-used = set()
-results = []
-for e in case.get("expected", []):
+expected = case.get("expected", [])
+cands = []
+for e in expected:
     rx = re.compile(e["pattern"], re.I)
-    hit = None
-    # One finding satisfies at most one expected entry. Blockers come first, so a blocker wins.
-    for i, (sev, t) in enumerate(findings):
-        if i not in used and e["anchor"].lower() in t.lower() and rx.search(t):
-            hit = (i, sev)
-            break
-    if hit is not None:
-        used.add(hit[0])
-    results.append({"id": e["id"], "found": hit is not None,
-                    "as": hit[1] if hit else None,
-                    "text": findings[hit[0]][1][:600] if hit else None})
+    cands.append([i for i, (_s, t) in enumerate(findings) if e["anchor"].lower() in t.lower() and rx.search(t)])
+
+# One finding satisfies at most one expected entry. Take a maximum matching (augmenting paths),
+# so a broad expected entry cannot steal the only finding a narrower one could use. Blocker
+# candidates are tried first, which favours an assignment onto blockers.
+owner = {}
+def augment(j, seen):
+    for i in sorted(cands[j], key=lambda i: findings[i][0] != "blocker"):
+        if i in seen:
+            continue
+        seen.add(i)
+        if i not in owner or augment(owner[i], seen):
+            owner[i] = j
+            return True
+    return False
+for j in range(len(expected)):
+    augment(j, set())
+match = {j: i for i, j in owner.items()}
+used = set(owner)
+results = []
+for j, e in enumerate(expected):
+    i = match.get(j)
+    results.append({"id": e["id"], "found": i is not None,
+                    "as": findings[i][0] if i is not None else None,
+                    "text": findings[i][1][:600] if i is not None else None})
 
 verdict = v.get("verdict")
 if case["kind"] == "control":
@@ -421,6 +460,10 @@ c = json.load(open(sys.argv[1]))["id"]
 assert isinstance(c, str) and re.match(r"^[a-z0-9][a-z0-9._-]*$", c)
 print(c)' "$case_file" 2>/dev/null)" || die "case id in $case_file is missing or not a safe name"
   local system_prompt="You are The Challenger, replayed on a fixed review packet for framework evaluation. The packet in your working directory is your entire review world. Do not load CLAUDE.md or act as the Conductor."
+  # A killed run must not leave a packet behind in $TMPDIR.
+  REPLAY_WORK=""
+  trap 'if [ -n "${REPLAY_WORK:-}" ]; then rm -rf "$REPLAY_WORK"; fi' EXIT
+  trap 'exit 130' INT TERM
   local t=1 rc=0 failed=0
   while [ "$t" -le "$trials" ]; do
     local stamp dir work packet
@@ -431,6 +474,7 @@ print(c)' "$case_file" 2>/dev/null)" || die "case id in $case_file is missing or
     # The packet lives in a temp dir outside every git work tree: Claude Code injects the
     # enclosing repo's auto-memory into the first message, past any tool audit (#161 review).
     work="$(mktemp -d "${TMPDIR:-/tmp}/reference-replay.XXXXXX")"
+    REPLAY_WORK="$work"
     packet="$work/packet"
     if git -C "$work" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       rm -rf "${work:?}"
@@ -509,6 +553,7 @@ PY
     rm -rf "${packet:?}/tree"
     mv "$packet" "$dir/packet"
     rm -rf "${work:?}"
+    REPLAY_WORK=""
     echo "$cid trial $t ($model): $status -> $dir"
     if [ "$status" = "reviewer-failed" ]; then failed=$((failed + 1)); fi
     t=$((t + 1))

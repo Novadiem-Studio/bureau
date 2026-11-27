@@ -992,9 +992,11 @@ scripts/reference-replay.sh summary <out-dir>
 - **Output:** one directory per trial under `<out-dir>/<case-id>/` with `events.jsonl`,
   `verdict.json`, `audit.json`, `score.json` and `trial.json` (model, status, token usage).
 - **Deps:** `bash`, `git`, `python3`, the `claude` CLI (`CLAUDE_BIN` overrides it).
-- **Exit codes:** `0` ok; `2` usage or malformed case; `3` regenerated diff does not match
-  `diff_sha`; `4` a leak pattern is in the packet; `5` a pinned extra file changed; `6` a reviewer
-  returned no structured verdict.
+- **Exit codes:** `0` every trial finished (scored or contaminated); `2` usage or malformed case;
+  `3` regenerated diff does not match `diff_sha`; `4` a leak pattern is in the packet; `5` a
+  pinned extra file changed; `6` a reviewer returned no structured verdict. Exit `0` does not
+  mean every trial was scored: a contaminated trial is kept unscored, so read `summary` (its
+  `dirty` column) or each `trial.json` status.
 - **Cost:** `run` spawns one model reviewer per trial. Get Robin's go before a multi-case pass.
 
 ---

@@ -19,10 +19,12 @@ command: |
   # A fake claude: records its argv and cwd, reads FAKE_READ, returns a verdict that finds e1.
   cat > "$TMP/fake-claude" <<'SH'
   #!/bin/sh
+  if [ "$1" = "--version" ]; then echo "fake-claude 0.0"; exit 0; fi
   printf '%s\n' "$PWD" > "$FAKE_LOG.cwd"
   printf '%s\n' "${CLAUDE_CODE_DISABLE_AUTO_MEMORY:-unset}" > "$FAKE_LOG.mem"
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo yes; else echo no; fi > "$FAKE_LOG.git"
   for a in "$@"; do printf '%s\n' "$a"; done > "$FAKE_LOG.argv"
+  if [ -n "${FAKE_SLEEP:-}" ]; then echo $$ > "$FAKE_LOG.pid"; sleep "$FAKE_SLEEP"; fi
   python3 -c 'import json,os
   print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":os.environ["FAKE_READ"]}}]}}))
   v={"attempt_id":"replay","review_mode":"build-diff","reviewed_artifacts":[],"blocker_ids":["b1"],"timestamp":"2026-01-01T00:00:00Z",
@@ -35,6 +37,7 @@ command: |
   export CLAUDE_BIN="$TMP/fake-claude" FAKE_LOG="$TMP/fake"
   # Results go inside a git repo, the way the private cases repo keeps them.
   git init -q "$TMP/results"
+  export TMPDIR="$TMP/tmpd"; mkdir -p "$TMPDIR"
   # clean trial
   FAKE_READ=review.diff bash "$S" run "$TMP/case.json" "$TMP/results/out" --model opus >/dev/null || fail "clean run exited non-zero"
   TR=$(ls -d "$TMP"/results/out/toy/trial-* | head -1)
@@ -65,7 +68,16 @@ command: |
   [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["status"])' "$TR2/trial.json")" = contaminated ] || fail "outside read not marked contaminated"
   [ ! -e "$TR2/score.json" ] || fail "contaminated trial was scored"
   bash "$S" summary "$TMP/results/out" | grep -q '1/1 found' || fail "summary does not report 1/1 found"
+  [ -z "$(ls -A "$TMPDIR")" ] || fail "trial temp dir left in TMPDIR"
+  # a run killed mid-review must not leave its packet in TMPDIR
+  FAKE_READ=review.diff FAKE_SLEEP=30 bash "$S" run "$TMP/case.json" "$TMP/results/out3" --model opus >/dev/null 2>&1 &
+  RUNPID=$!
+  i=0; while [ ! -s "$FAKE_LOG.pid" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i+1)); done
+  [ -s "$FAKE_LOG.pid" ] || fail "fake reviewer never started"
+  [ -n "$(ls -A "$TMPDIR")" ] || fail "fixture setup: no packet in TMPDIR while the reviewer runs"
+  kill -TERM "$RUNPID"; kill "$(cat "$FAKE_LOG.pid")" 2>/dev/null; wait "$RUNPID" 2>/dev/null
+  [ -z "$(ls -A "$TMPDIR")" ] || fail "killed run left its packet in TMPDIR"
   echo PASS
-expected: exit 0 and prints PASS — with a fake CLAUDE_BIN and the out-dir inside a git repo, run spawns the reviewer with its cwd in a packet outside every git work tree, CLAUDE_CODE_DISABLE_AUTO_MEMORY=1, and argv carrying Read,Grep,Glob, an empty --setting-sources, --no-session-persistence, stream-json output, --add-dir on the packet, the Challenger verdict schema, the system prompt and the chosen model; the kept trial packet holds BRIEF.md and review.diff, and trial.json records effort and CLI version; a trial whose reviewer reads only inside the packet is status scored with the expected finding found as a blocker, its exported tree removed; the same verdict with a read of /etc/hosts is status contaminated and has no score.json; summary reports 1/1 found.
+expected: exit 0 and prints PASS — with a fake CLAUDE_BIN and the out-dir inside a git repo, run spawns the reviewer with its cwd in a packet outside every git work tree, CLAUDE_CODE_DISABLE_AUTO_MEMORY=1, and argv carrying Read,Grep,Glob, an empty --setting-sources, --no-session-persistence, stream-json output, --add-dir on the packet, the Challenger verdict schema, the system prompt and the chosen model; the kept trial packet holds BRIEF.md and review.diff, and trial.json records effort and CLI version; a trial whose reviewer reads only inside the packet is status scored with the expected finding found as a blocker, its exported tree removed; the same verdict with a read of /etc/hosts is status contaminated and has no score.json; summary reports 1/1 found; no trial dir is left in TMPDIR after a normal, a contaminated or a killed run.
 phase: #161 · reference replay
 owner: scripts/reference-replay.sh run, summary

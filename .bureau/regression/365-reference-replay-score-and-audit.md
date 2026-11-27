@@ -27,6 +27,12 @@ command: |
   w("two.json", {"id": "toy-two", "kind": "known-miss",
                  "expected": [{"id": "e1", "anchor": "app.py", "pattern": "cleartext"},
                               {"id": "e2", "anchor": "app.py", "pattern": "https"}]})
+  w("greedy.json", {"id": "toy-greedy", "kind": "known-miss",
+                    "expected": [{"id": "broad", "anchor": "app.py", "pattern": "cleartext|https"},
+                                 {"id": "narrow", "anchor": "app.py", "pattern": "https"}]})
+  w("v-greedy.json", {"verdict": "BLOCKED",
+      "blockers": [{"id": "b1", "summary": "charge() posts in cleartext; require https", "citation": cite}],
+      "warnings": [{"id": "w1", "summary": "app.py logs the token in cleartext"}]})
   w("v-one.json", {"verdict": "BLOCKED", "warnings": [],
       "blockers": [{"id": "b1", "summary": "charge() sends cleartext; require https", "citation": cite}]})
   PY
@@ -38,6 +44,7 @@ command: |
   [ "$(bash "$S" score "$TMP/control.json" "$TMP/v-approved.json" | get 'd["pass"]')" = "True" ] || fail "unblocked control not counted as a pass"
   [ "$(bash "$S" score "$TMP/absmiss.json" "$TMP/v-absence.json" | get 'd["pass"]')" = "False" ] || fail "JSON keys or enum values matched as finding text"
   [ "$(bash "$S" score "$TMP/two.json" "$TMP/v-one.json" | get '[e["found"] for e in d["expected"]]')" = "[True, False]" ] || fail "one finding satisfied two expected entries"
+  [ "$(bash "$S" score "$TMP/greedy.json" "$TMP/v-greedy.json" | get '[(e["found"], e["as"]) for e in d["expected"]]')" = "[(True, 'warning'), (True, 'blocker')]" ] || fail "matching is greedy: a broad entry took the only finding a narrow one could use"
   # audit
   P="$TMP/packet"; mkdir -p "$P/tree"; RP=$(cd "$P" && pwd -P)
   ev() { python3 -c 'import json,sys
@@ -59,6 +66,6 @@ command: |
   ev Bash '{"command":"ls"}' > "$TMP/bad.jsonl"
   [ "$(bash "$S" audit "$P" "$TMP/bad.jsonl" | get 'd["contaminated"]')" = "True" ] || fail "disallowed tool not flagged"
   echo PASS
-expected: exit 0 and prints PASS — a blocker naming the anchor and matching the pattern scores found-as-blocker; anchor and pattern split across two findings scores not found; a single matching warning scores found but not as a blocker; a BLOCKED control fails and an unblocked control passes; JSON keys and enum values of a citation (absence/missing) never match; one finding satisfies at most one expected entry; the audit accepts relative and absolute reads inside the packet, a path-less Grep, an in-packet Glob and the StructuredOutput call, and flags an absolute read outside, a ../ read, a Grep with an outside path, Glob patterns that are absolute, ~ or ../, a Grep glob with ../, and a non-read tool.
+expected: exit 0 and prints PASS — a blocker naming the anchor and matching the pattern scores found-as-blocker; anchor and pattern split across two findings scores not found; a single matching warning scores found but not as a blocker; a BLOCKED control fails and an unblocked control passes; JSON keys and enum values of a citation (absence/missing) never match; one finding satisfies at most one expected entry, and the matching is maximal (a broad entry does not steal a narrow entry's only finding); the audit accepts relative and absolute reads inside the packet, a path-less Grep, an in-packet Glob and the StructuredOutput call, and flags an absolute read outside, a ../ read, a Grep with an outside path, Glob patterns that are absolute, ~ or ../, a Grep glob with ../, and a non-read tool.
 phase: #161 · reference replay
 owner: scripts/reference-replay.sh score, audit
