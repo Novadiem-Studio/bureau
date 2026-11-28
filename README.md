@@ -198,6 +198,9 @@ Model routing chooses which model a role uses. The host transport creates and re
 | Claude | Claude Code Agent tool | Supported |
 | OpenAI | Codex collaboration tools | Supported |
 | Codex | Alias for OpenAI at startup and reviewer boundaries | Supported |
+| Grok | Grok Bot Task/executor | Supported |
+| Grok sidebar | Grok Bot sidebar agents and rooms | Supported; cold Challenger and Notary reviews still use Task |
+| Cursor | Cursor Agent Task, local or cloud | Supported |
 | OpenRouter | Model routing only | No native run transport; fails closed |
 | Hermes | Model routing only | No native run transport; fails closed |
 
